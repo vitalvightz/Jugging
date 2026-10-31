@@ -300,12 +300,12 @@ export function XpProgressCardView({
           >
             <span className="xp-progress-fill" style={{ "--xp-progress-width": `${level.percentage}%` } as CSSProperties} />
           </div>
-          <div className="xp-overview-footer" aria-label="Streaks">
-            <span className="xp-overview-streak" data-streak="training" aria-label={`Training streak: ${numberFormatter.format(progress.streaks.adherence.current)} days`}>
+          <div className="xp-overview-footer" role="group" aria-label="Streaks">
+            <span className="xp-overview-streak" role="group" data-streak="training" aria-label={`Training streak: ${numberFormatter.format(progress.streaks.adherence.current)} ${progress.streaks.adherence.current === 1 ? "day" : "days"}`}>
               <StreakFlameIcon />
               <span>Training {numberFormatter.format(progress.streaks.adherence.current)}d</span>
             </span>
-            <span className="xp-overview-streak" data-streak="app" aria-label={`App streak: ${numberFormatter.format(progress.streaks.login.current)} days`}>
+            <span className="xp-overview-streak" role="group" data-streak="app" aria-label={`App streak: ${numberFormatter.format(progress.streaks.login.current)} ${progress.streaks.login.current === 1 ? "day" : "days"}`}>
               <StreakBoltIcon />
               <span>App {numberFormatter.format(progress.streaks.login.current)}d</span>
             </span>
@@ -395,15 +395,7 @@ export function XpProgressCardView({
     </article>
   );
 
-  if (mode === "page") {
-    return card;
-  }
-
-  return (
-    <Link href="/progress" className="xp-progress-card-link" aria-label="Open XP progress">
-      {card}
-    </Link>
-  );
+  return card;
 }
 
 export function XpProgressCard() {
