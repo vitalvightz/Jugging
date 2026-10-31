@@ -150,7 +150,7 @@ test("an unnamed active plan never displays 'No active plan'", async () => {
   globalThis.fetch = (async (input) =>
     String(input).includes("/api/today") ? command.promise : calendar.promise
   ) as typeof fetch;
-  const ui = await mountHome("active");
+  const ui = await mountHome("latest");
   try {
     await act(async () => command.resolve({
       ...today("active"),
