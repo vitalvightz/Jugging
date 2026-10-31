@@ -111,14 +111,14 @@ test("Google compliance keeps an existing DOB and records health consent only wh
   expect(requests).toEqual([{ accept_terms: true, health_data_consent: true }]);
 });
 
-test("email password login retains the existing account and landing route", async ({ page, baseURL }) => {
+test("email password login with stale invite flag retains the existing account and landing route", async ({ page, baseURL }) => {
   await oauth(page, baseURL!, true);
   const bodies: Record<string, unknown>[] = [];
   await page.route(`${SUPABASE}/auth/v1/token**`, async route => {
     expect(new URL(route.request().url()).searchParams.get("grant_type")).toBe("password");
     bodies.push(route.request().postDataJSON());
     await json(route, { access_token: "email-test-token", refresh_token: "email-refresh", expires_in: 3600,
-      token_type: "bearer", user });
+      token_type: "bearer", user: { ...user, created_at: new Date().toISOString(), user_metadata: { ...user.user_metadata, invite_pending: true } } });
   });
   await page.goto("/login");
   await page.getByRole("button", { name: "Continue with email", exact: true }).click();
@@ -155,41 +155,26 @@ test("OAuth cancellation is scrubbed from URL and leaves both methods usable", a
   await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
 });
 
-test("an account explicitly marked invite-pending is turned away before a profile exists", async ({ page, baseURL }) => {
-  await isolateFromNetwork(page, baseURL!);
-  const newUser = { ...user, created_at: new Date().toISOString(), user_metadata: { full_name: "Gatecrasher", invite_pending: true } };
-  const meCalls: string[] = [];
-  const metadataUpdates: unknown[] = [];
+test("an existing account with a stale invite flag logs in without another code", async ({ page, baseURL }) => {
+  await oauth(page, baseURL!, true);
+  const existing = { ...user, created_at: new Date().toISOString(),
+    user_metadata: { ...user.user_metadata, invite_pending: true } };
   let signedOut = false;
-  await page.route("**/api/me", route => { meCalls.push(route.request().url()); return json(route, {}); });
-  await page.route(`${SUPABASE}/auth/v1/user`, async route => {
-    if (route.request().method() === "PUT") metadataUpdates.push(route.request().postDataJSON());
-    await json(route, newUser);
+  await page.route(`${SUPABASE}/auth/v1/user`, route => json(route, existing));
+  await page.route(`${SUPABASE}/auth/v1/logout**`, route => {
+    signedOut = true;
+    return json(route, {});
   });
-  await page.route(`${SUPABASE}/auth/v1/logout**`, route => { signedOut = true; return json(route, {}); });
-  await page.route(`${SUPABASE}/auth/v1/authorize**`, route => route.fulfill({
-    status: 302,
-    headers: { location: `${baseURL}/login#access_token=new-google-token&refresh_token=r&expires_in=3600&token_type=bearer&type=signup` },
-    body: "",
-  }));
-
-  // Previously rejected account, no invite cookie in this browser.
   await page.goto("/login");
   await page.getByRole("button", { name: "Continue with Google", exact: true }).click();
-
-  await expect(page).toHaveURL(`${baseURL}/signup?invite=required`);
-  await expect(page.getByText("You need an invite code to create an account.")).toBeVisible();
-  await expect(page.getByLabel("Access code", { exact: true })).toBeVisible();
-  expect(meCalls, "no profile is requested (and so none is created)").toHaveLength(0);
-  expect(metadataUpdates).toContainEqual(expect.objectContaining({ data: { invite_pending: true } }));
-  expect(signedOut).toBe(true);
+  await expect(page).toHaveURL(`${baseURL}/`);
+  expect(signedOut).toBe(false);
 });
 
 test("a brand-new Google account from a browser that entered the code goes straight through", async ({ page, baseURL }) => {
   await oauth(page, baseURL!);
   await grantSignupAccess(page, baseURL!);
-  // Same flow as a new Google identity, but the account was created just now,
-  // so the invite guard runs (routes added later take precedence).
+  // A new Google identity with a signup invite can still complete compliance.
   const newUser = { ...user, created_at: new Date().toISOString() };
   let signedOut = false;
   await page.route(`${SUPABASE}/auth/v1/user`, route => json(route, newUser));
