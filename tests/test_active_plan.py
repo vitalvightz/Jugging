@@ -39,6 +39,12 @@ class Store:
         self.set_to = plan_id
         self.active = plan_id
 
+    def try_set_active_plan_id(self, athlete_id, plan_id, expected_id):
+        if self.active != expected_id:
+            return False
+        self.set_active_plan_id(athlete_id, plan_id)
+        return True
+
     def archive_plan_for_athlete(self, plan_id, athlete_id):
         if self.fail_archive:
             raise HTTPException(status_code=503, detail="archive failed")
@@ -102,8 +108,48 @@ def test_no_plans_no_active_plan():
     assert resolve_active_plan(Store([]), "ath").plan is None
 
 
-def test_ready_plan_is_not_active_without_explicit_pointer():
-    assert resolve_active_plan(Store([plan("p1")]), "ath").plan is None
+def test_first_ready_plan_is_automatically_activated_once():
+    store = Store([plan("p1")])
+    assert resolve_active_plan(store, "ath").plan_id == "p1"
+    assert resolve_active_plan(store, "ath").plan_id == "p1"
+    assert store.set_calls == ["p1"]
+
+
+def test_sole_non_archived_flagged_plan_is_automatically_active():
+    store = Store([plan("older", status="archived"), plan("only", status="publishable_with_flags")])
+    assert resolve_active_plan(store, "ath").plan_id == "only"
+    assert store.active == "only"
+
+
+@pytest.mark.parametrize("status", ["review_required", "medical_hold", "generated", "failed"])
+def test_one_usable_and_one_unarchived_ineligible_plan_requires_manual_selection(status):
+    store = Store([plan("ready"), plan("other", status=status)])
+    assert resolve_active_plan(store, "ath").plan is None
+    assert store.set_calls == []
+
+
+def test_only_plan_past_fight_date_is_never_automatically_active():
+    store = Store([{**plan("expired"), "fight_date": "2026-06-01"}])
+    assert resolve_active_plan(store, "ath", current_training_day="2026-06-02").plan is None
+    assert store.set_calls == []
+
+
+def test_manual_selection_wins_when_conditional_activation_loses_race():
+    store = Store([plan("only")])
+    def lose_to_manual(athlete_id, plan_id, expected_id):
+        store.active = "manual"
+        return False
+    store.try_set_active_plan_id = lose_to_manual
+    assert resolve_active_plan(store, "ath").source == "invalid_reference"
+    assert store.active == "manual"
+    assert store.set_calls == []
+
+
+def test_auto_activation_read_failure_does_not_change_pointer():
+    store = Store([plan("only")])
+    store.list_user_plans = lambda athlete_id: (_ for _ in ()).throw(RuntimeError("db down"))
+    assert resolve_active_plan(store, "ath").source == "none"
+    assert store.set_calls == []
 
 
 def test_multiple_ready_plans_are_not_fallback_candidates():
@@ -118,9 +164,10 @@ def test_explicit_active_plan_wins_over_newer_unrelated_ready_plan():
     assert resolve_active_plan(store, "ath").plan_id == "old"
 
 
-def test_archived_explicit_active_plan_fails_closed_without_fallback():
+def test_archived_explicit_pointer_activates_only_remaining_ready_plan():
     store = Store([plan("old", "archived", "2026-02-01"), plan("next", "ready", "2026-01-01")], active="old")
-    assert resolve_active_plan(store, "ath").plan is None
+    assert resolve_active_plan(store, "ath").plan_id == "next"
+    assert store.active == "next"
 
 
 @pytest.mark.parametrize("status", ["review_required", "medical_hold", "generated", "failed", "archived"])
@@ -351,10 +398,11 @@ def test_expired_pointer_does_not_fall_back_to_another_eligible_plan():
     assert resolved.source == "unusable"
 
 
-def test_missing_and_cross_athlete_references_fail_closed():
+def test_missing_pointer_repairs_sole_owned_plan_but_never_uses_foreign_plan():
     missing = Store([plan("saved")], active="missing")
     other = Store([plan("foreign", athlete_id="other")], active="foreign")
-    assert resolve_active_plan(missing, "ath").source == "invalid_reference"
+    assert resolve_active_plan(missing, "ath").plan_id == "saved"
+    assert missing.active == "saved"
     assert resolve_active_plan(other, "ath").source == "invalid_reference"
 
 
