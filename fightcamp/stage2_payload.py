@@ -15,7 +15,7 @@ import sys
 from copy import deepcopy
 from typing import Any
 
-from .exercise_identity import stamp_exercise_key
+from .exercise_identity import normalize_exercise_key, stamp_exercise_key
 from . import stage2_planning_brief as stage2_planning_brief_module
 from .stage2_finalizer_packet import build_stage2_finalizer_packet
 from .stage2_llm_boundary import build_stage2_llm_planning_brief
@@ -2034,7 +2034,14 @@ def _attach_open_development_block(
         # list follows that score; otherwise every general slot would outrank
         # every specific one purely by concatenation order.
         slots = [slot for pool in sources for slot in pool.get(group) or [] if isinstance(slot, dict)]
-        return sorted(slots, key=lambda slot: -float(_slot_selected_option(slot).get("score") or 0))
+        ranked = sorted(slots, key=lambda slot: -float(_slot_selected_option(slot).get("score") or 0))
+        if group != "strength_slots":
+            return ranked
+        unique = {}
+        for slot in ranked:
+            key = normalize_exercise_key(_slot_selected_option(slot).get("name")) or slot.get("slot_id") or id(slot)
+            unique.setdefault(key, slot)
+        return list(unique.values())
 
     block_pools = {OPEN_BLOCK_PHASE: {group: merged(group) for group in _OPEN_BLOCK_SLOT_GROUPS}}
     block = _build_planning_brief(
