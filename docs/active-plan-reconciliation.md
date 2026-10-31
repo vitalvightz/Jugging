@@ -1,8 +1,11 @@
 # Active-plan beta account reconciliation
 
-`profiles.active_plan_id` is the sole runtime authority. Normal application
-reads must never repair it or select a saved plan. Reconciliation is an audited
-support operation, followed by the existing `set_active_plan(...)` write path.
+`profiles.active_plan_id` remains the sole runtime authority. When it does
+not reference a usable plan, application reads may conditionally activate the
+**only non-archived, eligible** plan using an atomic pointer update. Multiple
+non-archived plans never trigger automatic selection. Ambiguous historical
+accounts still require an audited support reconciliation through
+`set_active_plan(...)`.
 
 ## Evidence order
 
