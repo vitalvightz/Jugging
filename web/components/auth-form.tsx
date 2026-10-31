@@ -327,7 +327,7 @@ export function AuthForm({
       }
 
       try {
-        if (!(await hasSignupAdmission(accessToken))) {
+        if (!(await hasSignupAdmission(data.session?.user.id ?? data.user?.id))) {
           await client.auth.signOut();
           router.replace("/signup?invite=required");
           return;
