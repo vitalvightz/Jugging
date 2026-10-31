@@ -178,6 +178,11 @@
   white-space: nowrap;
 }
 
+.xp-overview-streak .xp-streak-icon {
+  width: 16px;
+  height: 16px;
+}
+
 .xp-overview-streak[data-streak="training"] .xp-streak-icon {
   color: #e8697d;
 }
