@@ -333,6 +333,7 @@ export function AuthForm({
           return;
         }
       } catch {
+        resetCaptcha();
         setError("We couldn't verify your account access. Please try again.");
         return;
       }
