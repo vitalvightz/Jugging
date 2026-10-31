@@ -18,7 +18,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from .exercise_identity import normalize_exercise_key, stamp_exercise_key
+from .exercise_identity import stamp_exercise_key
 from .normalization import normalize_fatigue_level
 from .planner_context import get_planner_athlete_model
 from .late_fight_phase_eligibility import scheduled_phase_for_role
@@ -693,11 +693,6 @@ def _select_bounded_records(
     preserve_weakness: str = "",
     preserve_strength: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, str]]:
-    # The merged GPP/SPP pool can contain the same exercise in two slots.
-    unique_records = {}
-    for record in records:
-        unique_records.setdefault(normalize_exercise_key(record["name"]), record)
-    records = list(unique_records.values())
     family_limit = 2 if pressure == 0 else 1
     selected: list[dict[str, Any]] = []
     family_counts: dict[str, int] = {}
