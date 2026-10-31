@@ -20,7 +20,7 @@ async function oauth(page: Page, baseURL: string, returning = false, dateOfBirth
     appearance_mode: "dark", nutrition_profile: {}, date_of_birth: accepted ? "1996-05-04" : dateOfBirth,
     meets_minimum_age: accepted || Boolean(dateOfBirth), terms_accepted: accepted, health_consent_granted: false,
   }, plan_count: 0, latest_plan: null, latest_intake: null, username_rate_limit: {} });
-  await page.route("**/api/me/admission", route => json(route, { approved: returning }));
+  await page.route(`${SUPABASE}/rest/v1/profiles**`, route => json(route, returning ? [{ access_status: "approved" }] : []));
   await page.route("**/api/me", route => json(route, profile()));
   await page.route(`${SUPABASE}/auth/v1/user`, route => json(route, user));
   await page.route(`${SUPABASE}/auth/v1/logout**`, route => json(route, {}));
