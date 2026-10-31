@@ -3626,6 +3626,12 @@ html[data-theme="light"] .today-safe-list[data-kind="blocked"] li::before {
     var(--bg-surface);
 }
 
+.overview-primary-session > .fight-countdown {
+  align-self: start;
+  margin-top: 0;
+  border-radius: var(--radius-card);
+}
+
 .fight-countdown-head {
   display: flex;
   align-items: flex-end;
