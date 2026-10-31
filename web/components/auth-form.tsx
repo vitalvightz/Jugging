@@ -38,6 +38,7 @@ import { recordCompliance } from "@/lib/api";
 import { evaluatePasswordStrength } from "@/lib/password-strength";
 import { buildAuthRedirectUrl } from "@/lib/site-url";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { hasSignupAdmission } from "@/lib/signup-invite-guard";
 import type { Session } from "@supabase/supabase-js";
 
 import type { UserRole } from "@/lib/types";
@@ -325,6 +326,16 @@ export function AuthForm({
         return;
       }
 
+      try {
+        if (!(await hasSignupAdmission(accessToken))) {
+          await client.auth.signOut();
+          router.replace("/signup?invite=required");
+          return;
+        }
+      } catch {
+        setError("We couldn't verify your account access. Please try again.");
+        return;
+      }
       const nextMe = await getMe(accessToken).catch(() => null);
       fadeNavigate(() => router.replace(nextMe ? destination(nextMe) : "/plans"));
     });
