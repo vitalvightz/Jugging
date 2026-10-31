@@ -1,5 +1,4 @@
 "use client";
-import { AnalyticsPreference } from "@/components/analytics-preference";
 
 import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -78,9 +77,6 @@ export function StartingPathScreen() {
         aria-pressed={sport === value} disabled={Boolean(saving) || isSigningOut}
         onClick={() => { setPicked(value); setError(null); }}>{value === "other" ? "Other" : sportLabel(value)}</button>)}
     </div>
-    {/* Before the choices: each choice saves and leaves this screen at once.
-        Still default-off and freely skippable; it never blocks a choice. */}
-    <AnalyticsPreference />
     <p className={styles.label}>Start with</p>
     <div className={styles.choices} aria-busy={Boolean(saving)}>
       <button className={styles.choice} type="button" disabled={Boolean(saving) || isSigningOut} onClick={() => void choose("plan_first")}>

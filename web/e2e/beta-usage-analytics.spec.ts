@@ -27,7 +27,8 @@ test("a beta athlete sends visits and page events without any preference request
     return route.fulfill({ json: {} });
   });
   await page.goto("/get-started");
-  await expect(page.getByRole("heading", { name: "Private beta usage analytics" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Private beta usage analytics" })).toHaveCount(0);
+  await expect(page.getByText("Start with")).toBeVisible();
   await expect.poll(() => events.some(e => e.event_name === "app_opened")).toBe(true);
   await expect.poll(() => events.some(e => e.event_name === "page_viewed")).toBe(true);
   expect(choices).toEqual([]);
