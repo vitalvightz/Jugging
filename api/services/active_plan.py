@@ -264,6 +264,24 @@ def _active_plan_overlap(
     return current if _ranges_overlap(current_range, candidate_range) else None
 
 
+def _validate_custom_plan_activation(
+    plan: dict[str, Any], *, current_training_day: date | str | None
+) -> None:
+    if not _decode_mapping(plan.get("planning_brief")).get("custom_plan"):
+        return
+    from api.structured_plan_models import safe_parse_structured_plan
+    from api.services.open_plan_timeline import project_open_structured_plan
+
+    parsed = safe_parse_structured_plan(plan.get("structured_plan"))
+    if not parsed.ok or parsed.plan is None:
+        raise HTTPException(409, "This custom plan's prescription is invalid. Edit the plan before activating.")
+    _, context = project_open_structured_plan(
+        plan, parsed.plan.model_dump(mode="json"), current_training_day=current_training_day or date.today()
+    )
+    if context["projection_status"] != "projected":
+        raise HTTPException(409, "This custom plan's schedule is invalid. Edit the plan before activating.")
+
+
 def _activate_only_remaining_plan(
     store: ActivePlanStore,
     athlete_id: str,
@@ -289,6 +307,10 @@ def _activate_only_remaining_plan(
         candidate_id = str(remaining[0].get("id") or "")
         candidate = store.get_plan_for_athlete(candidate_id, athlete_id)
         if not candidate or not is_active_plan_eligible(candidate, current_training_day=current_training_day):
+            return unchanged
+        try:
+            _validate_custom_plan_activation(candidate, current_training_day=current_training_day)
+        except HTTPException:
             return unchanged
         if store.try_set_active_plan_id(athlete_id, candidate_id, expected_id):
             return ActivePlanResolution(plan=candidate, source="auto_single")
@@ -363,17 +385,7 @@ def set_active_plan(
     plan = store.get_plan_for_athlete(plan_id, athlete_id)
     if plan is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="plan not found")
-    if _decode_mapping(plan.get("planning_brief")).get("custom_plan"):
-        from api.structured_plan_models import safe_parse_structured_plan
-        from api.services.open_plan_timeline import project_open_structured_plan
-        parsed = safe_parse_structured_plan(plan.get("structured_plan"))
-        if not parsed.ok or parsed.plan is None:
-            raise HTTPException(409, "This custom plan's prescription is invalid. Edit the plan before activating.")
-        _, context = project_open_structured_plan(
-            plan, parsed.plan.model_dump(mode="json"), current_training_day=current_training_day or date.today()
-        )
-        if context["projection_status"] != "projected":
-            raise HTTPException(409, "This custom plan's schedule is invalid. Edit the plan before activating.")
+    _validate_custom_plan_activation(plan, current_training_day=current_training_day)
     activation_state = get_plan_activation_state(
         plan,
         current_training_day=current_training_day,
