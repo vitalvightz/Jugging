@@ -3,10 +3,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 
 import { usePathname } from "next/navigation";
-import { checkSignupAccess } from "@/app/signup/access-check";
 import { ApiError, trackProductEvent, getMe } from "@/lib/api";
 import { clearSharedReads } from "@/lib/shared-reads";
-import { INVITE_PENDING_FLAG, INVITE_REQUIRED_HREF, needsInviteCheck } from "@/lib/signup-invite-guard";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { APPEARANCE_STORAGE_KEY, type AppearanceMode, type MeResponse } from "@/lib/types";
 
@@ -21,9 +19,6 @@ type AppSession = {
   access_token: string;
   email?: string | null;
   user_id?: string | null;
-  // Read by the invite guard (lib/signup-invite-guard.ts) on the first load.
-  created_at?: string | null;
-  invite_pending?: boolean;
 };
 
 type LoadMe = (
@@ -96,7 +91,6 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestMeRef = useRef<MeResponse | null>(me);
   const loadMeRef = useRef<LoadMe | null>(null);
-  const inviteCheckedRef = useRef(new Set<string>());
 
   useEffect(() => {
     latestMeRef.current = me;
@@ -123,8 +117,6 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     let shouldHoldHydration = false;
 
     if (!nextSession?.access_token) {
-      // Signed out: the next sign-in is checked afresh.
-      inviteCheckedRef.current.clear();
       if (loadGenerationRef.current === currentLoadId) {
         clearRetryTimer();
         setHasTransientMeError(false);
@@ -135,50 +127,6 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         setIsReady(true);
       }
       return;
-    }
-
-    // Recheck only accounts explicitly marked invite-pending. The previous
-    // account-age check blocked legitimate new members on another browser.
-    // This is a lightweight beta gate, not server-side signup enforcement.
-    const inviteUserId = nextSession.user_id ?? null;
-    if (inviteUserId && !inviteCheckedRef.current.has(inviteUserId) && needsInviteCheck(nextSession)) {
-      let checkFailed = false;
-      const allowed = await checkSignupAccess().catch(() => {
-        checkFailed = true;
-        return true;
-      });
-      if (loadGenerationRef.current !== currentLoadId) {
-        return;
-      }
-      if (!allowed) {
-        clearRetryTimer();
-        setHasTransientMeError(false);
-        setSession(null);
-        setMe(null);
-        hydratedAccessTokenRef.current = null;
-        const client = getSupabaseBrowserClient();
-        try {
-          // Remembered on the account, so trying again later is checked too.
-          await client.auth.updateUser({ data: { [INVITE_PENDING_FLAG]: true } });
-        } catch {
-          // Still turned away now; the account is new enough to be checked again soon.
-        }
-        try {
-          await client.auth.signOut();
-        } catch {
-          // The redirect below still leaves the app.
-        }
-        window.location.assign(INVITE_REQUIRED_HREF);
-        return;
-      }
-      if (!checkFailed) {
-        inviteCheckedRef.current.add(inviteUserId);
-      }
-      if (nextSession.invite_pending) {
-        void getSupabaseBrowserClient()
-          .auth.updateUser({ data: { [INVITE_PENDING_FLAG]: null } })
-          .catch(() => undefined);
-      }
     }
 
     setSession(nextSession);
@@ -346,8 +294,6 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
               access_token: data.session.access_token,
               email: data.session.user.email ?? null,
               user_id: data.session.user.id ?? null,
-              created_at: data.session.user.created_at ?? null,
-              invite_pending: data.session.user.user_metadata?.[INVITE_PENDING_FLAG] === true,
             }
           : null;
         handledAccessTokenRef.current = nextSession?.access_token ?? null;
@@ -383,8 +329,6 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
             access_token: nextSession.access_token,
             email: nextSession.user.email ?? null,
             user_id: nextSession.user.id ?? null,
-            created_at: nextSession.user.created_at ?? null,
-            invite_pending: nextSession.user.user_metadata?.[INVITE_PENDING_FLAG] === true,
           }
         : null;
       const nextToken = mappedSession?.access_token ?? null;
