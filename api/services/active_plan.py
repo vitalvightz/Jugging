@@ -57,7 +57,10 @@ class ActivePlanStore(Protocol):
     def get_plan_for_athlete(self, plan_id: str, athlete_id: str) -> dict[str, Any] | None: ...
     def get_active_plan_id(self, athlete_id: str) -> str | None: ...
     def set_active_plan_id(self, athlete_id: str, plan_id: str) -> None: ...
-    def try_set_active_plan_id(self, athlete_id: str, plan_id: str, expected_id: str | None) -> bool: ...
+    def try_set_active_plan_id(
+        self, athlete_id: str, plan_id: str, expected_id: str | None,
+        current_training_day: date | str | None = None,
+    ) -> bool: ...
     def archive_plan_for_athlete(self, plan_id: str, athlete_id: str) -> dict[str, Any]: ...
 
 
@@ -312,7 +315,7 @@ def _activate_only_remaining_plan(
             _validate_custom_plan_activation(candidate, current_training_day=current_training_day)
         except HTTPException:
             return unchanged
-        if store.try_set_active_plan_id(athlete_id, candidate_id, expected_id):
+        if store.try_set_active_plan_id(athlete_id, candidate_id, expected_id, current_training_day):
             return ActivePlanResolution(plan=candidate, source="auto_single")
         # Another request updated the pointer first. Respect that choice.
         return resolve_active_plan(store, athlete_id, current_training_day=current_training_day, auto_activate=False)
