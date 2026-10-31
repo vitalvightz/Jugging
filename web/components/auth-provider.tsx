@@ -137,12 +137,9 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       return;
     }
 
-    // Invite-only signup: a brand-new account (Google sign-in on /login can
-    // create one) or one turned away before must come from a browser that
-    // entered the access code, before /api/me creates its profile. Checked
-    // once per account and session; a check that cannot run lets the visitor
-    // through this time (rather than locking out a real member) but is not
-    // remembered, so the next load checks again.
+    // Recheck only accounts explicitly marked invite-pending. The previous
+    // account-age check blocked legitimate new members on another browser.
+    // This is a lightweight beta gate, not server-side signup enforcement.
     const inviteUserId = nextSession.user_id ?? null;
     if (inviteUserId && !inviteCheckedRef.current.has(inviteUserId) && needsInviteCheck(nextSession)) {
       let checkFailed = false;
