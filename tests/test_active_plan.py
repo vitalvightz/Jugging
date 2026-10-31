@@ -128,6 +128,17 @@ def test_one_usable_and_one_unarchived_ineligible_plan_requires_manual_selection
     assert store.set_calls == []
 
 
+def test_invalid_custom_plan_is_not_automatically_activated():
+    invalid = {
+        **plan("invalid-custom"),
+        "planning_brief": {"custom_plan": {"id": "draft"}},
+        "structured_plan": {},
+    }
+    store = Store([invalid])
+    assert resolve_active_plan(store, "ath").plan is None
+    assert store.set_calls == []
+
+
 def test_only_plan_past_fight_date_is_never_automatically_active():
     store = Store([{**plan("expired"), "fight_date": "2026-06-01"}])
     assert resolve_active_plan(store, "ath", current_training_day="2026-06-02").plan is None
