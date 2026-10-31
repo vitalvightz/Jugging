@@ -9,7 +9,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable
 from uuid import uuid4
 from api.private_media_store import PrivateMediaStoreMixin
