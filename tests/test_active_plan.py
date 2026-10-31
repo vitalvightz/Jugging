@@ -159,7 +159,7 @@ def test_manual_selection_wins_when_conditional_activation_loses_race():
 def test_auto_activation_read_failure_does_not_change_pointer():
     store = Store([plan("only")])
     store.list_user_plans = lambda athlete_id: (_ for _ in ()).throw(RuntimeError("db down"))
-    assert resolve_active_plan(store, "ath").source == "none"
+    assert resolve_active_plan(store, "ath").source == "read_failure"
     assert store.set_calls == []
 
 
