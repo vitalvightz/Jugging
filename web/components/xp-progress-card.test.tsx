@@ -39,7 +39,7 @@ test("Home XP widget shows compact rank, level progress and streaks", () => {
   assert.match(html, /Training 8d/);
   assert.match(html, /App 12d/);
   assert.match(html, /href="\/progress"/);
-  assert.match(html, /aria-label="Open XP progress"/);
+  assert.match(html, /aria-label="Open XP progress\. Level 2, Prospect\. 620 of 750 XP\. 130 XP to Level 3\. Training streak 8 days\. App streak 12 days\."/);
   assert.match(html, /aria-valuemax="500"/);
   assert.match(html, /aria-valuenow="370"/);
   assert.match(html, /aria-valuetext="130 XP to Level 3"/);
@@ -96,7 +96,7 @@ test("Progress-page card uses the same hierarchy without nesting action links", 
   assert.match(html, /350 \/ 750 XP/);
   assert.match(html, /href="\/today"/);
   assert.match(html, /xp-progress-action-link/);
-  assert.doesNotMatch(html, /aria-label="Open XP progress"/);
+  assert.doesNotMatch(html, /aria-label="Open XP progress/);
 });
 
 test("Home hides XP opportunities without removing them from the detailed page", () => {
@@ -159,6 +159,7 @@ test("Maximum level shows Champion without inventing a next threshold", () => {
   assert.match(html, /Maximum level reached/);
   assert.doesNotMatch(html, /10,400 \/ |to Level 9/);
   assert.match(html, /aria-valuetext="Maximum level reached"/);
+  assert.match(html, /aria-label="Open XP progress\. Level 8, Champion\. 10,400 XP\. Maximum level reached\./);
 });
 
 test("restored Overview card CSS disables progress motion when requested", () => {
