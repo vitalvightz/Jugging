@@ -159,7 +159,7 @@
     "resendIn": "Resend code in {seconds}s",
     "codeResent": "A new code is on its way.",
     "differentEmail": "Use a different email",
-    "linkFallback": "You can also tap the link in the email.",
+    "linkFallback": "Enter the code from your email here to finish signup.",
     "invalidCode": "Code wrong or expired. Check it or request a new one."
   },
   "Workspace": {
