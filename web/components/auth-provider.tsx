@@ -120,6 +120,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
 
     if (!nextSession?.access_token) {
       if (loadGenerationRef.current === currentLoadId) {
+        setSession(null);
         clearRetryTimer();
         setHasTransientMeError(false);
         setAppearancePreview(null);
