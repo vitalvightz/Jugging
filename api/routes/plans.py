@@ -407,6 +407,13 @@ def build_plans_router(*, require_profile, require_plan_row, get_store) -> APIRo
             store.archive_plan(plan_id)
         else:
             store.archive_plan_for_athlete(plan_id, profile.athlete_id)
+            resolve_active_plan(
+                store,
+                profile.athlete_id,
+                current_training_day=resolve_training_day_str(
+                    datetime.now(timezone.utc), athlete_timezone=profile.athlete_timezone
+                ),
+            )
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     return router
