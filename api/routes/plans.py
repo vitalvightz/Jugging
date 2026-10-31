@@ -407,6 +407,27 @@ def build_plans_router(*, require_profile, require_plan_row, get_store) -> APIRo
             store.archive_plan(plan_id)
         else:
             store.archive_plan_for_athlete(plan_id, profile.athlete_id)
+        owner_id = str(plan_row.get("athlete_id") or "")
+        try:
+            if owner_id:
+                owner_timezone = (
+                    profile.athlete_timezone if owner_id == profile.athlete_id
+                    else (store.get_profile(owner_id) or {}).get("athlete_timezone")
+                )
+                resolved = resolve_active_plan(
+                    store, owner_id,
+                    current_training_day=resolve_training_day_str(
+                        datetime.now(timezone.utc), athlete_timezone=owner_timezone
+                    ),
+                )
+                if resolved.source == "auto_single" or store.get_active_plan_id(owner_id) == plan_id:
+                    for reconcile in (reconcile_training_streak, reconcile_adherence_streak):
+                        try:
+                            reconcile(store, athlete_id=owner_id, athlete_timezone=owner_timezone)
+                        except Exception:  # noqa: BLE001 - archive has already completed
+                            logger.exception("[streak] archive reconciliation failed athlete_id=%s", owner_id)
+        except Exception:  # noqa: BLE001 - a repair failure cannot undo an archive
+            logger.exception("[active-plan] post_archive_reconciliation_failed athlete_id=%s", owner_id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     return router

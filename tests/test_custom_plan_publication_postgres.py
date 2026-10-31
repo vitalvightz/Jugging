@@ -201,6 +201,40 @@ def test_saved_custom_plan_publish_view_activate_today_and_retries(persistence):
     assert db.execute("select count(*) from plans").fetchone()[0] == 1
 
 
+def test_atomic_only_plan_activation_checks_candidate_and_uniqueness(persistence):
+    store, db, _ = persistence
+    # Execute the actual migration function in the disposable PostgreSQL DB.
+    # The test DB has no Supabase API roles, so omit only its GRANT/REVOKE.
+    migration = (ROOT / "supabase/migrations/20261031200000_atomic_single_plan_activation.sql")
+    db.execute(migration.read_text(encoding="utf-8").split("revoke all on function")[0])
+
+    request = PlanRequest(athlete={"full_name": "Test athlete"})
+    first = store.create_plan(
+        athlete_id=OWNER, intake_id=INTAKE, request=request,
+        result={"status": "ready", "plan_text": "# First"},
+    )
+    def activate(candidate, expected=None):
+        return db.execute(
+            "select public.try_activate_only_unarchived_plan(%s, %s, %s, current_date)",
+            (OWNER, candidate, expected),
+        ).fetchone()[0]
+
+    assert activate(first["id"]) is True
+    assert activate(first["id"]) is False  # Idempotent: don't overwrite the pointer.
+    db.execute("update profiles set active_plan_id=null")
+
+    second = store.create_plan(
+        athlete_id=OWNER, intake_id=INTAKE, request=request,
+        result={"status": "ready", "plan_text": "# Second"},
+    )
+    assert activate(first["id"]) is False  # Ambiguous with two unarchived plans.
+    db.execute("update plans set status='archived' where id=%s", (second["id"],))
+    assert activate(first["id"]) is True
+    db.execute("update profiles set active_plan_id=null")
+    db.execute("update plans set status='archived' where id=%s", (first["id"],))
+    assert activate(first["id"]) is False  # Cannot activate an archived candidate.
+
+
 def test_existing_ai_generated_metadata_and_text_remain_unchanged(persistence):
     store, _, _ = persistence
     metadata = {"source": "stage1", "warnings": ["review"]}

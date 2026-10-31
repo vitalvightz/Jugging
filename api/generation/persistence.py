@@ -591,6 +591,20 @@ async def persist_plan_and_finalize(
         plan_id = str(plan_row.get("id") or "") or None
     if not plan_id:
         raise RuntimeError("Plan persistence failed: final_result exists but no linked plan_id was created.")
+    # A first (or sole remaining) usable plan becomes active as soon as it is published.
+    # This is best-effort: a repair failure must not fail generation.
+    if str(plan_row.get("status") or "").strip().lower() in {"ready", "publishable_with_flags"}:
+        try:
+            from ..contracts.training_day import current_training_day
+            from ..services.active_plan import resolve_active_plan
+            await asyncio.to_thread(
+                resolve_active_plan, store, athlete_id,
+                current_training_day=current_training_day(
+                    athlete_timezone=request_body.athlete.athlete_timezone or "UTC",
+                ),
+            )
+        except Exception:  # noqa: BLE001 - plan publication is already durable
+            logger.exception("[active-plan] post_generation_auto_activation_failed athlete_id=%s", athlete_id)
     try:
         await asyncio.to_thread(
             notify_plan_published_if_transition,

@@ -9,7 +9,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable
 from uuid import uuid4
 from api.private_media_store import PrivateMediaStoreMixin
@@ -2190,6 +2190,30 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
                 ) from exc
             self._raise_operation_http_error(
                 operation=f"set_active_plan_id athlete_id={athlete_id}",
+                detail="failed to set active plan",
+                exc=exc,
+            )
+
+
+    @_invalidates_profile_cache()
+    def try_set_active_plan_id(
+        self, athlete_id: str, plan_id: str, expected_id: str | None,
+        current_training_day: date | str | None = None,
+    ) -> bool:
+        """Compare the pointer, eligible candidate and sole-plan count atomically."""
+        try:
+            response = self._run_with_transient_retry(
+                operation=f"try_set_active_plan_id athlete_id={athlete_id}",
+                fn=lambda: self.client.rpc("try_activate_only_unarchived_plan", {
+                    "p_athlete_id": athlete_id, "p_plan_id": plan_id,
+                    "p_expected_id": expected_id,
+                    "p_training_day": str(current_training_day or date.today()),
+                }).execute(),
+            )
+            return getattr(response, "data", None) is True
+        except _STORE_CLIENT_ERRORS as exc:
+            self._raise_operation_http_error(
+                operation=f"try_set_active_plan_id athlete_id={athlete_id}",
                 detail="failed to set active plan",
                 exc=exc,
             )

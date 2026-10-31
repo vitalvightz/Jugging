@@ -845,6 +845,39 @@ def test_athlete_can_archive_their_saved_plan():
     assert detail_response.json()["status"] == "archived"
 
 
+@pytest.mark.parametrize("actor", ["athlete-token", "admin-token"])
+def test_archiving_active_plan_activates_sole_remaining_and_rebuilds_streaks(monkeypatch, actor):
+    client, store, _ = _build_client()
+    first = store.create_plan(
+        athlete_id="athlete-1", intake_id="intake_x",
+        request=_build_request(), result=finalized_result(),
+    )
+    second = store.create_plan(
+        athlete_id="athlete-1", intake_id="intake_x",
+        request=_build_request(), result=finalized_result(),
+    )
+    store.set_active_plan_id("athlete-1", first["id"])
+
+    def conditional(athlete_id, plan_id, expected_id, current_training_day=None):
+        if store.get_active_plan_id(athlete_id) != expected_id:
+            return False
+        remaining = [p for p in store.list_user_plans(athlete_id) if p["status"] != "archived"]
+        if len(remaining) != 1 or remaining[0]["id"] != plan_id:
+            return False
+        store.set_active_plan_id(athlete_id, plan_id)
+        return True
+
+    store.try_set_active_plan_id = conditional
+    rebuilt = []
+    monkeypatch.setattr(plan_routes, "reconcile_training_streak", lambda *a, **k: rebuilt.append("training"))
+    monkeypatch.setattr(plan_routes, "reconcile_adherence_streak", lambda *a, **k: rebuilt.append("adherence"))
+
+    response = client.delete(f"/api/plans/{first['id']}", headers={"Authorization": f"Bearer {actor}"})
+    assert response.status_code == 204, response.text
+    assert store.get_active_plan_id("athlete-1") == second["id"]
+    assert rebuilt == ["training", "adherence"]
+
+
 def test_athlete_cannot_archive_someone_elses_plan():
     client, store, _ = _build_client()
     owner = AuthenticatedUser(
