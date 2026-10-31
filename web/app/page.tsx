@@ -11,6 +11,7 @@ import { useConnectivity, useOnReconnect } from "@/components/connection-status-
 import { getAuthenticatedLandingHref, needsStartingPath } from "@/lib/auth-routing";
 import { EmptyState } from "@/components/empty-state";
 import { FightCountdown } from "@/components/fight-countdown";
+import { getFightCountdown } from "@/lib/fight-countdown";
 import { InstallUnlxck } from "@/components/install-unlxck";
 import { LandingFeaturePanel } from "@/components/landing-feature-panel";
 import { LandingPreviewCard } from "@/components/landing-preview-card";
@@ -670,6 +671,13 @@ export default function HomePage() {
         canCheckIn: hasHealthDataConsent(me), habits: me.profile.training_habits,
       })
       : null;
+    const countdownProps = {
+      fightDate: activePlan.fight_date ? String(activePlan.fight_date) : null,
+      trainingDay: commandState?.today?.training_day,
+      phase: activePlan.phase ? String(activePlan.phase) : null,
+      plan: structuredPlan,
+    };
+    const showCountdown = !tracking && getFightCountdown(countdownProps) !== null;
     const trainingStreak = xpProgress.streaks.adherence.current;
     const trackingSlot = tracking ? tracking.slot ?? (trainingStreak > 0 ? "habits" : null) : null;
     const hero = tracking
@@ -707,7 +715,7 @@ export default function HomePage() {
               </div>
             </div>
             <div className="overview-primary-session">
-              <XpProgressCard />
+              {showCountdown ? <FightCountdown key={activePlanId} {...countdownProps} /> : <XpProgressCard />}
             </div>
           </div>
           {commandError ? (
@@ -771,13 +779,7 @@ export default function HomePage() {
                 <div className="overview-operational-item"><span className="overview-operational-label">{openOngoing ? "Mode" : "Phase"}</span><span className="overview-operational-value">{openOngoing ? "Ongoing" : humanizeIfRawEnum(activePlan.phase) || "Not set"}</span></div>
                 <div className="overview-operational-item"><span className="overview-operational-label">Fight date</span><span className="overview-operational-value">{openOngoing ? "Not scheduled" : formatPlanFightDate(String(activePlan.fight_date || ""))}</span></div>
               </div>
-              <FightCountdown
-                key={activePlanId}
-                fightDate={activePlan.fight_date ? String(activePlan.fight_date) : null}
-                trainingDay={commandState?.today?.training_day}
-                phase={activePlan.phase ? String(activePlan.phase) : null}
-                plan={structuredPlan}
-              />
+              {showCountdown ? <XpProgressCard /> : null}
             </>
           )}
           <Link href="/nutrition" className="overview-risk-more">Weight tracker: log a weigh-in</Link>
