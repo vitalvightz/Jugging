@@ -318,7 +318,7 @@ def _activate_only_remaining_plan(
         return resolve_active_plan(store, athlete_id, current_training_day=current_training_day, auto_activate=False)
     except Exception:  # noqa: BLE001 - a failed repair must never break a plan read
         logger.exception("[active-plan] auto_activation_failed athlete_id=%s", athlete_id)
-        return unchanged
+        return ActivePlanResolution(plan=None, source="read_failure")
 
 
 def resolve_active_plan(
