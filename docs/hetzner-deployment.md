@@ -38,6 +38,10 @@ UNLXCK_MORNING_PUSH_LOCAL_HOUR=7
 UNLXCK_MORNING_PUSH_CUTOFF_LOCAL_HOUR=11
 UNLXCK_MORNING_PUSH_SWEEP_INTERVAL_SECONDS=600
 
+# Transactional plan-ready email via Resend (server-only).
+RESEND_API_KEY=
+PLAN_READY_FROM_EMAIL="UNLXCK <notifications@unlxck.com>"
+
 # Exercise demo videos: daily YouTube availability / Made for Kids check.
 YOUTUBE_DATA_API_KEY=
 ```
@@ -100,6 +104,42 @@ Then validate the full flow:
 5. Confirm the morning check-in nudge arrives once during the device-local configured window and does not repeat that day.
 
 There is currently no dedicated admin test-send endpoint, so production validation uses an opted-in device and the real plan-ready or morning flow.
+
+## Resend: plan-ready email delivery
+
+UNLXCK uses **Resend** for transactional plan-completion emails. This is separate from Supabase Authentication email templates. The HTML lives in `api/services/plan_ready_email.html`; `api/services/plan_ready_email.py` sends a direct `https://unlxck.com/plans/{plan_id}` link after a plan is published.
+
+- Sending domain: `unlxck.com`, verified in Resend via **Cloudflare DNS** (DKIM and sending records). Do not alter existing website or mail records when checking verification.
+- Secrets: `RESEND_API_KEY` and `PLAN_READY_FROM_EMAIL="UNLXCK <notifications@unlxck.com>"` in `/opt/unlxck/.env.production`. Use a key with email-sending permission and a verified sender domain; never commit or print the key. `FEEDBACK_FROM_EMAIL` is a supported sender fallback, primarily used by beta feedback notifications.
+- Data: `supabase/migrations/20261031170000_plan_ready_email_deliveries.sql` creates the private `plan_ready_email_deliveries` queue, completion trigger, and retry claim RPC. **Apply this before deploying worker code** to a fresh environment. It does not email historical plans.
+- Processing: completion inserts a queue row, and the Hetzner `worker` sends through Resend independently of plan generation. Failures retry with backoff (up to six attempts); failed deliveries remain recorded. This does not affect Supabase Auth signup/password-reset email delivery.
+
+To configure or rotate credentials on Hetzner, edit `/opt/unlxck/.env.production` and recreate **only** the worker:
+
+```bash
+cd /opt/unlxck
+nano .env.production
+chmod 600 .env.production
+docker compose up -d --no-deps --force-recreate worker
+docker compose exec -T worker python -c "import os; assert os.getenv('RESEND_API_KEY') and os.getenv('PLAN_READY_FROM_EMAIL'); print('Resend worker configured')"
+```
+
+The check confirms only that the values are loaded, **not** that Resend accepted an email. Verify end-to-end by generating a fresh test plan, checking its message in **Resend → Emails**, and inspecting Supabase:
+
+```sql
+select status, attempts, sent_at, last_error_code
+from public.plan_ready_email_deliveries
+order by next_attempt_at desc
+limit 10;
+```
+
+For troubleshooting, inspect only delivery-related log lines, without sharing secrets:
+
+```bash
+docker compose logs --since=15m worker | grep -E 'plan_ready_email|claim_plan_ready_email_deliveries|api.resend.com'
+```
+
+An HTTP 200 from `claim_plan_ready_email_deliveries` proves the queue RPC is available; it **does not** prove an email was sent. Check for a `sent` delivery row and a corresponding Resend message. If email settings are missing, the worker cannot send; if the domain loses verification, check Resend/Cloudflare before retrying.
 
 ## Instagram outreach automation (operator workstation)
 
