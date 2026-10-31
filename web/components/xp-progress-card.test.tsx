@@ -374,7 +374,7 @@ test("Home streak names and Progress label IDs remain distinct and accessible", 
   ));
   assert.deepEqual(
     [...overview.querySelectorAll(".xp-overview-streak")].map((item) => item.getAttribute("aria-label")),
-    ["Training streak: 1 days", "App streak: 3 days"],
+    ["Training streak: 1 day", "App streak: 3 days"],
   );
   assert.deepEqual(streakColumns(page).map((column) => column.getAttribute("aria-labelledby")), [
     "page-training-streak-label", "page-app-streak-label",
