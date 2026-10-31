@@ -82,7 +82,7 @@ export function AuthForm({
   const [showPassword, setShowPassword] = useState(false);
   // Set once signup succeeds without a session (email confirmation is on): the
   // form swaps to a one-time-code step so the athlete never has to leave the
-  // page, follow a link and log in again. The emailed link still works too.
+  // page, follow a link and log in again.
   const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
   const [verificationCode, setVerificationCode] = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
