@@ -26,7 +26,7 @@ const today = (id: string) => ({
 });
 const plan = { outputs: { structured_plan: { weeks: [{ phase_label: "GPP", start_date: "2026-10-19", end_date: "2026-11-14", days: [] }] } } };
 
-async function mountHome(latestId: string) {
+async function mountHome(latestId: string, latestFightDate?: string) {
   const originalFrame = globalThis.requestAnimationFrame;
   const originalCancel = globalThis.cancelAnimationFrame;
   globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
@@ -34,7 +34,7 @@ async function mountHome(latestId: string) {
   const host = document.createElement("div"); document.body.appendChild(host);
   const root = createRoot(host);
   const me = { profile: { athlete_id: "athlete-1", role: "athlete", starting_path: "plan_first", technical_style: ["boxing"] },
-    latest_plan: { plan_id: latestId, status: "ready" }, plan_count: 1 } as unknown as MeResponse;
+    latest_plan: { plan_id: latestId, status: "ready", fight_date: latestFightDate }, plan_count: 1 } as unknown as MeResponse;
   const router = { push() {}, replace() {}, refresh() {}, back() {}, forward() {}, prefetch() {}, bfcacheId: "fixture" };
   await act(async () => root.render(
     <NextIntlClientProvider locale="en" timeZone="UTC" messages={messages}>
@@ -65,8 +65,10 @@ test("countdown prefetch starts before Today resolves; days stay visible while t
     const url = String(input); calls.push(url);
     return url.includes("/api/today") ? command.promise : calendar.promise;
   }) as typeof fetch;
-  const ui = await mountHome("active");
+  const ui = await mountHome("active", "2026-11-14");
   try {
+    assert.ok(ui.host.querySelector(".overview-primary-session .fight-countdown-skeleton"), "show countdown-shaped loading card for a scheduled fight");
+    assert.equal(ui.host.querySelector(".overview-primary-session .xp-progress-card-skeleton"), null);
     assert.equal(calls.filter(url => url.includes("/api/plans/active")).length, 1, "warm the calendar without waiting for Today");
     await act(async () => command.resolve(today("active")));
     const number = () => ui.host.querySelector(".fight-countdown-number")?.textContent;
@@ -113,6 +115,7 @@ test("without a fight date, XP remains visible in the Home hero", async () => {
   ) as typeof fetch;
   const ui = await mountHome("active");
   try {
+    assert.ok(ui.host.querySelector(".overview-primary-session .xp-progress-card-skeleton"), "open plans load with the compact XP skeleton");
     await act(async () => command.resolve({
       ...today("active"),
       active_plan: { ...today("active").active_plan, fight_date: null },
@@ -120,5 +123,42 @@ test("without a fight date, XP remains visible in the Home hero", async () => {
     assert.ok(ui.host.querySelector(".overview-primary-session .xp-progress-card"));
     assert.equal(ui.host.querySelector(".overview-primary-session .fight-countdown"), null);
     assert.equal(ui.host.querySelector(".overview-secondary .xp-progress-card"), null);
+  } finally { await ui.cleanup(); globalThis.fetch = originalFetch; }
+});
+
+test("after fight night, XP stays in the Home hero", async () => {
+  const originalFetch = globalThis.fetch;
+  const command = pendingResponse(), calendar = pendingResponse();
+  globalThis.fetch = (async (input) =>
+    String(input).includes("/api/today") ? command.promise : calendar.promise
+  ) as typeof fetch;
+  const ui = await mountHome("active");
+  try {
+    await act(async () => command.resolve({
+      ...today("active"),
+      active_plan: { ...today("active").active_plan, fight_date: "2026-10-22" },
+    }));
+    assert.ok(ui.host.querySelector(".overview-primary-session .xp-progress-card"));
+    assert.equal(ui.host.querySelector(".overview-primary-session .fight-countdown"), null);
+    assert.equal(ui.host.querySelector(".overview-secondary .xp-progress-card"), null);
+  } finally { await ui.cleanup(); globalThis.fetch = originalFetch; }
+});
+
+test("an unnamed active plan never displays 'No active plan'", async () => {
+  const originalFetch = globalThis.fetch;
+  const command = pendingResponse(), calendar = pendingResponse();
+  globalThis.fetch = (async (input) =>
+    String(input).includes("/api/today") ? command.promise : calendar.promise
+  ) as typeof fetch;
+  const ui = await mountHome("active");
+  try {
+    await act(async () => command.resolve({
+      ...today("active"),
+      active_plan: { ...today("active").active_plan, name: "" },
+    }));
+    const plan = [...ui.host.querySelectorAll(".overview-operational-item")].find(
+      item => item.querySelector(".overview-operational-label")?.textContent === "Plan",
+    );
+    assert.equal(plan?.querySelector(".overview-operational-value")?.textContent, "Active plan");
   } finally { await ui.cleanup(); globalThis.fetch = originalFetch; }
 });
