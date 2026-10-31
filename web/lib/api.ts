@@ -670,7 +670,7 @@ async function requestVoid(path: string, init?: ApiRequestInit): Promise<void> {
 }
 
 export function getApprovedProfile(token: string): Promise<{ approved: boolean }> {
-  return readJson("/api/me/admission", { token });
+  return readJson<{ approved: boolean }>("/api/me/admission", { token });
 }
 
 export function getMe(token: string): Promise<MeResponse> {
