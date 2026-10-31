@@ -130,26 +130,29 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       return;
     }
 
-    const allowed = await hasSignupAdmission(nextSession.access_token);
-    if (!allowed) {
-      await getSupabaseBrowserClient().auth.signOut();
-      window.location.assign("/signup?invite=required");
-      return;
-    }
-    setSession(nextSession);
-    setIsReady(true);
-
-    if (!force && hydratedAccessTokenRef.current === nextSession.access_token && latestMeRef.current) {
-      setIsMeHydrated(true);
-      return;
-    }
-
-    if (hydratedAccessTokenRef.current !== nextSession.access_token) {
-      setMe(null);
-    }
-    setIsMeHydrated(false);
-
     try {
+      if (!(await hasSignupAdmission(nextSession.access_token))) {
+        if (loadGenerationRef.current !== currentLoadId) return;
+        clearRetryTimer();
+        setSession(null);
+        setMe(null);
+        hydratedAccessTokenRef.current = null;
+        setIsMeHydrated(true);
+        try { await getSupabaseBrowserClient().auth.signOut(); } catch { /* Redirect regardless. */ }
+        window.location.assign("/signup?invite=required");
+        return;
+      }
+      if (loadGenerationRef.current !== currentLoadId) return;
+      setSession(nextSession);
+      setIsReady(true);
+
+      if (!force && hydratedAccessTokenRef.current === nextSession.access_token && latestMeRef.current) {
+        setIsMeHydrated(true);
+        return;
+      }
+      if (hydratedAccessTokenRef.current !== nextSession.access_token) setMe(null);
+      setIsMeHydrated(false);
+
       let nextMe: MeResponse | null = null;
       let lastError: unknown = null;
 
@@ -304,7 +307,6 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
             }
           : null;
         handledAccessTokenRef.current = nextSession?.access_token ?? null;
-        setSession(nextSession);
         void loadMe(nextSession);
       })
       .catch(async () => {
@@ -345,7 +347,6 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       handledAccessTokenRef.current = nextToken;
       // Reads are keyed by token already; this just drops the old session's.
       clearSharedReads();
-      setSession(mappedSession);
       void loadMe(mappedSession);
     });
     subscription = authState.data.subscription;
