@@ -20,6 +20,7 @@ async function oauth(page: Page, baseURL: string, returning = false, dateOfBirth
     appearance_mode: "dark", nutrition_profile: {}, date_of_birth: accepted ? "1996-05-04" : dateOfBirth,
     meets_minimum_age: accepted || Boolean(dateOfBirth), terms_accepted: accepted, health_consent_granted: false,
   }, plan_count: 0, latest_plan: null, latest_intake: null, username_rate_limit: {} });
+  await page.route("**/api/me/admission", route => json(route, { approved: returning }));
   await page.route("**/api/me", route => json(route, profile()));
   await page.route(`${SUPABASE}/auth/v1/user`, route => json(route, user));
   await page.route(`${SUPABASE}/auth/v1/logout**`, route => json(route, {}));
@@ -83,6 +84,7 @@ test("returning Google/email identity restores the existing workspace without co
 
 test("underage Google identity stays unverified and can sign out", async ({ page, baseURL }) => {
   const { requests } = await oauth(page, baseURL!);
+  await grantSignupAccess(page, baseURL!);
   await page.goto("/login");
   await page.getByRole("button", { name: "Continue with Google", exact: true }).click();
   await expect(page).toHaveURL(/\/consent$/);
@@ -100,6 +102,7 @@ test("underage Google identity stays unverified and can sign out", async ({ page
 
 test("Google compliance keeps an existing DOB and records health consent only when checked", async ({ page, baseURL }) => {
   const { requests } = await oauth(page, baseURL!, false, "1996-05-04");
+  await grantSignupAccess(page, baseURL!);
   await page.goto("/login");
   await page.getByRole("button", { name: "Continue with Google", exact: true }).click();
   await expect(page).toHaveURL(/\/consent$/);
@@ -153,6 +156,19 @@ test("OAuth cancellation is scrubbed from URL and leaves both methods usable", a
   await expect(page.getByText("untrusted-provider-detail")).toHaveCount(0);
   await page.getByRole("button", { name: "Continue with email", exact: true }).click();
   await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
+});
+
+test("new Google account without invite is signed out before profile creation", async ({ page, baseURL }) => {
+  await oauth(page, baseURL!);
+  let profileCalls = 0;
+  let signedOut = false;
+  await page.route("**/api/me", route => { profileCalls += 1; return json(route, {}); });
+  await page.route(`${SUPABASE}/auth/v1/logout**`, route => { signedOut = true; return json(route, {}); });
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Continue with Google", exact: true }).click();
+  await expect(page).toHaveURL(`${baseURL}/signup?invite=required`);
+  expect(profileCalls).toBe(0);
+  expect(signedOut).toBe(true);
 });
 
 test("an existing account with a stale invite flag logs in without another code", async ({ page, baseURL }) => {
