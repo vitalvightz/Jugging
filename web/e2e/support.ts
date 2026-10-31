@@ -15,6 +15,11 @@ export async function isolateFromNetwork(page: Page, baseURL: string): Promise<v
   await page.route("**/*", async (route) => {
     const url = route.request().url();
 
+    // Tests model existing signed-in members unless a scenario overrides admission.
+    if (url.startsWith(`${appOrigin}/api/me/admission`)) {
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ approved: true }) });
+      return;
+    }
     // Stub the same-origin API proxy so unauthenticated calls resolve instantly.
     if (url.startsWith(`${appOrigin}/api/`)) {
       await route.fulfill({
