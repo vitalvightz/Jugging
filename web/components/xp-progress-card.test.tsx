@@ -206,8 +206,8 @@ test("Progress route keeps the compact card, athlete identity and latest-three h
   assert.match(page, /No public leaderboards during private beta\./);
   assert.doesNotMatch(page, /Work banked\. Level earned\./);
   assert.doesNotMatch(page, /Available XP actions/);
-  assert.match(page, /Week complete\\. Updating your XP…/);
-  assert.match(page, /Earn XP to see your activity here\\./);
+  assert.match(page, /Week complete\. Updating your XP…/);
+  assert.match(page, /Earn XP to see your activity here\./);
   assert.doesNotMatch(page, /XP reconciliation is pending|start the ledger/);
   assert.doesNotMatch(page, /global leaderboard/i);
 });
