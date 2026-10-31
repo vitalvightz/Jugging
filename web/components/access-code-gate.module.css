@@ -84,6 +84,7 @@ p.lead.lead { margin: 14px 0 0; }
   width: 100%;
   height: 100%;
   border: 0;
+  outline: none;
   background: transparent;
   color: transparent;
   caret-color: transparent;
@@ -114,7 +115,6 @@ p.lead.lead { margin: 14px 0 0; }
 
 .slot[data-active] {
   border-color: #e0354f;
-  box-shadow: 0 0 0 3px rgba(224, 53, 79, 0.22);
 }
 
 /* Blinking caret in the active, empty box. */
