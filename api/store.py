@@ -2196,16 +2196,21 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
 
 
     @_invalidates_profile_cache()
-    def try_set_active_plan_id(self, athlete_id: str, plan_id: str, expected_id: str | None) -> bool:
-        """Activate only if no one changed the previous active pointer."""
+    def try_set_active_plan_id(
+        self, athlete_id: str, plan_id: str, expected_id: str | None,
+        current_training_day: date | str | None = None,
+    ) -> bool:
+        """Compare the pointer, eligible candidate and sole-plan count atomically."""
         try:
-            query = self.client.table("profiles").update({"active_plan_id": plan_id}).eq("id", athlete_id)
-            query = query.eq("active_plan_id", expected_id) if expected_id else query.is_("active_plan_id", "null")
             response = self._run_with_transient_retry(
                 operation=f"try_set_active_plan_id athlete_id={athlete_id}",
-                fn=lambda: query.select("id").execute(),
+                fn=lambda: self.client.rpc("try_activate_only_unarchived_plan", {
+                    "p_athlete_id": athlete_id, "p_plan_id": plan_id,
+                    "p_expected_id": expected_id,
+                    "p_training_day": str(current_training_day or date.today()),
+                }).execute(),
             )
-            return bool(getattr(response, "data", None))
+            return getattr(response, "data", None) is True
         except _STORE_CLIENT_ERRORS as exc:
             self._raise_operation_http_error(
                 operation=f"try_set_active_plan_id athlete_id={athlete_id}",
