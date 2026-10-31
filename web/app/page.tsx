@@ -10,7 +10,7 @@ import { useAppSession } from "@/components/auth-provider";
 import { useConnectivity, useOnReconnect } from "@/components/connection-status-banner";
 import { getAuthenticatedLandingHref, needsStartingPath } from "@/lib/auth-routing";
 import { EmptyState } from "@/components/empty-state";
-import { FightCountdown } from "@/components/fight-countdown";
+import { FightCountdown, FightCountdownSkeleton } from "@/components/fight-countdown";
 import { getFightCountdown } from "@/lib/fight-countdown";
 import { InstallUnlxck } from "@/components/install-unlxck";
 import { LandingFeaturePanel } from "@/components/landing-feature-panel";
@@ -142,7 +142,7 @@ function OverviewDisclosure({
   );
 }
 
-function WorkspaceOverviewSkeleton() {
+function WorkspaceOverviewSkeleton({ showCountdown = false }: { showCountdown?: boolean }) {
   return (
     <>
       <section
@@ -161,7 +161,7 @@ function WorkspaceOverviewSkeleton() {
             </div>
           </div>
           <div className="overview-primary-session">
-            <XpProgressCardSkeleton />
+            {showCountdown ? <FightCountdownSkeleton /> : <XpProgressCardSkeleton />}
           </div>
         </div>
       </section>
@@ -565,7 +565,7 @@ export default function HomePage() {
     }
 
     if (!commandState && !commandError) {
-      return <WorkspaceOverviewSkeleton />;
+      return <WorkspaceOverviewSkeleton showCountdown={Boolean(latestPlan?.fight_date)} />;
     }
 
     if (!commandState && commandError) {
@@ -774,7 +774,7 @@ export default function HomePage() {
             <>
           <p className="kicker overview-secondary-eyebrow">{openOngoing ? "Block progress" : "Camp progress"}</p>
               <div className="overview-operational-strip" aria-label={openOngoing ? "Training status" : "Camp status"}>
-                <div className="overview-operational-item"><span className="overview-operational-label">Plan</span><span className="overview-operational-value">{String(activePlan.name || "No active plan")}</span></div>
+                <div className="overview-operational-item"><span className="overview-operational-label">Plan</span><span className="overview-operational-value">{String(activePlan.name || (hasActivePlan ? "Active plan" : "No active plan"))}</span></div>
                 <div className="overview-operational-item"><span className="overview-operational-label">{openOngoing ? "Cycle" : "Camp day"}</span><span className="overview-operational-value">{openOngoing ? "Renewable 4-week block" : campDay || "Not set"}</span></div>
                 <div className="overview-operational-item"><span className="overview-operational-label">{openOngoing ? "Mode" : "Phase"}</span><span className="overview-operational-value">{openOngoing ? "Ongoing" : humanizeIfRawEnum(activePlan.phase) || "Not set"}</span></div>
                 <div className="overview-operational-item"><span className="overview-operational-label">Fight date</span><span className="overview-operational-value">{openOngoing ? "Not scheduled" : formatPlanFightDate(String(activePlan.fight_date || ""))}</span></div>
