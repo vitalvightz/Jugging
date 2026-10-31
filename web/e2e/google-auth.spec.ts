@@ -133,6 +133,20 @@ test("email password login with stale invite flag retains the existing account a
   expect(bodies[0]).toMatchObject({ email: user.email, password: "Southpaw-Jab-Cross-2026" });
 });
 
+test("plan-ready link opens the existing plan after password login", async ({ page, baseURL }) => {
+  await oauth(page, baseURL!, true);
+  await page.route(`${SUPABASE}/auth/v1/token**`, route => json(route, {
+    access_token: "plan-email-test-token", refresh_token: "plan-email-refresh",
+    expires_in: 3600, token_type: "bearer", user,
+  }));
+  await page.goto(`/login?next=%2Fplans%2F${ID}`);
+  await page.getByRole("button", { name: "Continue with email", exact: true }).click();
+  await page.getByLabel("Email", { exact: true }).fill(user.email);
+  await page.getByLabel("Password", { exact: true }).fill("Southpaw-Jab-Cross-2026");
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page).toHaveURL(`${baseURL}/plans/${ID}`);
+});
+
 test("email magic link requires no password and cannot create a login account", async ({ page, baseURL }) => {
   await isolateFromNetwork(page, baseURL!);
   const bodies: Record<string, unknown>[] = [];
