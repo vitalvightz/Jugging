@@ -107,6 +107,10 @@
   padding: 14px 16px;
 }
 
+.xp-progress-card-skeleton.xp-progress-card--overview {
+  align-self: start;
+}
+
 .xp-progress-card--overview .xp-overview-heading {
   display: flex;
   align-items: center;
