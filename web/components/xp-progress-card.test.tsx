@@ -17,52 +17,33 @@ function progress(overrides: Partial<XpProgress> = {}): XpProgress {
   };
 }
 
-test("Overview card restores the compact level, rank, total and action rail", () => {
+test("Home XP widget shows compact rank, level progress and streaks", () => {
   const html = renderToStaticMarkup(
-    <XpProgressCardView
-      progress={progress({
-        state: {
-          totalXp: 620,
-          lastDailyLoginDate: null,
-          recentAwards: [],
-        },
-        opportunities: [
-          {
-            code: "complete_today_session",
-            label: "Complete today's session",
-            xp: 75,
-            href: "/today",
-            priority: 30,
-          },
-          {
-            code: "complete_training_week",
-            label: "Complete this training week",
-            xp: 100,
-            href: "/progress",
-            priority: 40,
-          },
-        ],
-      })}
-    />,
+    <XpProgressCardView progress={progress({
+      state: { totalXp: 620, lastDailyLoginDate: null, recentAwards: [] },
+      opportunities: [
+        { code: "complete_today_session", label: "Complete today's session", xp: 75, href: "/today", priority: 30 },
+      ],
+      streaks: {
+        adherence: { current: 8, best: 14, lastDate: "2026-08-18" },
+        login: { current: 12, best: 27, lastDate: "2026-08-18" },
+      },
+    })} />,
   );
 
-  assert.match(html, /xp-progress-level[^>]*>Level 2</);
-  assert.match(html, /xp-progress-rank[^>]*>Prospect</);
-  assert.match(html, /xp-progress-number[^>]*>620</);
+  assert.match(html, /xp-progress-card--overview/);
+  assert.match(html, /Level 2/);
+  assert.match(html, /Prospect/);
   assert.match(html, /620 \/ 750 XP/);
-  assert.match(html, /\+75 XP/);
-  assert.match(html, /Complete today&#x27;s session/);
-  assert.match(html, /\+100 XP/);
-  assert.match(html, /Complete this training week/);
+  assert.match(html, /130 XP to Level 3/);
+  assert.match(html, /Training 8d/);
+  assert.match(html, /App 12d/);
   assert.match(html, /href="\/progress"/);
   assert.match(html, /aria-label="Open XP progress"/);
   assert.match(html, /aria-valuemax="500"/);
   assert.match(html, /aria-valuenow="370"/);
   assert.match(html, /aria-valuetext="130 XP to Level 3"/);
-  assert.doesNotMatch(html, /↗|xp-progress-open/);
-  assert.doesNotMatch(html, /daily reward|daily login|claimed/i);
-  assert.match(html, /Training streak/);
-  assert.match(html, /App streak/);
+  assert.doesNotMatch(html, /xp-progress-number|xp-progress-details|Complete today|Best 14|Best 27/);
 });
 
 test("progress page gives near-best training feedback and keeps app streak secondary", () => {
@@ -118,55 +99,45 @@ test("Progress-page card uses the same hierarchy without nesting action links", 
   assert.doesNotMatch(html, /aria-label="Open XP progress"/);
 });
 
-test("Overview card displays all three server-supplied opportunities compactly", () => {
-  const html = renderToStaticMarkup(
-    <XpProgressCardView
-      progress={progress({
-        opportunities: [
-          { code: "one", label: "First", xp: 10, href: "/today", priority: 1 },
-          { code: "two", label: "Second", xp: 20, href: "/today", priority: 2 },
-          { code: "three", label: "Third", xp: 30, href: "/today", priority: 3 },
-        ],
-      })}
-    />,
-  );
+test("Home hides XP opportunities without removing them from the detailed page", () => {
+  const data = progress({
+    opportunities: [
+      { code: "one", label: "First", xp: 10, href: "/today", priority: 1 },
+      { code: "two", label: "Second", xp: 20, href: "/today", priority: 2 },
+      { code: "three", label: "Third", xp: 30, href: "/today", priority: 3 },
+    ],
+  });
+  const home = renderToStaticMarkup(<XpProgressCardView progress={data} />);
+  const detail = renderToStaticMarkup(<XpProgressCardView mode="page" progress={data} />);
 
-  assert.equal(html.match(/xp-progress-action-row/g)?.length, 3);
-  assert.match(html, /First/);
-  assert.match(html, /Second/);
-  assert.match(html, /Third/);
+  assert.doesNotMatch(home, /First|Second|Third|NEXT|MORE XP/);
+  assert.equal(detail.match(/xp-progress-action-row/g)?.length, 3);
+  for (const label of ["First", "Second", "Third"]) assert.match(detail, new RegExp(label));
 });
 
-test("Overview card has a calm empty Next state", () => {
-  const html = renderToStaticMarkup(
-    <XpProgressCardView progress={progress()} />,
-  );
+test("New users see level zero progress without empty action panels", () => {
+  const html = renderToStaticMarkup(<XpProgressCardView progress={progress()} />);
 
   assert.match(html, /Level 1/);
   assert.match(html, /Rookie/);
-  assert.match(html, /xp-progress-number[^>]*>0</);
   assert.match(html, /0 \/ 250 XP/);
-  assert.match(html, /No XP action is due right now/);
-  assert.match(html, /No other action is due/);
+  assert.match(html, /250 XP to Level 2/);
+  assert.match(html, /Training 0d/);
+  assert.match(html, /App 0d/);
+  assert.doesNotMatch(html, /No XP action|No other action|xp-progress-details/);
 });
 
-test("maximum level uses Champion and no invented next threshold", () => {
+test("Maximum level shows Champion without inventing a next threshold", () => {
   const html = renderToStaticMarkup(
-    <XpProgressCardView
-      progress={progress({
-        state: {
-          totalXp: 10_400,
-          lastDailyLoginDate: null,
-          recentAwards: [],
-        },
-      })}
-    />,
+    <XpProgressCardView progress={progress({
+      state: { totalXp: 10_400, lastDailyLoginDate: null, recentAwards: [] },
+    })} />,
   );
-
   assert.match(html, /Level 8/);
   assert.match(html, /Champion/);
-  assert.match(html, /10,400/);
-  assert.doesNotMatch(html, /10,400 \/ /);
+  assert.match(html, /10,400 XP/);
+  assert.match(html, /Maximum level reached/);
+  assert.doesNotMatch(html, /10,400 \/ |to Level 9/);
   assert.match(html, /aria-valuetext="Maximum level reached"/);
 });
 
@@ -253,42 +224,19 @@ function cssRules(css: string): Array<{ selector: string; body: string }> {
   }));
 }
 
-test("Overview streak panel holds both streaks in one container with matched columns", () => {
+test("Home streaks use accurate inline values and accessible labels", () => {
   const host = streakDom(
     renderToStaticMarkup(<XpProgressCardView progress={progress(streaks([8, 14], [12, 27]))} />),
   );
-
-  const panels = host.querySelectorAll(".xp-streak-panel");
-  assert.equal(panels.length, 1);
-  assert.equal(panels[0].getAttribute("aria-label"), "Streaks");
-
-  const columns = streakColumns(host);
-  assert.equal(columns.length, 2);
-  assert.deepEqual(
-    columns.map((column) => column.dataset.streak),
-    ["training", "app"],
-    "Training streak leads, App streak follows",
-  );
-
-  // Identical structural styling: same element, same single class, no modifier.
-  const values = columns.map((column) => column.querySelector(".xp-streak-value")!);
-  assert.deepEqual(
-    values.map((value) => `${value.tagName}.${value.className}`),
-    ["P.xp-streak-value", "P.xp-streak-value"],
-  );
-
-  assert.deepEqual(
-    columns.map((column) => column.querySelector(".xp-streak-label-text")!.textContent),
-    ["Training streak", "App streak"],
-  );
-  assert.deepEqual(
-    values.map((value) => value.textContent),
-    ["8", "12"],
-  );
-  assert.deepEqual(
-    columns.map((column) => column.querySelector(".xp-streak-best")!.textContent),
-    ["Best 14", "Best 27"],
-  );
+  const streakItems = [...host.querySelectorAll<HTMLElement>(".xp-overview-streak")];
+  assert.equal(streakItems.length, 2);
+  assert.deepEqual(streakItems.map((item) => item.dataset.streak), ["training", "app"]);
+  assert.deepEqual(streakItems.map((item) => item.textContent), ["Training 8d", "App 12d"]);
+  assert.deepEqual(streakItems.map((item) => item.getAttribute("aria-label")), [
+    "Training streak: 8 days",
+    "App streak: 12 days",
+  ]);
+  assert.equal(host.querySelectorAll(".xp-streak-panel").length, 0);
 });
 
 test("streak values cannot inherit a different size from the stylesheet", () => {
@@ -321,17 +269,13 @@ test("streak panel keeps two equal columns instead of stacking on narrow screens
   assert.match(streakCss, /@container \(max-width: \d+px\) \{/);
 });
 
-test("Overview stays compact: current and best only, no extra streak rows", () => {
-  const host = streakDom(
-    renderToStaticMarkup(<XpProgressCardView progress={progress(streaks([12, 14], [27, 27]))} />),
+test("Home excludes personal bests and extra streak rows", () => {
+  const html = renderToStaticMarkup(
+    <XpProgressCardView progress={progress(streaks([12, 14], [27, 27]))} />,
   );
-
-  assert.equal(host.querySelectorAll(".xp-streak-note").length, 0);
-  assert.equal(host.querySelectorAll(".xp-streak-track").length, 0);
-  assert.equal(host.querySelectorAll(".xp-streak-extras").length, 0);
-  for (const column of streakColumns(host)) {
-    assert.equal(column.children.length, 3, "label, value, best");
-  }
+  assert.match(html, /Training 12d/);
+  assert.match(html, /App 27d/);
+  assert.doesNotMatch(html, /Best 14|Best 27|xp-streak-note|xp-streak-track|xp-streak-extras/);
 });
 
 test("Progress page adds near-best and matched-best context to both streaks", () => {
@@ -355,28 +299,16 @@ test("Progress page adds near-best and matched-best context to both streaks", ()
   assert.equal(app.querySelector(".xp-streak-track"), null);
 });
 
-test("zero streaks stay intentional: no encouragement copy, no 0/0 progress bar", () => {
-  for (const mode of ["overview", "page"] as const) {
-    const host = streakDom(
-      renderToStaticMarkup(
-        <XpProgressCardView mode={mode} progress={progress(streaks([0, 0], [0, 0]))} />,
-      ),
-    );
-
-    assert.deepEqual(
-      streakColumns(host).map((column) => column.querySelector(".xp-streak-value")!.textContent),
-      ["0", "0"],
-      `${mode} shows both zeroes`,
-    );
-    assert.deepEqual(
-      streakColumns(host).map((column) => column.querySelector(".xp-streak-best")!.textContent),
-      ["Best 0", "Best 0"],
-      `${mode} shows both bests`,
-    );
-    assert.equal(host.querySelectorAll(".xp-streak-note").length, 0, `${mode} invents no message`);
-    assert.equal(host.querySelectorAll(".xp-streak-track").length, 0, `${mode} draws no 0/0 bar`);
-    assert.doesNotMatch(host.innerHTML, /0 more to match your best/);
-  }
+test("Zero streaks stay truthful on Home and on Progress", () => {
+  const data = progress(streaks([0, 0], [0, 0]));
+  const overview = renderToStaticMarkup(<XpProgressCardView progress={data} />);
+  const detailed = streakDom(renderToStaticMarkup(<XpProgressCardView mode="page" progress={data} />));
+  assert.match(overview, /Training 0d/);
+  assert.match(overview, /App 0d/);
+  assert.doesNotMatch(overview, /Best 0|0 more to match your best/);
+  assert.deepEqual(streakColumns(detailed).map((column) => column.querySelector(".xp-streak-value")!.textContent), ["0", "0"]);
+  assert.equal(detailed.querySelectorAll(".xp-streak-track").length, 0);
+  assert.doesNotMatch(detailed.innerHTML, /0 more to match your best/);
 });
 
 test("a streak past its stored best is never announced as a new record", () => {
@@ -433,55 +365,52 @@ test("streak icons are decorative and never the only indication of the stat", ()
   }
 });
 
-test("Overview and Progress streak labels do not collide on ids", () => {
-  const overview = renderToStaticMarkup(
+test("Home streak names and Progress label IDs remain distinct and accessible", () => {
+  const overview = streakDom(renderToStaticMarkup(
     <XpProgressCardView progress={progress(streaks([1, 2], [3, 4]))} />,
-  );
-  const page = renderToStaticMarkup(
+  ));
+  const page = streakDom(renderToStaticMarkup(
     <XpProgressCardView mode="page" progress={progress(streaks([1, 2], [3, 4]))} />,
+  ));
+  assert.deepEqual(
+    [...overview.querySelectorAll(".xp-overview-streak")].map((item) => item.getAttribute("aria-label")),
+    ["Training streak: 1 days", "App streak: 3 days"],
   );
-
-  const ids = (html: string) =>
-    [...streakDom(html).querySelectorAll(".xp-streak")].map((column) =>
-      column.getAttribute("aria-labelledby"),
-    );
-
-  assert.deepEqual(ids(overview), ["overview-training-streak-label", "overview-app-streak-label"]);
-  assert.deepEqual(ids(page), ["page-training-streak-label", "page-app-streak-label"]);
+  assert.deepEqual(streakColumns(page).map((column) => column.getAttribute("aria-labelledby")), [
+    "page-training-streak-label", "page-app-streak-label",
+  ]);
 });
 
-test("the streak redesign leaves the rest of the XP card intact", () => {
-  const html = renderToStaticMarkup(
-    <XpProgressCardView
-      progress={progress({
-        ...streaks([8, 14], [12, 27]),
-        state: { totalXp: 620, lastDailyLoginDate: null, recentAwards: [] },
-        opportunities: [
-          {
-            code: "complete_training_week",
-            label: "Complete this training week",
-            xp: 100,
-            href: "/progress",
-            priority: 40,
-          },
-        ],
-      })}
-    />,
-  );
+test("Compact Home removes redundant panels while detailed Progress keeps them", () => {
+  const data = progress({
+    ...streaks([8, 14], [12, 27]),
+    state: { totalXp: 620, lastDailyLoginDate: null, recentAwards: [] },
+    opportunities: [
+      { code: "complete_training_week", label: "Complete this training week", xp: 100, href: "/progress", priority: 40 },
+    ],
+  });
+  const home = renderToStaticMarkup(<XpProgressCardView progress={data} />);
+  const detailed = renderToStaticMarkup(<XpProgressCardView mode="page" progress={data} />);
 
-  assert.match(html, /xp-progress-level[^>]*>Level 2</);
-  assert.match(html, /xp-progress-rank[^>]*>Prospect</);
-  assert.match(html, /xp-progress-number[^>]*>620</);
-  assert.match(html, /620 \/ 750 XP/);
-  assert.match(html, /130 XP remaining/);
-  assert.match(html, /xp-progress-fill/);
-  assert.match(html, /NEXT/);
-  assert.match(html, /MORE XP/);
-  assert.match(html, /aria-label="Open XP progress"/);
+  assert.match(home, /620 \/ 750 XP/);
+  assert.match(home, /130 XP to Level 3/);
+  assert.match(home, /xp-progress-fill/);
+  assert.doesNotMatch(home, /NEXT|MORE XP|Best 14|Best 27|Complete this training week/);
+  assert.match(detailed, /xp-progress-number[^>]*>620</);
+  assert.match(detailed, /Best 14/);
+  assert.match(detailed, /Best 27/);
+  assert.match(detailed, /NEXT/);
+  assert.match(detailed, /MORE XP/);
+  assert.match(detailed, /Complete this training week/);
+});
 
-  // Hierarchy: XP total, then training streak, then app streak, then next action.
-  const order = ["xp-progress-number", "xp-streak-panel", "TRAINING", "APP", "NEXT"].map((token) =>
-    html.indexOf(token === "TRAINING" ? "Training streak" : token === "APP" ? "App streak" : token),
-  );
-  assert.deepEqual([...order].sort((a, b) => a - b), order);
+
+test("Home skeleton matches compact variant and stale-data warning remains available", () => {
+  const component = readFileSync(new URL("./xp-progress-card.tsx", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../app/xp-overview-card.css", import.meta.url), "utf8");
+  const html = renderToStaticMarkup(<XpProgressCardView error="offline" progress={progress()} />);
+  assert.match(component, /xp-progress-card--overview xp-progress-card-skeleton/);
+  assert.match(css, /xp-progress-card-link--overview\s*\{[^}]*height:\s*auto/);
+  assert.match(css, /\.xp-progress-card--overview \.xp-overview-track\s*\{[^}]*height:\s*5px/);
+  assert.match(html, /Showing your last saved XP view/);
 });
