@@ -87,6 +87,38 @@ def _stage1_names(brief: dict) -> set[str]:
     return names
 
 
+
+def test_open_strength_pool_merge_keeps_one_highest_scored_exercise(monkeypatch):
+    import fightcamp.stage2_payload as payload
+
+    received = {}
+
+    def capture(**kwargs):
+        received.update(kwargs["candidate_pools"]["GPP"])
+        return {}
+
+    monkeypatch.setattr(payload, "_build_planning_brief", capture)
+    payload._attach_open_development_block(
+        {"open_plan_spec": {}}, athlete_model={}, restrictions=[], phase_briefs={"GPP": {}},
+        candidate_pools={
+            "GPP": {"strength_slots": [
+                {"slot_id": "g1", "selected": {"name": "Cossack Squat (Dynamic)", "score": 2}},
+                {"slot_id": "g2", "selected": {"name": "Press", "score": 1}},
+            ], "conditioning_slots": [{"selected": {"name": "Rhythm", "score": 1}}]},
+            "SPP": {"strength_slots": [
+                {"slot_id": "s1", "selected": {"name": "Cossack Squat (Dynamic)", "score": 3}},
+                {"slot_id": "s2", "selected": {"name": "Skater Hop", "score": 4}},
+            ], "conditioning_slots": [{"selected": {"name": "Rhythm", "score": 1}}]},
+        },
+        omission_ledger={}, rewrite_guidance={}, plan_input=None, computed_support=None,
+    )
+    assert [s["selected"]["name"] for s in received["strength_slots"]] == [
+        "Skater Hop", "Cossack Squat (Dynamic)", "Press",
+    ]
+    assert next(s for s in received["strength_slots"] if "Cossack" in s["selected"]["name"])["slot_id"] == "s1"
+    assert len(received["conditioning_slots"]) == 2
+
+
 @pytest.mark.parametrize("variant", sorted(_VARIANTS))
 def test_open_plan_carries_a_deterministic_four_week_session_plan(variant):
     brief = _result(variant)["planning_brief"]
