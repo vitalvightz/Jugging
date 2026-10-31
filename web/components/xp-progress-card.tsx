@@ -194,6 +194,27 @@ function OpportunityRow({
 }
 
 export function XpProgressCardSkeleton({ mode = "overview" }: { mode?: XpProgressCardMode }) {
+  if (mode === "overview") {
+    return (
+      <article className="status-card overview-command-card xp-progress-card xp-progress-card--overview xp-progress-card-skeleton" aria-busy="true">
+        <div className="xp-overview-heading">
+          <div className="xp-overview-heading-copy xp-overview-skeleton-copy">
+            <Skeleton variant="text" width={120} height={19} />
+            <Skeleton variant="text" width={124} height={13} />
+          </div>
+          <Skeleton variant="text" width={96} height={16} />
+        </div>
+        <div className="xp-overview-skeleton-track">
+          <Skeleton variant="block" width="100%" height={5} style={{ borderRadius: 999 }} />
+        </div>
+        <div className="xp-overview-footer xp-overview-skeleton-footer">
+          <Skeleton variant="text" width={92} height={14} />
+          <Skeleton variant="text" width={72} height={14} />
+        </div>
+      </article>
+    );
+  }
+
   return (
     <article
       className={`status-card overview-command-card xp-progress-card xp-progress-card-skeleton${
@@ -251,6 +272,52 @@ export function XpProgressCardView({
     : "Max level reached";
   const [primaryOpportunity, ...remainingOpportunities] = progress.opportunities;
   const interactiveActions = mode === "page";
+
+  if (mode === "overview") {
+    return (
+      <Link href="/progress" className="xp-progress-card-link xp-progress-card-link--overview" aria-label="Open XP progress">
+        <article className="status-card overview-command-card xp-progress-card xp-progress-card--overview">
+          <div className="xp-overview-heading">
+            <div className="xp-overview-heading-copy">
+              <p className="xp-overview-level">
+                <strong>Level {level.currentLevel.level}</strong>
+                <span>{level.currentLevel.title}</span>
+              </p>
+              <p className="xp-overview-remaining">{progressText}</p>
+            </div>
+            <p className="xp-overview-total">
+              {ratio ?? `${numberFormatter.format(progress.state.totalXp)} XP`}
+            </p>
+          </div>
+          <div
+            className="xp-progress-track xp-overview-track"
+            role="progressbar"
+            aria-label={level.nextLevel ? `XP progress to Level ${level.nextLevel.level}` : "Maximum XP level reached"}
+            aria-valuemin={0}
+            aria-valuemax={progressMaximum}
+            aria-valuenow={progressNow}
+            aria-valuetext={progressText}
+          >
+            <span className="xp-progress-fill" style={{ "--xp-progress-width": `${level.percentage}%` } as CSSProperties} />
+          </div>
+          <div className="xp-overview-footer" aria-label="Streaks">
+            <span className="xp-overview-streak" data-streak="training" aria-label={`Training streak: ${numberFormatter.format(progress.streaks.adherence.current)} days`}>
+              <StreakFlameIcon />
+              <span>Training {numberFormatter.format(progress.streaks.adherence.current)}d</span>
+            </span>
+            <span className="xp-overview-streak" data-streak="app" aria-label={`App streak: ${numberFormatter.format(progress.streaks.login.current)} days`}>
+              <StreakBoltIcon />
+              <span>App {numberFormatter.format(progress.streaks.login.current)}d</span>
+            </span>
+            <svg className="xp-overview-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </div>
+          {error ? <p className="xp-progress-error">Showing your last saved XP view.</p> : null}
+        </article>
+      </Link>
+    );
+  }
 
   const card = (
     <article
