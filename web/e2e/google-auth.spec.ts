@@ -155,9 +155,9 @@ test("OAuth cancellation is scrubbed from URL and leaves both methods usable", a
   await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
 });
 
-test("a brand-new Google account without an invite is turned away before a profile exists", async ({ page, baseURL }) => {
+test("an account explicitly marked invite-pending is turned away before a profile exists", async ({ page, baseURL }) => {
   await isolateFromNetwork(page, baseURL!);
-  const newUser = { ...user, created_at: new Date().toISOString(), user_metadata: { full_name: "Gatecrasher" } };
+  const newUser = { ...user, created_at: new Date().toISOString(), user_metadata: { full_name: "Gatecrasher", invite_pending: true } };
   const meCalls: string[] = [];
   const metadataUpdates: unknown[] = [];
   let signedOut = false;
@@ -173,7 +173,7 @@ test("a brand-new Google account without an invite is turned away before a profi
     body: "",
   }));
 
-  // No access code entered on this device: Log in → Continue with Google.
+  // Previously rejected account, no invite cookie in this browser.
   await page.goto("/login");
   await page.getByRole("button", { name: "Continue with Google", exact: true }).click();
 
