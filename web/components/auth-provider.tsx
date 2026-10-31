@@ -116,6 +116,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     const currentLoadId = loadGenerationRef.current + 1;
     loadGenerationRef.current = currentLoadId;
     let shouldHoldHydration = false;
+    let admissionChecked = false;
 
     if (!nextSession?.access_token) {
       if (loadGenerationRef.current === currentLoadId) {
@@ -133,7 +134,9 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     // A pending admission check must not look like an anonymous session.
     setIsReady(false);
     try {
-      if (!(await hasSignupAdmission(nextSession.access_token))) {
+      const admitted = await hasSignupAdmission(nextSession.user_id);
+      admissionChecked = true;
+      if (!admitted) {
         if (loadGenerationRef.current !== currentLoadId) return;
         clearRetryTimer();
         setSession(null);
@@ -269,7 +272,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       }, ME_RETRY_DELAY_MS);
     } finally {
       if (loadGenerationRef.current === currentLoadId) {
-        setIsReady(true);
+        setIsReady(admissionChecked);
         if (!shouldHoldHydration) {
           setIsMeHydrated(true);
         }
