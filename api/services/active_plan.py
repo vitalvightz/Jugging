@@ -2,10 +2,11 @@
 
 ``profiles.active_plan_id`` is the only active-plan pointer. The referenced plan
 is returned only when it belongs to the athlete, has an athlete-displayable
-status and has not passed its fight date in the athlete-local training day. A
-missing, invalid or unreadable pointer resolves to no active plan; this service
-never promotes another saved plan as a fallback. Overlapping saved
-or draft plans are allowed, but activating an overlapping second plan requires an
+status and has not passed its fight date in the athlete-local training day. When
+no valid active pointer remains, the sole non-archived plan is automatically
+activated only if eligible; multiple saved plans always require a deliberate
+choice. Read failures never trigger a fallback. Overlapping saved or draft
+plans are allowed, but activating an overlapping second plan requires an
 explicit pause or replacement choice. ``pause`` preserves the previous plan row
 unchanged and switches the single active pointer to the selected plan, allowing
 the previous plan to be reactivated later. ``replace`` switches the pointer and
@@ -56,6 +57,7 @@ class ActivePlanStore(Protocol):
     def get_plan_for_athlete(self, plan_id: str, athlete_id: str) -> dict[str, Any] | None: ...
     def get_active_plan_id(self, athlete_id: str) -> str | None: ...
     def set_active_plan_id(self, athlete_id: str, plan_id: str) -> None: ...
+    def try_set_active_plan_id(self, athlete_id: str, plan_id: str, expected_id: str | None) -> bool: ...
     def archive_plan_for_athlete(self, plan_id: str, athlete_id: str) -> dict[str, Any]: ...
 
 
@@ -241,6 +243,7 @@ def _active_plan_overlap(
         store,
         athlete_id,
         current_training_day=current_training_day,
+        auto_activate=False,
     ).plan
     if not current or str(current.get("id") or "") == str(candidate.get("id") or ""):
         return None
@@ -261,11 +264,47 @@ def _active_plan_overlap(
     return current if _ranges_overlap(current_range, candidate_range) else None
 
 
+def _activate_only_remaining_plan(
+    store: ActivePlanStore,
+    athlete_id: str,
+    *,
+    expected_id: str | None,
+    original_source: str,
+    current_training_day: date | str | None,
+) -> ActivePlanResolution:
+    unchanged = ActivePlanResolution(plan=None, source=original_source)
+    # Older test stores have no conditional-update capability. Real stores use
+    # compare-and-set so a simultaneous manual selection is never overwritten.
+    if not hasattr(store, "try_set_active_plan_id"):
+        return unchanged
+    try:
+        remaining = [
+            row for row in store.list_user_plans(athlete_id)
+            if normalize_plan_status(row) != "archived"
+        ]
+        if len(remaining) != 1 or not is_active_plan_eligible(
+            remaining[0], current_training_day=current_training_day
+        ):
+            return unchanged
+        candidate_id = str(remaining[0].get("id") or "")
+        candidate = store.get_plan_for_athlete(candidate_id, athlete_id)
+        if not candidate or not is_active_plan_eligible(candidate, current_training_day=current_training_day):
+            return unchanged
+        if store.try_set_active_plan_id(athlete_id, candidate_id, expected_id):
+            return ActivePlanResolution(plan=candidate, source="auto_single")
+        # Another request updated the pointer first. Respect that choice.
+        return resolve_active_plan(store, athlete_id, current_training_day=current_training_day, auto_activate=False)
+    except Exception:  # noqa: BLE001 - a failed repair must never break a plan read
+        logger.exception("[active-plan] auto_activation_failed athlete_id=%s", athlete_id)
+        return unchanged
+
+
 def resolve_active_plan(
     store: ActivePlanStore,
     athlete_id: str,
     *,
     current_training_day: date | str | None = None,
+    auto_activate: bool = True,
 ) -> ActivePlanResolution:
     try:
         explicit_id = _explicit_active_plan_id(store, athlete_id)
@@ -273,7 +312,12 @@ def resolve_active_plan(
         logger.exception("[active-plan] pointer_read_failed athlete_id=%s", athlete_id)
         return ActivePlanResolution(plan=None, source="read_failure")
     if not explicit_id:
-        return ActivePlanResolution(plan=None, source="none")
+        return (
+            _activate_only_remaining_plan(
+                store, athlete_id, expected_id=None, original_source="none",
+                current_training_day=current_training_day,
+            ) if auto_activate else ActivePlanResolution(plan=None, source="none")
+        )
 
     try:
         explicit = store.get_plan_for_athlete(explicit_id, athlete_id)
@@ -290,17 +334,23 @@ def resolve_active_plan(
             athlete_id,
             explicit_id,
         )
-        return ActivePlanResolution(plan=None, source="invalid_reference")
-    if not is_active_plan_eligible(explicit, current_training_day=current_training_day):
+        source = "invalid_reference"
+    elif not is_active_plan_eligible(explicit, current_training_day=current_training_day):
         logger.warning(
             "[active-plan] referenced_plan_unusable athlete_id=%s plan_id=%s status=%s",
             athlete_id,
             explicit_id,
             normalize_plan_status(explicit),
         )
-        return ActivePlanResolution(plan=None, source="unusable")
-    return ActivePlanResolution(plan=explicit, source="explicit")
-
+        source = "unusable"
+    else:
+        return ActivePlanResolution(plan=explicit, source="explicit")
+    return (
+        _activate_only_remaining_plan(
+            store, athlete_id, expected_id=explicit_id, original_source=source,
+            current_training_day=current_training_day,
+        ) if auto_activate else ActivePlanResolution(plan=None, source=source)
+    )
 
 def set_active_plan(
     store: ActivePlanStore,
