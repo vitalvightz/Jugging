@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { ApiError, trackProductEvent, getMe } from "@/lib/api";
 import { clearSharedReads } from "@/lib/shared-reads";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { hasSignupAdmission } from "@/lib/signup-invite-guard";
 import { APPEARANCE_STORAGE_KEY, type AppearanceMode, type MeResponse } from "@/lib/types";
 
 const ME_RETRY_ATTEMPTS = 3;
@@ -129,6 +130,12 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       return;
     }
 
+    const allowed = await hasSignupAdmission(nextSession.access_token);
+    if (!allowed) {
+      await getSupabaseBrowserClient().auth.signOut();
+      window.location.assign("/signup?invite=required");
+      return;
+    }
     setSession(nextSession);
     setIsReady(true);
 
