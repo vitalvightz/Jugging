@@ -115,6 +115,26 @@ test("Home hides XP opportunities without removing them from the detailed page",
   for (const label of ["First", "Second", "Third"]) assert.match(detail, new RegExp(label));
 });
 
+test("Reference design displays 210 of 250 XP, 40 remaining and 0d/1d streaks", () => {
+  const html = renderToStaticMarkup(
+    <XpProgressCardView progress={progress({
+      state: { totalXp: 210, lastDailyLoginDate: null, recentAwards: [] },
+      streaks: {
+        adherence: { current: 0, best: 0, lastDate: null },
+        login: { current: 1, best: 1, lastDate: "2026-10-31" },
+      },
+    })} />,
+  );
+  assert.match(html, /Level 1/);
+  assert.match(html, /Rookie/);
+  assert.match(html, /210 \/ 250 XP/);
+  assert.match(html, /40 XP to Level 2/);
+  assert.match(html, /--xp-progress-width:84%/);
+  assert.match(html, /Training 0d/);
+  assert.match(html, /App 1d/);
+  assert.match(html, /App streak: 1 day/);
+});
+
 test("New users see level zero progress without empty action panels", () => {
   const html = renderToStaticMarkup(<XpProgressCardView progress={progress()} />);
 
