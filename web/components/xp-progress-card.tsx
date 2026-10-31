@@ -275,7 +275,14 @@ export function XpProgressCardView({
 
   if (mode === "overview") {
     return (
-      <Link href="/progress" className="xp-progress-card-link xp-progress-card-link--overview" aria-label="Open XP progress">
+      <Link
+        href="/progress"
+        className="xp-progress-card-link xp-progress-card-link--overview"
+        aria-label={`Open XP progress. Level ${level.currentLevel.level}, ${level.currentLevel.title}. ${level.nextLevel
+          ? `${numberFormatter.format(progress.state.totalXp)} of ${numberFormatter.format(level.nextLevel.threshold)} XP. ${progressText}`
+          : `${numberFormatter.format(progress.state.totalXp)} XP. Maximum level reached`
+        }. Training streak ${numberFormatter.format(progress.streaks.adherence.current)} ${progress.streaks.adherence.current === 1 ? "day" : "days"}. App streak ${numberFormatter.format(progress.streaks.login.current)} ${progress.streaks.login.current === 1 ? "day" : "days"}.${error ? " Showing your last saved XP view." : ""}`}
+      >
         <article className="status-card overview-command-card xp-progress-card xp-progress-card--overview">
           <div className="xp-overview-heading">
             <div className="xp-overview-heading-copy">
