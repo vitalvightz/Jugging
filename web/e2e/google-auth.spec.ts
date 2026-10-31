@@ -158,6 +158,27 @@ test("OAuth cancellation is scrubbed from URL and leaves both methods usable", a
   await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
 });
 
+test("temporary profile read failure never logs out an approved user", async ({ page, baseURL }) => {
+  await oauth(page, baseURL!, true);
+  let attempts = 0;
+  let signedOut = false;
+  await page.route(`${SUPABASE}/rest/v1/profiles**`, route => {
+    attempts += 1;
+    if (attempts === 1) return route.fulfill({ status: 503, contentType: "application/json",
+      body: JSON.stringify({ message: "Temporary unavailable" }) });
+    return json(route, [{ access_status: "approved" }]);
+  });
+  await page.route(`${SUPABASE}/auth/v1/logout**`, route => {
+    signedOut = true;
+    return json(route, {});
+  });
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Continue with Google", exact: true }).click();
+  await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 });
+  expect(attempts).toBeGreaterThan(1);
+  expect(signedOut).toBe(false);
+});
+
 test("new Google account without invite is signed out before profile creation", async ({ page, baseURL }) => {
   await oauth(page, baseURL!);
   let profileCalls = 0;
