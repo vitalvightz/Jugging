@@ -40,6 +40,7 @@ async function startSignup(page: Page, baseURL: string, verifyStatus: "ok" | "re
   const session = () => ({ access_token: "new-athlete-token", refresh_token: "new-refresh", token_type: "bearer",
     expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600,
     user: { ...user, email_confirmed_at: "2026-10-13T00:01:00Z" } });
+  await page.route("**/api/me/admission", route => json(route, { approved: false }));
   await page.route("**/api/me", route => json(route, me()));
 
   await page.route(`${SUPABASE_ORIGIN}/auth/v1/signup**`, async (route) => {
