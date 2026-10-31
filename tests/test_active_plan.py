@@ -39,8 +39,11 @@ class Store:
         self.set_to = plan_id
         self.active = plan_id
 
-    def try_set_active_plan_id(self, athlete_id, plan_id, expected_id):
+    def try_set_active_plan_id(self, athlete_id, plan_id, expected_id, current_training_day=None):
         if self.active != expected_id:
+            return False
+        remaining = [p for p in self.list_user_plans(athlete_id) if p["status"] != "archived"]
+        if len(remaining) != 1 or remaining[0]["id"] != plan_id:
             return False
         self.set_active_plan_id(athlete_id, plan_id)
         return True
@@ -147,13 +150,36 @@ def test_only_plan_past_fight_date_is_never_automatically_active():
 
 def test_manual_selection_wins_when_conditional_activation_loses_race():
     store = Store([plan("only")])
-    def lose_to_manual(athlete_id, plan_id, expected_id):
+    def lose_to_manual(athlete_id, plan_id, expected_id, current_training_day=None):
+        store.plans.append(plan("manual"))
         store.active = "manual"
         return False
     store.try_set_active_plan_id = lose_to_manual
-    assert resolve_active_plan(store, "ath").source == "invalid_reference"
+    resolved = resolve_active_plan(store, "ath")
+    assert resolved.source == "explicit"
+    assert resolved.plan_id == "manual"
     assert store.active == "manual"
     assert store.set_calls == []
+
+
+def test_concurrent_creation_prevents_automatic_activation():
+    store = Store([plan("only")])
+    def race(athlete_id, plan_id, expected_id, current_training_day=None):
+        store.plans.append(plan("second"))
+        return False
+    store.try_set_active_plan_id = race
+    assert resolve_active_plan(store, "ath").plan is None
+    assert store.active is None
+
+
+def test_concurrent_archive_prevents_automatic_activation():
+    store = Store([plan("only")])
+    def race(athlete_id, plan_id, expected_id, current_training_day=None):
+        store.plans[0]["status"] = "archived"
+        return False
+    store.try_set_active_plan_id = race
+    assert resolve_active_plan(store, "ath").plan is None
+    assert store.active is None
 
 
 def test_auto_activation_read_failure_does_not_change_pointer():
