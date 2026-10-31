@@ -4,8 +4,6 @@ import logging
 
 from fastapi import APIRouter, Depends
 
-from api.auth import AuthenticatedUser
-from api.dependencies import require_user
 from api.compliance import evaluate_profile_compliance
 from api.compliance_guards import require_health_feature_access, require_onboarding_compliance, strip_health_intake_fields
 from api.minor_safety import strip_minor_target_weight
@@ -86,15 +84,6 @@ def build_profile_router(*, require_profile, get_store) -> APIRouter:
                 profile.athlete_id,
             )
         return response
-
-    @router.get("/api/me/admission")
-    def existing_member_admission(
-        user: AuthenticatedUser = Depends(require_user),
-        store: AppStore = Depends(get_store),
-    ) -> dict[str, bool]:
-        # Read only: /api/me creates profiles, so check admission before it.
-        profile = store.get_profile(user.user_id)
-        return {"approved": bool(profile and profile.get("access_status") == "approved")}
 
     @router.get("/api/me", response_model=MeResponse)
     def get_me(
