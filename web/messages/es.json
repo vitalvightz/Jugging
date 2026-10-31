@@ -159,7 +159,7 @@
     "resendIn": "Reenviar código en {seconds} s",
     "codeResent": "Te hemos enviado un código nuevo.",
     "differentEmail": "Usar otro correo",
-    "linkFallback": "También puedes tocar el enlace del correo.",
+    "linkFallback": "Introduce aquí el código del correo para completar el registro.",
     "invalidCode": "Código incorrecto o caducado. Revísalo o pide uno nuevo."
   },
   "Workspace": {
