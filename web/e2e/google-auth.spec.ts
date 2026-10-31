@@ -20,6 +20,7 @@ async function oauth(page: Page, baseURL: string, returning = false, dateOfBirth
     appearance_mode: "dark", nutrition_profile: {}, date_of_birth: accepted ? "1996-05-04" : dateOfBirth,
     meets_minimum_age: accepted || Boolean(dateOfBirth), terms_accepted: accepted, health_consent_granted: false,
   }, plan_count: 0, latest_plan: null, latest_intake: null, username_rate_limit: {} });
+  await page.route(`${SUPABASE}/rest/v1/profiles**`, route => json(route, returning ? [{ access_status: "approved" }] : []));
   await page.route("**/api/me", route => json(route, profile()));
   await page.route(`${SUPABASE}/auth/v1/user`, route => json(route, user));
   await page.route(`${SUPABASE}/auth/v1/logout**`, route => json(route, {}));
@@ -83,6 +84,7 @@ test("returning Google/email identity restores the existing workspace without co
 
 test("underage Google identity stays unverified and can sign out", async ({ page, baseURL }) => {
   const { requests } = await oauth(page, baseURL!);
+  await grantSignupAccess(page, baseURL!);
   await page.goto("/login");
   await page.getByRole("button", { name: "Continue with Google", exact: true }).click();
   await expect(page).toHaveURL(/\/consent$/);
@@ -100,6 +102,7 @@ test("underage Google identity stays unverified and can sign out", async ({ page
 
 test("Google compliance keeps an existing DOB and records health consent only when checked", async ({ page, baseURL }) => {
   const { requests } = await oauth(page, baseURL!, false, "1996-05-04");
+  await grantSignupAccess(page, baseURL!);
   await page.goto("/login");
   await page.getByRole("button", { name: "Continue with Google", exact: true }).click();
   await expect(page).toHaveURL(/\/consent$/);
@@ -111,14 +114,14 @@ test("Google compliance keeps an existing DOB and records health consent only wh
   expect(requests).toEqual([{ accept_terms: true, health_data_consent: true }]);
 });
 
-test("email password login retains the existing account and landing route", async ({ page, baseURL }) => {
+test("email password login with stale invite flag retains the existing account and landing route", async ({ page, baseURL }) => {
   await oauth(page, baseURL!, true);
   const bodies: Record<string, unknown>[] = [];
   await page.route(`${SUPABASE}/auth/v1/token**`, async route => {
     expect(new URL(route.request().url()).searchParams.get("grant_type")).toBe("password");
     bodies.push(route.request().postDataJSON());
     await json(route, { access_token: "email-test-token", refresh_token: "email-refresh", expires_in: 3600,
-      token_type: "bearer", user });
+      token_type: "bearer", user: { ...user, created_at: new Date().toISOString(), user_metadata: { ...user.user_metadata, invite_pending: true } } });
   });
   await page.goto("/login");
   await page.getByRole("button", { name: "Continue with email", exact: true }).click();
@@ -128,6 +131,20 @@ test("email password login retains the existing account and landing route", asyn
   await expect(page).toHaveURL(`${baseURL}/`);
   expect(bodies).toHaveLength(1);
   expect(bodies[0]).toMatchObject({ email: user.email, password: "Southpaw-Jab-Cross-2026" });
+});
+
+test("plan-ready link opens the existing plan after password login", async ({ page, baseURL }) => {
+  await oauth(page, baseURL!, true);
+  await page.route(`${SUPABASE}/auth/v1/token**`, route => json(route, {
+    access_token: "plan-email-test-token", refresh_token: "plan-email-refresh",
+    expires_in: 3600, token_type: "bearer", user,
+  }));
+  await page.goto(`/login?next=%2Fplans%2F${ID}`);
+  await page.getByRole("button", { name: "Continue with email", exact: true }).click();
+  await page.getByLabel("Email", { exact: true }).fill(user.email);
+  await page.getByLabel("Password", { exact: true }).fill("Southpaw-Jab-Cross-2026");
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page).toHaveURL(`${baseURL}/plans/${ID}`);
 });
 
 test("email magic link requires no password and cannot create a login account", async ({ page, baseURL }) => {
@@ -155,41 +172,60 @@ test("OAuth cancellation is scrubbed from URL and leaves both methods usable", a
   await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
 });
 
-test("a brand-new Google account without an invite is turned away before a profile exists", async ({ page, baseURL }) => {
-  await isolateFromNetwork(page, baseURL!);
-  const newUser = { ...user, created_at: new Date().toISOString(), user_metadata: { full_name: "Gatecrasher" } };
-  const meCalls: string[] = [];
-  const metadataUpdates: unknown[] = [];
+test("temporary profile read failure never logs out an approved user", async ({ page, baseURL }) => {
+  await oauth(page, baseURL!, true);
+  let attempts = 0;
   let signedOut = false;
-  await page.route("**/api/me", route => { meCalls.push(route.request().url()); return json(route, {}); });
-  await page.route(`${SUPABASE}/auth/v1/user`, async route => {
-    if (route.request().method() === "PUT") metadataUpdates.push(route.request().postDataJSON());
-    await json(route, newUser);
+  await page.route(`${SUPABASE}/rest/v1/profiles**`, route => {
+    attempts += 1;
+    if (attempts === 1) return route.fulfill({ status: 503, contentType: "application/json",
+      body: JSON.stringify({ message: "Temporary unavailable" }) });
+    return json(route, [{ access_status: "approved" }]);
   });
-  await page.route(`${SUPABASE}/auth/v1/logout**`, route => { signedOut = true; return json(route, {}); });
-  await page.route(`${SUPABASE}/auth/v1/authorize**`, route => route.fulfill({
-    status: 302,
-    headers: { location: `${baseURL}/login#access_token=new-google-token&refresh_token=r&expires_in=3600&token_type=bearer&type=signup` },
-    body: "",
-  }));
-
-  // No access code entered on this device: Log in → Continue with Google.
+  await page.route(`${SUPABASE}/auth/v1/logout**`, route => {
+    signedOut = true;
+    return json(route, {});
+  });
   await page.goto("/login");
   await page.getByRole("button", { name: "Continue with Google", exact: true }).click();
+  await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 });
+  expect(attempts).toBeGreaterThan(1);
+  expect(signedOut).toBe(false);
+});
 
+test("new Google account without invite is signed out before profile creation", async ({ page, baseURL }) => {
+  await oauth(page, baseURL!);
+  let profileCalls = 0;
+  let signedOut = false;
+  await page.route("**/api/me", route => { profileCalls += 1; return json(route, {}); });
+  await page.route(`${SUPABASE}/auth/v1/logout**`, route => { signedOut = true; return json(route, {}); });
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Continue with Google", exact: true }).click();
   await expect(page).toHaveURL(`${baseURL}/signup?invite=required`);
-  await expect(page.getByText("You need an invite code to create an account.")).toBeVisible();
-  await expect(page.getByLabel("Access code", { exact: true })).toBeVisible();
-  expect(meCalls, "no profile is requested (and so none is created)").toHaveLength(0);
-  expect(metadataUpdates).toContainEqual(expect.objectContaining({ data: { invite_pending: true } }));
+  expect(profileCalls).toBe(0);
   expect(signedOut).toBe(true);
+});
+
+test("an existing account with a stale invite flag logs in without another code", async ({ page, baseURL }) => {
+  await oauth(page, baseURL!, true);
+  const existing = { ...user, created_at: new Date().toISOString(),
+    user_metadata: { ...user.user_metadata, invite_pending: true } };
+  let signedOut = false;
+  await page.route(`${SUPABASE}/auth/v1/user`, route => json(route, existing));
+  await page.route(`${SUPABASE}/auth/v1/logout**`, route => {
+    signedOut = true;
+    return json(route, {});
+  });
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Continue with Google", exact: true }).click();
+  await expect(page).toHaveURL(`${baseURL}/`);
+  expect(signedOut).toBe(false);
 });
 
 test("a brand-new Google account from a browser that entered the code goes straight through", async ({ page, baseURL }) => {
   await oauth(page, baseURL!);
   await grantSignupAccess(page, baseURL!);
-  // Same flow as a new Google identity, but the account was created just now,
-  // so the invite guard runs (routes added later take precedence).
+  // A new Google identity with a signup invite can still complete compliance.
   const newUser = { ...user, created_at: new Date().toISOString() };
   let signedOut = false;
   await page.route(`${SUPABASE}/auth/v1/user`, route => json(route, newUser));
