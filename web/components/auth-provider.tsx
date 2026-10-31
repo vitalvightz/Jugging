@@ -130,6 +130,8 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       return;
     }
 
+    // A pending admission check must not look like an anonymous session.
+    setIsReady(false);
     try {
       if (!(await hasSignupAdmission(nextSession.access_token))) {
         if (loadGenerationRef.current !== currentLoadId) return;
