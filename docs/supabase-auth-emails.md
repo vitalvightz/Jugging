@@ -124,9 +124,8 @@ Suggested subject lines:
   when a client blocks remote content. Do not swap in a hosted logo.
 - **Inline styles only.** Gmail strips `<style>` blocks in several clients.
 - **Table layout.** `flex` and `grid` are unreliable across email clients.
-- Every template links `{{ .ConfirmationURL }}` twice — once as the button and
-  once as visible copy-paste text — so a client that mangles the button still
-  leaves a usable link.
+- Link-based templates use `{{ .ConfirmationURL }}` for the button and
+  visible fallback URL. Signup confirmation is deliberately code-only.
 
 ### Signup confirmation code
 
@@ -137,11 +136,11 @@ switches to a code step and calls `verifyOtp({ email, token, type: "email" })`;
 the returned session records the signup consents and opens the first-plan flow,
 exactly like a signup that returns a session straight away.
 
-- `confirm-signup.html` shows `{{ .Token }}` as the primary path and keeps the
-  `{{ .ConfirmationURL }}` button as the fallback for opening the email on
-  another device. **Until the updated template is pasted into the dashboard,
-  the email carries only the link** — the code step says so ("You can also tap
-  the link in the email"), so nobody is stranded.
+- `confirm-signup.html` shows only `{{ .Token }}`. The link option was removed:
+  opening it in another browser loses the private-beta invite cookie and sends
+  newly confirmed users back to the access-code gate. Athletes enter the OTP
+  on the signup screen in the browser where they entered their invite code.
+  **Paste the updated template into the Supabase dashboard** to apply this.
 - The code input accepts 6–10 digits to match **Authentication → Providers →
   Email → Email OTP length**.
 - "Resend code" calls `auth.resend({ type: "signup" })` with a fresh Turnstile
