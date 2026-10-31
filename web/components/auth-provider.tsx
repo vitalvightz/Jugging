@@ -133,7 +133,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     }
 
     // Only pause the workspace when there is no profile for this user yet.
-    const hasCurrentProfile = latestMeRef.current?.profile.athlete_id === nextSession.user_id;
+    const hasCurrentProfile = Boolean(nextSession.user_id && latestMeRef.current?.profile.athlete_id === nextSession.user_id);
     if (!hasCurrentProfile) setIsReady(false);
     try {
       const admitted = await hasSignupAdmission(nextSession.user_id);
