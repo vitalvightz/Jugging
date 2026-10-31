@@ -191,6 +191,10 @@
   color: #e8697d;
 }
 
+html[data-theme="light"] .xp-overview-streak[data-streak="training"] .xp-streak-icon {
+  color: #a5142a;
+}
+
 .xp-overview-streak[data-streak="app"] .xp-streak-icon {
   color: var(--progress-gold);
 }
