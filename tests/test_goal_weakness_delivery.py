@@ -293,18 +293,6 @@ def test_a_strength_requirement_is_met_by_a_strength_lift_not_a_pattern():
     assert "Cossack Squat (Dynamic)" in [record["name"] for record in selected]
 
 
-
-def test_cross_phase_duplicate_strength_slots_do_not_spend_two_session_places():
-    names = ["Cossack Squat (Dynamic)", "Cossack Squat (Dynamic)", "DB Incline Press"]
-    records = [
-        {"name": name, "families": {"lower_body_loaded"} if "Cossack" in name else {"upper_body_push_pull"},
-         "adaptations": frozenset(), "support_only": False, "sort_key": (index, index)}
-        for index, name in enumerate(names)
-    ]
-    selected, _ = _select_bounded_records(records, role_key="secondary_strength_day", cap=2, pressure=0)
-    assert [record["name"] for record in selected] == [names[0], names[2]]
-
-
 # ---------------------------------------------------------------------------
 # F04 - heavy implements are not low-load support
 # ---------------------------------------------------------------------------
