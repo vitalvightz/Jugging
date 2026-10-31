@@ -92,7 +92,7 @@ function LevelUpFeedback({ feedback, onDone }: { feedback: LevelUpEvent; onDone:
       </button>
       <p className="xp-level-up-kicker">LEVEL UP</p>
       <h2 id="xp-level-up-title">
-        LEVEL {feedback.level}: {feedback.title.toUpperCase()}
+        LEVEL {feedback.level} UNLOCKED: {feedback.title.toUpperCase()}
       </h2>
       <p id="xp-level-up-message">{feedback.message}</p>
       <Link href="/progress" onClick={onDone}>
