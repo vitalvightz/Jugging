@@ -113,6 +113,24 @@ def test_publication_validates_exact_doses_and_uses_shared_detail(api):
     assert len(detail["outputs"]["structured_plan"]["weeks"]) == 4
 
 
+def test_publishing_first_custom_plan_activates_it_via_route(api):
+    client, store = api
+
+    def conditional(athlete_id, plan_id, expected_id, current_training_day=None):
+        if store.get_active_plan_id(athlete_id) != expected_id:
+            return False
+        remaining = [row for row in store.list_user_plans(athlete_id) if row["status"] != "archived"]
+        if len(remaining) != 1 or remaining[0]["id"] != plan_id:
+            return False
+        store.set_active_plan_id(athlete_id, plan_id)
+        return True
+
+    store.try_set_active_plan_id = conditional
+    _, plan_id = publish(client, body())
+    assert store.get_active_plan_id("athlete-1") == plan_id
+    assert client.get("/api/plans/active", headers=AUTH).json()["plan_id"] == plan_id
+
+
 def test_retry_has_one_published_plan_and_ownership_is_enforced(api):
     client, store = api
     draft, plan_id = publish(client, body())
