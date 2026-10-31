@@ -132,8 +132,9 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       return;
     }
 
-    // A pending admission check must not look like an anonymous session.
-    setIsReady(false);
+    // Only pause the workspace when there is no profile for this user yet.
+    const hasCurrentProfile = latestMeRef.current?.profile.athlete_id === nextSession.user_id;
+    if (!hasCurrentProfile) setIsReady(false);
     try {
       const admitted = await hasSignupAdmission(nextSession.user_id);
       admissionChecked = true;
@@ -156,7 +157,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         setIsMeHydrated(true);
         return;
       }
-      if (hydratedAccessTokenRef.current !== nextSession.access_token) setMe(null);
+      if (hydratedAccessTokenRef.current !== nextSession.access_token && !hasCurrentProfile) setMe(null);
       setIsMeHydrated(false);
 
       let nextMe: MeResponse | null = null;
@@ -273,7 +274,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       }, ME_RETRY_DELAY_MS);
     } finally {
       if (loadGenerationRef.current === currentLoadId) {
-        setIsReady(admissionChecked);
+        setIsReady(admissionChecked || hasCurrentProfile);
         if (!shouldHoldHydration) {
           setIsMeHydrated(true);
         }
