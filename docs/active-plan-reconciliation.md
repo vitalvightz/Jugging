@@ -5,7 +5,9 @@ not reference a usable plan, application reads may conditionally activate the
 **only non-archived, eligible** plan using an atomic pointer update. Multiple
 non-archived plans never trigger automatic selection. Ambiguous historical
 accounts still require an audited support reconciliation through
-`set_active_plan(...)`.
+`set_active_plan(...)`. The automatic single-plan rule uses eligibility and
+ownership, **not** historical activity evidence; it does not write a separate
+support audit record. The evidence order below applies only to manual repairs.
 
 ## Evidence order
 
