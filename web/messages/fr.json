@@ -159,7 +159,7 @@
     "resendIn": "Renvoyer le code dans {seconds} s",
     "codeResent": "Un nouveau code est en route.",
     "differentEmail": "Utiliser une autre adresse e-mail",
-    "linkFallback": "Tu peux aussi toucher le lien dans l’e-mail.",
+    "linkFallback": "Saisis ici le code reçu par e-mail pour terminer l’inscription.",
     "invalidCode": "Code incorrect ou expiré. Vérifie-le ou demandes-en un nouveau."
   },
   "Workspace": {
