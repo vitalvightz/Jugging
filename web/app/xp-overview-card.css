@@ -94,3 +94,133 @@
     transition: none;
   }
 }
+
+/* Home-only compact XP widget. The full /progress card keeps its existing layout. */
+.xp-progress-card-link--overview {
+  height: auto;
+  align-self: start;
+}
+
+.xp-progress-card--overview {
+  min-height: 0;
+  gap: 0;
+  padding: 14px 16px;
+}
+
+.xp-progress-card-skeleton.xp-progress-card--overview {
+  align-self: start;
+}
+
+.xp-progress-card--overview .xp-overview-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.xp-overview-heading-copy {
+  min-width: 0;
+}
+
+.xp-overview-level {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.xp-overview-level strong {
+  color: var(--text-primary);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.xp-overview-level span {
+  color: var(--progress-gold);
+  font-size: 15px;
+}
+
+.xp-overview-remaining {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.xp-overview-total {
+  margin: 0 0 0 auto;
+  color: var(--progress-gold);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.xp-progress-card--overview .xp-overview-track {
+  height: 5px;
+  margin-top: 14px;
+  box-shadow: none;
+}
+
+.xp-progress-card--overview .xp-overview-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 12px;
+}
+
+.xp-overview-streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.xp-overview-streak .xp-streak-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.xp-overview-streak[data-streak="training"] .xp-streak-icon {
+  color: #e8697d;
+}
+
+.xp-overview-streak[data-streak="app"] .xp-streak-icon {
+  color: var(--progress-gold);
+}
+
+.xp-overview-chevron {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--text-secondary);
+}
+
+.xp-overview-skeleton-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.xp-overview-skeleton-track {
+  margin-top: 14px;
+}
+
+.xp-overview-skeleton-footer {
+  justify-content: flex-start;
+}
+
+.xp-progress-card--overview .xp-progress-error {
+  margin-top: 10px;
+  padding-top: 8px;
+}
+
+html[data-theme="light"] .xp-progress-card--overview {
+  background: var(--bg-surface);
+}

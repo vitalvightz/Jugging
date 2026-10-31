@@ -49,6 +49,17 @@ test("XP ledger values cover every backend action", () => {
   );
 });
 
+test("XP history labels are short, accurate and free of em dashes", () => {
+  assert.equal(XP_ACTIONS.readiness_checkin_completed.label, "Check-in complete");
+  assert.equal(XP_ACTIONS.injury_update_completed.label, "Injury update saved");
+  assert.equal(XP_ACTIONS.planned_session_completed.label, "Planned session complete");
+  assert.equal(XP_ACTIONS.full_training_week_completed.label, "Training week complete");
+  assert.equal(XP_ACTIONS.phase_completed.label, "Training phase complete");
+  assert.equal(XP_ACTIONS.camp_completed.label, "Fight camp complete");
+  assert.equal(XP_ACTIONS.training_days_10.label, "10 training days down");
+  for (const { label } of Object.values(XP_ACTIONS)) assert.doesNotMatch(label, /—/);
+});
+
 test("shared level contract uses the long-term progression curve", () => {
   assert.deepEqual(XP_LEVELS, [
     { level: 1, title: "Rookie", threshold: 0 },
