@@ -71,6 +71,10 @@ test("countdown prefetch starts before Today resolves; days stay visible while t
     await act(async () => command.resolve(today("active")));
     const number = () => ui.host.querySelector(".fight-countdown-number")?.textContent;
     assert.equal(number(), "22");
+    assert.ok(ui.host.querySelector(".overview-primary-session .fight-countdown"), "countdown leads the Home hero");
+    assert.equal(ui.host.querySelector(".overview-primary-session .xp-progress-card"), null);
+    assert.ok(ui.host.querySelector(".overview-secondary .xp-progress-card"), "compact XP moves into Camp Progress");
+    assert.equal(ui.host.querySelector(".overview-secondary .fight-countdown"), null);
     assert.equal(ui.host.querySelector(".fight-countdown-skeleton"), null);
     assert.equal(calls.filter(url => url.includes("/api/plans/active")).length, 1, "reuse the in-flight request");
     await act(async () => calendar.resolve(plan));
@@ -98,5 +102,23 @@ test("a prefetched latest plan never supplies a different active plan's calendar
     assert.equal(calls.filter(url => url.includes("/api/plans/active")).length, 1);
     await act(async () => active.resolve(plan));
     assert.equal(ui.host.querySelector('[role="progressbar"][aria-label="Camp progress"]')?.getAttribute("aria-valuenow"), "15");
+  } finally { await ui.cleanup(); globalThis.fetch = originalFetch; }
+});
+
+test("without a fight date, XP remains visible in the Home hero", async () => {
+  const originalFetch = globalThis.fetch;
+  const command = pendingResponse(), calendar = pendingResponse();
+  globalThis.fetch = (async (input) =>
+    String(input).includes("/api/today") ? command.promise : calendar.promise
+  ) as typeof fetch;
+  const ui = await mountHome("active");
+  try {
+    await act(async () => command.resolve({
+      ...today("active"),
+      active_plan: { ...today("active").active_plan, fight_date: null },
+    }));
+    assert.ok(ui.host.querySelector(".overview-primary-session .xp-progress-card"));
+    assert.equal(ui.host.querySelector(".overview-primary-session .fight-countdown"), null);
+    assert.equal(ui.host.querySelector(".overview-secondary .xp-progress-card"), null);
   } finally { await ui.cleanup(); globalThis.fetch = originalFetch; }
 });
