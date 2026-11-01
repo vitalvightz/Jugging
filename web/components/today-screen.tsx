@@ -509,7 +509,7 @@ export function TodayScreen() {
             // Coach-led athletes put their coach's sessions into a plan of their own.
             <Link href="/plans/custom" className={styles.quickAction}>
               <TileIcon name="plan" />
-              Build your own plan
+              Add my plan
               <span className={styles.chevron} aria-hidden="true" />
             </Link>
           )}
