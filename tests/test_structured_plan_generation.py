@@ -2276,6 +2276,11 @@ def test_open_plan_without_countdown_rejects_invented_week_four_exercises():
         block = copy.deepcopy(strength["blocks"][0])
         block["display_name"] = name
         strength["blocks"].append(block)
+    # This is how the saved incident actually looks: deterministic-* IDs can
+    # be stamped after conversion and must never exempt invented membership.
+    strength["session_id"] = "deterministic-85-primary_strength_day-8"
+    for index, block in enumerate(strength["blocks"]):
+        block["block_id"] = f"deterministic-85-primary_strength_day-8-{index}"
     violations = check(plan, source, brief)
     assert len([v for v in violations if v.startswith("INTRODUCED: open week 4")]) == 4
 
