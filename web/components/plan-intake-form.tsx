@@ -672,7 +672,7 @@ function PlanSetupAlternatives() {
     <nav className="action-alternatives" aria-label="Other ways to build a plan">
       <p className="action-alternatives-label">Other ways to build</p>
       <ActionLink href="/quick-build">Quick Build</ActionLink>
-      <ActionLink href="/plans/custom">Build your own</ActionLink>
+      <ActionLink href="/plans/custom">Add my plan</ActionLink>
     </nav>
   );
 }
