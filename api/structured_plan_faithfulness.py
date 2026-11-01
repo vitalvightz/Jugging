@@ -280,7 +280,11 @@ def _explicit_prescription_violations(plan: dict[str, Any], source: str) -> list
     violations: list[str] = []
     from .structured_plan_deterministic_fallback import _source_block, _source_lines_for_session
     source_days = _source_day_section_lines(source)
-    for week in plan.get("weeks") or []:
+    open_sessions = _open_source_sessions(source) if not source_days else {}
+    from fightcamp.structured_session_identity import identity_tokens
+    from fightcamp.weekly_schedule_view import normalize_weekday
+
+    for position, week in enumerate(plan.get("weeks") or [], 1):
         if not isinstance(week, dict):
             continue
         for day in week.get("days") or []:
@@ -295,6 +299,17 @@ def _explicit_prescription_violations(plan: dict[str, Any], source: str) -> list
                     name = str(block.get("display_name") or "").strip()
                     day_lines = source_days.get(_dday_num(day.get("countdown_label")), [])
                     scoped = _source_lines_for_session(day_lines, str(session.get("title") or ""))
+                    if open_sessions:
+                        weekday = normalize_weekday(day.get("weekday"))
+                        title = set(identity_tokens(session.get("title")))
+                        candidates = [
+                            lines for (source_week, source_day, source_title), sections in open_sessions.items()
+                            if source_week in (None, week.get("week_index") or position)
+                            and source_day == weekday
+                            and (not title or set(source_title) <= title or title <= set(source_title))
+                            for lines in sections
+                        ]
+                        scoped = candidates[0] if len(candidates) == 1 else None
                     if day_lines and scoped is None:
                         continue  # A same-day source session cannot be identified.
                     segment = _source_block_segment("\n".join(scoped) if scoped else source, name)
