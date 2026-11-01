@@ -38,7 +38,7 @@ test("rest-day Add session shortcut opens the existing editor on the selected we
   await expect(page.getByRole("button", { name: /^Sunday,/ })).toContainText("Sunday conditioning");
   await expect(page.getByRole("button", { name: "Save draft", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
-  assert.deepEqual(saved.get(original.id)!.sessions.filter(s => s.weekday === "Sunday").map(s => s.name), ["Sunday conditioning"]);
+  expect(saved.get(original.id)!.sessions.filter(s => s.weekday === "Sunday").map(s => s.name)).toEqual(["Sunday conditioning"]);
 });
 for (const width of [320, 390, 1280]) {
   test(`Repair Demo, editable rounds, incomplete workout route and footer (${width}px)`, async ({ page, baseURL }) => {
