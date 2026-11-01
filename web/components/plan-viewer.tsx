@@ -2999,6 +2999,7 @@ export function PlanViewer({
                   rehabLabelPolicy={rehabLabelPolicy}
                   exerciseMedia={plan.outputs.exercise_media}
                   accessToken={accessToken}
+                  customPlanId={!isViewerAdmin && plan.athlete_id === viewerProfileId && !archivedPreview ? plan.custom_plan_id : null}
                 />
                 </ExerciseCustomisationProvider>
               ) : holdPlanForEnhancedCard ? (
