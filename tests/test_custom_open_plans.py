@@ -131,6 +131,25 @@ def test_publishing_first_custom_plan_activates_it_via_route(api):
     assert client.get("/api/plans/active", headers=AUTH).json()["plan_id"] == plan_id
 
 
+def test_self_built_plan_works_without_onboarding_intake():
+    client, store, _ = _build_client()
+    assert store.get_latest_intake("athlete-1") is None
+    day = resolve_training_day(None)
+    weekday = WEEKDAYS[date.fromisoformat(day).weekday()]
+    draft, plan_id = publish(client, body(weekday))
+    assert store.plans[plan_id]["intake_id"] is None
+    assert client.get(f"/api/plans/{plan_id}", headers=AUTH).json()["custom_plan_id"] == draft["id"]
+    assert client.post(f"/api/plans/{plan_id}/set-active", headers=AUTH).status_code == 200
+    today = client.get("/api/today", headers=AUTH)
+    assert today.status_code == 200, today.text
+    session = _structured_day_for_training_day(store.plans[plan_id], day)[0]["sessions"][0]
+    assert today.json()["today"]["next_session"]["session_id"] == session["session_id"]
+    checkin(client, plan_id)
+    complete(client, plan_id, session["session_id"], "started")
+    complete(client, plan_id, session["session_id"], "done")
+    assert any(log["status"] == "done" for log in store.session_completions["athlete-1"])
+
+
 def test_retry_has_one_published_plan_and_ownership_is_enforced(api):
     client, store = api
     draft, plan_id = publish(client, body())
