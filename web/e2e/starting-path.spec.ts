@@ -102,7 +102,7 @@ test("tracking keeps consent optional and grants it in one explicit tap inside t
   await page.setViewportSize({ width: 390, height: 844 });
   const writes = await setup(page, baseURL!, { consent: false });
   await page.goto("/get-started");
-  await page.getByRole("button", { name: /I already have a coach/ }).click();
+  await page.getByRole("button", { name: /Track my training/ }).click();
   // Tracking athletes land on Home; logging lives on Today.
   await expect(page).toHaveURL(/\/$/);
   await page.goto("/today");
@@ -189,6 +189,7 @@ for (const width of [320, 390, 1280]) {
     const writes = await setup(page, baseURL!);
     await page.goto("/get-started");
     await expect(page.getByRole("heading", { name: "How would you like to start?" })).toBeVisible();
+    await expect(page.getByText("Choose your sport and how you want to train.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Open navigation" })).toHaveCount(0);
     await expect(page.locator(".app-sidebar, .mobile-tab-bar")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
@@ -197,10 +198,12 @@ for (const width of [320, 390, 1280]) {
     expect(sizes).toHaveLength(2);
     // Building an S&C plan is offered first.
     await expect(choices.first()).toContainText("Generate my S&C plan");
+    await expect(choices.first()).toContainText("Build a personalised plan around your sport, schedule and goals.");
+    await expect(choices.nth(1)).toContainText("Already have a coach or programme? Log training, sparring and recovery.");
     // Slim list rows, not cards: touch-sized, but no taller than a short two-line row.
     expect(sizes.every(size => size >= 44 && size <= 96)).toBe(true);
     await page.screenshot({ path: test.info().outputPath(`choice-${width}.png`) });
-    const tracking = page.getByRole("button", { name: /I already have a coach/ });
+    const tracking = page.getByRole("button", { name: /Track my training/ });
     await tracking.focus(); await expect(tracking).toBeFocused();
     expect(await tracking.evaluate(element => getComputedStyle(element).boxShadow)).toBe("none");
     expect((await new AxeBuilder({ page }).include("main").analyze()).violations).toEqual([]);
@@ -293,7 +296,7 @@ test("focused entry keeps sign-out available without choosing a path", async ({ 
 test("Unaccepted terms precede the choice", async ({ page, baseURL }) => {
   await setup(page, baseURL!, { terms: false }); await page.goto("/get-started");
   await expect(page).toHaveURL(/\/consent$/);
-  await expect(page.getByRole("button", { name: /I already have a coach/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Track my training/ })).toHaveCount(0);
 });
 
 test("Existing athlete with a plan keeps their destination", async ({ page, baseURL }) => {
@@ -304,7 +307,7 @@ test("Existing athlete with a plan keeps their destination", async ({ page, base
 test("Profile failure never becomes first-use onboarding", async ({ page, baseURL }) => {
   await setup(page, baseURL!, { failMe: true }); await page.goto("/get-started");
   await expect(page.getByRole("heading", { name: "Couldn’t load your account" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /I already have a coach/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Track my training/ })).toHaveCount(0);
 });
 
 test("Today failure never becomes a no-plan empty state", async ({ page, baseURL }) => {
@@ -495,7 +498,7 @@ for (const width of [320, 390, 1280]) {
     const pill = (await sports.getByRole("button").first().boundingBox())!;
     expect(pill.height).toBeLessThanOrEqual(44);
     // Starting without a sport asks for one and saves nothing.
-    await page.getByRole("button", { name: /I already have a coach/ }).click();
+    await page.getByRole("button", { name: /Track my training/ }).click();
     const hint = page.getByRole("alert").filter({ hasText: "Pick your sport first." });
     await expect(hint).toBeVisible();
     await expect(sports.getByRole("button", { name: "Boxing", exact: true })).toBeFocused();
@@ -506,7 +509,7 @@ for (const width of [320, 390, 1280]) {
     await expect(sports.locator('[aria-pressed="true"]')).toHaveText(["Muay Thai"]);
     await expect(hint).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath(`start-${width}.png`) });
-    await page.getByRole("button", { name: /I already have a coach/ }).click();
+    await page.getByRole("button", { name: /Track my training/ }).click();
     // Tracking athletes land on Home; logging lives on Today.
     await expect(page).toHaveURL(/\/$/);
     await page.goto("/today");
@@ -532,7 +535,7 @@ test("Other sport keeps the original log choices and saves no sport", async ({ p
   const writes = await setup(page, baseURL!, { sports: [] });
   await page.goto("/get-started");
   await page.getByRole("button", { name: "Other", exact: true }).click();
-  await page.getByRole("button", { name: /I already have a coach/ }).click();
+  await page.getByRole("button", { name: /Track my training/ }).click();
   // Tracking athletes land on Home; logging lives on Today.
   await expect(page).toHaveURL(/\/$/);
   await page.goto("/today");
