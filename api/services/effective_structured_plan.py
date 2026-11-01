@@ -335,7 +335,7 @@ def _resolve_effective_structured_plan(
             spec = brief.get("open_plan_spec") or {}
             if not brief.get("custom_plan") and isinstance(spec, dict) and spec.get("plan_type") == "open_ongoing_system":
                 from api.structured_plan_faithfulness import (
-                    INTRODUCED, INTERNAL, _open_source_sessions, check_structured_faithfulness,
+                    INTRODUCED, INTERNAL, PRESCRIPTION_CHANGED, _open_source_sessions, check_structured_faithfulness,
                 )
 
                 source = raw_markdown or str(plan_row.get("plan_text") or "")
@@ -349,7 +349,7 @@ def _resolve_effective_structured_plan(
                 ):
                     return dict(stored)
                 findings = check_structured_faithfulness(dict(stored), source, dict(brief))
-                unsafe = [finding for finding in findings if finding.startswith((f"{INTRODUCED}: open week", f"{INTERNAL}:"))]
+                unsafe = [finding for finding in findings if finding.startswith((f"{INTRODUCED}: open week", f"{INTERNAL}:", f"{PRESCRIPTION_CHANGED}:"))]
                 if unsafe:
                     logger.error(
                         "saved Open Plan failed source membership; using verified fallback plan_id=%s findings=%s",
