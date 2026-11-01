@@ -437,3 +437,63 @@ def test_open_duplicate_replacement_reaches_third_safe_option(monkeypatch):
     assert "Unsafe Squat" not in names
     assert received["strength_slots"][-1]["slot_id"] == gpp_slots[0]["slot_id"]
 
+
+
+def test_open_week_four_never_adds_lifts_or_increases_prior_week_volume():
+    from fightcamp.stage2_payload import _deload_open_week
+
+    def role(week):
+        names = ["Heavy RDL → Broad Jump", "Sled Push (Speed)"] if week == 3 else [
+            "Heavy RDL → Broad Jump", "Tire Flip", "Sled Push (Speed)",
+            "Landmine Rotational Press", "Woodchopper (Cable)", "Lat Pulldown",
+        ]
+        doses = {"Heavy RDL → Broad Jump": "3 rounds: heavy movement 2 reps; rest 4 min.",
+                 "Sled Push (Speed)": "6 x 5s acceleration; rest 90s." if week == 4 else "3 x 5s acceleration; rest 90s."}
+        return {"role_key": "primary_strength_day", "scheduled_day_hint": "Sunday",
+                "category": "strength",
+                "selected_exercise_assignments": [
+                    {"name": name, "effective_prescription": doses.get(name, "4x2 reps at max speed; full rest 120s.")}
+                    for name in names],
+                "effective_strength_prescriptions": [
+                    {"name": name, "effective_prescription": doses.get(name, "4x2 reps at max speed; full rest 120s.")}
+                    for name in names]}
+
+    week3, week4 = role(3), role(4)
+    block = {"weeks": [{"session_roles": []}, {"session_roles": []},
+                       {"session_roles": [week3]}, {"session_roles": [week4]}]}
+    assert _deload_open_week(block)
+    assert [e["name"] for e in week4["selected_exercise_assignments"]] == [
+        "Heavy RDL → Broad Jump", "Sled Push (Speed)"]
+    assert [e["effective_prescription"] for e in week4["selected_exercise_assignments"]] == [
+        "2 rounds: heavy movement 2 reps; rest 4 min.",
+        "2 x 5s acceleration; rest 90s.",
+    ]
+    assert [e["effective_prescription"] for e in week3["selected_exercise_assignments"]] == [
+        "3 rounds: heavy movement 2 reps; rest 4 min.",
+        "3 x 5s acceleration; rest 90s.",
+    ]
+
+
+@pytest.mark.parametrize("variant", ("boxing", "mma_two_hard_power", "high_fatigue", "three_days"))
+def test_open_week_four_physical_membership_and_volume_never_exceed_week_three(variant):
+    spec = _spec(variant)["weekly_session_plan"]["weeks"]
+    def physical(week):
+        return {
+            (session["weekday"], session["role_key"]): {
+                e["name"]: e["prescription"]
+                for e in session.get("exercises") or []
+            }
+            for session in week["sessions"]
+            if session.get("category") in {"strength", "conditioning"}
+        }
+    previous, deload = physical(spec[2]), physical(spec[3])
+    for key, names in deload.items():
+        if key not in previous:
+            continue  # Coach-locked roles are scheduled by existing owners.
+        assert set(names) <= set(previous[key]), (variant, key)
+        for exercise, prescription in names.items():
+            before = previous[key][exercise]
+            first = re.match(r"^\s*(\d+)\s*(?:[-–]|[x×]|[A-Za-z])", before)
+            after = re.match(r"^\s*(\d+)\s*(?:[-–]|[x×]|[A-Za-z])", prescription)
+            if first and after:
+                assert int(after.group(1)) <= max(1, (int(first.group(1)) + 1) // 2), (variant, key, exercise)
