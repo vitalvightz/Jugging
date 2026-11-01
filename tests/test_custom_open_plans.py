@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 
 from api.contracts.injury_policy import reconcile_session_prescription
-from api.models import PlanRequest
+from api.models import PlanRequest, TodayCheckinRequest
 from api.plan_mappers import _map_plan_detail, _map_profile_row
 from api.services.active_plan import set_active_plan
 from api.services.custom_plans import custom_open_plan_result
@@ -178,8 +178,9 @@ def test_intake_free_prestart_checkin_uses_custom_phase_without_starting_session
     assert before.today.next_session["calendar_date"] == "2026-11-02"
     assert before.session_hold is None
     checkin = submit_today_checkin(store, athlete_id="athlete-1", athlete_timezone=None,
-                                   payload={"plan_id": plan_id, "phase": before.active_plan["phase"],
-                                            "sleep": "good", "body": "normal", "pain": "none"}, now=now)
+                                   payload=TodayCheckinRequest(plan_id=plan_id, phase=before.active_plan["phase"],
+                                                               sleep="good", body="normal", pain="none").model_dump(),
+                                   now=now)
     assert checkin["plan_id"] == plan_id and checkin["phase"] == "GPP"
     after = build_today_command_view(store, athlete_id="athlete-1", athlete_timezone=None, now=now)
     assert after.today.session_scope == "next"
