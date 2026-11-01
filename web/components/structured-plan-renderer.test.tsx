@@ -14,6 +14,7 @@ import {
   weekStripCenterOffset,
 } from "./structured-plan-renderer";
 import { openBlockWeekIntent } from "@/lib/open-block";
+import { PlanCalendar } from "./plan-calendar";
 import { formatPlanLabel } from "@/lib/plan-labels";
 import type {
   PlanScheduleContext,
