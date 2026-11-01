@@ -772,25 +772,19 @@ export function CustomPlanBuilder({ accessToken, planId, onboarding = null }: { 
             <section className={styles.exerciseContext} aria-label="Exercise details"><h3>Exercise details</h3>
             {editing.exercise.origin === "manual" ? (
               <>
-                {(["name", "equipment", "notes"] as const).map((field) => (
-                  <label key={field}>
-                    <span>{field === "name" ? "Exercise name" : `${field} (optional)`}</span>
-                    <input
-                      required={field === "name"}
-                      maxLength={field === "name" ? 100 : field === "notes" ? 2000 : 120}
-                      value={(editing.exercise as ManualExercise)[field] ?? ""}
-                      onChange={(e) =>
-                        setEditing({
-                          ...editing,
-                          exercise: {
-                            ...editing.exercise,
-                            [field]: e.target.value,
-                          },
-                        })
-                      }
-                    />
-                  </label>
-                ))}
+                <label>
+                  <span>Exercise name</span>
+                  <input
+                    required
+                    maxLength={100}
+                    value={editing.exercise.name}
+                    onChange={(e) => {
+                      const name = e.target.value;
+                      setEditing(current => current?.exercise.origin === "manual"
+                        ? { ...current, exercise: { ...current.exercise, name } } : current);
+                    }}
+                  />
+                </label>
                 {editing.exercise.community_revision_id ? <button type="button" className="ghost-button" onClick={() => setCommunityPreview(editing.exercise.origin === 'manual' ? editing.exercise.community_revision_id ?? undefined : undefined)}>View community exercise</button> :
                   <div className={styles.visibility}>
                     <p><strong>{editing.exercise.community_id ? 'Shared with community' : 'Only you can see this exercise'}</strong>
