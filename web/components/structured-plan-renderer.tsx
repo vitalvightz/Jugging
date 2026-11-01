@@ -2148,7 +2148,8 @@ function CalendarDayPanel({
   // coach-led contact block beside app work gets its own row ahead of it.
   const sessionless = sessions.length === 0 ? classifySessionlessDay(day) : null;
   const contact = sessions.length > 0 ? getCoachLedContactView(day) : null;
-  const coachTitle = sessionless?.title ?? contact?.title ?? null;
+  const restOnly = sessions.length === 0 && sessionless?.kind === "rest";
+  const coachTitle = restOnly ? null : sessionless?.title ?? contact?.title ?? null;
   type Item = { key: string; title: string; detail: string | null; glyph: ExerciseGlyphName; session?: StructuredSession };
   const items: Item[] = [
     ...(coachTitle ? [{ key: "coach", title: coachTitle, detail: null, glyph: "strength" as const }] : []),
@@ -2172,7 +2173,7 @@ function CalendarDayPanel({
     }),
   ];
   const opened = items.find(item => item.key === openKey) ?? null;
-  const coachOnly = sessions.length === 0;
+  const coachOnly = sessions.length === 0 && !restOnly;
 
   return (
     <section className="sp-card cm-cal-day" aria-label={`${heading} sessions`}>
@@ -2181,8 +2182,10 @@ function CalendarDayPanel({
           {heading}
           {countdown ? <span className="cm-cal-day-countdown">{countdown}</span> : null}
         </h3>
-        {coachOnly ? (
-          <span className="cm-cal-day-kind"><span className="cm-cal-dot" data-state={sessionless?.kind === "rest" ? "rest" : "coach"} aria-hidden="true" />{sessionless?.kind === "rest" ? "Rest day" : "Coach / gym day"}</span>
+        {restOnly ? (
+          <span className="cm-cal-day-kind"><span className="cm-cal-dot" data-state="rest" aria-hidden="true" />{day.day_type === "recovery" ? "Recovery day" : "Rest day"}</span>
+        ) : coachOnly ? (
+          <span className="cm-cal-day-kind"><span className="cm-cal-dot" data-state="coach" aria-hidden="true" />Coach / gym day</span>
         ) : completion.total > 0 ? <CompletionTag completion={completion} /> : null}
       </header>
       <p className="cm-cal-day-count">{items.length} {items.length === 1 ? "session" : "sessions"}</p>
