@@ -1286,6 +1286,8 @@ def _open_plan_membership_violations(
     )
     scheduled = {int(w["week"]): w for w in programmed["weeks"] if isinstance(w, dict) and isinstance(w.get("week"), int)} if authoritative else {}
     source_sessions = {} if authoritative else _open_source_sessions(source)
+    if not authoritative and not source_sessions:
+        return []  # No verifiable session cards; retain legacy contract/repair behaviour.
     violations: list[str] = []
     for position, week in enumerate(_plan_weeks(plan), 1):
         if not isinstance(week, dict):
