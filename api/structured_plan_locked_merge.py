@@ -775,10 +775,10 @@ def _remove_repeated_tactical_physical_blocks(plan: dict[str, Any]) -> None:
                     if host is None or block.get("block_type") == "mindset":
                         kept.append(block)
                         continue
-                    for field in ("coaching_cues", "stop_rules"):
-                        if block.get(field):
-                            values = list(host.get(field) or [])
-                            host[field] = values + [item for item in block[field] if item not in values]
+                    for name in ("coaching_cues", "stop_rules"):
+                        if block.get(name):
+                            values = list(host.get(name) or [])
+                            host[name] = values + [item for item in block[name] if item not in values]
                 session["blocks"] = kept
 
 
