@@ -40,6 +40,19 @@ test("rest-day Add session shortcut opens the existing editor on the selected we
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
   await expect.poll(() => saved.get(original.id)?.sessions.filter(s => s.weekday === "Sunday").map(s => s.name)).toEqual(["Sunday conditioning"]);
 });
+test("rest-day shortcut respects the existing 28-session limit", async ({ page, baseURL }) => {
+  test.skip(Boolean(process.env.CUSTOM_PLAN_TEST_API), "Uses a saved draft fixture.");
+  const { saved } = await setup(page, baseURL!);
+  const original = demo();
+  original.sessions = Array.from({ length: 28 }, (_, index) => ({
+    ...original.sessions[0], id: crypto.randomUUID(), name: `Session ${index + 1}`,
+  }));
+  saved.set(original.id, original);
+  await page.goto(`/plans/custom?plan=${original.id}&addSession=Sun`);
+  await expect(page.getByText("This plan already has the maximum 28 sessions.")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "New session" })).toHaveCount(0);
+});
+
 for (const width of [320, 390, 1280]) {
   test(`Repair Demo, editable rounds, incomplete workout route and footer (${width}px)`, async ({ page, baseURL }) => {
     test.skip(Boolean(process.env.CUSTOM_PLAN_TEST_API), "This case exercises the offline saved-draft fixture.");
