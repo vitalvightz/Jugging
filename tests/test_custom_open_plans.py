@@ -1,7 +1,7 @@
 """Custom prescriptions use the shared Open Plan execution and history paths."""
 import copy
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -14,7 +14,8 @@ from api.services.custom_plans import custom_open_plan_result
 from api.services.open_plan_timeline import project_open_structured_plan
 from api.services.plan_schedule import resolve_current_week
 from api.services.streaks import qualifying_training_days
-from api.services.today_service import _structured_day_for_training_day, resolve_training_day
+from api.services.today_service import (_structured_day_for_training_day, build_today_command_view,
+                                        resolve_training_day, submit_today_checkin)
 from api.services.training_library import cache
 from api.structured_plan_models import StructuredTrainingPlan
 from tests.support import _build_client, clear_compliance
@@ -156,6 +157,32 @@ def test_self_built_plan_works_without_onboarding_intake():
     assert logged.status_code == 201, logged.text
     complete(client, plan_id, session["session_id"], "done")
     assert any(log["status"] == "done" for log in store.session_completions["athlete-1"])
+    history = client.get("/api/today/session-completions", headers=AUTH)
+    assert history.status_code == 200, history.text
+    assert any(log["session_id"] == session["session_id"] for log in history.json())
+
+
+def test_intake_free_prestart_checkin_uses_custom_phase_without_starting_session():
+    client, store, _ = _build_client()
+    _, plan_id = publish(client, body("Monday"))
+    row = store.plans[plan_id]
+    assert row["intake_id"] is None
+    row["created_at"] = "2026-11-01T12:00:00+00:00"
+    row["planning_brief"]["athlete_snapshot"]["plan_creation_weekday"] = "Sun"
+    assert client.post(f"/api/plans/{plan_id}/set-active", headers=AUTH).status_code == 200
+
+    now = datetime(2026, 11, 1, 14, tzinfo=timezone.utc)
+    before = build_today_command_view(store, athlete_id="athlete-1", athlete_timezone=None, now=now)
+    assert before.active_plan["phase"] == "GPP"
+    assert before.today.session_scope == "next"
+    assert before.today.next_session["calendar_date"] == "2026-11-02"
+    assert before.session_hold is None
+    checkin = submit_today_checkin(store, athlete_id="athlete-1", athlete_timezone=None,
+                                   payload={"plan_id": plan_id, "phase": before.active_plan["phase"],
+                                            "sleep": "good", "body": "normal", "pain": "none"}, now=now)
+    assert checkin["plan_id"] == plan_id and checkin["phase"] == "GPP"
+    after = build_today_command_view(store, athlete_id="athlete-1", athlete_timezone=None, now=now)
+    assert after.today.session_scope == "next"
 
 
 def test_intake_free_publication_still_requires_age_and_terms():
