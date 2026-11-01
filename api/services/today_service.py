@@ -2146,7 +2146,8 @@ def _normalized_structured_phase(value: Any) -> str:
 
 
 def _structured_phase_for_day(plan_row: Mapping[str, Any], training_day: str) -> str:
-    for week in _structured_plan_weeks(plan_row, training_day=training_day):
+    weeks = _structured_plan_weeks(plan_row, training_day=training_day)
+    for week in weeks:
         if not isinstance(week, Mapping):
             continue
         for day in _iter_mapping_items(week.get("days")):
@@ -2157,6 +2158,13 @@ def _structured_phase_for_day(plan_row: Mapping[str, Any], training_day: str) ->
                 return _normalized_structured_phase(day.get("phase_label")) or _normalized_structured_phase(
                     week.get("phase_label")
                 )
+    # Before a self-built plan's first day, there is no dated day to match.
+    # Use its authored first-week phase for readiness, without unlocking training.
+    from api.plan_mappers import _decode_structured_text
+    if (_open_plan_has_not_started(plan_row, training_day)
+            and (_decode_structured_text(plan_row.get("planning_brief")) or {}).get("custom_plan")
+            and weeks):
+        return _normalized_structured_phase(weeks[0].get("phase_label"))
     return ""
 
 
