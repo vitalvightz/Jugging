@@ -166,22 +166,35 @@ def _open_source_sessions(source: str) -> dict[tuple, list[list[str]]]:
     sections: dict[tuple, list[list[str]]] = {}
     current = None
     week = None
+    in_cards = False
     for line in source.splitlines():
         heading = re.sub(r"^\s*#{1,6}\s*", "", line).strip()
+        if re.match(r"Session Cards\b", heading, re.I):
+            in_cards, current = True, None
+            continue
+        if re.match(r"(?:4[- ]Week Development Block|Progression Rules|Priority Hierarchy)\b", heading, re.I):
+            in_cards, current = False, None
         if match := re.match(r"Week\s+(\d+)\b", heading, re.I):
             week, current = int(match[1]), None
-        elif match := re.match(r"([A-Za-z]+)\s*(?:[—–]|\s-\s)\s*(.+)$", heading):
-            weekday = normalize_weekday(match[1])
+        else:
+            # Older Open Plans used "Strength. Monday" or "Monday. Strength"
+            # instead of "Monday — Strength". Read those only inside cards;
+            # weekly-rhythm summaries must never become exercise authority.
+            match = re.match(r"([A-Za-z]+)\s*(?:[—–]|\s-\s)\s*(.+)$", heading)
+            weekday, title = (normalize_weekday(match[1]), match[2]) if match else (None, None)
+            if not weekday and in_cards:
+                if match := re.match(r"(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\.\s+(.+)$", heading, re.I):
+                    weekday, title = normalize_weekday(match[1]), match[2]
+                elif match := re.match(r"(.+?)\.\s+(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$", heading, re.I):
+                    weekday, title = normalize_weekday(match[2]), match[1]
             if weekday:
                 current = [line]
-                key = (week, weekday, tuple(sorted(identity_tokens(match[2]))))
+                key = (week, weekday, tuple(sorted(identity_tokens(title))))
                 sections.setdefault(key, []).append(current)
-            else:
+            elif _SOURCE_HEADING_RE.match(line):
                 current = None
-        elif _SOURCE_HEADING_RE.match(line):
-            current = None
-        elif current is not None:
-            current.append(line)
+            elif current is not None:
+                current.append(line)
     return sections
 
 
@@ -257,7 +270,7 @@ def project_source_adjustments(plan: dict[str, Any], source: str) -> dict[str, A
     return plan
 
 
-def _explicit_prescription_violations(plan: dict[str, Any], source: str) -> list[str]:
+def _explicit_prescription_violations(plan: dict[str, Any], source: str, planning_brief: Any = None) -> list[str]:
     """Reject only structured fields that demonstrably disappeared from raw.
 
     The raw plan remains authoritative. This never fills or invents a value; it
@@ -267,8 +280,19 @@ def _explicit_prescription_violations(plan: dict[str, Any], source: str) -> list
     violations: list[str] = []
     from .structured_plan_deterministic_fallback import _source_block, _source_lines_for_session
     source_days = _source_day_section_lines(source)
-    for week in plan.get("weeks") or []:
+    open_sessions = _open_source_sessions(source) if not source_days else {}
+    spec = (planning_brief or {}).get("open_plan_spec") or {} if isinstance(planning_brief, dict) else {}
+    planner_weeks = (spec.get("weekly_session_plan") or {}).get("weeks") or []
+    # Later weeks with explicit deterministic prescriptions may legitimately
+    # differ from the Week 1 source prose. That prose is not their dose owner.
+    source_is_reusable_week = bool(planner_weeks and spec.get("plan_type") == "open_ongoing_system")
+    from fightcamp.structured_session_identity import identity_tokens
+    from fightcamp.weekly_schedule_view import normalize_weekday
+
+    for position, week in enumerate(plan.get("weeks") or [], 1):
         if not isinstance(week, dict):
+            continue
+        if source_is_reusable_week and position > 1:
             continue
         for day in week.get("days") or []:
             if not isinstance(day, dict):
@@ -282,6 +306,17 @@ def _explicit_prescription_violations(plan: dict[str, Any], source: str) -> list
                     name = str(block.get("display_name") or "").strip()
                     day_lines = source_days.get(_dday_num(day.get("countdown_label")), [])
                     scoped = _source_lines_for_session(day_lines, str(session.get("title") or ""))
+                    if open_sessions:
+                        weekday = normalize_weekday(day.get("weekday"))
+                        title = set(identity_tokens(session.get("title")))
+                        candidates = [
+                            lines for (source_week, source_day, source_title), sections in open_sessions.items()
+                            if source_week in (None, week.get("week_index") or position)
+                            and source_day == weekday
+                            and (not title or set(source_title) <= title or title <= set(source_title))
+                            for lines in sections
+                        ]
+                        scoped = candidates[0] if len(candidates) == 1 else None
                     if day_lines and scoped is None:
                         continue  # A same-day source session cannot be identified.
                     segment = _source_block_segment("\n".join(scoped) if scoped else source, name)
@@ -1214,13 +1249,102 @@ def _block_violation(block: Any, day_num: int | None, index: _SourceIndex) -> st
     return None
 
 
+def _open_plan_membership_violations(
+    plan: dict[str, Any], source: str, planning_brief: Any,
+) -> list[str]:
+    """Block converter-added physical exercises on undated, generated Open Plans.
+
+    A dated plan has its D-day gate; athlete-owned custom plans have their own
+    authority. A deterministic four-week plan owns its exact week membership;
+    otherwise the approved session cards are a reusable weekly prescription.
+    Candidate pools and week-goal prose are never exercise authority.
+    """
+    if not isinstance(planning_brief, dict) or planning_brief.get("custom_plan"):
+        return []
+    spec = planning_brief.get("open_plan_spec") or {}
+    if not isinstance(spec, dict) or spec.get("plan_type") != "open_ongoing_system":
+        return []
+
+    from .services.exercise_media import normalize_exercise_key
+    from fightcamp.structured_session_identity import identity_tokens
+    from fightcamp.weekly_schedule_view import normalize_weekday
+
+    def identity(name: Any) -> str:
+        # Only strip an explicit *dose* in parentheses. (Speed), (Heavy), and
+        # other movement qualifiers are part of the exercise's identity.
+        name = re.sub(
+            r"\s*\(\s*\d+\s*[x×]\s*\d+\s*(?:s|sec(?:onds?)?|min(?:utes?)?)\s*\)$",
+            "", str(name or "").strip(), flags=re.I,
+        )
+        return normalize_exercise_key(name)
+
+    programmed = spec.get("weekly_session_plan") or {}
+    authoritative = (
+        isinstance(programmed, dict)
+        and programmed.get("authority") == "deterministic_open_development_block"
+        and isinstance(programmed.get("weeks"), list)
+    )
+    scheduled = {int(w["week"]): w for w in programmed["weeks"] if isinstance(w, dict) and isinstance(w.get("week"), int)} if authoritative else {}
+    source_sessions = {} if authoritative else _open_source_sessions(source)
+    if not authoritative and not source_sessions:
+        return []  # No verifiable session cards; retain legacy contract/repair behaviour.
+    violations: list[str] = []
+    for position, week in enumerate(_plan_weeks(plan), 1):
+        if not isinstance(week, dict):
+            continue
+        week_number = week.get("week_index") or position
+        for day in week.get("days") or []:
+            if not isinstance(day, dict):
+                continue
+            weekday = normalize_weekday(day.get("weekday"))
+            for session in day.get("sessions") or []:
+                if not isinstance(session, dict):
+                    continue
+                # A deterministic-* id may be stamped onto a converted session;
+                # it is not evidence that its exercise membership was selected.
+                title_tokens = set(identity_tokens(session.get("title")))
+                allowed: set[str] = set()
+                if authoritative:
+                    for item in scheduled.get(week_number, {}).get("sessions") or []:
+                        if normalize_weekday(item.get("weekday")) == weekday:
+                            allowed.update(identity(e.get("name")) for e in item.get("exercises") or [] if isinstance(e, dict))
+                else:
+                    for (source_week, source_day, source_title), sections in source_sessions.items():
+                        if source_week not in (None, week_number) or source_day != weekday:
+                            continue
+                        heading_tokens = set(source_title)
+                        if title_tokens and heading_tokens and not (
+                            title_tokens <= heading_tokens or heading_tokens <= title_tokens
+                        ):
+                            continue
+                        for section in sections:
+                            for line in section[1:]:
+                                match = re.match(r"^\s*[-*•]\s+(.+?)\s*(?::|\.\s|\s+[—–]\s+)", line)
+                                if match:
+                                    allowed.add(identity(match[1]))
+                for block in session.get("blocks") or []:
+                    if (not isinstance(block, dict)
+                            or str(block.get("block_type")) not in _EXERCISE_BLOCK_TYPES - {"rehab"}
+                            or block.get("athlete_change")
+                            or block.get("prescription_source") == "athlete"):
+                        continue
+                    name = str(block.get("display_name") or "").strip()
+                    if not identity(name) or identity(name) not in allowed:
+                        violations.append(
+                            f"{INTRODUCED}: open week {week_number} {weekday} "
+                            f"exercise {name!r} is not authorised by its source session"
+                        )
+    return list(dict.fromkeys(violations))
+
+
 def _check(structured_plan: Any, source_markdown: str, planning_brief: Any = None) -> list[str]:
     plan = structured_plan if isinstance(structured_plan, dict) else {}
     source = str(source_markdown or "")
     if not plan:
         return []
     locked_violations = _locked_content_violations(plan, source, planning_brief)
-    prescription_violations = _explicit_prescription_violations(plan, source)
+    prescription_violations = _explicit_prescription_violations(plan, source, planning_brief)
+    open_violations = _open_plan_membership_violations(plan, source, planning_brief)
     if not _ANY_DDAY_RE.search(source):
         # Card-first hard gate: a card that claims a countdown structure cannot be
         # proven faithful against source text carrying no D-day marker at all, so
@@ -1228,17 +1352,17 @@ def _check(structured_plan: Any, source_markdown: str, planning_brief: Any = Non
         # (the raw plan_text fallback / review hold takes over). A card that makes
         # no countdown claim has nothing to project, so the schema gate stands.
         if _card_claims_countdown(plan):
-            return locked_violations + prescription_violations + [
+            return locked_violations + prescription_violations + open_violations + [
                 f"{COUNTDOWN}: source text carries no D-day marker; "
                 "card countdown is unverifiable"
             ]
-        return locked_violations + prescription_violations
+        return locked_violations + prescription_violations + open_violations
 
     index = _source_index(source, planning_brief)
     if index is None:
         return locked_violations + prescription_violations
 
-    violations: list[str] = [*locked_violations, *prescription_violations]
+    violations: list[str] = [*locked_violations, *prescription_violations, *open_violations]
     weeks = _plan_weeks(plan)
     calendar_only = _calendar_only_ddays(weeks)
     for week in weeks:

@@ -2249,3 +2249,131 @@ def test_prompt_requires_valid_or_omitted_check_ins():
     assert "daily_check_ins" in prompt
     assert "fully valid or omitted" in prompt
     assert "partial check-in" in prompt
+
+
+# Source-authority regression: 1 Nov 2026 open plan introduced four Week 4 lifts.
+def _open_membership_case():
+    from api.structured_plan_faithfulness import check_structured_faithfulness
+
+    plan = _open_plan_candidate(weekday="Sun")
+    plan["weeks"][0]["days"][0]["sessions"][0]["title"] = "Strength"
+    block = plan["weeks"][0]["days"][0]["sessions"][0]["blocks"][0]
+    block["display_name"] = "Heavy RDL → Broad Jump"
+    block["block_type"] = "strength_speed"
+    brief = _open_plan_brief("Sunday")
+    source = "Session cards\nSunday - Strength\n- Heavy RDL → Broad Jump: prescribed strength contrast.\n- Sled Push (Speed): 3 x 5 sec.\n"
+    return plan, brief, source, check_structured_faithfulness
+
+
+def test_open_plan_without_countdown_rejects_invented_week_four_exercises():
+    plan, brief, source, check = _open_membership_case()
+    for index in range(2, 5):
+        week = copy.deepcopy(plan["weeks"][0])
+        week["week_index"] = index
+        plan["weeks"].append(week)
+    strength = plan["weeks"][3]["days"][0]["sessions"][0]
+    for name in ("Tire Flip", "Landmine Rotational Press", "Woodchopper (Cable)", "Lat Pulldown"):
+        block = copy.deepcopy(strength["blocks"][0])
+        block["display_name"] = name
+        strength["blocks"].append(block)
+    # This is how the saved incident actually looks: deterministic-* IDs can
+    # be stamped after conversion and must never exempt invented membership.
+    strength["session_id"] = "deterministic-85-primary_strength_day-8"
+    for index, block in enumerate(strength["blocks"]):
+        block["block_id"] = f"deterministic-85-primary_strength_day-8-{index}"
+    violations = check(plan, source, brief)
+    assert len([v for v in violations if v.startswith("INTRODUCED: open week 4")]) == 4
+
+
+def test_open_plan_source_matches_exact_identity_and_dose_title_format():
+    plan, brief, source, check = _open_membership_case()
+    assert not any(v.startswith("INTRODUCED") for v in check(plan, source, brief))
+    block = plan["weeks"][0]["days"][0]["sessions"][0]["blocks"][0]
+    block["display_name"] = "Sled Push (Heavy)"
+    assert any(v.startswith("INTRODUCED") for v in check(plan, source, brief))
+    block["display_name"] = "Sled Push (Speed)"
+    assert not any(v.startswith("INTRODUCED") for v in check(plan, source, brief))
+    plan["weeks"][0]["days"][0]["weekday"] = "Mon"
+    assert any(v.startswith("INTRODUCED") for v in check(plan, source, brief))
+
+    plan["weeks"][0]["days"][0]["weekday"] = "Thu"
+    plan["weeks"][0]["days"][0]["sessions"][0]["title"] = "Alactic sharpness"
+    block["display_name"] = "Short Hill Sprints (5x10s)"
+    source += "Thursday - Alactic sharpness (Short hill sprints)\n- Short Hill Sprints (5 x 10 sec): 5 rounds.\n"
+    assert not any(v.startswith("INTRODUCED") for v in check(plan, source, brief))
+
+
+def test_open_plan_planner_owned_four_week_exercise_is_authorised():
+    plan, brief, source, check = _open_membership_case()
+    brief["open_plan_spec"]["weekly_session_plan"] = {
+        "authority": "deterministic_open_development_block",
+        "weeks": [{"week": 1, "sessions": [
+            {"weekday": "Sunday", "exercises": [{"name": "Tire Flip"}]},
+        ]}],
+    }
+    plan["weeks"][0]["days"][0]["sessions"][0]["blocks"][0]["display_name"] = "Tire Flip"
+    assert not any(v.startswith("INTRODUCED") for v in check(plan, source, brief))
+    plan["weeks"][0]["days"][0]["sessions"][0]["blocks"][0]["display_name"] = "Lat Pulldown"
+    assert any(v.startswith("INTRODUCED") for v in check(plan, source, brief))
+
+
+def test_open_plan_custom_and_dated_paths_remain_outside_new_gate():
+    plan, brief, source, check = _open_membership_case()
+    plan["weeks"][0]["days"][0]["sessions"][0]["blocks"][0]["display_name"] = "Tire Flip"
+    assert any(v.startswith("INTRODUCED") for v in check(plan, source, brief))
+    assert not any(v.startswith("INTRODUCED") for v in check(plan, source, {**brief, "custom_plan": True}))
+    assert not any(v.startswith("INTRODUCED") for v in check(plan, source, {}))
+
+
+def test_open_plan_unapproved_conversion_falls_back_before_publishing():
+    plan, brief, source, _ = _open_membership_case()
+    plan["weeks"][0]["days"][0]["sessions"][0]["blocks"][0]["display_name"] = "Tire Flip"
+    outcome = build_structured_plan_outcome(plan, raw_markdown=source, planning_brief=brief)
+    assert outcome.status == "invalid_fallback_used"
+    assert any("INTRODUCED: open week" in error for error in outcome.errors)
+    assert outcome.structured_plan is None
+
+
+def test_saved_open_plan_with_unapproved_exercise_is_not_returned_to_today():
+    from api.services.effective_structured_plan import resolve_effective_structured_plan
+
+    plan, brief, source, _ = _open_membership_case()
+    row = {"structured_plan": plan, "planning_brief": brief, "plan_text": source, "fight_date": None}
+    assert resolve_effective_structured_plan(row) is not None
+    plan["weeks"][0]["days"][0]["sessions"][0]["blocks"][0]["display_name"] = "Tire Flip"
+    assert resolve_effective_structured_plan(row) is None
+
+
+def test_legacy_open_session_heading_formats_are_readable_without_guessing():
+    plan, brief, _, check = _open_membership_case()
+    day = plan["weeks"][0]["days"][0]
+    day["weekday"] = "Mon"
+    src = "Session Cards\nStrength. Monday\n- Heavy RDL → Broad Jump: 3 rounds.\n"
+    assert not any(v.startswith("INTRODUCED") for v in check(plan, src, brief))
+    src = "Session Cards\nMonday. Strength\n- Heavy RDL → Broad Jump: 3 rounds.\n"
+    assert not any(v.startswith("INTRODUCED") for v in check(plan, src, brief))
+    day["sessions"][0]["blocks"][0]["display_name"] = "Tire Flip"
+    assert any(v.startswith("INTRODUCED") for v in check(plan, src, brief))
+
+
+def test_unparseable_legacy_card_does_not_disappear_during_read():
+    from api.services.effective_structured_plan import resolve_effective_structured_plan
+
+    plan, brief, _, _ = _open_membership_case()
+    row = {
+        "structured_plan": plan,
+        "planning_brief": brief,
+        "plan_text": "Historic source without any identifiable session cards",
+        "fight_date": None,
+    }
+    assert resolve_effective_structured_plan(row) is not None
+
+
+def test_open_plan_prescribed_sets_cannot_be_increased_by_conversion():
+    plan, brief, _, check = _open_membership_case()
+    block = plan["weeks"][0]["days"][0]["sessions"][0]["blocks"][0]
+    block["display_name"] = "Barbell Back Squat"
+    source = "Session Cards\nSunday - Strength\n- Barbell Back Squat: 3 sets x 5 reps; rest 90 sec; RPE 7.\n"
+    violations = check(plan, source, brief)
+    assert not any(v.startswith("INTRODUCED") for v in violations)
+    assert any(v.startswith("PRESCRIPTION_CHANGED") for v in violations)
