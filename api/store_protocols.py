@@ -78,7 +78,7 @@ class PlanStore(Protocol):
         self,
         *,
         athlete_id: str,
-        intake_id: str,
+        intake_id: str | None,
         request: PlanRequest,
         result: dict[str, Any],
         plan_id: str | None = None,
