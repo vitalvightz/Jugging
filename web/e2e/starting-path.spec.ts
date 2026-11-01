@@ -217,7 +217,7 @@ for (const width of [320, 390, 1280]) {
     else {
       await expect(quickActions.getByRole("link", { name: "Round timer" })).toBeVisible();
       await expect(quickActions.getByRole("link", { name: "Generate my S&C plan" })).toBeVisible();
-      await expect(quickActions.getByRole("link", { name: "Build your own plan" })).toHaveAttribute("href", "/plans/custom");
+      await expect(quickActions.getByRole("link", { name: "Add my plan" })).toHaveAttribute("href", "/plans/custom");
     }
     // The daily check-in is the same as a planned athlete's, sent plan-free.
     await expect(page.getByRole("list", { name: "Today command status" })).toContainText("Check-in");
@@ -370,7 +370,7 @@ for (const width of [320, 390, 1280]) {
     await expect(status).not.toContainText("Not assessed");
     await expect(page.locator("#today-checkin")).toBeVisible();
     if (width > 720) await expect(page.getByRole("navigation", { name: "Quick actions" }).getByRole("link", { name: "View plan" })).toHaveAttribute("href", "/plans/plan-9");
-    await expect(page.getByRole("navigation", { name: "Quick actions" }).getByRole("link", { name: "Build your own plan" })).toHaveCount(0);
+    await expect(page.getByRole("navigation", { name: "Quick actions" }).getByRole("link", { name: "Add my plan" })).toHaveCount(0);
     // Shared sections are the same components as the no-plan state.
     await expect(page.locator("#today-injury")).toContainText("No injuries tracked.");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
