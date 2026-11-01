@@ -270,7 +270,7 @@ def project_source_adjustments(plan: dict[str, Any], source: str) -> dict[str, A
     return plan
 
 
-def _explicit_prescription_violations(plan: dict[str, Any], source: str) -> list[str]:
+def _explicit_prescription_violations(plan: dict[str, Any], source: str, planning_brief: Any = None) -> list[str]:
     """Reject only structured fields that demonstrably disappeared from raw.
 
     The raw plan remains authoritative. This never fills or invents a value; it
@@ -281,11 +281,18 @@ def _explicit_prescription_violations(plan: dict[str, Any], source: str) -> list
     from .structured_plan_deterministic_fallback import _source_block, _source_lines_for_session
     source_days = _source_day_section_lines(source)
     open_sessions = _open_source_sessions(source) if not source_days else {}
+    spec = (planning_brief or {}).get("open_plan_spec") or {} if isinstance(planning_brief, dict) else {}
+    planner_weeks = (spec.get("weekly_session_plan") or {}).get("weeks") or []
+    # Later weeks with explicit deterministic prescriptions may legitimately
+    # differ from the Week 1 source prose. That prose is not their dose owner.
+    source_is_reusable_week = bool(planner_weeks and spec.get("plan_type") == "open_ongoing_system")
     from fightcamp.structured_session_identity import identity_tokens
     from fightcamp.weekly_schedule_view import normalize_weekday
 
     for position, week in enumerate(plan.get("weeks") or [], 1):
         if not isinstance(week, dict):
+            continue
+        if source_is_reusable_week and position > 1:
             continue
         for day in week.get("days") or []:
             if not isinstance(day, dict):
@@ -1334,7 +1341,7 @@ def _check(structured_plan: Any, source_markdown: str, planning_brief: Any = Non
     if not plan:
         return []
     locked_violations = _locked_content_violations(plan, source, planning_brief)
-    prescription_violations = _explicit_prescription_violations(plan, source)
+    prescription_violations = _explicit_prescription_violations(plan, source, planning_brief)
     open_violations = _open_plan_membership_violations(plan, source, planning_brief)
     if not _ANY_DDAY_RE.search(source):
         # Card-first hard gate: a card that claims a countdown structure cannot be
