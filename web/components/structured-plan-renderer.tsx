@@ -2203,7 +2203,7 @@ function CalendarDayPanel({
           </li>
         ))}
       </ul>
-      {addSessionHref ? <Link className="secondary-button" href={addSessionHref}>+ Add weekly session</Link> : null}
+      {addSessionHref ? <Link className="secondary-button" href={addSessionHref}>+ Add session</Link> : null}
       {opened ? (
         <InjuryDetailSheet title={opened.title} onClose={() => setOpenKey(null)}>
           <div className="injury-sheet-body cm-cal-day-sheet">
@@ -2376,7 +2376,7 @@ export function CampDayCard({
         ) : (
           <SessionlessDayCard day={day} showDayLabels={false} />
         )}
-        {addSessionHref ? <Link className="secondary-button" href={addSessionHref}>+ Add weekly session</Link> : null}
+        {addSessionHref ? <Link className="secondary-button" href={addSessionHref}>+ Add session</Link> : null}
       </div>
     </details>
   );
