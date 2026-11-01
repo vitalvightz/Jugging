@@ -1238,7 +1238,7 @@ def _open_plan_membership_violations(
         # Only strip an explicit *dose* in parentheses. (Speed), (Heavy), and
         # other movement qualifiers are part of the exercise's identity.
         name = re.sub(
-            r"\\s*\\(\\s*\\d+\\s*[x×]\\s*\\d+\\s*(?:s|sec(?:onds?)?|min(?:utes?)?)\\s*\\)$",
+            r"\s*\(\s*\d+\s*[x×]\s*\d+\s*(?:s|sec(?:onds?)?|min(?:utes?)?)\s*\)$",
             "", str(name or "").strip(), flags=re.I,
         )
         return normalize_exercise_key(name)
@@ -1280,7 +1280,7 @@ def _open_plan_membership_violations(
                             continue
                         for section in sections:
                             for line in section[1:]:
-                                match = re.match(r"^\\s*[-*•]\\s+(.+?)\\s*(?::|\\.\\s|\\s+[—–]\\s+)", line)
+                                match = re.match(r"^\s*[-*•]\s+(.+?)\s*(?::|\.\s|\s+[—–]\s+)", line)
                                 if match:
                                     allowed.add(identity(match[1]))
                 for block in session.get("blocks") or []:
