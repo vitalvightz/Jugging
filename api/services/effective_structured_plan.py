@@ -334,11 +334,21 @@ def _resolve_effective_structured_plan(
             # Never let a schema-valid but invented workout reach Plan/Today/logs.
             spec = brief.get("open_plan_spec") or {}
             if not brief.get("custom_plan") and isinstance(spec, dict) and spec.get("plan_type") == "open_ongoing_system":
-                from api.structured_plan_faithfulness import INTRODUCED, INTERNAL, check_structured_faithfulness
-
-                findings = check_structured_faithfulness(
-                    dict(stored), raw_markdown or str(plan_row.get("plan_text") or ""), dict(brief),
+                from api.structured_plan_faithfulness import (
+                    INTRODUCED, INTERNAL, _open_source_sessions, check_structured_faithfulness,
                 )
+
+                source = raw_markdown or str(plan_row.get("plan_text") or "")
+                programmed = spec.get("weekly_session_plan") or {}
+                # Very old Open Plans have no parseable session cards or trusted
+                # week schedule. Their original display behaviour remains until
+                # those source formats can be verified; do not blank their Today.
+                if not _open_source_sessions(source) and not (
+                    isinstance(programmed, dict)
+                    and programmed.get("authority") == "deterministic_open_development_block"
+                ):
+                    return dict(stored)
+                findings = check_structured_faithfulness(dict(stored), source, dict(brief))
                 unsafe = [finding for finding in findings if finding.startswith((f"{INTRODUCED}: open week", f"{INTERNAL}:"))]
                 if unsafe:
                     logger.error(
