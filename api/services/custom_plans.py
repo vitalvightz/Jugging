@@ -257,10 +257,12 @@ def _dose_text(dose: dict) -> str:
 
 
 def publish_custom_plan(store, draft: dict, profile) -> dict:
+    from api.compliance_guards import require_onboarding_compliance
     from api.contracts.training_day import resolve_training_day_str
     from api.models import AthleteProfileInput, PlanRequest
     from api.services.open_plan_timeline import project_open_structured_plan
 
+    require_onboarding_compliance(profile)
     latest = store.get_latest_intake(profile.athlete_id)
     training_day = resolve_training_day_str(datetime.now(timezone.utc), athlete_timezone=profile.athlete_timezone)
     result = custom_open_plan_result(draft, profile, training_day=training_day)
