@@ -2337,3 +2337,28 @@ def test_saved_open_plan_with_unapproved_exercise_is_not_returned_to_today():
     assert resolve_effective_structured_plan(row) is not None
     plan["weeks"][0]["days"][0]["sessions"][0]["blocks"][0]["display_name"] = "Tire Flip"
     assert resolve_effective_structured_plan(row) is None
+
+
+def test_legacy_open_session_heading_formats_are_readable_without_guessing():
+    plan, brief, _, check = _open_membership_case()
+    day = plan["weeks"][0]["days"][0]
+    day["weekday"] = "Mon"
+    src = "Session Cards\nStrength. Monday\n- Heavy RDL → Broad Jump: 3 rounds.\n"
+    assert not any(v.startswith("INTRODUCED") for v in check(plan, src, brief))
+    src = "Session Cards\nMonday. Strength\n- Heavy RDL → Broad Jump: 3 rounds.\n"
+    assert not any(v.startswith("INTRODUCED") for v in check(plan, src, brief))
+    day["sessions"][0]["blocks"][0]["display_name"] = "Tire Flip"
+    assert any(v.startswith("INTRODUCED") for v in check(plan, src, brief))
+
+
+def test_unparseable_legacy_card_does_not_disappear_during_read():
+    from api.services.effective_structured_plan import resolve_effective_structured_plan
+
+    plan, brief, _, _ = _open_membership_case()
+    row = {
+        "structured_plan": plan,
+        "planning_brief": brief,
+        "plan_text": "Historic source without any identifiable session cards",
+        "fight_date": None,
+    }
+    assert resolve_effective_structured_plan(row) is not None
