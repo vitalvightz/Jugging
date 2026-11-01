@@ -182,7 +182,8 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
           const repaired = orderedDraft({ ...plan, sessions: plan.sessions.map(s => prepareCustomSession(s, onboarding)) });
           setDraft(repaired);
           const day = weekdays.find(value => value.slice(0, 3).toLowerCase() === addSessionDay?.toLowerCase());
-          if (day) {
+          if (day && repaired.sessions.length >= 28) setError("This plan already has the maximum 28 sessions.");
+          else if (day) {
             setChosenDay(day);
             setSessionFresh(true);
             setSessionEdit({ id: crypto.randomUUID(), name: "Training", weekday: day, session_type: "mixed", exercises: [] });
