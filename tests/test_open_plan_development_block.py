@@ -497,3 +497,16 @@ def test_open_week_four_physical_membership_and_volume_never_exceed_week_three(v
             after = re.match(r"^\s*(\d+)\s*(?:[-–]|[x×]|[A-Za-z])", prescription)
             if first and after:
                 assert int(after.group(1)) <= max(1, (int(first.group(1)) + 1) // 2), (variant, key, exercise)
+
+
+def test_open_deload_does_not_introduce_first_time_physical_appointments():
+    from fightcamp.stage2_payload import _deload_open_week
+
+    extra = {"role_key": "new_conditioning_day", "scheduled_day_hint": "Friday",
+             "category": "conditioning",
+             "selected_exercise_assignments": [{"name": "Heavy Bag Power Rounds",
+                                                  "effective_prescription": "4 rounds x 3 min"}]}
+    weeks = [{"session_roles": []} for _ in range(4)]
+    weeks[-1]["session_roles"].append(extra)
+    assert _deload_open_week({"weeks": weeks})
+    assert extra["selected_exercise_assignments"] == []
