@@ -166,22 +166,35 @@ def _open_source_sessions(source: str) -> dict[tuple, list[list[str]]]:
     sections: dict[tuple, list[list[str]]] = {}
     current = None
     week = None
+    in_cards = False
     for line in source.splitlines():
         heading = re.sub(r"^\s*#{1,6}\s*", "", line).strip()
+        if re.match(r"Session Cards\b", heading, re.I):
+            in_cards, current = True, None
+            continue
+        if re.match(r"(?:4[- ]Week Development Block|Progression Rules|Priority Hierarchy)\b", heading, re.I):
+            in_cards, current = False, None
         if match := re.match(r"Week\s+(\d+)\b", heading, re.I):
             week, current = int(match[1]), None
-        elif match := re.match(r"([A-Za-z]+)\s*(?:[—–]|\s-\s)\s*(.+)$", heading):
-            weekday = normalize_weekday(match[1])
+        else:
+            # Older Open Plans used "Strength. Monday" or "Monday. Strength"
+            # instead of "Monday — Strength". Read those only inside cards;
+            # weekly-rhythm summaries must never become exercise authority.
+            match = re.match(r"([A-Za-z]+)\s*(?:[—–]|\s-\s)\s*(.+)$", heading)
+            weekday, title = (normalize_weekday(match[1]), match[2]) if match else (None, None)
+            if not weekday and in_cards:
+                if match := re.match(r"(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\.\s+(.+)$", heading, re.I):
+                    weekday, title = normalize_weekday(match[1]), match[2]
+                elif match := re.match(r"(.+?)\.\s+(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$", heading, re.I):
+                    weekday, title = normalize_weekday(match[2]), match[1]
             if weekday:
                 current = [line]
-                key = (week, weekday, tuple(sorted(identity_tokens(match[2]))))
+                key = (week, weekday, tuple(sorted(identity_tokens(title))))
                 sections.setdefault(key, []).append(current)
-            else:
+            elif _SOURCE_HEADING_RE.match(line):
                 current = None
-        elif _SOURCE_HEADING_RE.match(line):
-            current = None
-        elif current is not None:
-            current.append(line)
+            elif current is not None:
+                current.append(line)
     return sections
 
 
