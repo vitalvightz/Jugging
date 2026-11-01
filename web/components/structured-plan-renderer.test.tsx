@@ -14,7 +14,6 @@ import {
   weekStripCenterOffset,
 } from "./structured-plan-renderer";
 import { openBlockWeekIntent } from "@/lib/open-block";
-import { PlanCalendar } from "./plan-calendar";
 import { formatPlanLabel } from "@/lib/plan-labels";
 import type {
   PlanScheduleContext,
@@ -119,15 +118,21 @@ test("owned custom plan rest and recovery days offer Add session without changin
   assert.doesNotMatch(generated, /Add session/);
 });
 
-test("calendar rest cells open only when explicitly enabled", () => {
-  const rows = [{ key: "week-1", label: "W1", weekPos: 0, cells: [{
-    key: "rest", iso: "2026-11-02", dayNumber: 2, column: 0, weekPos: 0,
-    dayIndex: 0, state: "rest" as const, isToday: false, label: "Rest",
-  }] }];
-  assert.doesNotMatch(renderToStaticMarkup(<PlanCalendar rows={rows} selectedWeekPos={0}
-    onSelectDay={() => {}} />), /aria-pressed/);
-  assert.match(renderToStaticMarkup(<PlanCalendar rows={rows} selectedWeekPos={0}
-    onSelectDay={() => {}} allowRestSelection />), /aria-pressed="false"/);
+test("custom calendar enables rest selection without disabling planned sessions or AI-plan restrictions", () => {
+  const plan: StructuredPlan = { weeks: [{ week_index: 1, days: [
+    { weekday: "Mon", date: "2026-11-02", day_type: "rest", sessions: [] },
+    { weekday: "Tue", date: "2026-11-03", day_type: "moderate", sessions: [
+      { session_id: "training", title: "Training", blocks: [{ block_id: "exercise", display_name: "Squat" }] },
+    ] },
+  ] }] };
+  const own = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} defaultView="calendar" customPlanId="custom-1"
+    today={new Date("2026-11-02T12:00:00")} />);
+  assert.match(own, /<td data-state="rest"><button/);
+  assert.match(own, /<td data-state="planned"><button/);
+  const generated = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} defaultView="calendar"
+    today={new Date("2026-11-02T12:00:00")} />);
+  assert.match(generated, /<td data-state="rest"><span/);
+  assert.match(generated, /<td data-state="planned"><button/);
 });
 
 test("legacy open neutral rows use the real training date on a recurring weekday match", () => {
