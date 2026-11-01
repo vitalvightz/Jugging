@@ -817,7 +817,7 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
                 return row
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="intake not found")
 
-    def create_plan(self, *, athlete_id: str, intake_id: str, request: PlanRequest, result: dict, plan_id: str | None = None) -> dict:
+    def create_plan(self, *, athlete_id: str, intake_id: str | None, request: PlanRequest, result: dict, plan_id: str | None = None) -> dict:
         profile = self.profiles[athlete_id]
         plan_id = plan_id or str(uuid4())
         result_status = str(result.get("status") or "generated").strip().lower()
