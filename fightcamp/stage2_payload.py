@@ -1980,12 +1980,19 @@ def _deload_open_week(role_map: dict[str, Any]) -> bool:
         if role.get("category") not in {"strength", "conditioning"}:
             continue
         before = previous.get(key(role))
+        if before is None:
+            same_role = [candidate for (role_key, _), candidate in previous.items()
+                         if role_key == role.get("role_key")]
+            before = same_role[0] if len(same_role) == 1 else None
         prior = {
             str(item.get("name") or ""): item
             for item in (before or {}).get("selected_exercise_assignments") or []
             if item.get("name")
         }
         if not prior:
+            changed |= bool(role.get("selected_exercise_assignments"))
+            role["selected_exercise_assignments"] = []
+            role["effective_strength_prescriptions"] = []
             continue
         prior_doses = {
             item.get("name"): item.get("effective_prescription")
