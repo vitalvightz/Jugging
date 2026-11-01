@@ -97,6 +97,44 @@ for (const openOngoing of [false, true]) {
   });
 }
 
+test("owned custom plan rest and recovery days offer Add session without changing AI plans", () => {
+  const plan: StructuredPlan = {
+    plan_metadata: { title: "Own plan", plan_type: "open_ongoing_system" },
+    weeks: [{ week_index: 1, days: [
+      { weekday: "Mon", date: "2026-11-02", day_type: "rest", sessions: [], today_card: { headline: "Rest day" } },
+      { weekday: "Tue", date: "2026-11-03", day_type: "recovery", sessions: [], today_card: { headline: "Recovery day" } },
+      { weekday: "Wed", date: "2026-11-04", day_type: "moderate", sessions: [
+        { session_id: "strength", title: "Strength", session_type: "strength_power", blocks: [] },
+      ] },
+    ] }],
+  };
+  const own = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} openOngoing customPlanId="draft-1"
+    today={new Date("2026-11-02T12:00:00")} />);
+  assert.match(own, /href="\/plans\/custom\?plan=draft-1&amp;addSession=Mon"/);
+  assert.match(own, /href="\/plans\/custom\?plan=draft-1&amp;addSession=Tue"/);
+  assert.equal(countOccurrences(own, "+ Add weekly session"), 2);
+  const generated = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} openOngoing
+    today={new Date("2026-11-02T12:00:00")} />);
+  assert.doesNotMatch(generated, /Add session/);
+});
+
+test("custom calendar enables rest selection without disabling planned sessions or AI-plan restrictions", () => {
+  const plan: StructuredPlan = { weeks: [{ week_index: 1, days: [
+    { weekday: "Mon", date: "2026-11-02", day_type: "rest", sessions: [] },
+    { weekday: "Tue", date: "2026-11-03", day_type: "moderate", sessions: [
+      { session_id: "training", title: "Training", blocks: [{ block_id: "exercise", display_name: "Squat" }] },
+    ] },
+  ] }] };
+  const own = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} defaultView="calendar" customPlanId="custom-1"
+    today={new Date("2026-11-02T12:00:00")} />);
+  assert.match(own, /<td data-state="rest"><button/);
+  assert.match(own, /<td data-state="planned"><button/);
+  const generated = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} defaultView="calendar"
+    today={new Date("2026-11-02T12:00:00")} />);
+  assert.match(generated, /<td data-state="rest"><span/);
+  assert.match(generated, /<td data-state="planned"><button/);
+});
+
 test("legacy open neutral rows use the real training date on a recurring weekday match", () => {
   const plan: StructuredPlan = { weeks: [{ days: [{ date: "2026-10-12", weekday: "Mon", day_type: "rest",
     today_card: { headline: "No session planned" }, sessions: [] }] }] };

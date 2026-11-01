@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import Link from "next/link";
 import { ExerciseGlyphIcon, type ExerciseGlyphName } from "./exercise-glyph";
 import { getRehabExerciseGuide, rehabExerciseTarget } from "@/lib/rehab-exercise-guide";
 
@@ -76,7 +77,7 @@ import {
 } from "@/lib/rehab-label";
 import { useTrainingDay } from "@/lib/use-training-day";
 import { describeRelativeDay, formatAppDate } from "@/lib/date-format";
-import { buildPlanCalendar, calendarCaption } from "@/lib/plan-calendar";
+import { buildPlanCalendar, calendarCaption, CALENDAR_WEEKDAYS } from "@/lib/plan-calendar";
 import { resolveFiniteWeekNumber } from "@/lib/plan-format";
 import { PlanCalendar } from "@/components/plan-calendar";
 import {
@@ -2057,6 +2058,12 @@ function RestDayRow({
   );
 }
 
+function customDaySessionHref(day: StructuredDay, customPlanId?: string | null): string | null {
+  if (!customPlanId || !["rest", "recovery"].includes(day.day_type ?? "")) return null;
+  const weekday = CALENDAR_WEEKDAYS.find(value => value.toLowerCase() === (cleanText(day.weekday) || weekdayLabel(day.date ?? null))?.slice(0, 3).toLowerCase());
+  return weekday ? `/plans/custom?plan=${encodeURIComponent(customPlanId)}&addSession=${weekday}` : null;
+}
+
 function CompletionTag({ completion }: { completion: Completion }) {
   if (completion.total === 0) {
     return null;
@@ -2126,7 +2133,8 @@ function CalendarDayPanel({
   onLogSession,
   openOngoing,
   weekNumber,
-}: DayCompletionOptions & { day: StructuredDay; openOngoing: boolean; weekNumber: number }) {
+  addSessionHref,
+}: DayCompletionOptions & { day: StructuredDay; openOngoing: boolean; weekNumber: number; addSessionHref?: string | null }) {
   const rehabLabelPolicy = useContext(RehabLabelContext);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const sessions = getSessions(day);
@@ -2140,7 +2148,8 @@ function CalendarDayPanel({
   // coach-led contact block beside app work gets its own row ahead of it.
   const sessionless = sessions.length === 0 ? classifySessionlessDay(day) : null;
   const contact = sessions.length > 0 ? getCoachLedContactView(day) : null;
-  const coachTitle = sessionless?.title ?? contact?.title ?? null;
+  const restOnly = sessions.length === 0 && sessionless?.kind === "rest";
+  const coachTitle = restOnly ? null : sessionless?.title ?? contact?.title ?? null;
   type Item = { key: string; title: string; detail: string | null; glyph: ExerciseGlyphName; session?: StructuredSession };
   const items: Item[] = [
     ...(coachTitle ? [{ key: "coach", title: coachTitle, detail: null, glyph: "strength" as const }] : []),
@@ -2164,7 +2173,7 @@ function CalendarDayPanel({
     }),
   ];
   const opened = items.find(item => item.key === openKey) ?? null;
-  const coachOnly = sessions.length === 0;
+  const coachOnly = sessions.length === 0 && !restOnly;
 
   return (
     <section className="sp-card cm-cal-day" aria-label={`${heading} sessions`}>
@@ -2173,7 +2182,9 @@ function CalendarDayPanel({
           {heading}
           {countdown ? <span className="cm-cal-day-countdown">{countdown}</span> : null}
         </h3>
-        {coachOnly ? (
+        {restOnly ? (
+          <span className="cm-cal-day-kind"><span className="cm-cal-dot" data-state="rest" aria-hidden="true" />{day.day_type === "recovery" ? "Recovery day" : "Rest day"}</span>
+        ) : coachOnly ? (
           <span className="cm-cal-day-kind"><span className="cm-cal-dot" data-state="coach" aria-hidden="true" />Coach / gym day</span>
         ) : completion.total > 0 ? <CompletionTag completion={completion} /> : null}
       </header>
@@ -2192,6 +2203,7 @@ function CalendarDayPanel({
           </li>
         ))}
       </ul>
+      {addSessionHref ? <Link className="secondary-button" href={addSessionHref}>+ Add weekly session</Link> : null}
       {opened ? (
         <InjuryDetailSheet title={opened.title} onClose={() => setOpenKey(null)}>
           <div className="injury-sheet-body cm-cal-day-sheet">
@@ -2237,6 +2249,7 @@ export function CampDayCard({
   onLogSession,
   dayIndex,
   openRequest,
+  addSessionHref,
 }: {
   day: StructuredDay;
   /** Truthful calendar date for a recurring weekday match. The stored projected
@@ -2264,6 +2277,7 @@ export function CampDayCard({
   dayIndex?: number;
   /** Explicit calendar/Today navigation reopens even a manually closed day. */
   openRequest?: object;
+  addSessionHref?: string | null;
 }) {
   const [open, setOpen] = useState<boolean>(Boolean(defaultOpen));
   const userToggledOpen = useRef(false);
@@ -2362,6 +2376,7 @@ export function CampDayCard({
         ) : (
           <SessionlessDayCard day={day} showDayLabels={false} />
         )}
+        {addSessionHref ? <Link className="secondary-button" href={addSessionHref}>+ Add weekly session</Link> : null}
       </div>
     </details>
   );
@@ -2848,6 +2863,7 @@ export function StructuredPlanRenderer({
   rehabLabelPolicy,
   exerciseMedia,
   accessToken,
+  customPlanId,
 }: {
   plan: StructuredPlan;
   /** Renewable four-week plan without a scheduled fight date. */
@@ -2892,6 +2908,8 @@ export function StructuredPlanRenderer({
   /** Curated demo videos keyed by block display_name (PlanOutputs.exercise_media). */
   exerciseMedia?: Record<string, ExerciseMedia> | null;
   accessToken?: string | null;
+  /** Only the owning athlete's custom plan may add recurring sessions here. */
+  customPlanId?: string | null;
 }) {
   const weeks = getWeeks(plan);
   const completionIndex = useMemo(
@@ -3147,7 +3165,7 @@ export function StructuredPlanRenderer({
   const calendarDaySelection = useMemo(() => {
     if (view !== "calendar") return null;
     const cells = calendarRows.flatMap(row => row.cells)
-      .filter(cell => cell.weekPos !== null && cell.dayIndex !== null && cell.state !== "rest" && cell.state !== "outside");
+      .filter(cell => cell.weekPos !== null && cell.dayIndex !== null && cell.state !== "outside" && (customPlanId || cell.state !== "rest"));
     const pick = (weekPos: number | null | undefined, dayIndex: number | null | undefined) =>
       cells.find(cell => cell.weekPos === weekPos && cell.dayIndex === dayIndex);
     const cell = (calendarSelection && pick(calendarSelection.weekPos, calendarSelection.dayIndex))
@@ -3157,7 +3175,7 @@ export function StructuredPlanRenderer({
       || (calendarTodayIso ? cells.find(candidate => candidate.iso !== null && candidate.iso > calendarTodayIso) : undefined)
       || cells[0];
     return cell ? { weekPos: cell.weekPos as number, dayIndex: cell.dayIndex as number } : null;
-  }, [view, calendarRows, calendarSelection, focusProgress.currentWeekPos, focusProgress.currentDayPos, calendarTodayIso]);
+  }, [view, calendarRows, calendarSelection, focusProgress.currentWeekPos, focusProgress.currentDayPos, calendarTodayIso, customPlanId]);
   const calendarSelectedDay = calendarDaySelection
     ? getDays(weeks[calendarDaySelection.weekPos])[calendarDaySelection.dayIndex] ?? null
     : null;
@@ -3199,6 +3217,7 @@ export function StructuredPlanRenderer({
                 phaseFor={openOngoing ? undefined : (weekPos) =>
                   glossaryEntry(resolvedWeekPhase(weeks[weekPos]))?.term ?? weekPhaseLabel(weeks[weekPos])}
                 onSelectDay={selectCalendarDay}
+                allowRestSelection={Boolean(customPlanId)}
               />
               {calendarSelectedDay && calendarDaySelection ? (
                 <CalendarDayPanel
@@ -3210,6 +3229,7 @@ export function StructuredPlanRenderer({
                   currentTrainingDayIso={currentTrainingDayIso}
                   planStartIso={planStartIso}
                   onLogSession={onLogSession}
+                  addSessionHref={customDaySessionHref(calendarSelectedDay, customPlanId)}
                 />
               ) : null}
             </>
@@ -3285,7 +3305,7 @@ export function StructuredPlanRenderer({
 
                 // A pure rest day renders identically to a synthesized gap row,
                 // so real and filled-in rest days read as one continuous line.
-                if (isPlainRestDay(day)) {
+                if (isPlainRestDay(day) && !customPlanId) {
                   const restDate = cleanText(day.date);
                   const displayDay = isCurrent && focusProgress.matchType === "weekday"
                     ? { ...day, date: focusProgress.trainingDayISO } : day;
@@ -3327,6 +3347,7 @@ export function StructuredPlanRenderer({
                     currentTrainingDayIso={currentTrainingDayIso}
                     planStartIso={planStartIso}
                     onLogSession={onLogSession}
+                    addSessionHref={customDaySessionHref(day, customPlanId)}
                   />
                 );
               })

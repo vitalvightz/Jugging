@@ -96,7 +96,7 @@ function PencilIcon() {
     </svg>
   );
 }
-export function CustomPlanBuilder({ accessToken, planId, onboarding = null }: { accessToken: string; planId?: string; onboarding?: MeResponse | null }) {
+export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboarding = null }: { accessToken: string; planId?: string; addSessionDay?: string | null; onboarding?: MeResponse | null }) {
   const router = useRouter();
   const fadeNavigate = useFadeNavigate();
   const [draft, setDraft] = useState<Draft>(() => ({
@@ -181,6 +181,13 @@ export function CustomPlanBuilder({ accessToken, planId, onboarding = null }: { 
           setError(undefined);
           const repaired = orderedDraft({ ...plan, sessions: plan.sessions.map(s => prepareCustomSession(s, onboarding)) });
           setDraft(repaired);
+          const day = weekdays.find(value => value.slice(0, 3).toLowerCase() === addSessionDay?.toLowerCase());
+          if (day && repaired.sessions.length >= 28) setError("This plan already has the maximum 28 sessions.");
+          else if (day) {
+            setChosenDay(day);
+            setSessionFresh(true);
+            setSessionEdit({ id: crypto.randomUUID(), name: "Training", weekday: day, session_type: "mixed", exercises: [] });
+          }
           setDirty(JSON.stringify(repaired.sessions) !== JSON.stringify(plan.sessions));
           window.scrollTo(0, 0);
         }
@@ -194,7 +201,7 @@ export function CustomPlanBuilder({ accessToken, planId, onboarding = null }: { 
     return () => {
       active = false;
     };
-  }, [accessToken, planId, retry, onboarding]);
+  }, [accessToken, planId, retry, onboarding, addSessionDay]);
   useEffect(() => {
     if (!loading && loaded.current) heading.current?.focus({ preventScroll: true });
   }, [loading]);

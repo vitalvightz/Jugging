@@ -23,6 +23,7 @@ export function PlanCalendar({
   selected = null,
   phaseFor,
   onSelectDay,
+  allowRestSelection = false,
 }: {
   rows: CalendarRow[];
   selectedWeekPos: number;
@@ -31,6 +32,7 @@ export function PlanCalendar({
   /** Phase (GPP / SPP / Taper) printed under each week label. */
   phaseFor?: (weekPos: number) => string | null;
   onSelectDay: (weekPos: number, dayIndex: number) => void;
+  allowRestSelection?: boolean;
 }) {
   if (rows.length === 0) {
     return <p className="sp-muted">No days scheduled yet.</p>;
@@ -82,7 +84,7 @@ export function PlanCalendar({
                   </>
                 );
                 const openable =
-                  cell.weekPos !== null && cell.dayIndex !== null && cell.state !== "rest" && cell.state !== "outside";
+                  cell.weekPos !== null && cell.dayIndex !== null && cell.state !== "outside" && (allowRestSelection || cell.state !== "rest");
                 return (
                   <td key={cell.key} data-state={cell.state}>
                     {openable ? (
