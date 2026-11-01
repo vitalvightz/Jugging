@@ -778,7 +778,11 @@ export function CustomPlanBuilder({ accessToken, planId, onboarding = null }: { 
                     required
                     maxLength={100}
                     value={editing.exercise.name}
-                    onChange={(e) => setEditing({ ...editing, exercise: { ...editing.exercise, name: e.target.value } })}
+                    onChange={(e) => {
+                      const name = e.target.value;
+                      setEditing(current => current?.exercise.origin === "manual"
+                        ? { ...current, exercise: { ...current.exercise, name } } : current);
+                    }}
                   />
                 </label>
                 {editing.exercise.community_revision_id ? <button type="button" className="ghost-button" onClick={() => setCommunityPreview(editing.exercise.origin === 'manual' ? editing.exercise.community_revision_id ?? undefined : undefined)}>View community exercise</button> :
