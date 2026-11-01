@@ -2000,7 +2000,7 @@ def _deload_open_week(role_map: dict[str, Any]) -> bool:
                 continue
             earlier = prior_doses.get(name) or prior[name].get("effective_prescription") or prior[name].get("base_prescription") or ""
             current = str(member.get("effective_prescription") or member.get("base_prescription") or earlier)
-            leading = re.match(r"^\\s*(\\d+)\\s*(?:[-–]|[x×]|[A-Za-z])", str(earlier))
+            leading = re.match(r"^\s*(\d+)\s*(?:[-–]|[x×]|[A-Za-z])", str(earlier))
             if not leading:
                 # A dose without a measurable volume unit cannot prove deload.
                 changed = True
