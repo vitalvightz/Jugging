@@ -2038,10 +2038,43 @@ def _attach_open_development_block(
         if group != "strength_slots":
             return ranked
         unique = {}
+        # Reserve every original selection before filling a losing duplicate's
+        # slot, so its backup cannot displace a different selected exercise.
+        selected_names = {
+            normalize_exercise_key(_slot_selected_option(slot).get("name"))
+            for slot in ranked
+        }
         for slot in ranked:
             key = normalize_exercise_key(_slot_selected_option(slot).get("name")) or slot.get("slot_id") or id(slot)
-            unique.setdefault(key, slot)
-        return list(unique.values())
+            if key in unique:
+                if slot.get("replace_with_same_role") is not True:
+                    continue
+                replacement = next((
+                    option for option in sorted(
+                        (option for option in slot.get("alternates") or [] if isinstance(option, dict)),
+                        key=lambda option: -float(option.get("score") or 0),
+                    )
+                    if normalize_exercise_key(option.get("name"))
+                    and normalize_exercise_key(option["name"]) not in selected_names
+                    and normalize_exercise_key(option["name"]) not in unique
+                    and str(option.get("prescription") or "").strip()
+                ), None)
+                if replacement is None:
+                    continue
+                slot = {
+                    **slot,
+                    **{field: replacement[field] for field in (
+                        "quality_class", "anchor_capable", "support_only",
+                        "meaningful_stress", "fulfillment_authority", "base_categories",
+                    ) if field in replacement},
+                    "selected": replacement,
+                    "purpose": replacement.get("why") or slot.get("purpose"),
+                    "alternates": [option for option in slot.get("alternates") or []
+                                   if option is not replacement],
+                }
+                key = normalize_exercise_key(replacement["name"])
+            unique[key] = slot
+        return sorted(unique.values(), key=lambda slot: -float(_slot_selected_option(slot).get("score") or 0))
 
     block_pools = {OPEN_BLOCK_PHASE: {group: merged(group) for group in _OPEN_BLOCK_SLOT_GROUPS}}
     block = _build_planning_brief(
