@@ -2362,3 +2362,13 @@ def test_unparseable_legacy_card_does_not_disappear_during_read():
         "fight_date": None,
     }
     assert resolve_effective_structured_plan(row) is not None
+
+
+def test_open_plan_prescribed_sets_cannot_be_increased_by_conversion():
+    plan, brief, _, check = _open_membership_case()
+    block = plan["weeks"][0]["days"][0]["sessions"][0]["blocks"][0]
+    block["display_name"] = "Barbell Back Squat"
+    source = "Session Cards\nSunday - Strength\n- Barbell Back Squat: 3 sets x 5 reps; rest 90 sec; RPE 7.\n"
+    violations = check(plan, source, brief)
+    assert not any(v.startswith("INTRODUCED") for v in violations)
+    assert any(v.startswith("PRESCRIPTION_CHANGED") for v in violations)
