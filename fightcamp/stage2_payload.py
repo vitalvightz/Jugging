@@ -1962,6 +1962,62 @@ def _project_open_development_block(block: dict[str, Any]) -> dict[str, Any]:
     return {"authority": "deterministic_open_development_block", "weeks": weeks}
 
 
+def _deload_open_week(role_map: dict[str, Any]) -> bool:
+    """Week 4 is recovery from Week 3, never a new exercise-selection window."""
+    from .prescription_resolver import _reduce_leading_count
+
+    weeks = role_map.get("weeks") or []
+    if len(weeks) != OPEN_BLOCK_WEEKS:
+        return False
+
+    def key(role: dict[str, Any]) -> tuple:
+        return (role.get("role_key"), role.get("scheduled_day_hint") or role.get("real_weekday"))
+
+    previous = {key(role): role for role in weeks[-2].get("session_roles") or []
+                if role.get("category") in {"strength", "conditioning"}}
+    changed = False
+    for role in weeks[-1].get("session_roles") or []:
+        if role.get("category") not in {"strength", "conditioning"}:
+            continue
+        before = previous.get(key(role))
+        prior = {
+            str(item.get("name") or ""): item
+            for item in (before or {}).get("selected_exercise_assignments") or []
+            if item.get("name")
+        }
+        if not prior:
+            continue
+        prior_doses = {
+            item.get("name"): item.get("effective_prescription")
+            for item in (before or {}).get("effective_strength_prescriptions") or []
+            if item.get("name")
+        }
+        kept, effective = [], []
+        for member in role.get("selected_exercise_assignments") or []:
+            name = str(member.get("name") or "")
+            if name not in prior:
+                changed = True
+                continue
+            earlier = prior_doses.get(name) or prior[name].get("effective_prescription") or prior[name].get("base_prescription") or ""
+            current = str(member.get("effective_prescription") or member.get("base_prescription") or earlier)
+            leading = re.match(r"^\\s*(\\d+)\\s*(?:[-–]|[x×]|[A-Za-z])", str(earlier))
+            if not leading:
+                # A dose without a measurable volume unit cannot prove deload.
+                changed = True
+                continue
+            target = max(1, (int(leading.group(1)) + 1) // 2)
+            reduced = _reduce_leading_count(current, target)
+            preserved = dict(member, effective_prescription=reduced)
+            kept.append(preserved)
+            effective.append({"name": name, "effective_prescription": reduced})
+            changed |= reduced != current
+        if len(kept) != len(role.get("selected_exercise_assignments") or []):
+            changed = True
+        role["selected_exercise_assignments"] = kept
+        role["effective_strength_prescriptions"] = effective
+    return changed
+
+
 def _project_open_goal_coverage(block: dict[str, Any]) -> list[dict[str, Any]]:
     """Goal coverage from the block's final membership, by week and weekday."""
     weekday_by_d_day = {
@@ -2092,8 +2148,11 @@ def _attach_open_development_block(
     consolidate_compatible_physical_sessions(role_map, athlete_model=_open_block_athlete_view(athlete_model))
     if role_map.get("session_consolidation_audit"):
         refresh_goal_evidence_after_composition(block)
+    deload_changed = _deload_open_week(role_map)
     block = stamp_role_execution_order(block)
     suppress_unfilled_physical_roles(block)
+    if deload_changed:
+        refresh_goal_evidence_after_composition(block)
     spec = dict(brief.get("open_plan_spec") or {})
     spec["weekly_session_plan"] = _project_open_development_block(block)
     spec["goal_coverage"] = _project_open_goal_coverage(block)
