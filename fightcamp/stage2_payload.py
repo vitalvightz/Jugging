@@ -16,6 +16,7 @@ from copy import deepcopy
 from typing import Any
 
 from .exercise_identity import normalize_exercise_key, stamp_exercise_key
+from .injury_guard import injury_guard
 from . import stage2_planning_brief as stage2_planning_brief_module
 from .stage2_finalizer_packet import build_stage2_finalizer_packet
 from .stage2_llm_boundary import build_stage2_llm_planning_brief
@@ -2783,6 +2784,9 @@ def _build_strength_alternates(
     selected_names: set[str],
     current_name: str,
     phase: str | None = None,
+    open_alternates: bool = False,
+    injuries: list | None = None,
+    fatigue: str = "low",
 ) -> list[dict]:
     alternates: list[dict] = []
     seen: set[str] = set()
@@ -2790,6 +2794,10 @@ def _build_strength_alternates(
         exercise = candidate.get("exercise", {})
         name = exercise.get("name")
         if not name or name == current_name or name in selected_names or name in seen:
+            continue
+        if open_alternates and injuries and injury_guard(
+            exercise, deepcopy(injuries), phase=phase, fatigue=fatigue,
+        ).action == "exclude":
             continue
         alternates.append(
             _serialize_strength_option(
@@ -2808,7 +2816,7 @@ def _build_strength_alternates(
             )
         )
         seen.add(name)
-        if len(alternates) >= 2:
+        if not open_alternates and len(alternates) >= 2:
             break
     return alternates
 
@@ -2886,7 +2894,10 @@ def _parse_rehab_groups(rehab_block: str) -> list[dict]:
     return groups
 
 
-def _build_strength_slots(strength_block: dict | None, phase: str) -> list[dict]:
+def _build_strength_slots(
+    strength_block: dict | None, phase: str, *,
+    open_alternates: bool = False, injuries: list | None = None, fatigue: str = "low",
+) -> list[dict]:
     if not strength_block:
         return []
     reason_lookup = {
@@ -2941,6 +2952,9 @@ def _build_strength_slots(strength_block: dict | None, phase: str) -> list[dict]
                     selected_names=selected_names,
                     current_name=name,
                     phase=phase,
+                    open_alternates=open_alternates,
+                    injuries=injuries,
+                    fatigue=fatigue,
                 ),
                 "replace_with_same_role": True,
                 "priority": _strength_slot_priority(phase, role, idx),
@@ -3212,7 +3226,12 @@ def build_stage2_payload(
                 stance=athlete_model.get("stance"),
                 required_windows=required_windows,
             ),
-            "strength_slots": _build_strength_slots(strength_blocks.get(phase), phase),
+            "strength_slots": _build_strength_slots(
+                strength_blocks.get(phase), phase,
+                open_alternates=_uses_open_ongoing_payload(athlete_model),
+                injuries=training_context.injuries,
+                fatigue=training_context.fatigue,
+            ),
             "conditioning_slots": _build_conditioning_slots(
                 conditioning_blocks.get(phase),
                 phase,
