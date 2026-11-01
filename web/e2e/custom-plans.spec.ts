@@ -68,8 +68,8 @@ for (const width of [320, 390, 1280, 1600]) {
     await page.getByRole("button", { name: "Add exercise to Strength", exact: true }).click();
     await page.getByRole("button", { name: "Create my exercise", exact: true }).click();
     await page.getByLabel("Exercise name", { exact: true }).fill("My bag rounds");
-    await page.getByLabel("equipment (optional)", { exact: true }).fill("Heavy bag");
-    await page.getByLabel("notes (optional)", { exact: true }).fill("My own practice");
+    await expect(page.getByLabel("equipment (optional)", { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel("notes (optional)", { exact: true })).toHaveCount(0);
     await page.getByLabel("Dose format").selectOption("intervals");
     await page.getByLabel("Rounds", { exact: true }).fill("5");
     await page.getByLabel("Work duration unit").selectOption("60");
