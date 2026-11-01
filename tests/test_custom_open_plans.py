@@ -17,7 +17,7 @@ from api.services.streaks import qualifying_training_days
 from api.services.today_service import _structured_day_for_training_day, resolve_training_day
 from api.services.training_library import cache
 from api.structured_plan_models import StructuredTrainingPlan
-from tests.support import _build_client
+from tests.support import _build_client, clear_compliance
 
 AUTH = {"Authorization": "Bearer athlete-token"}
 OTHER = {"Authorization": "Bearer admin-token"}
@@ -156,6 +156,21 @@ def test_self_built_plan_works_without_onboarding_intake():
     assert logged.status_code == 201, logged.text
     complete(client, plan_id, session["session_id"], "done")
     assert any(log["status"] == "done" for log in store.session_completions["athlete-1"])
+
+
+def test_intake_free_publication_still_requires_age_and_terms():
+    client, store, _ = _build_client()
+    draft = client.post("/api/custom-plans", headers=AUTH, json=body()).json()
+    endpoint = f"/api/custom-plans/{draft['id']}/open-plan"
+    clear_compliance(store)
+    assert client.post(endpoint, headers=AUTH).json()["detail"]["code"] == "date_of_birth_required"
+    store.record_compliance_acceptance("athlete-1", date_of_birth="1996-05-04")
+    assert client.post(endpoint, headers=AUTH).json()["detail"]["code"] == "terms_acceptance_required"
+    store.record_compliance_acceptance("athlete-1", accept_terms=True)
+    assert store.get_latest_intake("athlete-1") is None
+    published = client.post(endpoint, headers=AUTH)
+    assert published.status_code == 200, published.text
+    assert store.plans[published.json()["plan_id"]]["intake_id"] is None
 
 
 def test_retry_has_one_published_plan_and_ownership_is_enforced(api):
