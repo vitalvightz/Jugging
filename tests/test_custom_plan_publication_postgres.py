@@ -141,6 +141,16 @@ def test_original_null_insert_fails_with_23502_and_safe_response(persistence, ca
     assert "Test athlete" not in caplog.text
 
 
+def test_custom_plan_without_intake_persists_null_fk(persistence):
+    store, db, payloads = persistence
+    row = store.create_plan(
+        athlete_id=OWNER, intake_id=None, request=PlanRequest(athlete={"full_name": "Test athlete"}),
+        result={"status": "ready", "plan_text": "# Self-built plan"},
+    )
+    assert payloads[0]["intake_id"] is None
+    assert db.execute("select intake_id from plans where id=%s", (row["id"],)).fetchone()[0] is None
+
+
 def test_saved_custom_plan_publish_view_activate_today_and_retries(persistence):
     persistent, db, payloads = persistence
 
