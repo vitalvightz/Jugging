@@ -1289,8 +1289,10 @@ def _open_plan_membership_violations(
                 continue
             weekday = normalize_weekday(day.get("weekday"))
             for session in day.get("sessions") or []:
-                if not _is_model_session(session):
+                if not isinstance(session, dict):
                     continue
+                # A deterministic-* id may be stamped onto a converted session;
+                # it is not evidence that its exercise membership was selected.
                 title_tokens = set(identity_tokens(session.get("title")))
                 allowed: set[str] = set()
                 if authoritative:
@@ -1313,8 +1315,7 @@ def _open_plan_membership_violations(
                                     allowed.add(identity(match[1]))
                 for block in session.get("blocks") or []:
                     if (not isinstance(block, dict)
-                            or str(block.get("block_type")) not in _EXERCISE_BLOCK_TYPES
-                            or _is_server_assembled(block, "block_id")
+                            or str(block.get("block_type")) not in _EXERCISE_BLOCK_TYPES - {"rehab"}
                             or block.get("athlete_change")
                             or block.get("prescription_source") == "athlete"):
                         continue
