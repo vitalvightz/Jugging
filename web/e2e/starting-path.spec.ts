@@ -208,6 +208,7 @@ for (const width of [320, 390, 1280]) {
     await tracking.press("Enter");
     // Tracking athletes land on Home; logging lives on Today.
     await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("link", { name: "Add my plan" })).toHaveAttribute("href", "/plans/custom");
     await page.goto("/today");
     await expect(page.locator("html")).toHaveAttribute("data-app-surface", "workspace");
     await expect(page.getByRole("button", { name: "Repeat last session", exact: true })).toHaveCount(0);
