@@ -119,6 +119,17 @@ test("owned custom plan rest and recovery days offer Add session without changin
   assert.doesNotMatch(generated, /Add session/);
 });
 
+test("calendar rest cells open only when explicitly enabled", () => {
+  const rows = [{ key: "week-1", label: "W1", weekPos: 0, cells: [{
+    key: "rest", iso: "2026-11-02", dayNumber: 2, column: 0, weekPos: 0,
+    dayIndex: 0, state: "rest" as const, isToday: false, label: "Rest",
+  }] }];
+  assert.doesNotMatch(renderToStaticMarkup(<PlanCalendar rows={rows} selectedWeekPos={0}
+    onSelectDay={() => {}} />), /aria-pressed/);
+  assert.match(renderToStaticMarkup(<PlanCalendar rows={rows} selectedWeekPos={0}
+    onSelectDay={() => {}} allowRestSelection />), /aria-pressed="false"/);
+});
+
 test("legacy open neutral rows use the real training date on a recurring weekday match", () => {
   const plan: StructuredPlan = { weeks: [{ days: [{ date: "2026-10-12", weekday: "Mon", day_type: "rest",
     today_card: { headline: "No session planned" }, sessions: [] }] }] };
