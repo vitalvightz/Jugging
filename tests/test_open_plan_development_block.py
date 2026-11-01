@@ -357,3 +357,83 @@ def test_open_strength_duplicate_falls_back_without_unqualified_replacement(
     )
     assert [slot["selected"]["name"] for slot in received["strength_slots"]] == expected
 
+
+def test_open_strength_alternates_scan_full_reservoir_and_enforce_injury_guard(monkeypatch):
+    from types import SimpleNamespace
+    import fightcamp.stage2_payload as payload
+
+    screened = []
+
+    def injury_check(exercise, injuries, *, phase, fatigue):
+        screened.append((exercise["name"], injuries, phase, fatigue))
+        return SimpleNamespace(action="exclude" if exercise["name"] == "Unsafe Squat" else "allow")
+
+    monkeypatch.setattr(payload, "injury_guard", injury_check)
+    strength_block = {
+        "exercises": [{"name": "Cossack Squat", "movement": "squat", "tags": ["strength"]}],
+        "num_sessions": 1,
+        "candidate_reservoir": {"squat": [
+            {"exercise": {"name": name, "movement": "squat", "tags": ["strength"]}, "score": 10 - index}
+            for index, name in enumerate(("Unsafe Squat", "Safe First", "Safe Second", "Safe Third"))
+        ]},
+    }
+    dated = payload._build_strength_slots(strength_block, "GPP")
+    opened = payload._build_strength_slots(
+        strength_block, "GPP", open_alternates=True, injuries=["knee injury"], fatigue="moderate",
+    )
+    assert [option["name"] for option in dated[0]["alternates"]] == ["Unsafe Squat", "Safe First"]
+    assert [option["name"] for option in opened[0]["alternates"]] == [
+        "Safe First", "Safe Second", "Safe Third",
+    ]
+    assert [name for name, *_ in screened] == ["Unsafe Squat", "Safe First", "Safe Second", "Safe Third"]
+    assert all(injuries == ["knee injury"] and phase == "GPP" and fatigue == "moderate"
+               for _, injuries, phase, fatigue in screened)
+
+
+def test_open_duplicate_replacement_reaches_third_safe_option(monkeypatch):
+    from types import SimpleNamespace
+    import fightcamp.stage2_payload as payload
+
+    monkeypatch.setattr(
+        payload, "injury_guard",
+        lambda item, injuries, *, phase, fatigue: SimpleNamespace(
+            action="exclude" if item["name"] == "Unsafe Squat" else "allow"
+        ),
+    )
+    strength_block = {
+        "exercises": [{"name": "Cossack Squat", "movement": "squat", "tags": ["strength"]}],
+        "num_sessions": 1,
+        "candidate_reservoir": {"squat": [
+            {"exercise": {"name": name, "movement": "squat", "tags": ["strength"]}, "score": score}
+            for name, score in (
+                ("Unsafe Squat", 10), ("Safe First", 9), ("Safe Second", 8), ("Safe Third", 7)
+            )
+        ]},
+    }
+    gpp_slots = payload._build_strength_slots(
+        strength_block, "GPP", open_alternates=True, injuries=["knee injury"],
+    )
+    assert len(gpp_slots[0]["alternates"]) == 3
+
+    received = {}
+    monkeypatch.setattr(
+        payload, "_build_planning_brief",
+        lambda **kwargs: received.update(kwargs["candidate_pools"]["GPP"]) or {},
+    )
+    payload._attach_open_development_block(
+        {"open_plan_spec": {}}, athlete_model={}, restrictions=[], phase_briefs={"GPP": {}},
+        candidate_pools={
+            "GPP": {"strength_slots": gpp_slots},
+            "SPP": {"strength_slots": [
+                {"slot_id": "winner", "selected": {"name": "Cossack Squat", "score": 20}},
+                {"slot_id": "held-1", "selected": {"name": "Safe First", "score": 19}},
+                {"slot_id": "held-2", "selected": {"name": "Safe Second", "score": 18}},
+            ]},
+        },
+        omission_ledger={}, rewrite_guidance={}, plan_input=None, computed_support=None,
+    )
+    names = [slot["selected"]["name"] for slot in received["strength_slots"]]
+    assert names == ["Cossack Squat", "Safe First", "Safe Second", "Safe Third"]
+    assert "Unsafe Squat" not in names
+    assert received["strength_slots"][-1]["slot_id"] == gpp_slots[0]["slot_id"]
+
