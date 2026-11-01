@@ -282,3 +282,78 @@ def test_two_hard_power_open_block_never_turns_a_microdose_into_full_strength():
     assert moved_weeks >= 1, "No safe two-exercise split was generated for the replay"
 
 
+def test_open_strength_duplicate_backfills_next_qualified_scored_alternate(monkeypatch):
+    import fightcamp.stage2_payload as payload
+
+    received = {}
+    monkeypatch.setattr(payload, "_build_planning_brief",
+                        lambda **kwargs: received.update(kwargs["candidate_pools"]["GPP"]) or {})
+    original = {
+        "slot_id": "gpp-duplicate", "role": "squat", "session_index": 2,
+        "replace_with_same_role": True, "quality_class": "support",
+        "selected": {"name": "Cossack Squat", "score": 5},
+        "alternates": [
+            {"name": "Already Selected", "score": 50, "prescription": "3 x 5"},
+            {"name": "Next Squat", "score": 6, "prescription": "3 x 8",
+             "why": "Qualified same-role strength", "quality_class": "anchor",
+             "support_only": False, "anchor_capable": True},
+            {"name": "No Dose", "score": 75},
+            {"name": "Lower Squat", "score": 3, "prescription": "3 x 5"},
+        ],
+    }
+    payload._attach_open_development_block(
+        {"open_plan_spec": {}}, athlete_model={}, restrictions=[], phase_briefs={"GPP": {}},
+        candidate_pools={
+            "GPP": {"strength_slots": [copy.deepcopy(original)]},
+            "SPP": {"strength_slots": [
+                {"slot_id": "spp-winner", "selected": {"name": "Cossack Squat", "score": 9}},
+                {"slot_id": "spp-other", "selected": {"name": "Already Selected", "score": 8}},
+            ]},
+        }, omission_ledger={}, rewrite_guidance={}, plan_input=None, computed_support=None,
+    )
+    slots = received["strength_slots"]
+    assert [slot["selected"]["name"] for slot in slots] == [
+        "Cossack Squat", "Already Selected", "Next Squat",
+    ]
+    replacement = slots[-1]
+    assert (replacement["slot_id"], replacement["role"], replacement["session_index"]) == (
+        "gpp-duplicate", "squat", 2,
+    )
+    assert replacement["selected"]["prescription"] == "3 x 8"
+    assert replacement["quality_class"] == "anchor"
+    assert replacement["anchor_capable"] is True
+    assert replacement["support_only"] is False
+    assert replacement["purpose"] == "Qualified same-role strength"
+    assert all(option["name"] != "Next Squat" for option in replacement["alternates"])
+    assert original["selected"]["name"] == "Cossack Squat"  # Source pool was not mutated.
+
+
+@pytest.mark.parametrize("replacement_allowed,alternates,expected", [
+    (False, [{"name": "Backup", "score": 7, "prescription": "3 x 5"}], ["Keep"]),
+    (True, [], ["Keep"]),
+    (True, [{"name": "Keep", "score": 9, "prescription": "3 x 5"}], ["Keep"]),
+    (True, [{"name": "Unprescribed", "score": 9}], ["Keep"]),
+    (True, [{"name": "Backup", "score": 7, "prescription": "3 x 5"}], ["Keep", "Backup"]),
+])
+def test_open_strength_duplicate_falls_back_without_unqualified_replacement(
+    monkeypatch, replacement_allowed, alternates, expected,
+):
+    import fightcamp.stage2_payload as payload
+
+    received = {}
+    monkeypatch.setattr(payload, "_build_planning_brief",
+                        lambda **kwargs: received.update(kwargs["candidate_pools"]["GPP"]) or {})
+    payload._attach_open_development_block(
+        {"open_plan_spec": {}}, athlete_model={}, restrictions=[], phase_briefs={"GPP": {}},
+        candidate_pools={
+            "GPP": {"strength_slots": [
+                {"slot_id": "loser", "replace_with_same_role": replacement_allowed,
+                 "selected": {"name": "Keep", "score": 2}, "alternates": alternates},
+            ]},
+            "SPP": {"strength_slots": [
+                {"slot_id": "winner", "selected": {"name": "Keep", "score": 5}},
+            ]},
+        }, omission_ledger={}, rewrite_guidance={}, plan_input=None, computed_support=None,
+    )
+    assert [slot["selected"]["name"] for slot in received["strength_slots"]] == expected
+
