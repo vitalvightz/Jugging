@@ -6,14 +6,17 @@ import { useAppSession } from "@/components/auth-provider";
 import { CustomPlanBuilder } from "@/components/custom-plan-builder";
 function Editor() {
   const { session, me } = useAppSession();
-  const planId = useSearchParams().get("plan") ?? undefined;
+  const params = useSearchParams();
+  const planId = params.get("plan") ?? undefined;
+  const addSessionDay = params.get("addSession");
   return (
     <RequireAuth>
       {session?.access_token && me ? (
         <CustomPlanBuilder
-          key={`${session.user_id}:${planId ?? "new"}`}
+          key={`${session.user_id}:${planId ?? "new"}:${addSessionDay ?? ""}`}
           accessToken={session.access_token}
           planId={planId}
+          addSessionDay={addSessionDay}
           onboarding={me}
         />
       ) : null}
