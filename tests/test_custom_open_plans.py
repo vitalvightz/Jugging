@@ -137,7 +137,11 @@ def test_self_built_plan_works_without_onboarding_intake():
     day = resolve_training_day(None)
     weekday = WEEKDAYS[date.fromisoformat(day).weekday()]
     draft, plan_id = publish(client, body(weekday))
-    assert store.plans[plan_id]["intake_id"] is None
+    row = store.plans[plan_id]
+    assert row["intake_id"] is None
+    monday = date.fromisoformat(day) - timedelta(days=date.fromisoformat(day).weekday())
+    row["created_at"] = f"{monday}T12:00:00+00:00"
+    row["planning_brief"]["athlete_snapshot"]["plan_creation_weekday"] = "Mon"
     assert client.get(f"/api/plans/{plan_id}", headers=AUTH).json()["custom_plan_id"] == draft["id"]
     assert client.post(f"/api/plans/{plan_id}/set-active", headers=AUTH).status_code == 200
     today = client.get("/api/today", headers=AUTH)
@@ -146,6 +150,10 @@ def test_self_built_plan_works_without_onboarding_intake():
     assert today.json()["today"]["next_session"]["session_id"] == session["session_id"]
     checkin(client, plan_id)
     complete(client, plan_id, session["session_id"], "started")
+    logged = client.post("/api/today/exercise-log", headers=AUTH, json={
+        "plan_id": plan_id, "block_id": session["blocks"][0]["block_id"], "status": "as_prescribed",
+    })
+    assert logged.status_code == 201, logged.text
     complete(client, plan_id, session["session_id"], "done")
     assert any(log["status"] == "done" for log in store.session_completions["athlete-1"])
 
