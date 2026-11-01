@@ -707,7 +707,7 @@ export default function HomePage() {
                 ) : tracking ? (
                   <>
                     <ActionLink href="/quick-build">Generate my S&amp;C plan</ActionLink>
-                    <ActionLink href="/plans/custom">Build your own plan</ActionLink>
+                    <ActionLink href="/plans/custom">Add my plan</ActionLink>
                   </>
                 ) : (
                   <ActionLink href="/quick-build">Quick Build</ActionLink>
