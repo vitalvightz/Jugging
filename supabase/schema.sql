@@ -2825,7 +2825,7 @@ create table if not exists public.external_training_sessions (
         ('mma', '', 'other'), ('mma', 'striking', 'other'), ('mma', 'grappling', 'other'), ('mma', 'wrestling', 'other'), ('mma', 'integrated', 'other'), ('mma', 'sparring', 'sparring'),
         ('bjj', '', 'other'), ('bjj', 'drilling', 'other'), ('bjj', 'positional', 'other'), ('bjj', 'rolling', 'other'),
         ('wrestling', '', 'other'), ('wrestling', 'technical', 'other'), ('wrestling', 'live', 'other')))),
-  -- Optional run detail; see migrations/20261101120000_add_external_training_run_distance.sql.
+  -- Optional run detail; see migrations/20261102010200_add_external_training_run_distance.sql.
   distance_value numeric,
   distance_unit text,
   duration_seconds integer,

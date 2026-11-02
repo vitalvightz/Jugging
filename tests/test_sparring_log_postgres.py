@@ -20,7 +20,7 @@ MIGRATIONS = (
     "20260930141404_add_sparring_logs.sql",
     "20261019014437_link_sparring_detail_to_manual_sessions.sql",
     "20261019103324_protect_sparring_head_contact.sql",
-    "20261102090000_add_sparring_focus.sql",
+    "20261102010203_add_sparring_focus.sql",
 )
 COPIES = 12
 
