@@ -923,6 +923,8 @@ def _trunk_block_additions(
     for record in held:
         for key in _record_budget_keys(record):
             base_tiers[key] = base_tiers.get(key, 0) + 1
+    if any(base_tiers.get(key, 0) > limit for key, limit in limits.items()):
+        return None
     selected_names = {r["name"] for r in selected}
     used_slots = {_base_slot_id(r) for r in selected}
     # A slot's own selection first; an alternate only to add a missing function.
