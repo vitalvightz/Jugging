@@ -15,7 +15,6 @@
 .sport[aria-pressed="true"] { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 10%, var(--bg-panel)); border-color: var(--brand-red); }
 .choices { display: grid; border-top: 1px solid var(--border-subtle); }
 .choice { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 72px; padding: 14px 2px; border: 0; border-bottom: 1px solid var(--border-subtle); background: transparent; color: var(--text-primary); text-align: left; font: inherit; cursor: pointer; }
-.choice:hover strong { color: var(--brand-red); }
 .choice:disabled, .sport:disabled { cursor: wait; opacity: .6; }
 .copy { display: grid; gap: 4px; min-width: 0; }
 .copy strong { font-size: 15px; line-height: 1.35; transition: color 140ms; }
