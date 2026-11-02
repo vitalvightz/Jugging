@@ -120,12 +120,14 @@ export function movementPattern(name: string | null | undefined): string | null 
 
 // Warm-ups, cool-downs, rehab and mental work are not where a cue is applied.
 const NON_TRAINING_BLOCKS = new Set(["preparation", "mobility_activation", "cooldown_recovery", "warmup", "cooldown",
-  "rehab", "mindset", "nutrition", "recovery"]);
+  "rehab", "prehab", "mindset", "nutrition", "recovery"]);
 
 /** The exercise names this session actually prescribes (name and canonical key). */
 function exerciseNames(session: FocusSession | null): string[] {
   return (session?.blocks ?? []).flatMap((block) => {
-    if (NON_TRAINING_BLOCKS.has(String(block.block_type ?? "").toLowerCase())) return [];
+    const type = String(block.block_type ?? "").toLowerCase();
+    // Any rehab-labelled type, as the API rule (incl. "prehab", "rehabilitation").
+    if (NON_TRAINING_BLOCKS.has(type) || type.includes("rehab")) return [];
     return [focusWords(block.display_name), focusWords(block.exercise_key)].filter(Boolean);
   });
 }

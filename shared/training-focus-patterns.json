@@ -3,7 +3,7 @@
   "patterns": [
     {"id": "jump", "phrases": ["jump", "jumps", "hop", "hops", "bound", "bounds", "bounding", "plyo", "plyometric", "depth drop"]},
     {"id": "single_leg_hinge", "phrases": ["single leg rdl", "single leg deadlift", "single leg romanian deadlift", "b stance rdl", "kickstand rdl"]},
-    {"id": "unilateral_squat", "phrases": ["split squat", "lunge", "lunges", "step up", "step ups", "pistol squat", "skater squat", "single leg squat", "rear foot elevated"]},
+    {"id": "unilateral_squat", "phrases": ["split squat", "lunge", "lunges", "step up", "step ups", "pistol squat", "skater squat", "single leg squat", "single leg lateral squat", "rear foot elevated"]},
     {"id": "hinge", "phrases": ["deadlift", "rdl", "romanian deadlift", "good morning", "hip thrust", "glute bridge", "kettlebell swing", "swing", "pull through"]},
     {"id": "squat", "phrases": ["squat", "squats", "leg press", "wall sit"]},
     {"id": "vertical_push", "phrases": ["overhead press", "shoulder press", "push press", "military press", "z press", "landmine press"]},

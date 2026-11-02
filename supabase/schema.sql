@@ -4362,7 +4362,7 @@ revoke all on function public.reconcile_approved_contribution_xp(uuid) from publ
 grant execute on function public.reconcile_approved_contribution_xp(uuid) to service_role;
 
 -- Inferred training focus from existing notes; see
--- migrations/20261102120000_add_training_focus_inferences.sql.
+-- migrations/20261102215720_add_training_focus_inferences.sql.
 create table if not exists public.training_focus_inferences (
   id uuid primary key default gen_random_uuid(),
   athlete_id uuid not null references public.profiles(id) on delete cascade,
