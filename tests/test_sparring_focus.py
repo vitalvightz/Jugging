@@ -27,8 +27,10 @@ def test_timer_sparring_focus_is_saved_and_read_back():
     response = _post(client, focus="  Keep my right hand up after jabbing  ")
     assert response.status_code == 201, response.text
     assert response.json()["log"]["focus"] == "Keep my right hand up after jabbing"
-    assert focus(client) == {"focus": "Keep my right hand up after jabbing",
-                             "training_day": resolve_training_day(None), "sport": None}
+    read = focus(client)
+    assert {key: read[key] for key in ("focus", "training_day", "sport")} == {
+        "focus": "Keep my right hand up after jabbing", "training_day": resolve_training_day(None), "sport": None}
+    assert [(item["origin"], item["focus"]) for item in read["items"]] == [("athlete", "Keep my right hand up after jabbing")]
 
 
 def test_focus_write_never_goes_through_the_safety_rpc_fields():

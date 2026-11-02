@@ -2643,15 +2643,34 @@ export type TodayInjuryDeclaration = {
 };
 
 /**
+ * One candidate focus. ``athlete``: written by the fighter after sparring.
+ * ``inferred``: drawn by AI from a note they wrote, shown only before work its
+ * ``scope``, ``exercise_targets`` and ``movement_patterns`` match.
+ */
+export type TrainingFocusItem = {
+  id: string;
+  origin: "athlete" | "inferred";
+  focus: string;
+  training_day: string;
+  sport: string | null;
+  scope: "general_quality" | "movement_pattern" | "specific_exercise" | "sport_technique" | null;
+  category: string | null;
+  exercise_targets: string[];
+  movement_patterns: string[];
+};
+
+/**
  * The athlete's latest recorded sparring focus, for the next relevant session.
  *
  * ``focus`` is None when there is nothing recent to show. ``sport`` is the
  * sport it was recorded for when known (a manual session's sport), else None.
+ * ``items`` holds every recent candidate, explicit and inferred, newest first.
  */
 export type TrainingFocusResponse = {
   focus: string | null;
   training_day: string | null;
   sport: string | null;
+  items: TrainingFocusItem[];
 };
 
 export type TrainingHabitDecision = {

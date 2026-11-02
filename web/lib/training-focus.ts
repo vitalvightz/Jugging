@@ -1,3 +1,5 @@
+import focusPatterns from "../../shared/training-focus-patterns.json";
+import type { TrainingFocusItem } from "./api-schema.generated";
 import { TRAINING_SPORTS } from "./training-disciplines";
 import type { StructuredBlock, TrainingFocus } from "./types";
 
@@ -12,8 +14,37 @@ export function announceTrainingFocusChanged(): void {
 export type FocusSession = {
   session_type?: string | null;
   prescription_source?: "athlete" | null;
-  blocks?: readonly Pick<StructuredBlock, "block_type">[] | null;
+  blocks?: readonly Pick<StructuredBlock, "block_type" | "display_name" | "exercise_key" | "source_session_id">[] | null;
 };
+
+/**
+ * The one session a focus is matched against: the session this card shows,
+ * never the whole day. Today's live prescription is day-wide (every session's
+ * blocks in one list), so it is narrowed to this session's blocks by
+ * ``source_session_id``; untagged live blocks belong to this session only when
+ * the day plans no other session. Anything unattributable is left out, which
+ * hides exercise-specific reminders rather than guessing.
+ */
+export function focusSessionFor({ sessionId, sessionType, planned, cardBlocks, liveBlocks, plannedSessionCount }: {
+  sessionId: string | null | undefined;
+  sessionType?: string | null;
+  /** This session as the plan stores it (by session_id), if found. */
+  planned?: FocusSession | null;
+  /** The card's own session blocks, used when there is no live prescription for it. */
+  cardBlocks?: FocusSession["blocks"];
+  /** Today's live (safety-adjusted) prescription blocks, only when the card shows today. */
+  liveBlocks?: FocusSession["blocks"];
+  plannedSessionCount: number;
+}): FocusSession | null {
+  if (!sessionId) return null;
+  const base = { session_type: planned?.session_type ?? sessionType ?? null, prescription_source: planned?.prescription_source ?? null };
+  if (!liveBlocks) return { ...base, blocks: planned?.blocks ?? cardBlocks ?? [] };
+  const tagged = liveBlocks.some((block) => block.source_session_id);
+  const blocks = tagged
+    ? liveBlocks.filter((block) => block.source_session_id === sessionId)
+    : plannedSessionCount <= 1 ? liveBlocks : [];
+  return { ...base, blocks };
+}
 
 export type FocusTarget = {
   /** The session the card shows; null on a day with no app session. */
@@ -71,9 +102,82 @@ export function focusFitsSport(focusSport: string | null | undefined, sessionSpo
   return !focusSport || focusSport === sessionSport;
 }
 
+/** Lowercase, accent-free words ("Push-Ups" -> "push ups"); same as the API's `words`. */
+export function focusWords(value: string | null | undefined): string {
+  return (value ?? "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function containsWords(haystack: string, needle: string): boolean {
+  return Boolean(needle) && ` ${haystack} `.includes(` ${needle} `);
+}
+
+/** The first shared pattern (shared/training-focus-patterns.json) a name holds, or null. */
+export function movementPattern(name: string | null | undefined): string | null {
+  const text = focusWords(name);
+  return focusPatterns.patterns.find((pattern) => pattern.phrases.some((phrase) => containsWords(text, phrase)))?.id ?? null;
+}
+
+// Warm-ups, cool-downs, rehab and mental work are not where a cue is applied.
+const NON_TRAINING_BLOCKS = new Set(["preparation", "mobility_activation", "cooldown_recovery", "warmup", "cooldown",
+  "rehab", "mindset", "nutrition", "recovery"]);
+
+/** The exercise names this session actually prescribes (name and canonical key). */
+function exerciseNames(session: FocusSession | null): string[] {
+  return (session?.blocks ?? []).flatMap((block) => {
+    if (NON_TRAINING_BLOCKS.has(String(block.block_type ?? "").toLowerCase())) return [];
+    return [focusWords(block.display_name), focusWords(block.exercise_key)].filter(Boolean);
+  });
+}
+
+/**
+ * Whether an inferred focus fits this card's work, at the level its metadata
+ * supports: the exact exercise (or its family, "split squat" in "Bulgarian
+ * Split Squat"); a movement pattern only when the inference said the issue
+ * transfers there; sport technique only before sparring or technical work.
+ * Missing session detail means no.
+ */
+export function inferredFocusFits(item: TrainingFocusItem, target: FocusTarget): boolean {
+  // An inferred technique cue must name its sport and meet that exact sport:
+  // a boxing cue is never shown before Muay Thai, or when the sport is unknown.
+  if (item.scope === "sport_technique") {
+    return Boolean(item.sport) && item.sport === target.sport && focusFitsSession(target);
+  }
+  const names = exerciseNames(target.session);
+  if (item.scope === "specific_exercise") {
+    const targets = item.exercise_targets.map(focusWords).filter(Boolean);
+    return names.some((name) => targets.some((wanted) => containsWords(name, wanted)));
+  }
+  if (item.scope === "movement_pattern" || item.scope === "general_quality") {
+    return names.some((name) => {
+      const pattern = movementPattern(name);
+      return pattern !== null && item.movement_patterns.includes(pattern);
+    });
+  }
+  return false;
+}
+
+export type ShownFocus = { id: string | null; text: string; origin: "athlete" | "inferred" };
+
+/** The one focus to show before this card's work (newest that fits), or null. */
+export function relevantFocusItem(focus: TrainingFocus | null, target: FocusTarget): ShownFocus | null {
+  // An older API sends only the newest explicit focus.
+  const items: TrainingFocusItem[] = focus?.items ?? (focus?.focus ? [{
+    id: "", origin: "athlete", focus: focus.focus, training_day: focus.training_day ?? "", sport: focus.sport,
+    scope: null, category: null, exercise_targets: [], movement_patterns: [],
+  }] : []);
+  for (const item of items) {
+    const text = item.focus?.trim();
+    if (!text) continue;
+    const fits = item.origin === "athlete"
+      ? focusFitsSport(item.sport, target.sport) && focusFitsSession(target)
+      : inferredFocusFits(item, target);
+    if (fits) return { id: item.id || null, text, origin: item.origin };
+  }
+  return null;
+}
+
 /** The focus text to show before this card's work, or null. */
 export function relevantFocus(focus: TrainingFocus | null, target: FocusTarget): string | null {
-  const text = focus?.focus?.trim();
-  if (!text) return null;
-  return focusFitsSport(focus?.sport, target.sport) && focusFitsSession(target) ? text : null;
+  return relevantFocusItem(focus, target)?.text ?? null;
 }

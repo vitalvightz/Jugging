@@ -32,9 +32,10 @@ RUN test -f /app/shared/xp-levels.json \
     && test -f /app/shared/training-metadata.json \
     && test -f /app/shared/equipment-requirements.json \
     && test -f /app/shared/training-disciplines.json \
+    && test -f /app/shared/training-focus-patterns.json \
     && python -c "from fightcamp.training_metadata import load_projection; from fightcamp.equipment_requirements import load_equipment_reviews; load_projection(); load_equipment_reviews()" \
     && python -c "from api.xp_levels import XP_LEVELS; assert XP_LEVELS[-1] == (8, 'Champion', 10000)" \
-    && python -c "import api.compliance, api.performance_focus, api.contracts.training_day, api.contracts.training_disciplines, api.errors, api.models" \
+    && python -c "import api.compliance, api.performance_focus, api.contracts.training_day, api.contracts.training_disciplines, api.contracts.training_focus, api.errors, api.models" \
     && python -c "import fightcamp.session_sequencing, fightcamp.training_context; from fightcamp.stage2_policy import stage1_fallback_status; stage1_fallback_status()"
 
 USER appuser

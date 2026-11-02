@@ -1,7 +1,7 @@
 {
   "terms_version": "0.1-pre-launch",
   "health_consent_version": "1.0",
-  "privacy_notice_version": "1.6",
+  "privacy_notice_version": "1.7",
   "minimum_signup_age_years": 13,
   "adult_age_years": 18
 }
