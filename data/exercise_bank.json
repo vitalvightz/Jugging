@@ -14813,6 +14813,7 @@
     "type": "bilateral",
     "tags": [
       "anti_rotation",
+      "mech_trunk_stability",
       "no_d4_to_d1",
       "rehab_friendly",
       "taper_micro_support",

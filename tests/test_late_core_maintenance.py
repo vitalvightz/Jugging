@@ -145,19 +145,14 @@ def test_development_never_draws_on_maintenance_candidates():
 # 2. D-13..D-7: one eligible tail session receives 2-3 complementary members
 # ---------------------------------------------------------------------------
 
-def test_real_week_three_records_why_maintenance_is_withheld(without_maintenance):
-    """The real 28-day plan: Stage 1 now supplies two complementary dedicated
-    core candidates, but the bank authors no load for one of them, so the
-    session's load cannot be measured and nothing is forced."""
+def test_real_week_three_keeps_two_dedicated_core_exercises():
+    """The real 28-day plan: D-13 keeps its lead primer plus two complementary,
+    dedicated, late-approved core exercises, inside the three-member cap."""
     brief = _brief(_SCENARIO)
     host = next(r for w, r in _tail_strength(brief) if role_d_day(w, r) == 13)
-    assert _maintenance(host) == {"intent": "maintenance", "status": "constrained",
-                                  "reason_code": "session_stress_unknown"}
-    spp = {slot["selected"]["name"]: slot for slot in brief["candidate_pools"]["SPP"]["core_development_slots"]
-           if slot["role"] == "core_maintenance"}
-    assert {"Dead-bug breathing", _MEASURED} <= set(spp)
-    before = next(r for w, r in _tail_strength(without_maintenance) if role_d_day(w, r) == 13)
-    assert _members(host) == _members(before)
+    assert _maintenance(host)["status"] == "delivered"
+    assert _maintenance(host)["members"] == ["Dead-bug breathing", _MEASURED]
+    assert len(_members(host)) == 3
 
 
 def test_maintenance_candidates_are_dedicated_late_approved_core():
