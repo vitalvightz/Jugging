@@ -52,7 +52,8 @@ export function doseIncomplete(d: CustomDose): boolean {
   return !d.prescription?.trim();
 }
 
-const filled = (d: CustomDose) => Object.entries(d).some(([key, value]) => key !== "mode" && value != null);
+const filled = (d: CustomDose) => d.mode === "text" ? Boolean(d.prescription?.trim())
+  : Object.entries(d).some(([key, value]) => key !== "mode" && value != null && value !== "");
 
 /**
  * The dose a newly added library exercise starts with: the library's source
@@ -64,11 +65,14 @@ export function libraryPrefill(
   suggestion: CustomDoseSuggestion | null | undefined,
   past: PersonalExercise | null | undefined,
 ): { dose: CustomDose; source: string } | null {
-  const format = (suggestion?.dose && suggestion.dose.mode !== "text" ? suggestion.dose : suggestion?.format_dose) ?? null;
+  const candidate = (suggestion?.dose && suggestion.dose.mode !== "text" ? suggestion.dose : suggestion?.format_dose) ?? null;
+  const format = candidate?.mode === "text" && !filled(candidate) ? null : candidate;
   const start = format ?? blankDose();
-  const dose = withPastDose(start, past);
-  if (JSON.stringify(dose) === JSON.stringify(blankDose())) return null;
-  const fromLibrary = Boolean(format && (filled(format) || format.mode !== "reps"));
+  // A verified format owns its mode; only use past values from the same kind of session.
+  const compatiblePast = format && !filled(format) && withPastDose(blankDose(), past).mode !== format.mode ? null : past;
+  const dose = withPastDose(start, compatiblePast, Boolean(format));
+  if (!filled(dose) && (dose.mode === "reps" || dose.mode === "text")) return null;
+  const fromLibrary = Boolean(format && (filled(format) || (format.mode !== "reps" && format.mode !== "text")));
   const fromPast = JSON.stringify(dose) !== JSON.stringify(start);
   return { dose, source: fromLibrary && fromPast ? "Library format · your last session" : fromLibrary ? "Library format" : "Your last session" };
 }
