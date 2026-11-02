@@ -413,6 +413,40 @@ def trunk_function(item: dict[str, Any], *, trunk_targeted: bool | None = None) 
     return "trunk_stability"
 
 
+# How hard a trunk item is to recover from, read from its authored costs, not
+# its name: a heavy sandbag carry or a med-ball slam is real training load even
+# though it is "core". ``stability``: low-cost bodyweight control.
+# ``loaded``: external resistance or authored meaningful/moderate-high cost.
+# ``rotational_power``: ballistic / explosive rotational work (neural cost).
+TRUNK_LOAD_TIERS = ("stability", "loaded", "rotational_power")
+_UNLOADED_TRUNK_EQUIPMENT = frozenset({"", "bodyweight", "none", "stability_ball", "swiss_ball", "bench", "mat"})
+
+
+def trunk_load_tier(item: dict[str, Any], *, trunk_targeted: bool | None = None) -> str:
+    """``stability`` / ``loaded`` / ``rotational_power``; ``""`` if not trunk-targeted."""
+    function = trunk_function(item, trunk_targeted=trunk_targeted)
+    if not function:
+        return ""
+    metadata = item.get("selection_metadata") if isinstance(item.get("selection_metadata"), dict) else {}
+    mech = {str(t).lower() for t in [*(item.get("mechanical_risk_tags") or []),
+                                     *(metadata.get("mechanical_risk_tags") or [])]}
+    if function == "rotational_power" or "mech_ballistic" in mech or (
+            classify_strength_item(item)["quality_class"] == "anchor_power" and "mech_trunk_rotation" in mech):
+        return "rotational_power"
+    # Bank items author ``equipment``; serialized Stage 1 options carry it as
+    # ``required_equipment``. Either is the same authored requirement.
+    equipment: list[Any] = []
+    for value in (item.get("equipment"), item.get("required_equipment"), metadata.get("equipment")):
+        equipment += value if isinstance(value, list) else re.split(r"[,/]", str(value or ""))
+    costs = {str(item.get(field) or metadata.get(field) or "").lower()
+             for field in ("movement_cost", "cns_load", "soreness_risk")}
+    if (function == "loaded_carry" or item.get("meaningful_stress") is True
+            or costs & {"moderate", "high"}
+            or {str(e).strip().lower() for e in equipment} - _UNLOADED_TRUNK_EQUIPMENT):
+        return "loaded"
+    return "stability"
+
+
 def infer_strength_sessions(exercises: list[dict[str, Any]], num_sessions: int) -> list[dict[str, Any]]:
     session_count = max(1, int(num_sessions or 1))
     if not exercises:

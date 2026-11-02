@@ -899,6 +899,7 @@ def resolve_strength_slot_prescription(
     slot: dict[str, Any],
     athlete_state: dict[str, Any] | None = None,
     force_kind: str | None = None,
+    core_development: bool = False,
 ) -> dict[str, Any]:
     """Return deterministic effective-prescription metadata for one strength slot.
 
@@ -911,11 +912,18 @@ def resolve_strength_slot_prescription(
     base_prescription = str(selected.get("prescription") or "").strip()
     cap = role.get("strength_dose_cap") if isinstance(role.get("strength_dose_cap"), dict) else None
     if not cap or not base_prescription:
-        return {
+        # A Core Development Block member on a fresh athlete's uncapped day is
+        # dosed at the development point of its authored range; any readiness
+        # reduction keeps the floor. A capped day never reaches this branch.
+        development = core_development and not _athlete_dose_reduction(athlete_state)
+        result = {
             "base_prescription": base_prescription,
-            "effective_prescription": working_dose(base_prescription),
+            "effective_prescription": working_dose(base_prescription, development=development),
             "dose_authority": "exercise_bank",
         }
+        if development and result["effective_prescription"] != working_dose(base_prescription):
+            result["dose_adjustment_reason"] = "core_development_working_point"
+        return result
 
     semantic_kind = _role_kind(slot)
     kind = force_kind or semantic_kind
@@ -1370,6 +1378,10 @@ def apply_effective_strength_prescriptions(
         # remains outside it. Ordered by planner slot priority.
         anchor_loaded_used = False
         resolved: list[dict[str, Any]] = []
+        core_block_keys = {
+            (str(a.get("slot_id") or ""), str(a.get("name") or ""))
+            for a in assignments if isinstance(a, dict) and a.get("component_group") == "core_development"
+        }
         for slot in sorted(slots_for_resolution, key=_slot_priority):
             kind = _role_kind(slot)
             force_kind = None
@@ -1390,6 +1402,8 @@ def apply_effective_strength_prescriptions(
                 slot=slot,
                 athlete_state=athlete_state,
                 force_kind=force_kind,
+                core_development=(str(slot.get("slot_id") or ""),
+                                  str(_slot_selected(slot).get("name") or "")) in core_block_keys,
             )
             if not item.get("effective_prescription"):
                 continue
@@ -1415,6 +1429,10 @@ def apply_effective_strength_prescriptions(
         policy = role.get("strength_composition_policy")
         if isinstance(policy, dict):
             policy.update(selected_count=len(names), selected_names=names)
+            if "main_exercise_count" in policy:
+                main = sum(1 for a in role["selected_exercise_assignments"]
+                           if a.get("component_group") != "core_development")
+                policy.update(main_exercise_count=main, core_block_count=len(names) - main)
         # The numeric loaded-strength ceiling envelope is a scheduled-day cap
         # artefact.  A normal-camp role has no cap to summarise and keeps the
         # complete-allow-list envelope already built above.

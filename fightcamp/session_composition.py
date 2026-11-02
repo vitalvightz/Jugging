@@ -732,23 +732,6 @@ def _select_bounded_records(
     # families. Power work may share a squat/push family without maintaining
     # strength; bracing during that work is not dedicated trunk training either.
     for adaptation, required in (("strength", preserve_strength), ("trunk_strength", preserve_trunk_support)):
-        if adaptation == "trunk_strength" and required and trunk_block_target >= TRUNK_BLOCK_MINIMUM:
-            # A Core Development Block reserves its members here, before
-            # generic family filling, but leaves one place per still-unmet
-            # required movement group: the session's main work comes first.
-            room = min(trunk_block_target, cap - len(selected) - len(unsatisfied_groups))
-            block = _trunk_block_additions(records, selected, family_counts, family_limit, room,
-                                           alternates=trunk_alternates, target=trunk_block_target)
-            if block is not None:
-                substituted = {r["alternate_of"] for r in block if r.get("alternate_of")}
-                for record in records:
-                    if record["slot"].get("slot_id") in substituted:
-                        dropped[record["name"]] = "trunk_block_alternate_substituted"
-                records = [r for r in records if r["slot"].get("slot_id") not in substituted]
-                for candidate in block:
-                    _add_record(candidate, selected, family_counts)
-                    unsatisfied_groups = [group for group in unsatisfied_groups if not _covers(candidate, group)]
-                continue
         if not required or len(selected) >= cap or any(adaptation in r["adaptations"] for r in selected):
             continue
         candidate = next((r for r in records if r not in selected
@@ -805,6 +788,19 @@ def _select_bounded_records(
             dropped[record["name"]] = "redundant_major_family"
             continue
         _add_record(record, selected, family_counts)
+
+    if trunk_block_target >= TRUNK_BLOCK_MINIMUM:
+        # The Core Development Block has its OWN capacity: the capped main
+        # selection above is exactly what it is without a block, and the block
+        # is added beside it. Its members still count in every load, recovery
+        # and adjacency check downstream; only the exercise COUNT cap is not
+        # spent on them.
+        block = _trunk_block_additions(records, selected, family_counts, family_limit,
+                                       room=trunk_block_target, alternates=trunk_alternates,
+                                       target=trunk_block_target)
+        for candidate in block or []:
+            _add_record(candidate, selected, family_counts)
+            dropped.pop(candidate["name"], None)
 
     selected_ids = {id(item) for item in selected}
     for record in records:
@@ -876,6 +872,21 @@ def trunk_alternate_records(records: list[dict[str, Any]]) -> list[dict[str, Any
     return alternates
 
 
+def _record_trunk_tier(record: dict[str, Any]) -> str:
+    from .strength_session_quality import trunk_load_tier
+
+    if not record.get("trunk_targeted"):
+        return ""
+    return trunk_load_tier(_slot_selected_item(record["slot"]), trunk_targeted=True)
+
+
+# The block's own load budget: core is real training, so a block may carry at
+# most one explosive rotational-power member (neural cost beside the session's
+# own power work) and two loaded members (carries, resisted or authored
+# high-cost trunk work); the rest is low-cost stability.
+_TRUNK_BLOCK_MAX_TIER = {"rotational_power": 1, "loaded": 2}
+
+
 def _trunk_block_additions(
     records: list[dict[str, Any]],
     selected: list[dict[str, Any]],
@@ -884,45 +895,83 @@ def _trunk_block_additions(
     room: int,
     alternates: list[dict[str, Any]] = (),
     target: int = _TRUNK_BLOCK_TARGET,
+    tier_limits: dict[str, int] | None = None,
 ) -> list[dict[str, Any]] | None:
     """Complementary trunk members to add, or None when no real block fits.
 
-    Trunk members already reserved (a rotational slam kept as the power goal)
-    count. Each addition must train a function the block does not already
-    cover - two planks are one stimulus, not two - and respect the session's
-    movement-family limit. Stage 1 rank decides between equals, with rehab-level
-    drills last: development wants appropriate resistance, not the gentlest item.
+    Trunk members the session already holds (a rotational slam kept as the
+    power goal) count, both as functions and against the load budget. Each
+    addition must train a function the block does not already cover - two
+    planks are one stimulus, not two - and respect the movement-family limit
+    and the block's load-tier budget. Stage 1 rank decides between equals, with
+    rehab-level drills last: development wants resistance, not the gentlest item.
     """
-    functions = {_record_trunk_function(r) for r in selected if r.get("trunk_targeted")}
-    functions.discard("")
-    additions: list[dict[str, Any]] = []
-    counts = dict(family_counts)
+    limits = _TRUNK_BLOCK_MAX_TIER if tier_limits is None else tier_limits
+    held = [r for r in selected if r.get("trunk_targeted")]
+    base_functions = {_record_trunk_function(r) for r in held} - {""}
+    base_tiers: dict[str, int] = {}
+    for record in held:
+        base_tiers[_record_trunk_tier(record)] = base_tiers.get(_record_trunk_tier(record), 0) + 1
+    selected_names = {r["name"] for r in selected}
     used_slots = {_base_slot_id(r) for r in selected}
     # A slot's own selection first; an alternate only to add a missing function.
-    ordered = sorted(
-        [*(r for r in records if r not in selected and r.get("trunk_targeted")), *alternates],
+    candidates = sorted(
+        [r for r in [*(r for r in records if r not in selected and r.get("trunk_targeted")), *alternates]
+         if r["name"] not in selected_names and _base_slot_id(r) not in used_slots
+         and _record_trunk_function(r) not in base_functions],
         key=lambda r: (bool(r.get("alternate_of")), r.get("quality_class") == "rehab_support", r["sort_key"]),
     )
-    for record in ordered:
-        if len(additions) >= room or len(functions) >= target:
-            break
-        function = _record_trunk_function(record)
-        if (function in functions or _base_slot_id(record) in used_slots
-                or any(r["name"] == record["name"] for r in [*selected, *additions])
-                or _would_exceed_family_limit(record["families"], counts, family_limit)):
-            continue
-        additions.append(record)
-        used_slots.add(_base_slot_id(record))
-        functions.add(function)
-        for family in record["families"]:
-            counts[family] = counts.get(family, 0) + 1
-    return additions if len(functions) >= TRUNK_BLOCK_MINIMUM else None
+    best: list[dict[str, Any]] = []
+
+    # Bounded depth-first search in preference order (a handful of candidates,
+    # at most four picks): the first combination that reaches the target wins;
+    # otherwise the one covering the most functions. Greedy picking could spend
+    # the load budget on an early loaded item and miss a valid block.
+    def search(start: int, chosen: list[dict[str, Any]], functions: set[str], tiers: dict[str, int],
+               counts: dict[str, int], slots: set[str]) -> bool:
+        nonlocal best
+        if len(functions) > len(base_functions | {_record_trunk_function(r) for r in best}):
+            best = list(chosen)
+        if len(functions) >= target or len(chosen) >= room:
+            return len(functions) >= target
+        for index in range(start, len(candidates)):
+            record = candidates[index]
+            function, tier = _record_trunk_function(record), _record_trunk_tier(record)
+            if (function in functions or _base_slot_id(record) in slots
+                    or any(r["name"] == record["name"] for r in chosen)
+                    or tiers.get(tier, 0) >= limits.get(tier, len(candidates) + len(held) + 1)
+                    or _would_exceed_family_limit(record["families"], counts, family_limit)):
+                continue
+            next_counts = dict(counts)
+            for family in record["families"]:
+                next_counts[family] = next_counts.get(family, 0) + 1
+            if search(index + 1, [*chosen, record], functions | {function},
+                      {**tiers, tier: tiers.get(tier, 0) + 1}, next_counts, slots | {_base_slot_id(record)}):
+                return True
+        return False
+
+    search(0, [], set(base_functions), base_tiers, dict(family_counts), set(used_slots))
+    covered = base_functions | {_record_trunk_function(r) for r in best}
+    return best if len(covered) >= TRUNK_BLOCK_MINIMUM else None
+
+
+def main_exercise_count(assignments: list[dict[str, Any]] | None) -> int:
+    """Members the role's exercise cap governs: everything outside the block."""
+    return sum(1 for item in assignments or []
+               if isinstance(item, dict) and item.get("component_group") != TRUNK_BLOCK_GROUP)
 
 
 def trunk_block_members(selected: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The selected trunk members when they form a real block, else []."""
-    members = [r for r in selected if r.get("trunk_targeted")]
-    functions = {_record_trunk_function(r) for r in members}
+    """The block: one selected trunk member per distinct function (at most
+    four), when they reach three functions; otherwise []. A second item of an
+    already-covered function stays ordinary main work."""
+    members: list[dict[str, Any]] = []
+    functions: set[str] = set()
+    for record in selected:
+        function = _record_trunk_function(record)
+        if function and function not in functions and len(members) < _TRUNK_BLOCK_TARGET:
+            members.append(record)
+            functions.add(function)
     return members if len(functions) >= TRUNK_BLOCK_MINIMUM else []
 
 
@@ -1003,7 +1052,8 @@ def _trunk_block_outcome(
         return {"intent": "development", "status": "delivered", "group": TRUNK_BLOCK_GROUP,
                 "target": target, "minimum": TRUNK_BLOCK_MINIMUM,
                 "members": [r["name"] for r in members],
-                "functions": [_record_trunk_function(r) for r in members]}
+                "functions": [_record_trunk_function(r) for r in members],
+                "load_tiers": [_record_trunk_tier(r) for r in members]}
     if ineligible is not None:
         return {"intent": "development", "status": "not_eligible", **ineligible}
     if not host:
@@ -1013,8 +1063,9 @@ def _trunk_block_outcome(
     # With unlimited room, could this session's own slots (one member each)
     # form a block at all? If not, supply limits it; otherwise capacity does.
     feasible = _trunk_block_additions(records, [], {}, family_limit=len(records) + 1,
-                                      room=len(records), alternates=alternates)
-    reason = "insufficient_complementary_candidates" if feasible is None else "session_capacity"
+                                      room=len(records), alternates=alternates, tier_limits={})
+    # Supply limits it, or the block's load budget / movement-family limit did.
+    reason = "insufficient_complementary_candidates" if feasible is None else "trunk_load_limits"
     return {"intent": "development", "status": "constrained", "reason_code": reason,
             "available_functions": sorted(available)}
 
@@ -1483,6 +1534,8 @@ def _assign_selected_records(
     policy = entry["role"]["strength_composition_policy"]
     policy["selected_count"] = len(assignments)
     policy["selected_names"] = [item["name"] for item in assignments]
+    policy["main_exercise_count"] = main_exercise_count(assignments)
+    policy["core_block_count"] = len(assignments) - policy["main_exercise_count"]
     entry["selected_records"] = selected_records
 
 
@@ -1592,6 +1645,8 @@ def _apply_adjacent_strength_recovery(
                 if outcome["status"] == "constrained":
                     # The recovery pass removed members the block needed.
                     outcome["reason_code"] = _ADJACENT_STRENGTH_RECOVERY_REASON
+                elif outcome["status"] == "delivered" and policy.get("injury_restricted"):
+                    outcome["dose_held_by"] = "injury_constraint"
                 policy["trunk_block"] = outcome
             existing_dropped = {
                 str(item.get("name") or ""): str(item.get("reason") or "")
@@ -1877,8 +1932,9 @@ def compose_normal_strength_assignments(
             trunk_alternates=trunk_alternate_records(ctx["records"]) if block_target else (),
         )
 
-    # One host per week: the eligible session with the most room that can
-    # actually hold a complementary block, tried largest cap first.
+    # One host per week: the eligible session that can hold a complementary
+    # block, lightest main session first, so core work complements the week
+    # rather than piling onto its heaviest day.
     hosts: set[int] = set()
     if trunk_development:
         by_week: dict[int, list[dict[str, Any]]] = {}
@@ -1897,13 +1953,14 @@ def compose_normal_strength_assignments(
         for week_id, candidates in by_week.items():
             if week_id in hosted_weeks:
                 continue
-            for ctx in sorted(candidates, key=lambda item: -item["effective_cap"]):
+            ordered = sorted(candidates, key=lambda item: len(_select(item, 0)[0]))
+            for ctx in ordered:
                 if trunk_block_members(_select(ctx, trunk_block_size)[0]):
                     hosts.add(id(ctx["role"]))
                     break
             else:
-                # Nobody can hold it: the largest session reports why.
-                hosts.add(id(max(candidates, key=lambda item: item["effective_cap"])["role"]))
+                # Nobody can hold it: the first-choice session reports why.
+                hosts.add(id(ordered[0]["role"]))
 
     for ctx in pending:
         week, role, phase, records = ctx["week"], ctx["role"], ctx["phase"], ctx["records"]
@@ -1936,6 +1993,10 @@ def compose_normal_strength_assignments(
             "major_family_limit": 2 if exercise_count_pressure == 0 else 1,
             "selected_count": len(assignments),
             "selected_names": [item["name"] for item in assignments],
+            # The exercise cap governs main members; a Core Development Block
+            # has its own capacity and is counted separately.
+            "main_exercise_count": main_exercise_count(assignments),
+            "core_block_count": len(assignments) - main_exercise_count(assignments),
             "dropped": [
                 {"name": name, "reason": reason}
                 for name, reason in dropped.items()
@@ -1947,10 +2008,16 @@ def compose_normal_strength_assignments(
                 preserve_adaptation=primary_adaptation,
             )
         if trunk_development:
-            role["strength_composition_policy"]["trunk_block"] = _trunk_block_outcome(
+            outcome = _trunk_block_outcome(
                 selected_records, records, host=host, ineligible=ctx.get("trunk_block_ineligible"),
                 target=trunk_block_size,
             )
+            if outcome["status"] == "delivered" and pressure_state.get("injury_restricted"):
+                # The members are safe to train, but the resolver's injury
+                # readiness reduction holds every dose at its floor: this is a
+                # maintenance-dosed block, and the cause is on record.
+                outcome["dose_held_by"] = "injury_constraint"
+            role["strength_composition_policy"]["trunk_block"] = outcome
         ctx.update(
             {
                 "selected_records": selected_records,
@@ -2060,7 +2127,8 @@ def _propose_standalone_strength_minimum(
         }:
             continue
         selected = entry["selected_records"]
-        if len(selected) >= _STANDALONE_STRENGTH_MINIMUM:
+        block_names = {r["name"] for r in trunk_block_members(selected)} if entry.get("trunk_block_target") else set()
+        if len([r for r in selected if r["name"] not in block_names]) >= _STANDALONE_STRENGTH_MINIMUM:
             continue
         if not _strength_role_is_standalone(
             weekly_role_map, week, entry["week_ordinal"], role
@@ -3786,7 +3854,7 @@ def consolidate_compatible_physical_sessions(
                         or not host.get("effective_strength_prescriptions")):
                     continue
                 cap = policy.get("effective_exercise_cap")
-                if not isinstance(cap, int) or len(host_members) + 1 > cap:
+                if not isinstance(cap, int) or main_exercise_count(host_members) + 1 > cap:
                     continue
                 if any(m.get("slot_group") != "strength_slots" for m in host_members):
                     continue
@@ -3829,6 +3897,10 @@ def consolidate_compatible_physical_sessions(
                 ]
                 composition = trial_host["strength_composition_policy"]
                 composition["selected_count"] = len(trial_host["selected_exercise_assignments"])
+                if "main_exercise_count" in composition:
+                    composition["main_exercise_count"] = main_exercise_count(trial_host["selected_exercise_assignments"])
+                    composition["core_block_count"] = (composition["selected_count"]
+                                                       - composition["main_exercise_count"])
                 composition["selected_names"] = [
                     item["name"] for item in trial_host["selected_exercise_assignments"]
                 ]

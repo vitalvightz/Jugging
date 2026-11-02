@@ -30,7 +30,7 @@ from fightcamp.session_composition import (
     trunk_alternate_records,
 )
 from fightcamp.stage2_payload import _attach_manifest_label_and_microdose
-from fightcamp.strength_session_quality import trunk_function
+from fightcamp.strength_session_quality import trunk_function, trunk_load_tier
 
 _brief, _roles, _members, _entry, _BANK = (
     delivery._brief, delivery._roles, delivery._members, delivery._entry, delivery._BANK)
@@ -73,6 +73,15 @@ def _grouped(role) -> list[dict]:
 # Normal development: 3-4 distinct, complementary members in one session
 # ---------------------------------------------------------------------------
 
+def _main(role) -> list[dict]:
+    return [m for m in _members(role) if m.get("component_group") != TRUNK_BLOCK_GROUP]
+
+
+def _tiers_within_budget(names):
+    tiers = [trunk_load_tier(_BANK[name]) for name in names]
+    return tiers.count("rotational_power") <= 1 and tiers.count("loaded") <= 2
+
+
 @pytest.mark.parametrize("key", _DEVELOPMENT)
 def test_development_week_holds_one_complementary_core_block(key):
     """Core as primary weakness (King, full gym, knee) and as primary goal."""
@@ -88,15 +97,20 @@ def test_development_week_holds_one_complementary_core_block(key):
         assert 3 <= len(members) <= 4, [m["name"] for m in members]
         functions = [m["trunk_function"] for m in members]
         assert len(set(functions)) == len(functions), functions  # no redundant movement
+        assert _tiers_within_budget([m["name"] for m in members])
         assert role_d_day(week, role) >= 14 and week.get("phase") != "TAPER"
         # Grouping is presentation only: each member is its own priced, verified
-        # bank exercise inside the role's existing cap.
+        # bank exercise.
         priced = {p["name"]: p["effective_prescription"] for p in role["effective_strength_prescriptions"]}
         for member in members:
             assert member["slot_id"] and priced.get(member["name"]), member["name"]
             assert "trunk_strength" in delivery.strength_adaptation_relevance(_BANK[member["name"]])
+        # The exercise cap governs the MAIN session only; the block is counted
+        # on its own, and the full membership count stays accurate.
         policy = role["strength_composition_policy"]
-        assert len(_members(role)) <= policy["effective_exercise_cap"] + int(policy.get("standalone_minimum_applied", False))
+        assert policy["main_exercise_count"] == len(_main(role))
+        assert policy["main_exercise_count"] <= policy["effective_exercise_cap"] + int(policy["standalone_minimum_applied"])
+        assert policy["selected_count"] == len(_members(role)) == len(_main(role)) + policy["core_block_count"]
         # Contiguous and last, after the session's main work.
         names = [m["name"] for m in _members(role)]
         assert names[-len(members):] == [m["name"] for m in members]
@@ -108,18 +122,21 @@ def test_primary_goal_and_weakness_both_target_development():
     assert not trunk_development_targeted({"weak_areas": ["speed"], "key_goals": ["strength"]})
 
 
-def test_a_development_block_keeps_the_sessions_main_work():
-    """The block replaces accessories, never the athlete's required lift."""
-    for week, role in _strength_roles(_brief("king_no_cut")):
-        if _block(role).get("status") == "delivered":
-            assert any(m not in _grouped(role) for m in _members(role))
-            assert any("strength" in delivery.strength_adaptation_relevance(_BANK.get(m["name"], {}))
-                       or "power" in delivery.strength_adaptation_relevance(_BANK.get(m["name"], {}))
-                       or "speed" in delivery.strength_adaptation_relevance(_BANK.get(m["name"], {}))
-                       for m in _members(role) if m not in _grouped(role))
+def test_the_block_no_longer_displaces_the_main_lifts():
+    """PR #3163's first cut dropped Back Squat and Weighted Push-Up for core work."""
+    host = next(role for _, role in _strength_roles(_brief("king_no_cut")) if _grouped(role))
+    main = [m["name"] for m in _main(host)]
+    assert {"Back Squat", "Push-Up (Weighted)", "Romanian Deadlift (DB)", "Sled Push (Board)",
+            "DB Plyometric Push-Up (Hands on Dumbbells)"} <= set(main)
+    # The capped main selection is unchanged: its own trunk pick (Plank,
+    # Extended Hold) now leads the block and the rest of the block is added.
+    grouped = [m["name"] for m in _grouped(host)]
+    assert "Plank (Extended Hold)" in grouped
+    assert len(main) + 1 == host["strength_composition_policy"]["effective_exercise_cap"]
+    assert len(_members(host)) == len(main) + len(grouped) > host["strength_composition_policy"]["effective_exercise_cap"]
 
 
-@pytest.mark.parametrize("key", _DEVELOPMENT)
+@pytest.mark.parametrize("key", [k for k in _DEVELOPMENT if k != "core_knee"])
 def test_delivered_block_is_the_development_evidence(key):
     brief = _brief(key)
     evidence = [e for e in collect_goal_evidence(brief) if e.get("trunk_development")]
@@ -129,9 +146,74 @@ def test_delivered_block_is_the_development_evidence(key):
     assert not any(e["goal"] == "trunk_strength" for e in validate_goal_preservation(brief))
 
 
+def test_block_members_are_dosed_by_the_resolver_at_a_development_point():
+    from fightcamp.working_dose import working_dose
+    host = next(role for _, role in _strength_roles(_brief("king_no_cut")) if _grouped(role))
+    doses = {p["name"]: p for p in host["effective_strength_prescriptions"]}
+    grouped = {m["name"] for m in _grouped(host)}
+    raised = 0
+    for name, dose in doses.items():
+        if name in grouped:
+            assert dose["effective_prescription"] == working_dose(dose["base_prescription"], development=True)
+            raised += dose.get("dose_adjustment_reason") == "core_development_working_point"
+        else:  # main work keeps exactly its existing dose
+            assert dose["effective_prescription"] == working_dose(dose["base_prescription"])
+    assert raised >= 2
+    assert doses["Plank (Extended Hold)"]["effective_prescription"].startswith("4 holds x 15s")
+
+
+def test_an_injury_keeps_block_doses_at_the_floor_and_says_so():
+    brief = _brief("core_knee")
+    host = next(role for _, role in _strength_roles(brief) if _grouped(role))
+    assert _block(host)["dose_held_by"] == "injury_constraint"
+    from fightcamp.working_dose import working_dose
+    for dose in host["effective_strength_prescriptions"]:
+        assert dose["effective_prescription"] == working_dose(dose["base_prescription"])
+    entry = _entry(brief, "trunk_strength")
+    assert "injury_constraint" in entry["reason_codes"] and entry["state"] == "maintain"
+    assert not any(e["goal"] == "trunk_strength" for e in validate_goal_preservation(brief))
+
+
 # ---------------------------------------------------------------------------
-# Caps: the selector that used to stop at one trunk member
+# Capacity: the block sits beside the capped main session
 # ---------------------------------------------------------------------------
+
+def _synthetic(names):
+    slots = [{"slot_id": f"s{i}", "session_index": 1, "priority": i, "selected": _BANK[name]}
+             for i, name in enumerate(names)]
+    return _candidate_records(slots)
+
+
+_LIFTS = ["Back Squat", "Romanian Deadlift (RDL)", "Z Press", "Push-Up (Weighted)"]
+_CORE = ["Plank", "Pallof Press", "Suitcase Carry (Heavy)", "Med-Ball Rotational Slam",
+         "Ab Wheel Rollout (Kneeling)", "Bear Hug Carry", "Anti-Rotation Med Ball Slam"]
+
+
+def test_four_main_exercises_and_a_four_exercise_core_block_coexist():
+    records = _synthetic(_LIFTS + _CORE)
+    common = dict(role_key="primary_strength_day", cap=5, pressure=0, preserve_trunk_support=True)
+    main, _ = _select_bounded_records(records, **common)
+    full, _ = _select_bounded_records(records, **common, trunk_block_target=4)
+    assert [r["name"] for r in main] == [r["name"] for r in full if r in main]  # main untouched
+    assert set(_LIFTS) <= {r["name"] for r in full}
+    block = trunk_block_members(full)
+    assert len(block) == 4 and len(full) == 8
+    assert _tiers_within_budget([r["name"] for r in block])
+
+
+def test_core_capacity_never_displaces_a_main_selection():
+    """Every cap and pressure: the main session is exactly what it is without a block."""
+    records = _king_primary_records()
+    for role_key, cap, pressure in (("primary_strength_day", 6, 0), ("secondary_strength_day", 3, 0),
+                                    ("primary_strength_day", 4, 1)):
+        common = dict(role_key=role_key, cap=cap, pressure=pressure, preserve_trunk_support=True)
+        main, _ = _select_bounded_records(records, **common)
+        full, _ = _select_bounded_records(records, **common, trunk_block_target=3,
+                                          trunk_alternates=trunk_alternate_records(records))
+        assert all(r in full for r in main), role_key
+        added = [r for r in full if r not in main]
+        assert all(r["trunk_targeted"] for r in added) and len(added) <= 3
+
 
 def _king_primary_records():
     brief = _brief("king_no_cut")
@@ -144,30 +226,24 @@ def test_the_role_cap_previously_reduced_core_to_one_movement():
     common = dict(role_key="primary_strength_day", cap=6, pressure=0, preserve_trunk_support=True)
     before, _ = _select_bounded_records(records, **common)
     assert sum(r["trunk_targeted"] for r in before) == 1
-    after, dropped = _select_bounded_records(records, **common, trunk_block_target=4,
-                                             trunk_alternates=trunk_alternate_records(records))
-    members = trunk_block_members(after)
-    assert len(members) >= 3 and len(after) <= 6  # same cap, not a cap increase
+    after, _ = _select_bounded_records(records, **common, trunk_block_target=3,
+                                       trunk_alternates=trunk_alternate_records(records))
+    assert len(trunk_block_members(after)) == 3
     # A slot whose alternate joined the block is one substitution, not two members.
     base_ids = [str(r["slot"]["slot_id"]).partition(":alternate:")[0] for r in after]
     assert len(base_ids) == len(set(base_ids))
-    # The session's required strength group is still covered.
-    assert any(r["families"] & {"lower_strength", "upper_strength"} for r in after)
 
 
 @pytest.mark.parametrize(("target", "expected"), [(4, 4), (3, 3)])
 def test_block_size_follows_the_trunk_priority(target, expected):
     """Four for a primary goal, three for a primary weakness beside another goal."""
-    names = ["Back Squat", "Romanian Deadlift (RDL)", "Plank", "Pallof Press", "Ab Wheel Rollout (Kneeling)",
-             "Suitcase Carry (Heavy)", "Med-Ball Rotational Slam", "Z Press"]
-    slots = [{"slot_id": f"s{i}", "session_index": 1, "priority": i, "selected": _BANK[name]}
-             for i, name in enumerate(names)]
-    records = _candidate_records(slots)
+    records = _synthetic(["Back Squat", "Romanian Deadlift (RDL)", *_CORE[:5], "Z Press"])
+    main, _ = _select_bounded_records(records, role_key="primary_strength_day", cap=6, pressure=0,
+                                      preserve_trunk_support=True)
     selected, _ = _select_bounded_records(records, role_key="primary_strength_day", cap=6, pressure=0,
                                           preserve_trunk_support=True, trunk_block_target=target)
     members = trunk_block_members(selected)
-    assert len(members) == expected and len(selected) <= 6
-    assert any(r["name"] in {"Back Squat", "Romanian Deadlift (RDL)"} for r in selected)  # main lift kept
+    assert len(members) == expected and all(r in selected for r in main)
     assert len({trunk_function(r["slot"]["selected"], trunk_targeted=True) for r in members}) == expected
 
 
@@ -176,11 +252,40 @@ def test_trunk_priority_sets_the_block_target():
     assert trunk_development_block_target({"weak_areas": ["speed"], "key_goals": ["strength"]}) == 0
 
 
-def test_a_block_never_exceeds_a_small_cap():
-    records = _king_primary_records()
-    selected, _ = _select_bounded_records(records, role_key="secondary_strength_day", cap=3, pressure=0,
-                                          preserve_trunk_support=True, trunk_block_target=4)
-    assert len(selected) <= 3
+# ---------------------------------------------------------------------------
+# Load: core is real training load
+# ---------------------------------------------------------------------------
+
+def test_load_tiers_separate_stability_loaded_and_rotational_power():
+    assert trunk_load_tier(_BANK["Dead Bug (Isometric)"]) == "stability"
+    assert trunk_load_tier(_BANK["Bear Hug Carry"]) == "loaded"
+    assert trunk_load_tier(_BANK["Suitcase Carry (Heavy)"]) == "loaded"
+    assert trunk_load_tier(_BANK["Cable Pallof Press"]) == "loaded"
+    assert trunk_load_tier(_BANK["Med-Ball Rotational Slam"]) == "rotational_power"
+    assert trunk_load_tier(_BANK["Back Squat"]) == ""
+
+
+def test_heavy_core_options_are_capped_by_the_block_load_budget():
+    """Three carries/presses and two slams on offer: at most two loaded, one explosive."""
+    names = ["Back Squat", "Bear Hug Carry", "Cable Pallof Press", "Barbell Rollout",
+             "Med-Ball Rotational Slam", "Woodchopper (Cable)", "Russian Twist (Weighted)", "Plank"]
+    selected, _ = _select_bounded_records(_synthetic(names), role_key="primary_strength_day", cap=1,
+                                          pressure=0, trunk_block_target=4)
+    block = [r["name"] for r in trunk_block_members(selected)]
+    assert len(block) >= 3 and _tiers_within_budget(block), block
+
+
+def test_block_members_count_in_the_sessions_realised_load():
+    from fightcamp.session_composition import realised_role_stress
+    host = next(role for _, role in _strength_roles(_brief("boxer28_trunk_fullgym")) if _grouped(role))
+    without = {**host, "selected_exercise_assignments": _main(host)}
+    full_stress, main_stress = realised_role_stress(host), realised_role_stress(without)
+    assert "trunk" in {region.value for region in full_stress.regions}
+    assert set(main_stress.regions) <= set(full_stress.regions)
+    assert full_stress.systemic >= main_stress.systemic
+    assert full_stress.neural_mechanical >= main_stress.neural_mechanical
+    # The calendar stamp the realised-load governor reads includes the block.
+    assert "trunk" in host["calendar_stress"]["regions"]
 
 
 # ---------------------------------------------------------------------------
@@ -287,8 +392,8 @@ def test_unrelated_programmes_carry_no_core_block():
 # Validation: a token trunk exercise is not development
 # ---------------------------------------------------------------------------
 
-def _stimulus(function, sets, amount, unit="reps"):
-    item = {"intents": ["trunk_training"], "trunk_function": function, "sets": sets,
+def _stimulus(function, sets, amount, unit="reps", tier="stability"):
+    item = {"intents": ["trunk_training"], "trunk_function": function, "trunk_load_tier": tier, "sets": sets,
             "reps": amount if unit == "reps" else 0}
     if unit != "reps":
         item.update(volume_unit=unit, volume_amount=amount)
@@ -298,22 +403,32 @@ def _stimulus(function, sets, amount, unit="reps"):
 def test_token_or_redundant_trunk_work_earns_no_development():
     single = [_stimulus("anti_extension", 3, 10, "sec")]
     redundant = [_stimulus("anti_extension", 3, 20, "sec"), _stimulus("anti_extension", 3, 30, "sec"),
-                 _stimulus("anti_extension", 3, 8)]
-    negligible = [_stimulus("anti_extension", 3, 20, "sec"), _stimulus("anti_rotation", 3, 8),
-                  _stimulus("loaded_carry", 1, 15, "m")]  # one 15 m carry
-    for stimuli in (single, redundant, negligible):
+                 _stimulus("anti_extension", 3, 8, tier="loaded")]
+    negligible = [_stimulus("anti_extension", 3, 20, "sec"), _stimulus("anti_rotation", 3, 8, tier="loaded"),
+                  _stimulus("loaded_carry", 1, 15, "m", tier="loaded")]  # one 15 m carry
+    # Three distinct functions at the dose FLOOR (2 x 6, 3 x 10 s): token work.
+    floor = [_stimulus("anti_extension", 3, 10, "sec", tier="loaded"), _stimulus("anti_rotation", 2, 6, tier="loaded"),
+             _stimulus("rotation", 2, 6)]
+    # Three adequately dosed, distinct functions, but all unloaded bodyweight.
+    unresisted = [_stimulus("anti_extension", 4, 15, "sec"), _stimulus("anti_rotation", 3, 8),
+                  _stimulus("anti_lateral_flexion", 2, 20, "sec")]
+    for stimuli in (single, redundant, negligible, floor, unresisted):
         _mark_trunk_development(stimuli)
         assert not any(s["trunk_development"] for s in stimuli)
-    block = [_stimulus("anti_extension", 3, 20, "sec"), _stimulus("anti_rotation", 3, 8),
-             _stimulus("loaded_carry", 3, 20, "m"), _stimulus("rotational_power", 3, 4)]
+    block = [_stimulus("anti_extension", 4, 15, "sec"), _stimulus("anti_rotation", 3, 8, tier="loaded"),
+             _stimulus("loaded_carry", 4, 30, "m", tier="loaded"),
+             _stimulus("rotational_power", 4, 2, tier="rotational_power")]
     _mark_trunk_development(block)
     assert all(s["trunk_development"] for s in block)
 
 
-def test_embedded_hold_dose_is_not_a_development_dose():
+def test_floor_and_embedded_doses_are_not_development_doses():
     assert not trunk_dose_adequate(_stimulus("anti_rotation", 1, 15, "sec"))  # 1-2 x 15-20 s embedded hold
-    assert not trunk_dose_adequate(_stimulus("anti_extension", 3, 5, "sec"))
-    assert trunk_dose_adequate(_stimulus("anti_extension", 3, 10, "sec"))
+    assert not trunk_dose_adequate(_stimulus("anti_extension", 3, 10, "sec"))  # isometric floor
+    assert not trunk_dose_adequate(_stimulus("rotation", 2, 6))  # core-template floor
+    assert trunk_dose_adequate(_stimulus("anti_extension", 4, 15, "sec"))  # development point
+    assert trunk_dose_adequate(_stimulus("rotation", 3, 8))
+    assert trunk_dose_adequate(_stimulus("rotational_power", 4, 2, tier="rotational_power"))
 
 
 def test_a_brief_claiming_development_from_one_trunk_exercise_is_rejected():

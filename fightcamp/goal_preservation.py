@@ -30,7 +30,7 @@ from .priority_profile import (
     normalize_priority_values,
 )
 from .role_labels import athlete_facing_label_for, stamp_role_label
-from .strength_session_quality import trunk_function
+from .strength_session_quality import trunk_function, trunk_load_tier
 from .tagging import normalize_tag
 
 
@@ -500,7 +500,8 @@ def _strength_stimuli(role: dict, slots: list[dict], brief: dict) -> list[dict]:
             continue
         stimuli.append({"slot_id": slot.get("slot_id"), "name": selected.get("name"),
                         "intents": intents, "quality_class": quality,
-                        **({"trunk_function": trunk_function(selected, trunk_targeted=True)}
+                        **({"trunk_function": trunk_function(selected, trunk_targeted=True),
+                            "trunk_load_tier": trunk_load_tier(selected, trunk_targeted=True)}
                            if "trunk_training" in intents else {}),
                         "effective_prescription": dose["effective_prescription"],
                         "dose_authority": dose["dose_authority"],
@@ -852,22 +853,29 @@ def _embedded_trunk_stimuli(role: dict, pools: dict, phase: str) -> list[dict]:
 
 # A trunk development week is a Core Development Block: at least three
 # trunk-targeted members in ONE session, each training a different trunk
-# function at a non-negligible resolved dose. One plank, incidental bracing or a
-# 15-second hold is trunk exposure (maintenance), never development.
+# function at a DEVELOPMENT dose, and at least one of them resisted (loaded) or
+# explosive (rotational power). Three floor-dosed bodyweight holds, one plank,
+# incidental bracing or a 15-second hold is trunk exposure, never development.
 TRUNK_DEVELOPMENT_MIN_FUNCTIONS = 3
-_TRUNK_MIN_TOTAL = {"reps": 6, "sec": 30, "m": 30, "min": 1}
+# Total working volume per member, in the dose's own unit. Explosive work is
+# low-rep by design, so power is judged on its own (smaller) rep total.
+_TRUNK_MIN_TOTAL = {"reps": 16, "sec": 40, "m": 60, "min": 1}
+_TRUNK_MIN_POWER_REPS = 8
+_TRUNK_MIN_HOLD_SEC = 15
 
 
 def trunk_dose_adequate(stimulus: dict) -> bool:
-    """Two or more working sets with real total work in the dose's own unit."""
+    """Two or more working sets with development-level total work."""
     sets = int(stimulus.get("sets") or 0)
     unit = stimulus.get("volume_unit") or "reps"
     amount = stimulus.get("volume_amount") if unit != "reps" else stimulus.get("reps")
     amount = _number(amount)
     if sets < 2 or amount <= 0:
         return False
-    if unit == "sec" and amount < 10:
+    if unit == "sec" and amount < _TRUNK_MIN_HOLD_SEC:
         return False
+    if unit == "reps" and stimulus.get("trunk_load_tier") == "rotational_power":
+        return sets * amount >= _TRUNK_MIN_POWER_REPS
     return sets * amount >= _TRUNK_MIN_TOTAL.get(unit, 1)
 
 
@@ -876,7 +884,8 @@ def _mark_trunk_development(stimuli: list[dict]) -> None:
     trunk = [s for s in stimuli if "trunk_training" in s.get("intents", ())]
     adequate = [s for s in trunk if s.get("trunk_function") and trunk_dose_adequate(s)]
     functions = sorted({s["trunk_function"] for s in adequate})
-    block = len(functions) >= TRUNK_DEVELOPMENT_MIN_FUNCTIONS
+    resisted = any(s.get("trunk_load_tier") in {"loaded", "rotational_power"} for s in adequate)
+    block = len(functions) >= TRUNK_DEVELOPMENT_MIN_FUNCTIONS and resisted
     for stimulus in trunk:
         stimulus["trunk_development"] = block and stimulus in adequate
         if block:
@@ -1170,7 +1179,8 @@ def _attach_goal_microdose(brief: dict, ordinal: int, entry: dict) -> dict | Non
             # A truly unused / rest / recovery day stays protected.
             continue
         cap = (host.get("strength_composition_policy") or {}).get("effective_exercise_cap")
-        if isinstance(cap, int) and len(_strength_members(host)) >= cap:
+        from .session_composition import main_exercise_count
+        if isinstance(cap, int) and main_exercise_count(_strength_members(host)) >= cap:
             # The composition owner already sized this session for the
             # athlete's readiness; the floor does not overrule it.
             refusals.append("host_at_composed_exercise_cap")
@@ -1780,11 +1790,15 @@ def _trunk_block_reasons(weeks: list[dict], window: dict) -> list[dict]:
             status = outcome.get("status")
             if status == "hosted_elsewhere":
                 continue
-            if status not in {"constrained", "not_eligible"}:
+            if status == "delivered" and outcome.get("dose_held_by"):
+                # Delivered, but held to maintenance doses by readiness authority.
+                codes = [outcome["dose_held_by"]]
+            elif status not in {"constrained", "not_eligible"}:
                 return []
+            else:
+                codes = (outcome.get("pressure_sources") if outcome.get("reason_code") == "readiness_capacity"
+                         else None) or [outcome.get("reason_code") or "trunk_load_limits"]
             explained = True
-            codes = (outcome.get("pressure_sources") if outcome.get("reason_code") == "readiness_capacity"
-                     else None) or [outcome.get("reason_code") or "session_capacity"]
             reasons.extend({"reason_code": code, "authority": "session_composition.trunk_block",
                             "source_reason_code": outcome.get("reason_code"),
                             "week_index": week.get("week_index"), "role_key": role.get("role_key"),
