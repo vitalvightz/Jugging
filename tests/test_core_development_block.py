@@ -264,6 +264,8 @@ def test_block_size_follows_the_trunk_priority(target, expected):
 def test_trunk_priority_sets_the_block_target():
     from fightcamp.session_composition import trunk_development_block_target
     assert trunk_development_block_target({"weak_areas": ["speed"], "key_goals": ["strength"]}) == 0
+    assert trunk_development_block_target({"weak_areas": ["trunk_strength"], "key_goals": ["speed"]}) == 3
+    assert trunk_development_block_target({"weak_areas": [], "key_goals": ["trunk_strength"]}) == 4
 
 
 # ---------------------------------------------------------------------------
