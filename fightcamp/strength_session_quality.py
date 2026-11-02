@@ -410,6 +410,8 @@ def trunk_function(item: dict[str, Any], *, trunk_targeted: bool | None = None) 
         return "anti_rotation"
     if "mech_trunk_flexion" in tags:
         return "flexion"
+    if "anti_lateral_flexion" in tags:
+        return "anti_lateral_flexion"
     return "trunk_stability"
 
 
