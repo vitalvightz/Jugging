@@ -1856,8 +1856,12 @@ def _apply_late_core_maintenance(
             # free room first; beyond that it may stand in only for the
             # primer's own support-only, single-set complements -- never its
             # lead or any meaningful work -- and says which.
+            # Support-only status is read from the matched Stage 1 slot (the
+            # primer selector's own test); an assignment need not carry it.
+            # Unmatched or meaningful members are never displaceable.
             displaceable = [index for index, m in enumerate(current)
-                            if m.get("primer_complement") and m.get("support_only") is True]
+                            if m.get("primer_complement") and existing[index] is not None
+                            and _slot_support_only(existing[index][2]) and m.get("meaningful_stress") is not True]
             # Trunk work the session already holds counts: its functions are
             # not repeated and it spends the maintenance load budget.
             held = _candidate_records([match[2] for match in existing if match is not None])

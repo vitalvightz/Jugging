@@ -294,7 +294,7 @@ def test_maintenance_is_withheld_when_only_the_cap_could_make_room(without_maint
     from fightcamp.stage2_payload import LATE_PRIMER_MAX_MEMBERS
 
     original = next(r for w, r in _tail_strength(without_maintenance) if role_d_day(w, r) == 13)
-    full = [{**m, "support_only": False} for m in _members(original)]
+    full = [{**m, "meaningful_stress": True} for m in _members(original)]
     assert len(full) == LATE_PRIMER_MAX_MEMBERS
     host = _reapply(without_maintenance, full)
     assert host["selected_exercise_assignments"] == full
