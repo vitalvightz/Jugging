@@ -1528,11 +1528,12 @@ def _restore_goal_roles(brief: dict, entry: dict, *, enforce_session_budget: boo
                     audit.append({"week_index": week.get("week_index"), "d_day": d_day,
                                   "result": "calendar_forbidden", "reason_codes": [decision.reason_code] if decision else []})
                     continue
-                if repair_source.get("category") == "strength" and any(
+                if entry["goal"] == "trunk_strength" and repair_source.get("category") == "strength" and any(
                         r is not live and role_d_day(week, r) == d_day and r.get("preferred_system") == "glycolytic"
                         for r in roles):
-                    # Normal placement keeps strength off the glycolytic day;
-                    # repair may not undo that to satisfy a goal.
+                    # Normal placement keeps strength off the glycolytic day; a
+                    # trunk repair (a support target) may not undo that. Other
+                    # goals keep their existing repair search unchanged.
                     audit.append({"week_index": week.get("week_index"), "d_day": d_day,
                                   "result": "calendar_forbidden", "reason_codes": ["strength_glycolytic_same_day"]})
                     continue
