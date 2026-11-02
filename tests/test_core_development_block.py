@@ -158,7 +158,9 @@ def test_every_development_week_including_spp_hosts_a_block():
 def test_spp_core_candidates_come_from_stage1_and_stay_out_of_session_selection():
     brief = _brief("king_no_cut")
     spp = brief["candidate_pools"]["SPP"]
-    core = spp["core_development_slots"]
+    # Late-window-approved maintenance candidates share the pool (one lookup for
+    # pricing, identity and evidence) but only the D-13..D-7 tail draws on them.
+    core = [slot for slot in spp["core_development_slots"] if slot["role"] != "core_maintenance"]
     assert core and all(slot["session_index"] == 0 and slot["role"] == "core_development" for slot in core)
     offered = {o["name"] for slot in spp["strength_slots"] for o in [slot["selected"], *slot["alternates"]]}
     assert not offered & {slot["selected"]["name"] for slot in core}

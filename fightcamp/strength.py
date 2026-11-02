@@ -2354,10 +2354,16 @@ def generate_strength_block(*, flags: dict, weaknesses=None):
             -order_idx,
         )
 
+    # Late-only trunk items never enter this phase's selection, but they pass
+    # the same gates below into their own list: the late-fight tail's core
+    # maintenance (D-13..D-7) may draw on them, never the phase's sessions.
+    from .strength_session_quality import trunk_function
+    late_core_weighted = []
     for ex in exercise_bank:
         tags = ex.get("tags", [])
         tags_lower = set(normalize_tags(tags))
-        if _exercise_late_windows(ex) and not active_late_window:
+        late_only = bool(_exercise_late_windows(ex)) and not active_late_window
+        if late_only and not trunk_function(ex):
             continue
         details = " ".join(
             [
@@ -2531,7 +2537,11 @@ def generate_strength_block(*, flags: dict, weaknesses=None):
 
         # No additional fatigue or equipment adjustments; handled in score_exercise
 
-        if score >= 0:
+        if late_only:
+            # Every hard gate above already passed; the relevance cut-off below
+            # ranks main selection and does not apply to this side list.
+            late_core_weighted.append((ex, score, breakdown))
+        elif score >= 0:
             weighted_exercises.append((ex, score, breakdown))
 
     weighted_candidates = [
@@ -3595,6 +3605,16 @@ def generate_strength_block(*, flags: dict, weaknesses=None):
         reservoir = _build_strength_candidate_reservoir(capped_weighted)
         reservoir["__core_development__"] = _core_development_candidates(
             capped_weighted, is_safe=lambda ex: _cached_guarded_decision(ex).action != "exclude"
+        )
+        # Late-fight core maintenance (D-13..D-7) may only use items the bank
+        # opts into those countdown windows. Same filtered, scored list; kept
+        # apart so the development block's candidates are unchanged.
+        from .late_selector_windows import late_window_allowed
+        reservoir["__core_maintenance__"] = _core_development_candidates(
+            sorted((entry for entry in [*late_core_weighted, *capped_weighted]
+                    if late_window_allowed([entry[0]], offset=13) or late_window_allowed([entry[0]], offset=7)),
+                   key=lambda entry: -entry[1]),
+            is_safe=lambda ex: _cached_guarded_decision(ex).action != "exclude",
         )
         return reservoir
     candidate_reservoir = _run_real_poststep("candidate_reservoir_build", _build_capped_candidate_reservoir)
