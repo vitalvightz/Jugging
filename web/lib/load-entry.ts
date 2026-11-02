@@ -59,14 +59,14 @@ const blank = (value: unknown) => value == null || value === "";
  * done: a suggested format always wins, the athlete's own numbers only stand
  * in where nothing was suggested. The last weight fills an empty weight.
  */
-export function withPastDose<T extends DoseShape>(dose: T, past: PersonalExercise | null | undefined): T {
+export function withPastDose<T extends DoseShape>(dose: T, past: PersonalExercise | null | undefined, preserveMode = false): T {
   if (!past) return dose;
   const values = past.latest_values;
   // No suggested format at all: the athlete's last session sets one.
   const unformatted = (["sets", "reps", "rounds", "work_seconds", "duration_seconds", "distance", "prescription"] as const)
     .every(key => blank(dose[key]));
   let mode = dose.mode;
-  if (unformatted) {
+  if (unformatted && !preserveMode) {
     mode = values.sets && values.reps ? "reps" : values.rounds && values.work ? "intervals"
       : values.distance && DISTANCE_UNITS[values.distance.unit] ? "distance" : values.duration ? "duration" : dose.mode;
   }
