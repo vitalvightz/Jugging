@@ -129,7 +129,7 @@ def _pool_keys(planning_brief: Mapping[str, Any]) -> set[str]:
     for pool in pools.values():
         if not isinstance(pool, Mapping):
             continue
-        for group in ("strength_slots", "conditioning_slots", "core_development_slots"):
+        for group in ("strength_slots", "conditioning_slots"):
             for slot in _as_list(pool.get(group)):
                 if not isinstance(slot, Mapping):
                     continue
@@ -300,36 +300,7 @@ def reconcile_exercise_keys(structured_plan: Any, planning_brief: Any) -> Any:
                         continue
                     block["exercise_key"] = key
                     changed = True
-                changed = _stamp_component_groups(session, session_roles.get(index)) or changed
     return repaired if changed else structured_plan
-
-
-# Planner presentation groups (a Core Development block) are server-owned block
-# tags: a block carries one only when its planner exercise is a member of that
-# group in the role it was matched to. The tag never changes a block's identity,
-# dose or logging; each member stays its own block.
-_COMPONENT_GROUP_TAGS = frozenset({"core_development"})
-
-
-def _stamp_component_groups(session: dict[str, Any], role: Mapping[str, Any] | None) -> bool:
-    groups: dict[str, str] = {}
-    for assignment in _as_list((role or {}).get("selected_exercise_assignments")):
-        if isinstance(assignment, Mapping) and assignment.get("component_group") in _COMPONENT_GROUP_TAGS:
-            key = normalize_exercise_key(assignment.get("exercise_key")) or normalize_exercise_key(assignment.get("name"))
-            if key:
-                groups[key] = str(assignment["component_group"])
-    changed = False
-    for block in _as_list(session.get("blocks")):
-        if not isinstance(block, dict):
-            continue
-        tags = [tag for tag in _as_list(block.get("tags")) if tag not in _COMPONENT_GROUP_TAGS]
-        group = groups.get(normalize_exercise_key(block.get("exercise_key")) or "")
-        if group and block.get("prescription_source") != "athlete":
-            tags.append(group)
-        if tags != _as_list(block.get("tags")):
-            block["tags"] = tags or None
-            changed = True
-    return changed
 
 
 # ---------------------------------------------------------------------------

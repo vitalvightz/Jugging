@@ -37,11 +37,6 @@ ROWS_ADDED_AFTER_RECORDING = frozenset({
     "Half-Kneeling Single-Arm Band Row", "Split Squat (Bodyweight Tempo 3-1-1)",
 })
 PHASES_AT_RECORDING = {"Bulgarian Split Squat": ["SPP"]}
-# Rows retired from the bank since the recording, restored for the replay only,
-# each before the row that followed it then (bank order breaks name ties).
-ROWS_RETIRED_AFTER_RECORDING = {
-    "Farmer Carry (Heavy)": json.loads((FIXTURES / "rows_retired_after_recording.json").read_text(encoding="utf8")),
-}
 
 
 def _bank_at_recording():
@@ -51,7 +46,6 @@ def _bank_at_recording():
             continue
         if row["name"] in PHASES_AT_RECORDING:
             row["phases"] = list(PHASES_AT_RECORDING[row["name"]])
-        rows.extend(deepcopy(ROWS_RETIRED_AFTER_RECORDING.get(row["name"], [])))
         rows.append(row)
     return rows
 

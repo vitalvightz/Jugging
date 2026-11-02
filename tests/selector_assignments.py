@@ -20,6 +20,7 @@ from typing import Any
 from fightcamp.prescription_resolver import (
     _int_or_none,
     _is_strength_role,
+    _strength_slots_for_phase,
     apply_effective_strength_prescriptions,
 )
 from fightcamp.session_composition import assignment_from_slot
@@ -32,8 +33,7 @@ def assign_selected_membership(
         if not isinstance(week, dict):
             continue
         phase = str(week.get("phase") or "").strip().upper()
-        pool = candidate_pools.get(phase)
-        slots = pool.get("strength_slots", []) if isinstance(pool, dict) else []
+        slots = _strength_slots_for_phase(candidate_pools, phase)
         ordinal = 0
         for role in week.get("session_roles") or []:
             if (isinstance(role, dict) and role.get("category") == "conditioning"

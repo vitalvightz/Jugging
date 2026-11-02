@@ -239,7 +239,7 @@ def test_no_isometric_tagged_entry_is_routed_to_a_rep_based_template():
 
 
 def test_static_holds_receive_hold_doses_without_reclassifying_dynamic_plank_work():
-    for name in ("Bird Dog Hold", "Hollow-Body Hold", "Half-Kneeling Anti-Rotation Hold"):
+    for name in ("Bird Dog Hold", "Hollow-Body Hold", "Staggered Stance Hold"):
         assert _classify_prescription_type(BY_NAME[name]) == "support_isometric", name
         for dose in _doses(name).values():
             assert "hold" in dose and "tempo" not in dose
