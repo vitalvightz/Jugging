@@ -7,10 +7,11 @@ test("parses mm:ss and h:mm:ss run times", () => {
   assert.equal(parseRunTime("24:35"), 1475);
   assert.equal(parseRunTime(" 1:02:10 "), 3730);
   assert.equal(parseRunTime("75:00"), 4500);
+  assert.equal(parseRunTime("24.35"), 1475);
 });
 
 test("rejects malformed or out-of-range run times", () => {
-  for (const text of ["", "24", "24:60", "1:60:00", "a:10", "0:00", "10:00:01", "1:2:3:4"]) assert.equal(parseRunTime(text), null, text);
+  for (const text of ["", "24", "24:60", "1:60:00", "a:10", "0:00", "10:00:01", "1:2:3:4", "24.5", "24:5"]) assert.equal(parseRunTime(text), null, text);
 });
 
 test("formats times and pace", () => {

@@ -4,10 +4,14 @@ import type { DistanceUnit } from "./training-history";
 export const RUN_TIME_MAX_SECONDS = 36000;
 export const DISTANCE_LIMITS: Record<DistanceUnit, number> = { km: 200, miles: 125 };
 
-/** Parses "24:35" (mm:ss) or "1:02:10" (h:mm:ss) into seconds; null when invalid. */
+/**
+ * Parses "24:35" (mm:ss) or "1:02:10" (h:mm:ss) into seconds; null when invalid.
+ * "." works as the separator too ("24.35"), since phone number pads have no ":".
+ * Every part after the first is two digits, so "24.5" is rejected, not guessed.
+ */
 export function parseRunTime(text: string): number | null {
-  const parts = text.trim().split(":");
-  if (parts.length < 2 || parts.length > 3 || parts.some(part => !/^\d+$/.test(part))) return null;
+  const parts = text.trim().split(/[:.]/);
+  if (parts.length < 2 || parts.length > 3 || !/^\d+$/.test(parts[0]) || parts.slice(1).some(part => !/^\d{2}$/.test(part))) return null;
   const numbers = parts.map(Number);
   const [hours, minutes, seconds] = numbers.length === 3 ? numbers : [0, ...numbers];
   // Leading field may be any size; the rest are clock fields.

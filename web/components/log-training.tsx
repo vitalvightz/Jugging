@@ -330,8 +330,8 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
             onClick={() => { setDistanceUnit(unit); requestId.current = null; }}>{distanceUnitLabel(unit)}</button>)}
         </div>
       </div> : null}
-      <label className={styles.customDuration}>Time (mm:ss or h:mm:ss, optional)
-        <input type="text" inputMode="numeric" placeholder="24:35" autoComplete="off" value={runTime}
+      <label className={styles.customDuration}>Time (mm:ss, optional)
+        <input type="text" inputMode="decimal" placeholder="24:35" autoComplete="off" value={runTime}
           onChange={event => { setRunTime(event.target.value); requestId.current = null; }} />
       </label>
     </fieldset> : null}
