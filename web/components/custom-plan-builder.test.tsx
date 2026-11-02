@@ -347,6 +347,42 @@ test("a late suggestion fills an open, untouched editor instead of being saved o
   }
 });
 
+test("a failed search never leaves old exercises available to add", async () => {
+  const api = mockApi({ ...library, "/api/training/library": url => {
+    if (url.searchParams.get("q") === "broken") throw new Error("Search failed");
+    return library["/api/training/library"](url, undefined);
+  } });
+  const ui = await mountBuilder({ accessToken: "search-failure" });
+  try {
+    await addSession(ui.host, "Monday");
+    await search("squat");
+    assert.ok(topSheet().querySelector('[aria-label="Add Back squat"]'));
+    await search("broken");
+    assert.match(topSheet().textContent!, /Library search unavailable/);
+    assert.equal(topSheet().querySelector('[aria-label="Add Back squat"]'), null);
+    assert.equal(topSheet().querySelector('[aria-label="Library results"]'), null);
+  } finally {
+    await ui.unmount();
+    api.restore();
+  }
+});
+
+test("returning from full library keeps the exercise search", async () => {
+  const api = mockApi(library);
+  const ui = await mountBuilder({ accessToken: "search-return" });
+  try {
+    await addSession(ui.host, "Monday");
+    await search("squat");
+    await act(async () => button(topSheet(), "Filters & community").click());
+    assert.match(document.body.textContent!, /Find a Drill/);
+    await act(async () => button(ui.host, "← Back to plan").click());
+    assert.equal((topSheet().querySelector('input[type="search"]') as HTMLInputElement).value, "squat");
+  } finally {
+    await ui.unmount();
+    api.restore();
+  }
+});
+
 test("a personal exercise starts from the search text, with extras folded away", async () => {
   const api = mockApi(library);
   const ui = await mountBuilder({ accessToken: "manual" });
