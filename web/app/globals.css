@@ -2884,23 +2884,20 @@ html[data-theme="light"] .overview-session-state-pill {
   color: var(--text-secondary);
 }
 
+/* Two facts per row (Plan | Camp day, Phase | Fight date) on every width. */
 .overview-operational-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 18px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 18px;
   padding-top: 8px;
 }
 
 .overview-operational-item {
   display: grid;
+  align-content: start;
   gap: 4px;
-  padding-right: 18px;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.overview-operational-item:last-child {
-  padding-right: 0;
-  border-right: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .overview-operational-label {
@@ -3360,6 +3357,24 @@ html:root .overview-risk-more.overview-weigh-in:focus-visible {
   html:root .overview-risk-more.overview-weigh-in::after { animation: none; }
 }
 
+/* Light theme: the brand red instead of purple, same sweep. */
+html[data-theme="light"]:root .overview-risk-more.overview-weigh-in {
+  border-color: rgba(189, 16, 32, 0.22);
+  background: rgba(189, 16, 32, 0.06);
+  color: var(--brand-red, #bd1020);
+}
+
+html[data-theme="light"]:root .overview-risk-more.overview-weigh-in::after {
+  background: linear-gradient(105deg, transparent 35%, rgba(189, 16, 32, 0.1) 50%, transparent 65%);
+}
+
+html[data-theme="light"]:root .overview-risk-more.overview-weigh-in:hover,
+html[data-theme="light"]:root .overview-risk-more.overview-weigh-in:focus-visible {
+  border-color: rgba(189, 16, 32, 0.36);
+  background: rgba(189, 16, 32, 0.1);
+  color: var(--brand-red, #bd1020);
+}
+
 /* Deduped decision copy: an ALL-CAPS command title with a calm two-line body,
    the title clearly separated from the reason + action. */
 .overview-decision-title {
@@ -3692,6 +3707,18 @@ html:root .overview-risk-more.overview-weigh-in:focus-visible {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   line-clamp: 2;
+}
+
+/* No fight weight: the event name sits right of the countdown instead. */
+.fight-countdown-count:has(+ .fight-countdown-event-side) {
+  flex: none;
+}
+
+.fight-countdown-event.fight-countdown-event-side {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: clamp(16px, 6.5cqi, 24px);
+  text-align: right;
 }
 
 /* Countdown on the left, target fight weight on the right behind a hairline,
@@ -10983,21 +11010,7 @@ html[data-theme="light"] .today-injury-other-warning {
   }
 
   .overview-operational-strip {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .overview-operational-item {
-    padding-right: 0;
-    padding-bottom: 10px;
-    border-right: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  }
-
-  .overview-operational-item:last-child {
-    padding-bottom: 0;
-    border-bottom: 0;
+    gap: 12px 14px;
   }
 
   .step-progress {

@@ -141,7 +141,9 @@ export function FightCountdown({
     >
       <div className="fight-countdown-heading">
         <p className="fight-countdown-kicker">Upcoming fight</p>
-        <h2 className="fight-countdown-event">{event}</h2>
+        {/* Without a fight weight the event name takes the weight's slot on
+            the countdown row, so the card stays compact. */}
+        {fightWeight ? <h2 className="fight-countdown-event">{event}</h2> : null}
       </div>
       <div className="fight-countdown-stats">
         <div className="fight-countdown-count">
@@ -162,7 +164,9 @@ export function FightCountdown({
               <p className="fight-countdown-weight-value">{fightWeight}</p>
             </div>
           </div>
-        ) : null}
+        ) : (
+          <h2 className="fight-countdown-event fight-countdown-event-side">{event}</h2>
+        )}
       </div>
       {meta ? <p className="fight-countdown-meta">{meta}</p> : null}
       {pct !== null ? (

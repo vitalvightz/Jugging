@@ -57,7 +57,7 @@ test("falls back to Fight Camp and drops the weight section when neither is set"
     const html = renderToStaticMarkup(
       <FightCountdown fightDate="2026-06-27" trainingDay="2026-06-10" phase="SPP" plan={campPlan} {...props} />,
     );
-    assert.match(html, /fight-countdown-event">Fight Camp</);
+    assert.match(html, /fight-countdown-event fight-countdown-event-side">Fight Camp</);
     assert.doesNotMatch(html, /fight-countdown-weight/);
     assert.match(html, /fight-countdown-number"[^>]*>17</);
   }
@@ -68,5 +68,5 @@ test("a long event name renders whole (the CSS clamps it, nothing is cut in mark
   const html = renderToStaticMarkup(
     <FightCountdown fightDate="2026-06-27" trainingDay="2026-06-10" eventName={name} />,
   );
-  assert.match(html, new RegExp(`fight-countdown-event">${name}<`));
+  assert.match(html, new RegExp(`fight-countdown-event[^"]*">${name}<`));
 });
