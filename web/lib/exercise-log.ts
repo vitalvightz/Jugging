@@ -1,5 +1,6 @@
 import { cleanText, finitePositiveNumber, isModeLikeReps, isTimeLikeReps } from "@/lib/structured-plan";
 import { countOnlySetSummary, readSets, setSummary, type SetDraft } from "./set-entries";
+import { formatRunTime, parseRunTime, RUN_TIME_MAX_SECONDS } from "./run-time";
 import type {
   ExerciseLogActual,
   ExerciseLogReason,
@@ -32,6 +33,8 @@ export type LogField = {
   prescribed: [number, number] | null;
   /** The prescription as written, shown as the input's placeholder. */
   hint: string | null;
+  /** Entered and shown as a clock ("24:35"); the value is seconds. */
+  clock?: boolean;
 };
 
 export const EXERCISE_LOG_REASONS: readonly ExerciseLogReason[] = ["equipment", "fatigue", "pain", "felt_strong"];
@@ -72,6 +75,10 @@ function distanceUnit(unit: unknown): { unit: string; apiUnit: string } | null {
   if (/^(mi|mile|miles)$/.test(text)) return { unit: "mi", apiUnit: "miles" };
   return null;
 }
+
+const METERS_PER_UNIT: Record<string, number> = { meters: 1, km: 1000, miles: 1609.344 };
+/** Shorter efforts are timed in seconds, not on a run clock. */
+const MIN_TIMED_DISTANCE_METERS = 400;
 
 function single(value: number): [number, number] {
   return [value, value];
@@ -156,6 +163,15 @@ export function logFieldsForBlock(block: StructuredBlock): LogField[] {
     fields.push({ key: "rounds", label: "Rounds", unit: null, apiUnit: null, prescribed: single(rounds), hint: String(rounds) });
   }
   fields.push(...timed);
+  // One continuous distance with no prescribed time (a 5k run) can still record
+  // how long it took, the way load is offered for rep work: added, never a
+  // change. Repeated or short efforts (4 × 20 m sprints) are left as they are.
+  const distance = timed.find((field) => field.key === "distance");
+  const meters = distance?.prescribed ? distance.prescribed[0] * (METERS_PER_UNIT[distance.apiUnit ?? ""] ?? 0) : 0;
+  const singleEffort = (sets === null || sets === 1) && !finitePositiveNumber(block.rounds);
+  if (singleEffort && meters >= MIN_TIMED_DISTANCE_METERS && !timed.some((field) => field.key === "duration" || field.key === "work")) {
+    fields.push({ key: "duration", label: "Time", unit: null, apiUnit: "seconds", prescribed: null, hint: "mm:ss", clock: true });
+  }
 
   const effort = block.effort;
   const prescribedRpe =
@@ -201,6 +217,7 @@ function formatPrescribed(field: LogField): string {
 
 /** "3 sets", "80 kg", "15 min", "RPE 8". */
 export function formatLogValue(field: LogField, value: number): string {
+  if (field.clock) return formatRunTime(value);
   const number = formatNumber(value);
   if (field.key === "effort") return `RPE ${number}`;
   if (field.unit) return `${number} ${field.unit}`;
@@ -261,8 +278,8 @@ export function buildLogEntry(fields: LogField[], draft: LogDraft): LogEntryResu
     if (!text) {
       continue;
     }
-    const value = parseEntry(text);
-    const [min, max, whole] = FIELD_LIMITS[field.key];
+    const value = field.clock ? parseRunTime(text) : parseEntry(text);
+    const [min, max, whole] = field.clock ? [1, RUN_TIME_MAX_SECONDS, true] as const : FIELD_LIMITS[field.key];
     if (value === null || value < min || value > max || (whole && !Number.isInteger(value))) {
       invalid.push(field.key);
       continue;
@@ -329,13 +346,20 @@ function actualNumber(actual: ExerciseLogActual | null | undefined, key: LogFiel
   return null;
 }
 
+/** A saved value in the field's own terms: a clock field reads seconds. */
+function fieldNumber(actual: ExerciseLogActual | null | undefined, field: LogField): number | null {
+  const value = actualNumber(actual, field.key);
+  if (value === null || !field.clock) return value;
+  return actual?.duration?.unit === "minutes" ? value * 60 : value;
+}
+
 /** The draft that reproduces a saved log, for editing it. */
 export function draftFromLog(fields: LogField[], log: ExerciseLogRecord | null | undefined): LogDraft {
   const draft: LogDraft = {};
   for (const field of fields) {
-    const value = actualNumber(log?.actual, field.key);
+    const value = fieldNumber(log?.actual, field);
     if (value !== null) {
-      draft[field.key] = formatNumber(value);
+      draft[field.key] = field.clock ? formatRunTime(value) : formatNumber(value);
     }
   }
   return draft;
@@ -356,7 +380,7 @@ export type LoggedValue = {
 export function loggedValues(fields: LogField[], log: ExerciseLogRecord): LoggedValue[] {
   const values: LoggedValue[] = [];
   for (const field of fields) {
-    const value = actualNumber(log.actual, field.key);
+    const value = fieldNumber(log.actual, field);
     if (value === null) {
       continue;
     }
@@ -365,7 +389,7 @@ export function loggedValues(fields: LogField[], log: ExerciseLogRecord): Logged
     values.push({
       key: field.key,
       label: field.label,
-      value: field.unit ? `${number} ${field.unit}` : number,
+      value: field.clock ? formatRunTime(value) : field.unit ? `${number} ${field.unit}` : number,
       text: formatLogValue(field, value),
       insteadOf: departs ? `${formatPrescribed(field)}${field.unit ? ` ${field.unit}` : ""}` : null,
     });
@@ -382,7 +406,7 @@ export function logSummary(fields: LogField[], log: ExerciseLogRecord): string {
   if (log.actual?.set_entries?.length) return `${label} · ${setSummary(log.actual.set_entries, log.actual.sets ?? undefined)}`;
   if (countOnlySetSummary(log.actual)) return `${label} · ${countOnlySetSummary(log.actual)}`;
   const parts = fields.flatMap((field) => {
-    const value = actualNumber(log.actual, field.key);
+    const value = fieldNumber(log.actual, field);
     return value === null ? [] : [formatLogValue(field, value)];
   });
   return [label, ...parts].join(" · ");
@@ -534,8 +558,9 @@ export function performanceSummary(log: ExerciseLogRecord): string {
   if (countOnlySetSummary(log.actual)) return countOnlySetSummary(log.actual)!;
   const block: StructuredBlock = {
     ...log.prescribed,
+    // A recorded run time with no prescribed one stays a clock time, not a duration dose.
     ...Object.fromEntries((["load", "duration", "work", "distance"] as const)
-      .flatMap((key) => log.actual[key] ? [[key, log.actual[key]]] : [])),
+      .flatMap((key) => log.actual[key] && (key !== "duration" || log.prescribed.duration) ? [[key, log.actual[key]]] : [])),
   };
   const actual = { ...log.actual };
   // Blank actual fields mean the saved prescription was followed, not today's dose.

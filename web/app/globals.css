@@ -23045,3 +23045,94 @@ a, button, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 @media (prefers-reduced-motion: reduce) {
   .sp-optional-disclosure::details-content { transition: none; }
 }
+
+/* One-time coach-mark pill (shared look with the round timer's .st-hint). */
+.once-hint {
+  position: relative;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px 7px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--text-primary);
+  color: var(--bg-panel);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  animation: once-hint-in 260ms ease-out 400ms both;
+}
+
+.once-hint::before {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  transform: rotate(45deg);
+  border-radius: 2px;
+}
+
+.once-hint span {
+  font-size: 15px;
+  line-height: 1;
+  opacity: 0.45;
+}
+
+/* Above the History tab in the mobile tab bar, caret pointing down at it. */
+.mobile-tab-bar-hint-anchor {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  width: 0;
+  height: 0;
+}
+
+.once-hint-above {
+  position: absolute;
+  bottom: 0;
+  right: -36px;
+}
+
+.once-hint-above::before {
+  bottom: -5px;
+  right: 31px;
+}
+
+/* Under the History link in the sidebar, caret pointing up at it. */
+.once-hint-below {
+  margin: 6px 0 4px 12px;
+  align-self: flex-start;
+  justify-self: start;
+}
+
+.once-hint-below::before {
+  top: -5px;
+  left: 18px;
+}
+
+@keyframes once-hint-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .once-hint { animation: none; }
+}
+
+/* "Last training focus": one quiet line under the session title, before relevant work. */
+.today-session-focus {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.today-session-focus .today-detail-label {
+  display: block;
+  margin-bottom: 2px;
+}

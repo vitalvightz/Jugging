@@ -2336,6 +2336,7 @@ SparringPlannedIntensity = Literal["hard", "light", "technical", "contact"]
 SparringHeadContact = Literal["none", "light", "heavy"]
 SparringLogSource = Literal["contact", "session", "free"]
 SPARRING_NOTE_MAX_CHARS = 1000
+SPARRING_FOCUS_MAX_CHARS = 140
 
 
 class SparringLogRequest(BaseModel):
@@ -2366,8 +2367,10 @@ class SparringLogRequest(BaseModel):
     head_contact: SparringHeadContact
     rocked: bool = False
     notes: str = Field(default="", max_length=SPARRING_NOTE_MAX_CHARS)
+    # Optional: one thing to work on next time. Never safety or workload data.
+    focus: str = Field(default="", max_length=SPARRING_FOCUS_MAX_CHARS)
 
-    @field_validator("notes", mode="before")
+    @field_validator("notes", "focus", mode="before")
     @classmethod
     def clean_notes(cls, value: Any) -> str:
         return str(value or "").strip()
@@ -2406,7 +2409,20 @@ class SparringLogRecord(BaseModel):
     head_contact: SparringHeadContact
     rocked: bool = False
     notes: str = ""
+    focus: str = ""
     created_at: str = ""
+
+
+class TrainingFocusResponse(BaseModel):
+    """The athlete's latest recorded sparring focus, for the next relevant session.
+
+    ``focus`` is None when there is nothing recent to show. ``sport`` is the
+    sport it was recorded for when known (a manual session's sport), else None.
+    """
+
+    focus: str | None = None
+    training_day: str | None = None
+    sport: str | None = None
 
 
 class SparringLogResponse(BaseModel):

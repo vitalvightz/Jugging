@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useAppSession } from "@/components/auth-provider";
 import { useGenerationStatus } from "@/components/generation-status-provider";
+import { HistoryHint } from "@/components/history-hint";
 import { BOTTOM_NAV_ITEMS, showsMobileTabBar } from "@/lib/beta-navigation";
 
 const TAB_ICONS: Record<string, ReactNode> = {
@@ -247,6 +248,10 @@ export function MobileTabBar() {
           </Link>
         );
       })}
+      {/* Anchored over the History tab; a sibling, since a button can't sit in a link. */}
+      <span className="mobile-tab-bar-hint-anchor" style={{ left: `${((BOTTOM_NAV_ITEMS.findIndex((tab) => tab.href === "/history") + 0.5) / BOTTOM_NAV_ITEMS.length) * 100}%` }}>
+        <HistoryHint className="once-hint once-hint-above" />
+      </span>
     </nav>
   );
 }

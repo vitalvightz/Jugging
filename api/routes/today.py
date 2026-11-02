@@ -20,6 +20,7 @@ from api.contracts.external_training import ExternalTrainingCreate, ExternalTrai
 from api.services.training_history import (
     training_history_page, create_external_training, update_external_training,
     delete_external_training, set_external_training_takeaway,
+    delete_plan_completion, edit_plan_completion, plan_completion_history_editable,
 )
 from api.contracts.session_details import SessionDetails
 from api.services.session_details import session_details
@@ -27,6 +28,7 @@ from api.contracts.exercise_library import ExerciseLibraryResponse, ExercisePerf
 from api.contracts.manual_exercises import ManualExerciseEntry, PerformedExerciseInput, ManualExerciseListResponse
 from api.services.manual_exercises import delete_session_exercise, list_session_exercises, save_session_exercise
 from api.services.tracking_xp import reconcile_training_xp
+from api.services.training_focus import latest_training_focus
 from api.services.exercise_library import exercise_library, exercise_performances
 
 from api.compliance_guards import require_health_feature_access
@@ -53,6 +55,7 @@ from api.models import (
     SparringLogRecord,
     SparringLogRequest,
     SparringLogResponse,
+    TrainingFocusResponse,
     SparringWindowSummary,
     TodayCheckinRecord,
     TodayCheckinRequest,
@@ -61,7 +64,7 @@ from api.models import (
     TodayInjuryCheckinResponse,
 )
 from api.contracts.command_view import CommandView
-from api.contracts.completion import completion_landing_state, completion_status_of
+from api.contracts.completion import HistoryCompletionEdit, completion_landing_state, completion_status_of
 from api.contracts.rehab_completion import COMPLETED_STATUSES
 from api.services.exercise_log_service import (
     list_exercise_logs_for_today,
@@ -133,6 +136,24 @@ def _sparring_log_record(row: Mapping[str, Any]) -> SparringLogRecord:
             "created_at": str(row.get("created_at") or ""),
         }
     )
+
+
+def _apply_sparring_focus(store: AppStore, athlete_id: str, row: dict[str, Any], body: Any) -> dict[str, Any]:
+    """Write the optional focus once this request's answers are the current ones.
+
+    A late, older correction never overwrites a newer focus. A failed write keeps
+    the saved log; the returned focus then differs and the client says so.
+    """
+    if str(row.get("focus") or "") == body.focus or not row.get("id"):
+        return row
+    if int(row.get("detail_revision") or 0) != body.detail_revision:
+        return row
+    try:
+        updated = store.set_sparring_log_focus(athlete_id, str(row["id"]), body.focus, revision=body.detail_revision)
+    except Exception:  # noqa: BLE001 - the sparring log itself is saved
+        logger.exception("[sparring] focus write failed athlete_id=%s", athlete_id)
+        return row
+    return {**row, "focus": updated.get("focus", body.focus)} if updated else row
 
 
 def _sparring_window(rows: list[SparringLogRecord], *, today: date, days: int) -> SparringWindowSummary:
@@ -306,12 +327,49 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
             if row["source"] == "external":
                 continue
             row["title"] = _history_title(store, profile.athlete_id, row, plans) or "Unlxck session"
+            row["history_editable"] = bool(row.get("id")) and plan_completion_history_editable(row)
             row["id"] = str(row.get("id") or row.get("session_id"))
         counts = store.count_manual_exercises(profile.athlete_id, [str(row["id"]) for row in rows if row["source"] == "external"])
         for row in rows:
             if row["source"] == "external":
                 row["exercise_count"] = counts.get(str(row["id"]), 0)
         return {"sessions": rows, "next_before_day": next_before_day}
+
+    # Limited History changes to a finished plan session. Removing it marks the
+    # session not done again, so streaks are recounted; earned XP is kept, as
+    # for removed manual sessions.
+    @router.patch("/api/training/history/unlxck/{completion_id}", response_model=TrainingHistorySession)
+    def edit_history_plan_session(completion_id: UUID, body: HistoryCompletionEdit,
+                                  profile: ProfileRecord = Depends(require_profile),
+                                  store: AppStore = Depends(get_store)):
+        # Like completing on Today: allowed without consent, minus pain after.
+        row = edit_plan_completion(store, profile.athlete_id, str(completion_id), body,
+            health_consent_granted=evaluate_profile_compliance(profile).health_consent_granted)
+        return {**row, "source": "unlxck", "id": str(row["id"]), "history_editable": True,
+                "title": _history_title(store, profile.athlete_id, row, {}) or "Unlxck session"}
+
+    @router.delete("/api/training/history/unlxck/{completion_id}", status_code=204)
+    def remove_history_plan_session(completion_id: UUID,
+                                    profile: ProfileRecord = Depends(require_profile),
+                                    store: AppStore = Depends(get_store)):
+        row = delete_plan_completion(store, profile.athlete_id, str(completion_id))
+        if row is None:
+            return Response(status_code=204)
+        for reconcile in (reconcile_training_streak, reconcile_adherence_streak):
+            try:
+                reconcile(store, athlete_id=profile.athlete_id, athlete_timezone=profile.athlete_timezone)
+            except Exception:  # noqa: BLE001 - the removal is authoritative
+                logger.exception("[streak] reconciliation after history removal failed athlete_id=%s", profile.athlete_id)
+        try:
+            invalidate_notification_action(
+                store, profile_id=profile.athlete_id,
+                action_key=f"complete-session:{row.get('session_id')}",
+                training_day=str(row.get("training_day") or ""),
+                source_metadata={"completion_id": str(row.get("id") or "")},
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("[notification] history removal invalidation failed profile_id=%s", profile.athlete_id)
+        return Response(status_code=204)
 
     @router.get("/api/training/history/{source}/{entry_id}", response_model=SessionDetails)
     def get_training_session_details(source: Literal["unlxck", "external"], entry_id: UUID,
@@ -759,7 +817,8 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
             if not manual or manual.get("activity") != "sparring":
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="sparring session not found")
 
-        fields = request_body.model_dump(mode="json", exclude={"plan_id"})
+        # The focus is not safety data: it is written after the RPC, which stays unchanged.
+        fields = request_body.model_dump(mode="json", exclude={"plan_id", "focus"})
         # The log and (for a rocked report) its admin review are written in one
         # transaction. If either fails, nothing is kept and the athlete is told
         # to retry: a rocked report is never acknowledged without its review.
@@ -789,11 +848,24 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Your sparring log was not saved. Please try again.",
             )
+        row = _apply_sparring_focus(store, profile.athlete_id, row, request_body)
         return SparringLogResponse(
             log=_sparring_log_record(row),
             review_created=review_created,
             safety_notice=ROCKED_SAFETY_NOTICE if rocked else None,
         )
+
+    @router.get("/api/today/training-focus", response_model=TrainingFocusResponse)
+    def get_training_focus(
+        profile: ProfileRecord = Depends(require_profile),
+        store: AppStore = Depends(get_store),
+    ) -> TrainingFocusResponse:
+        """The last sparring focus, for the next relevant session. Read with
+        health consent only, like the sparring log it comes from."""
+        if not evaluate_profile_compliance(profile).health_consent_granted:
+            return TrainingFocusResponse()
+        return TrainingFocusResponse(**latest_training_focus(
+            store, profile.athlete_id, today=resolve_training_day(profile.athlete_timezone)))
 
     @router.post(
         "/api/today/exercise-log",

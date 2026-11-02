@@ -1,0 +1,31 @@
+[
+  {
+    "title": "Strength",
+    "session_type": "strength_power",
+    "prescription_source": "athlete",
+    "blocks": [
+      {
+        "block_type": "strength"
+      }
+    ],
+    "coach_led_contact": null
+  },
+  {
+    "title": "Light Technical",
+    "session_type": "skill",
+    "prescription_source": "athlete",
+    "blocks": [
+      {
+        "block_type": "skill"
+      }
+    ],
+    "coach_led_contact": null
+  },
+  {
+    "title": "Hard Sparring",
+    "session_type": "sparring",
+    "prescription_source": "athlete",
+    "blocks": [],
+    "coach_led_contact": "Hard sparring"
+  }
+]

@@ -4586,6 +4586,35 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
         return self._select_first(self.client.table("session_completions").select("*")
             .eq("athlete_id", athlete_id).eq("id", completion_id))
 
+    def update_session_completion_fields(self, athlete_id: str, completion_id: str,
+                                         fields: dict[str, Any]) -> dict[str, Any] | None:
+        """History's limited edit: RPE, pain after and notes only."""
+        response = (self.client.table("session_completions")
+            .update({key: fields[key] for key in ("session_rpe", "pain_after", "notes") if key in fields})
+            .eq("athlete_id", athlete_id).eq("id", completion_id).execute())
+        return (getattr(response, "data", None) or [None])[0]
+
+    def reset_history_plan_session(self, athlete_id: str, completion_id: str) -> dict[str, Any] | None:
+        """Remove a finished plan session from History (public.reset_history_plan_session).
+
+        One transaction: its exercise results are deleted and the completion is
+        marked not started, or neither happens. The row and its id stay. None
+        when the completion is not the athlete's.
+        """
+        operation = f"reset_history_plan_session athlete_id={athlete_id}"
+        try:
+            response = self.client.rpc(
+                "reset_history_plan_session", {"p_athlete_id": athlete_id, "p_completion_id": completion_id},
+            ).execute()
+        except _STORE_CLIENT_ERRORS as exc:
+            if "rehab_exposure_cannot_be_reset" in str(exc):
+                raise HTTPException(status_code=409, detail="This session can't be changed from History.") from exc
+            self._raise_operation_http_error(operation=operation, detail="failed to remove session", exc=exc)
+        payload = getattr(response, "data", None)
+        if isinstance(payload, list):
+            payload = payload[0] if payload else None
+        return payload if isinstance(payload, dict) else None
+
     def list_session_detail_exercise_logs(self, athlete_id: str, *, plan_id: str,
                                          training_day: str, session_ids: list[str]) -> list[dict[str, Any]]:
         response = (self.client.table("exercise_logs").select("*")
@@ -4696,7 +4725,8 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
 
     def update_external_training_session(self, athlete_id: str, entry_id: str, fields: dict[str, Any]) -> dict[str, Any] | None:
         response = (self.client.table("external_training_sessions")
-            .update({key: fields.get(key) for key in ("activity", "duration_minutes", "effort", "sport", "session_type")})
+            .update({key: fields.get(key) for key in ("activity", "duration_minutes", "effort", "sport", "session_type",
+                                                      "distance_value", "distance_unit", "duration_seconds")})
             .eq("athlete_id", athlete_id).eq("id", entry_id).is_("deleted_at", "null").execute())
         return (getattr(response, "data", None) or [None])[0]
 
@@ -5639,14 +5669,27 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
             )
         return payload
 
+    def set_sparring_log_focus(self, athlete_id: str, log_id: str, focus: str, *, revision: int) -> dict[str, Any] | None:
+        """Owner-scoped write of the optional focus only; never the safety fields.
+
+        Conditional on ``revision`` in the same statement, so a request whose
+        answers a newer correction replaced in the meantime writes nothing.
+        """
+        response = (self.client.table("sparring_logs").update({"focus": focus})
+            .eq("athlete_id", athlete_id).eq("id", log_id).eq("detail_revision", revision).execute())
+        return (getattr(response, "data", None) or [None])[0]
+
     def list_sparring_logs(
-        self, athlete_id: str, *, limit: int = 60, from_day: str | None = None
+        self, athlete_id: str, *, limit: int = 60, from_day: str | None = None, with_focus: bool = False
     ) -> list[dict[str, Any]]:
         """The athlete's sparring logs, newest training day first (served by
         ``sparring_logs_athlete_day_idx``), optionally only on/after ``from_day``."""
         query = self.client.table("sparring_logs").select("*").eq("athlete_id", athlete_id)
         if from_day:
             query = query.gte("training_day", from_day)
+        if with_focus:
+            # Filtered before the limit, so blank rows never crowd out a focus.
+            query = query.neq("focus", "")
         response = (
             query.order("training_day", desc=True)
             .order("created_at", desc=True)

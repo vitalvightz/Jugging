@@ -1,5 +1,6 @@
 """Completed external work, independent of plan/prescription identities."""
 from datetime import date
+from math import ceil
 from typing import Literal
 from uuid import UUID
 
@@ -9,6 +10,9 @@ from api.contracts.training_disciplines import SessionType, Sport, discipline_er
 
 Activity = Literal["sparring", "boxing", "roadwork", "strength", "conditioning", "other"]
 Effort = Literal["easy", "moderate", "hard"]
+DistanceUnit = Literal["km", "miles"]
+# Same caps as the manual exercise distance limits.
+DISTANCE_LIMITS: dict[str, float] = {"km": 200, "miles": 125}
 
 
 class ExternalTrainingFields(BaseModel):
@@ -21,11 +25,34 @@ class ExternalTrainingFields(BaseModel):
     # inferred for them; ``activity`` must be the kind the pair maps to.
     sport: Sport | None = None
     session_type: SessionType | None = None
+    # Optional run detail (roadwork only). ``duration_minutes`` stays the
+    # workload value; an exact time must round up to it.
+    distance_value: float | None = Field(default=None, gt=0)
+    distance_unit: DistanceUnit | None = None
+    duration_seconds: StrictInt | None = Field(default=None, ge=1, le=36000)
 
     @model_validator(mode="after")
     def check_discipline(self):
         if error := discipline_error(self.activity, self.sport, self.session_type):
             raise ValueError(error)
+        return self
+
+    @model_validator(mode="after")
+    def check_run_detail(self):
+        if (self.distance_value is None) != (self.distance_unit is None):
+            raise ValueError("Distance needs both a value and a unit.")
+        if self.distance_value is not None:
+            if self.activity != "roadwork":
+                raise ValueError("Distance can only be logged for roadwork.")
+            if self.distance_value > DISTANCE_LIMITS[self.distance_unit or "km"]:
+                raise ValueError(f"Distance cannot exceed {DISTANCE_LIMITS[self.distance_unit or 'km']:g} {self.distance_unit}.")
+            self.distance_value = round(self.distance_value, 2)
+            if self.distance_value <= 0:
+                raise ValueError("Distance must be at least 0.01.")
+        if self.duration_seconds is not None and self.activity != "roadwork":
+            raise ValueError("An exact time can only be logged for roadwork.")
+        if self.duration_seconds is not None and self.duration_minutes != ceil(self.duration_seconds / 60):
+            raise ValueError("duration_minutes must be the time rounded up to whole minutes.")
         return self
 
 
@@ -54,6 +81,9 @@ class TrainingHistorySession(BaseModel):
     sport: Sport | None = None
     session_type: SessionType | None = None
     duration_minutes: int | None = None
+    distance_value: float | None = None
+    distance_unit: DistanceUnit | None = None
+    duration_seconds: int | None = None
     effort: Effort | None = None
     plan_id: str | None = None
     session_rpe: int | None = None
@@ -64,6 +94,8 @@ class TrainingHistorySession(BaseModel):
     takeaway: str = ""
     # Live exercise entries on a manual session; None where not counted.
     exercise_count: int | None = None
+    # A plan session History may edit (RPE, pain, notes) or remove.
+    history_editable: bool = False
 
 
 class TrainingHistoryResponse(BaseModel):

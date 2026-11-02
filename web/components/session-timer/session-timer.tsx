@@ -4,11 +4,11 @@ import {
   useEffect,
   useRef,
   useState,
-  useSyncExternalStore,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { OnceHint, useSeenOnce } from "@/components/once-hint";
 import { RestSetLogger, TimerSetReview } from "./rest-set-logger";
 import { leaveSetUnreported, visibleSetLogTarget, pendingSetLogs, completeSetWithResults, endSessionWithResults, finishItemWithResults, finishItemAsPlannedWithResults } from "@/lib/session-timer/sets";
 import { lockOverlayScroll } from "@/lib/overlay-scroll-lock";
@@ -661,30 +661,9 @@ function AdjustSheet({ timer, onClose }: { timer: SessionTimerController; onClos
 
 const ADJUST_HINT_KEY = "st-adjust-hint-seen";
 
-/** Whether the one-time "you can edit these" hint should show. Hidden on the
- * server (and when storage is blocked), so it never flashes for returning users. */
+/** Whether the one-time "you can edit these" hint should show. */
 function useAdjustHint(): [boolean, () => void] {
-  const [dismissed, setDismissed] = useState(false);
-  const unseen = useSyncExternalStore(
-    () => () => undefined,
-    () => {
-      try {
-        return window.localStorage.getItem(ADJUST_HINT_KEY) === null;
-      } catch {
-        return false;
-      }
-    },
-    () => false,
-  );
-  const dismiss = () => {
-    setDismissed(true);
-    try {
-      window.localStorage.setItem(ADJUST_HINT_KEY, "1");
-    } catch {
-      // Nothing to remember it in.
-    }
-  };
-  return [unseen && !dismissed, dismiss];
+  return useSeenOnce(ADJUST_HINT_KEY);
 }
 
 const ROUND_ALERTS = [
@@ -1243,10 +1222,8 @@ export function SessionTimer({
           </button>
         </div>
         {canAdjust && adjustHint && sheet === null ? (
-          <button type="button" className="st-hint" onClick={dismissAdjustHint}>
-            {item?.kind === "sets" ? `Tap to edit ${countNoun(item)}s & rest` : "Tap to edit rounds & timing"}
-            <span aria-hidden="true">×</span>
-          </button>
+          <OnceHint className="st-hint" onDismiss={dismissAdjustHint}
+            label={item?.kind === "sets" ? `Tap to edit ${countNoun(item)}s & rest` : "Tap to edit rounds & timing"} />
         ) : null}
       </header>
       <StepBar state={state} />

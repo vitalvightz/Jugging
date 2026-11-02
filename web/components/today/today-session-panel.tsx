@@ -36,6 +36,8 @@ import { clearSavedRun, hasSavedRun } from "@/components/session-timer/use-sessi
 import { SessionReview } from "@/components/today/session-review";
 import { SparringLogPrompt, type SparringDraft } from "@/components/today/sparring-log-prompt";
 import { useTodayExerciseLogs } from "@/components/today/use-exercise-logs";
+import { useTrainingFocus } from "@/components/today/use-training-focus";
+import { relevantFocus, upcomingSport } from "@/lib/training-focus";
 import { useToast } from "@/components/toast-provider";
 import { submitTodaySessionCompletion } from "@/lib/api";
 import { offerPushNotifications } from "@/lib/push-prompt";
@@ -457,8 +459,11 @@ export function TodaySessionPanel({
   commandUnavailable = false,
   presentationPending = false,
   onPlanSessionChanged,
+  athleteSports,
 }: {
   state: TodayCommandView;
+  /** The athlete's own sports (profile technical_style): a focus from another sport stays hidden. */
+  athleteSports?: readonly string[] | null;
   /** Applies an athlete's exercise change to the shown plan (see useTodayCommand). */
   onPlanSessionChanged?: (date: string, session: StructuredSession | null) => void;
   /** From the athlete's profile: the guided visualisation says their first name. */
@@ -484,6 +489,8 @@ export function TodaySessionPanel({
 }) {
   const { showToast } = useToast();
   const fadeThrough = useFadeThrough();
+  // Sparring focus is health-adjacent: read only with consent (the server checks too).
+  const trainingFocus = useTrainingFocus(token, painReasonAllowed);
   const [intent, setIntent] = useState<CompletionIntent>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [rehabCheckOff, setRehabCheckOff] = useState<{ value: "done" | "modified" | "skipped"; label: string; saved?: boolean } | null>(null);
@@ -1365,6 +1372,18 @@ export function TodaySessionPanel({
   // A different session taking the card (today's logged, next one up) fades
   // in as a handoff rather than swapping in one frame.
   const cardKey = `${session.session_id ?? ""}:${session.calendar_date ?? ""}:${isSessionPreview ? "preview" : "today"}`;
+  // "Last training focus": before relevant work only, never during or after it.
+  // Matched to the session this card shows (not any session that day), or to
+  // the declared contact when the card leads with it.
+  const focusSession = current.sessions.find((item) => item.session_id === session.session_id)
+    ?? { session_type: session.session_type, blocks: calmBlocks };
+  const focusText = !safeSession && (isSessionPreview || status === "not_started")
+    ? relevantFocus(trainingFocus, {
+        session: session.session_id ? focusSession : null,
+        contactLeads: contactLeads || Boolean(previewContactTarget),
+        sport: upcomingSport(structuredPlan?.plan_metadata?.sport, athleteSports),
+      })
+    : null;
 
   return (
     <section
@@ -1390,6 +1409,11 @@ export function TodaySessionPanel({
             ) : null}
             {summaryChips.length > 0 ? (
               <SummaryChipList chips={summaryChips} />
+            ) : null}
+            {focusText ? (
+              <p className="today-session-focus today-fade-in">
+                <span className="today-detail-label">Last training focus</span> {focusText}
+              </p>
             ) : null}
           </div>
         </div>

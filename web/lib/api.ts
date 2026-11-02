@@ -1,4 +1,5 @@
 import { completeApiMeasurement, measuredApiFetch } from "./api-measurements";
+import { announceSessionLogged } from "./history-hint";
 import { beginSharedReadWrite, sharedRead } from "./shared-reads";
 import {
   OFFLINE_NETWORK_MESSAGE,
@@ -62,6 +63,7 @@ import type {
   PendingRehabResponsesResponse,
   SparringLogRequest,
   SparringLogHistoryResponse,
+  TrainingFocus,
   SparringLogResponse,
   TodaySessionCompletionRequest,
   TodaySessionCompletionResponse,
@@ -606,7 +608,7 @@ export function getManualTrainingHistory(token: string): Promise<{ sessions: Tra
 
 export function logExternalTraining(token: string, body: ExternalTrainingFields & { client_request_id: string; training_day?: string }): Promise<TrainingHistorySession> {
   return readJson<TrainingHistorySession>("/api/training/sessions", { method: "POST", token, body: JSON.stringify(body) })
-    .then(row => { requestXpRefresh(); return row; });
+    .then(row => { requestXpRefresh(); announceSessionLogged(); return row; });
 }
 
 export function editExternalTraining(token: string, id: string, body: ExternalTrainingFields): Promise<TrainingHistorySession> {
@@ -636,6 +638,19 @@ export function deleteManualExercise(token: string, sessionId: string, entryId: 
   // A tombstone answers a repeated delete.
   return withTransientRetries(() => requestVoid(`/api/training/sessions/${encodeURIComponent(sessionId)}/exercises/${encodeURIComponent(entryId)}`,
     { method: "DELETE", token }));
+}
+
+export type PlanCompletionEdit = { session_rpe?: number | null; pain_after?: number | null; notes?: string };
+
+export function editPlanCompletion(token: string, id: string, body: PlanCompletionEdit): Promise<TrainingHistorySession> {
+  const payload = JSON.stringify(body);
+  // Replacing the same three fields again is safe after a lost response.
+  return withTransientRetries(() => readJson(`/api/training/history/unlxck/${encodeURIComponent(id)}`, { method: "PATCH", token, body: payload }));
+}
+
+export function deletePlanCompletion(token: string, id: string): Promise<void> {
+  // Marks the plan session not done; a repeated delete is a success.
+  return withTransientRetries(() => requestVoid(`/api/training/history/unlxck/${encodeURIComponent(id)}`, { method: "DELETE", token }));
 }
 
 export function deleteExternalTraining(token: string, id: string): Promise<void> {
@@ -1436,6 +1451,9 @@ export function submitTodaySessionCompletion(
     method: "POST",
     token,
     body: JSON.stringify(payload),
+  }).then((response) => {
+    if (response.completion_status === "done" || response.completion_status === "modified") announceSessionLogged();
+    return response;
   });
 }
 
@@ -1528,6 +1546,11 @@ export function listSessionCompletionHistory(
       token,
     }),
   );
+}
+
+/** The last sparring focus, for "Last training focus" before relevant sessions. */
+export function getTrainingFocus(token: string, signal?: AbortSignal): Promise<TrainingFocus> {
+  return readJson<TrainingFocus>("/api/today/training-focus", { token, signal });
 }
 
 /** The athlete's sparring log and its 7- and 28-day totals (History). */

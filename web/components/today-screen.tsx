@@ -351,6 +351,7 @@ export function TodayScreen() {
       exerciseMedia={mergedExerciseMedia}
       planSchedule={planSchedule}
       painReasonAllowed={hasHealthDataConsent(me)}
+      athleteSports={me?.profile.technical_style}
       token={token ?? ""}
       onRefresh={refresh}
       athleteFullName={me?.profile.full_name}

@@ -18,6 +18,7 @@ import type {
   SparringPlannedIntensity,
 } from "@/lib/types";
 import { XP_TOAST_KEYS } from "@/lib/xp-events";
+import { announceTrainingFocusChanged } from "@/lib/training-focus";
 
 import styles from "./sparring-log-prompt.module.css";
 import { useSheetExit } from "@/lib/use-sheet-exit";
@@ -58,6 +59,9 @@ const HEAD_CONTACT_LABELS: Record<SparringHeadContact, string> = {
 };
 
 const HEAD_CONTACT_ORDER: readonly SparringHeadContact[] = ["none", "light", "heavy"];
+
+/** Matches the API's sparring focus cap. */
+const FOCUS_MAX_CHARS = 140;
 
 /** Shown when a reopened report holds head-impact evidence a correction cannot lower. */
 export const PROTECTED_EVIDENCE_COPY = "Head-impact reports stay on your record for safety. You can add to them, not reduce them.";
@@ -144,6 +148,7 @@ export function SparringLogPrompt({
   const [headContact, setHeadContact] = useState<SparringHeadContact | undefined>(existing?.head_contact);
   const [rocked, setRocked] = useState<"no" | "yes">(existing?.rocked ? "yes" : "no");
   const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [focus, setFocus] = useState(existing?.focus ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
@@ -221,6 +226,7 @@ export function SparringLogPrompt({
         head_contact: headContact,
         rocked: rocked === "yes",
         notes: notes.trim(),
+        focus: focus.trim(),
       });
       // A rocked report only counts once its review is queued. The server
       // writes both atomically; this guards against any response without it.
@@ -229,6 +235,12 @@ export function SparringLogPrompt({
         return;
       }
       onSaved?.(result.log);
+      announceTrainingFocusChanged();
+      // The focus is written beside the log; a retry reuses the request and writes it again.
+      if ((result.log.focus ?? "") !== focus.trim()) {
+        setError("Sparring saved, but your focus wasn't. Tap Save to try again.");
+        return;
+      }
       // A reopened report that was already rocked was acknowledged when first
       // saved; repeating "no more contact today" days later would mislead.
       if (result.safety_notice && !existing?.rocked) {
@@ -341,6 +353,18 @@ export function SparringLogPrompt({
                   {ROCKED_SAFETY_COPY}
                 </p>
               ) : null}
+              <label className={styles.focus}>
+                <span>One thing to work on next time <span className={styles.optional}>(optional)</span></span>
+                <input
+                  type="text"
+                  value={focus}
+                  maxLength={FOCUS_MAX_CHARS}
+                  autoComplete="off"
+                  enterKeyHint="done"
+                  placeholder="e.g. Keep my right hand up after jabbing"
+                  onChange={(event) => answer(setFocus)(event.target.value)}
+                />
+              </label>
               <button
                 className={sheet.detailsToggle}
                 type="button"
@@ -348,7 +372,7 @@ export function SparringLogPrompt({
                 aria-controls={notesId}
                 onClick={() => setNotesOpen((open) => !open)}
               >
-                Add a note <span aria-hidden="true">{notesOpen ? "−" : "+"}</span>
+                Add other notes <span aria-hidden="true">{notesOpen ? "−" : "+"}</span>
               </button>
               <label className={styles.notes} hidden={!notesOpen}>
                 <span className="sr-only">Notes (optional)</span>

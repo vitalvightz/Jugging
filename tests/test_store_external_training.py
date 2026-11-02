@@ -26,9 +26,11 @@ def test_atomic_insert_does_not_overwrite_an_edit_or_trust_client_owner():
 def test_update_whitelist_cannot_move_date_owner_or_idempotency_key():
     store, query = store_query()
     fields = {"activity": "boxing", "duration_minutes": 45, "effort": "easy", "sport": "boxing", "session_type": "pads",
+              "distance_value": None, "distance_unit": None, "duration_seconds": None,
               "athlete_id": "other", "training_day": "2027-01-01", "client_request_id": "changed", "takeaway": "lost"}
     store.update_external_training_session("owner", "entry", fields)
-    query.update.assert_called_once_with({key: fields[key] for key in ("activity", "duration_minutes", "effort", "sport", "session_type")})
+    query.update.assert_called_once_with({key: fields[key] for key in ("activity", "duration_minutes", "effort", "sport", "session_type",
+                                                                         "distance_value", "distance_unit", "duration_seconds")})
     assert [call.args for call in query.eq.call_args_list] == [("athlete_id", "owner"), ("id", "entry")]
     query.is_.assert_called_once_with("deleted_at", "null")
 
@@ -39,7 +41,8 @@ def test_update_without_discipline_clears_it_instead_of_keeping_a_stale_pair():
     store, query = store_query()
     store.update_external_training_session("owner", "entry", {"activity": "roadwork", "duration_minutes": 30, "effort": "easy"})
     query.update.assert_called_once_with({"activity": "roadwork", "duration_minutes": 30, "effort": "easy",
-                                          "sport": None, "session_type": None})
+                                          "sport": None, "session_type": None,
+                                          "distance_value": None, "distance_unit": None, "duration_seconds": None})
 
 
 def test_list_excludes_tombstones_and_other_owners():

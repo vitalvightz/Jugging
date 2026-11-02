@@ -1359,7 +1359,12 @@ export type SparringLogRequest = {
   head_contact: SparringHeadContact;
   rocked: boolean;
   notes: string;
+  /** Optional: one thing to work on next time (max 140). */
+  focus?: string;
 };
+
+/** The last sparring focus, for the next relevant session; `focus` null when none is recent. */
+export type TrainingFocus = { focus: string | null; training_day: string | null; sport: string | null };
 
 export type SparringLogRecord = Omit<SparringLogRequest, "client_request_id" | "detail_revision"> & {
   id: string;
