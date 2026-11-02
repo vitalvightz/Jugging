@@ -815,7 +815,7 @@ _STOP_LABELS = {"quality stop", "stop", "stop rule"}
 _REGRESSION_LABELS = {"easier", "regress", "regression"}
 _PROGRESSION_LABELS = {"progress", "progression"}
 _PURPOSE_LABELS = {"purpose"}
-_SUBSTITUTION_LABELS = {"swap", "swaps", "substitution"}
+_SUBSTITUTION_LABELS = {"swap", "swaps", "substitution", "substitutions"}
 _WHY_LABELS = {"why", "why today"}
 
 #: Detail labels Stage 2 may write INLINE after an exercise's dose instead of

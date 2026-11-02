@@ -94,8 +94,8 @@ def recover_selected_coaching(plan: dict[str, Any], brief: dict[str, Any],
         (int(str(day.get("countdown_label"))[2:]) if str(day.get("countdown_label") or "")[2:].isdigit() else None,
          coaching_identity(session.get("title")), coaching_identity(block.get("display_name")))
         for week in nested_rows(plan, "weeks") for day in nested_rows(week, "days") if isinstance(day, dict)
-        for session in nested_rows(day, "sessions") for block in nested_rows(session, "blocks")
-        if isinstance(session, dict) and isinstance(block, dict)]
+        for session in nested_rows(day, "sessions") if isinstance(session, dict)
+        for block in nested_rows(session, "blocks") if isinstance(block, dict)]
     selected = {}
     for week in (brief.get("weekly_role_map") or {}).get("weeks") or []:
         for role in week.get("session_roles") or []:
@@ -152,6 +152,12 @@ def recover_selected_coaching(plan: dict[str, Any], brief: dict[str, Any],
                                 block["regression_options"] = [text for text in block["regression_options"]
                                     if not easier_rejection(text, {"name": block.get("display_name")}, {},
                                         brief.get("athlete_snapshot") or {}, brief=brief, current_dose=_current_card_dose(block))]
+                            if block.get("substitutions"):
+                                # No matched assignment is still a checkable Swap:
+                                # equipment, restrictions, dose and fight week.
+                                block["substitutions"] = [text for text in block["substitutions"]
+                                    if not swap_rejection(text, {}, {}, brief.get("athlete_snapshot") or {},
+                                                          brief=brief, d_day=offset)]
                         continue  # Ambiguous context cannot author or license a number.
                     role, source_week, assignment = match
                     programming_context = progression_context.get(occurrence_key(role, assignment, offset))

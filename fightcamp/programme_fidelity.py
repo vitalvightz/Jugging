@@ -12,7 +12,7 @@ from .render_authority import authoritative_render_for_role
 
 _DAY = re.compile(r"^\s*(?:#{1,6}\s*)?D-(\d+)\s*\((\w+)\)\s*[—–-]\s*(.+)$", re.I)
 _WEEK = re.compile(r"^\s*(?:#{1,6}\s*)?(?:GPP|SPP|TAPER|Week)\b.*\bWeek\s*\d+|^\s*#{1,6}\s*Week\s*\d+", re.I)
-_PURPOSE = re.compile(r"^\s*Purpose\s*:", re.I)
+_PURPOSE = re.compile(r"^\s*(?:\*\*)?Purpose(?:\*\*)?\s*:", re.I)
 _SUPPORT = re.compile(r"^\s*#{1,2}\s+(?:Nutrition|Recovery|Mindset|Rehab|Mobility|Coach Notes)\b", re.I)
 
 
@@ -31,8 +31,8 @@ def _blocks(text: str) -> list[tuple]:
             current = None
         elif current is not None and line.strip():
             # Coaching wording is AI-owned; programme identity and dose remain exact.
-            if not re.match(r"^\s*(?:How|Cue|Coaching cues|Easier|Regression|Progress|Progression|Stop|Stop rule|"
-                            r"Swap|Swaps|Substitution)\s*:", line, re.I):
+            if not re.match(r"^\s*(?:\*\*)?(?:How|Cue|Coaching cues|Easier|Regression|Progress|Progression|Stop|Stop rule|"
+                            r"Swap|Swaps|Substitution|Substitutions)(?:\*\*)?\s*:", line, re.I):
                 current[3].append(line.strip())
     if current:
         blocks.append(current)

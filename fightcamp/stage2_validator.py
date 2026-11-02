@@ -350,8 +350,9 @@ _LATE_FIGHT_ANNOTATION_LABEL = re.compile(
     r"duration|prescriptions?|intensity|"
     r"stop\s+rule|easier|"
     # An optional Swap is shown beside the scheduled exercise; it is validated
-    # coaching, never rendered membership.
-    r"swaps?|substitutions?|"
+    # coaching, never rendered membership. Only the colon form is exempt: that
+    # is the only form the Swap validator parses, so "Swap - X" stays checked.
+    r"(?:swaps?|substitutions?)(?=\s*:)|"
     # "progression / regression / stop" style labels in any order or combination
     # (e.g. "Progression/regression/stop:", "Regression/stop:", "Stop/regress -").
     r"(?:progress(?:ion)?s?|regress(?:ion)?s?|stop)"
@@ -404,7 +405,8 @@ _LIST_BULLET_PREFIX = re.compile(r"^\s*(?:[-*\u2022]\s*)?(?:\*\*?)?\s*")
 
 def _late_fight_line_is_annotation_or_task(line: str) -> bool:
     """True for descriptive annotation labels and non-exercise tactical tasks."""
-    stripped = _LIST_BULLET_PREFIX.sub("", (line or "").strip())
+    # "**Easier:**" is the same label the coaching parser reads as "Easier:".
+    stripped = _LIST_BULLET_PREFIX.sub("", (line or "").replace("**", "").strip())
     if not stripped:
         return False
     if _LATE_FIGHT_ANNOTATION_LABEL.match(stripped):
