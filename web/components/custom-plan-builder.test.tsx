@@ -149,8 +149,9 @@ function mockApi(routes: Record<string, Route>) {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost");
     requests.push({ path: url.pathname, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null });
-    const key = Object.keys(routes).filter(prefix => url.pathname.startsWith(prefix)).sort((a, b) => b.length - a.length)[0];
-    const value = key ? await routes[key](url, init) : {};
+    const handler = routes[url.pathname];
+    if (!handler && url.pathname !== "/api/analytics/events") throw new Error(`Unexpected API request: ${url.pathname}`);
+    const value = handler ? await handler(url, init) : { accepted: true };
     return new Response(JSON.stringify(value), { headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
   return { requests, restore: () => { globalThis.fetch = original; } };
