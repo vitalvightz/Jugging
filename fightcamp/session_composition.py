@@ -919,6 +919,8 @@ def _trunk_block_additions(
     alternates: list[dict[str, Any]] = (),
     target: int = _TRUNK_BLOCK_TARGET,
     tier_limits: dict[str, int] | None = None,
+    minimum: int = TRUNK_BLOCK_MINIMUM,
+    require_resisted: bool = True,
 ) -> list[dict[str, Any]] | None:
     """Complementary trunk members to add, or None when no real block fits.
 
@@ -951,7 +953,8 @@ def _trunk_block_additions(
     held_resisted = any(_record_trunk_tier(r) in _RESISTED_TIERS for r in held)
 
     def _resisted(chosen: list[dict[str, Any]]) -> bool:
-        return held_resisted or any(_record_trunk_tier(r) in _RESISTED_TIERS for r in chosen)
+        # Maintenance is low-fatigue control work: it does not need resistance.
+        return not require_resisted or held_resisted or any(_record_trunk_tier(r) in _RESISTED_TIERS for r in chosen)
 
     # Bounded depth-first search in preference order (a handful of candidates,
     # at most four picks): the first combination that reaches the target wins;
@@ -988,7 +991,7 @@ def _trunk_block_additions(
 
     search(0, [], set(base_functions), base_tiers, dict(family_counts), set(used_slots))
     covered = base_functions | {_record_trunk_function(r) for r in best}
-    return best if len(covered) >= TRUNK_BLOCK_MINIMUM and _resisted(best) else None
+    return best if len(covered) >= minimum and _resisted(best) else None
 
 
 def main_exercise_count(assignments: list[dict[str, Any]] | None) -> int:
@@ -1102,6 +1105,82 @@ def _trunk_block_ineligibility(ctx: dict[str, Any]) -> dict[str, Any] | None:
         # Hard sparring today or tomorrow owns this athlete's freshness.
         return {"reason_code": "hard_sparring_priority", "source": "hard_sparring_adjacent"}
     return None
+
+
+# --- Late-fight core maintenance (D-13..D-7) ----------------------------------
+#
+# Development stops at D-14 (``_TRUNK_BLOCK_MIN_D_DAY``). Inside the late-fight
+# tail a selected trunk target keeps a smaller MAINTENANCE stimulus instead: 2-3
+# complementary, low-fatigue trunk members added to at most one existing
+# tail-owned strength session per calendar week, D-13..D-7 inclusive. It never
+# adds a session, never displaces the session's own members and is never
+# grouped: each member is an ordinary closed assignment dosed by the
+# scheduled-day resolver. D-6 inward carries no core programming.
+LATE_CORE_MAINTENANCE_MAX_D_DAY = 13
+LATE_CORE_MAINTENANCE_MIN_D_DAY = 7
+LATE_CORE_MAINTENANCE_TARGET = 3
+LATE_CORE_MAINTENANCE_MINIMUM = 2
+_LATE_CORE_PRESSURE_REASONS = (*_PRESSURE_SOURCE_REASONS, ("injury_pressure", "injury_constraint"))
+
+
+def late_core_maintenance_ineligibility(
+    week: dict[str, Any], role: dict[str, Any], pressure_state: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Why this tail session may not carry core maintenance, or None when it may.
+
+    Any readiness pressure (fatigue, weight cut, injury) protects freshness this
+    close to the fight; hard sparring today or tomorrow owns the day, as it does
+    for the development block.
+    """
+    d_day = role_d_day(week, role)
+    if d_day is None:
+        return {"reason_code": "unscheduled"}
+    if d_day > LATE_CORE_MAINTENANCE_MAX_D_DAY:
+        # D-14 and earlier belong to the Core Development Block.
+        return {"reason_code": "development_window"}
+    if d_day < LATE_CORE_MAINTENANCE_MIN_D_DAY:
+        return {"reason_code": "fight_proximity"}
+    if role.get("coach_owned") or not role.get("selected_exercise_assignments"):
+        return {"reason_code": "no_eligible_host"}
+    sources = [reason for key, reason in _LATE_CORE_PRESSURE_REASONS if int(pressure_state.get(key) or 0) > 0]
+    if sources:
+        return {"reason_code": "readiness_capacity", "pressure_sources": sources}
+    if _hard_sparring_day_offsets(week, role) & {0, 1}:
+        return {"reason_code": "hard_sparring_priority", "source": "hard_sparring_adjacent"}
+    return None
+
+
+def late_core_maintenance_additions(
+    records: list[dict[str, Any]], *, loaded_allowed: bool, target: int = LATE_CORE_MAINTENANCE_TARGET,
+    held: list[dict[str, Any]] = (),
+) -> list[dict[str, Any]] | None:
+    """2-3 complementary low-fatigue trunk members, or None.
+
+    The development block's own search, with a maintenance budget: no ballistic
+    rotational power, no authored high-cost or high-eccentric item, and at most
+    one resisted member (none on a day whose countdown cap forbids loading).
+    Trunk work the session already ``held`` counts exactly as it does for the
+    block: its functions are not repeated, and it spends the same budget (a
+    session already over budget gets no maintenance).
+    """
+    from .strength_session_quality import trunk_high_cost
+
+    def low_fatigue(record: dict[str, Any]) -> bool:
+        item = _slot_selected_item(record["slot"])
+        metadata = item.get("selection_metadata") if isinstance(item.get("selection_metadata"), dict) else {}
+        eccentric = str(item.get("eccentric_cost") or metadata.get("eccentric_cost") or "").strip().lower()
+        return not trunk_high_cost(item) and eccentric != "high"
+
+    candidates = [r for r in records if r.get("trunk_targeted") and low_fatigue(r)]
+    limits = {"rotational_power": 0, "high_cost": 0, "loaded": 1 if loaded_allowed else 0}
+    held = [r for r in held if r.get("trunk_targeted")]
+    family_counts: dict[str, int] = {}
+    for record in held:
+        for family in record["families"] - {"support"}:
+            family_counts[family] = family_counts.get(family, 0) + 1
+    return _trunk_block_additions(candidates, held, family_counts, family_limit=2, room=target, target=target,
+                                  tier_limits=limits, minimum=LATE_CORE_MAINTENANCE_MINIMUM,
+                                  require_resisted=False)
 
 
 def _trunk_block_outcome(
@@ -1969,7 +2048,8 @@ def compose_normal_strength_assignments(
             microdose_only = role.get("pre_hard_contact_microdose_only") is True
             # Stage 1's core candidates for this phase: block-only, never main.
             held_names = {r["name"] for r in records}
-            core_records = [r for r in _candidate_records((pool or {}).get("core_development_slots") or [])
+            core_records = [r for r in _candidate_records([s for s in (pool or {}).get("core_development_slots") or []
+                                                           if s.get("role") != "core_maintenance"])
                             if r["trunk_targeted"] and r["name"] not in held_names]
             # Selection waits until every role of the week is known: the Core
             # Development Block picks ONE host per week. The placeholder keeps

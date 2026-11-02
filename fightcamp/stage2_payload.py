@@ -1757,6 +1757,163 @@ def _build_late_fight_allowed_exercises_by_day(
     )
 
 
+def _late_assignment_match(
+    candidate_pools: dict[str, Any], assignment: dict[str, Any]
+) -> tuple[str, str, dict[str, Any]] | None:
+    """The exact Stage 1 slot (or alternate) a late-tail assignment came from."""
+    phase = str(assignment.get("source_phase") or assignment.get("phase") or "")
+    group = str(assignment.get("slot_group") or "")
+    pool = candidate_pools.get(phase) if isinstance(candidate_pools, dict) else None
+    if not isinstance(pool, dict) or not group:
+        return None
+    slots = [*(pool.get(group) or []),
+             *((pool.get("late_tail_candidates") or []) if group == "conditioning_slots" else ())]
+    base_id, _, alternate = str(assignment.get("slot_id") or "").partition(":alternate:")
+    for slot in slots:
+        if not isinstance(slot, dict) or str(slot.get("slot_id") or "") != base_id:
+            continue
+        if alternate.isdigit() and int(alternate) < len(slot.get("alternates") or []):
+            option = slot["alternates"][int(alternate)]
+            slot = {"slot_id": assignment.get("slot_id"), "selected": option, "alternates": [],
+                    "role": option.get("system") or option.get("role")
+                    or (option.get("selection_metadata") or {}).get("system", "")}
+        if _slot_exercise_name(slot) == assignment.get("name"):
+            return phase, group, slot
+    return None
+
+
+def _apply_late_core_maintenance(
+    weekly_role_map: dict[str, Any],
+    tail_roles: list[dict[str, Any]],
+    candidate_pools: dict[str, Any],
+    athlete_model: dict[str, Any],
+) -> None:
+    """Core maintenance (D-13..D-7) inside one existing tail strength session a week.
+
+    Adds 2-3 complementary low-fatigue trunk members from Stage 1's verified
+    candidates within the primer's ``LATE_PRIMER_MAX_MEMBERS`` cap. It keeps
+    the session's lead and meaningful members, may stand in only for support-only
+    primer complements (recorded), never adds a session and stamps no grouping. The composed session must stay
+    inside the primer's own load envelope and canonical day legality, exactly
+    as a primer complement must; otherwise maintenance is withheld and the
+    reason recorded on the session's planner-only ``late_core_maintenance``
+    audit record. Doses are left to the scheduled-day strength resolver.
+    """
+    from .late_camp_role_morph import late_fight_strength_dose_cap
+    from .session_composition import (
+        LATE_CORE_MAINTENANCE_MAX_D_DAY, LATE_CORE_MAINTENANCE_MINIMUM, LATE_CORE_MAINTENANCE_TARGET,
+        _candidate_records, _composition_context_from_model, _role_pressure_state, _scheduled_phase_for_role,
+        assignment_from_slot, late_core_maintenance_additions, late_core_maintenance_ineligibility,
+    )
+    from .calendar_context import role_d_day
+
+    if not _trunk_strength_selected(athlete_model):
+        return
+    context = _composition_context_from_model(athlete_model)
+    for week in weekly_role_map.get("weeks") or []:
+        hosts = sorted(
+            (role for role in week.get("session_roles") or []
+             if isinstance(role, dict) and role.get("late_fight_tail_owned")
+             and str(role.get("category") or "").lower() == "strength"
+             and isinstance(role_d_day(week, role), int) and role_d_day(week, role) <= LATE_CORE_MAINTENANCE_MAX_D_DAY),
+            key=lambda role: -role_d_day(week, role),
+        )
+        delivered = False
+        for role in hosts:
+            if delivered:
+                role["late_core_maintenance"] = {"intent": "maintenance", "status": "hosted_elsewhere"}
+                continue
+            d_day = role_d_day(week, role)
+            pressure_state = _role_pressure_state(context, role=role, fatigue_applied=True)
+            ineligible = late_core_maintenance_ineligibility(week, role, pressure_state)
+            if ineligible is not None:
+                role["late_core_maintenance"] = {"intent": "maintenance", "status": "not_eligible", **ineligible}
+                continue
+            outcome = {"intent": "maintenance", "status": "constrained",
+                       "reason_code": "insufficient_complementary_candidates"}
+            current = [m for m in role.get("selected_exercise_assignments") or [] if isinstance(m, dict)]
+            existing = [_late_assignment_match(candidate_pools, m) for m in current]
+            phase = _scheduled_phase_for_role(week, role) or str(week.get("phase") or "").upper()
+            pool = candidate_pools.get(phase) if isinstance(candidate_pools, dict) else None
+            day_names = {str(m.get("name") or "") for r in week.get("session_roles") or []
+                         if isinstance(r, dict) and role_d_day(week, r) == d_day
+                         for m in r.get("selected_exercise_assignments") or [] if isinstance(m, dict)}
+            # Stage 1's verified, injury/equipment-filtered candidates, through
+            # the same late-window, sport and day-safety gates as the tail selector.
+            slots = [
+                slot for slot in [*((pool or {}).get("strength_slots") or []),
+                                  *((pool or {}).get("core_development_slots") or [])]
+                if isinstance(slot, dict) and _slot_exercise_name(slot) not in day_names
+                and _slot_late_window_allowed(phase, "strength_slots", slot, offset=d_day)
+                and _slot_sport_allowed(slot, {"athlete_model": athlete_model})
+                and not _late_fight_assignment_is_unsafe(f"D-{d_day}", _slot_exercise_name(slot))
+            ]
+            records = _candidate_records(slots)
+            cap = late_fight_strength_dose_cap(d_day) or {}
+            lead_stress = (_late_primer_session_stress(role, existing, set())
+                           if existing and None not in existing else None)
+            # The primer's member cap holds for the final session. Core takes
+            # free room first; beyond that it may stand in only for the
+            # primer's own support-only, single-set complements -- never its
+            # lead or any meaningful work -- and says which.
+            # Support-only status is read from the matched Stage 1 slot (the
+            # primer selector's own test); an assignment need not carry it.
+            # Unmatched or meaningful members are never displaceable.
+            displaceable = [index for index, m in enumerate(current)
+                            if m.get("primer_complement") and existing[index] is not None
+                            and _slot_support_only(existing[index][2]) and m.get("meaningful_stress") is not True]
+            # Trunk work the session already holds counts: its functions are
+            # not repeated and it spends the maintenance load budget.
+            held = _candidate_records([match[2] for match in existing if match is not None])
+            loaded_allowed = cap.get("loaded_allowed", True) is not False
+            for target in range(LATE_CORE_MAINTENANCE_TARGET, LATE_CORE_MAINTENANCE_MINIMUM - 1, -1):
+                picks = late_core_maintenance_additions(
+                    records, loaded_allowed=loaded_allowed, target=target, held=held)
+                if not picks:
+                    if outcome["reason_code"] == "insufficient_complementary_candidates" and \
+                            late_core_maintenance_additions(records, loaded_allowed=loaded_allowed, target=target):
+                        outcome["reason_code"] = "trunk_load_limits"
+                    break
+                if lead_stress is None:
+                    outcome["reason_code"] = "session_stress_unknown"
+                    break
+                overflow = len(current) + len(picks) - LATE_PRIMER_MAX_MEMBERS
+                if overflow > len(displaceable):
+                    outcome["reason_code"] = "primer_member_cap"
+                    continue
+                dropped = set(displaceable[len(displaceable) - overflow:]) if overflow > 0 else set()
+                kept = [m for index, m in enumerate(current) if index not in dropped]
+                trial = [*(match for index, match in enumerate(existing) if index not in dropped),
+                         *((phase, "strength_slots", r["slot"]) for r in picks)]
+                stress = _late_primer_session_stress(role, trial, set())
+                if stress is None:
+                    # A member whose load cannot be measured is never evidence
+                    # that more work fits.
+                    outcome["reason_code"] = "session_stress_unknown"
+                    continue
+                if (not _late_primer_within_envelope(role, lead_stress, stress)
+                        or _late_primer_neighbour_rank(role, stress, tail_roles)
+                        > _late_primer_neighbour_rank(role, lead_stress, tail_roles)):
+                    outcome["reason_code"] = "session_stress_limit"
+                    continue
+                additions = []
+                for record in picks:
+                    assignment = assignment_from_slot(phase, "strength_slots", record["slot"])
+                    if assignment:
+                        assignment.update(role_key=role.get("role_key"), phase=phase,
+                                          scheduled_countdown_label=f"D-{d_day}")
+                        additions.append(assignment)
+                role["selected_exercise_assignments"] = [*kept, *additions]
+                role["calendar_stress"] = _stress_stamp(stress)
+                outcome = {"intent": "maintenance", "status": "delivered",
+                           "members": [a["name"] for a in additions]}
+                if dropped:
+                    outcome["displaced_primer_complements"] = [current[index]["name"] for index in sorted(dropped)]
+                delivered = True
+                break
+            role["late_core_maintenance"] = outcome
+
+
 def _late_fight_countdown_days_from_spec(days_until_fight: Any, spec: dict[str, Any]) -> list[int]:
     days: list[int] = []
     for segment in spec.get("countdown_mode_sequence", []) or []:
@@ -2414,6 +2571,7 @@ def _build_planning_brief(
         for week in weekly_role_map.get("weeks", []) or []:
             drop_displaced_occupancy_fillers(week.get("session_roles") or [])
         attach_late_fight_assignments(tail_roles, tail_assignments)
+        _apply_late_core_maintenance(weekly_role_map, tail_roles, candidate_pools, athlete_model)
     # A provisional receiver is legal only when existing source exercises
     # actually move. If the selected bank cannot fund at least two low-cost
     # members, the role-budget owner cancels the receiver without adding work.
@@ -3004,15 +3162,25 @@ def _build_core_development_slots(strength_block: dict | None, phase: str, stren
         if isinstance(option, dict)
     }
     slots = []
-    for index, candidate in enumerate((strength_block.get("candidate_reservoir") or {}).get("__core_development__") or [], 1):
+    reservoir = strength_block.get("candidate_reservoir") or {}
+    # Development candidates first; then late-window-approved maintenance
+    # candidates (role ``core_maintenance``), which only the D-13..D-7 core
+    # maintenance draws on and the development block never sees.
+    sources = [("core_development", 1000 + index, candidate)
+               for index, candidate in enumerate(reservoir.get("__core_development__") or [], 1)]
+    sources += [("core_maintenance", 2000 + index, candidate)
+                for index, candidate in enumerate(reservoir.get("__core_maintenance__") or [], 1)]
+    seen: set[str] = set()
+    for role, number, candidate in sources:
         exercise = candidate.get("exercise") or {}
         name = exercise.get("name")
-        if not name or name in offered:
+        if not name or name in offered or name in seen:
             continue
+        seen.add(name)
         quality_profile = classify_strength_item(exercise)
         slots.append({
-            "slot_id": f"{phase.lower()}_strength_{1000 + index}_{slugify(name)}",
-            "role": "core_development",
+            "slot_id": f"{phase.lower()}_strength_{number}_{slugify(name)}",
+            "role": role,
             "purpose": candidate.get("explanation", "balanced selection"),
             "selected": _serialize_strength_option(
                 exercise, candidate.get("explanation", "balanced selection"),
@@ -3021,7 +3189,7 @@ def _build_core_development_slots(strength_block: dict | None, phase: str, stren
             "alternates": [],
             "replace_with_same_role": False,
             # After every selected strength slot: Stage 1's ranking still leads.
-            "priority": 10_000 + index,
+            "priority": 9_000 + number,
             "session_index": 0,
             "quality_class": quality_profile["quality_class"],
             "anchor_capable": False,
@@ -3880,6 +4048,7 @@ PLANNER_ONLY_PROMPT_KEYS = frozenset({
     "component_group", "trunk_function", "exercise_cap_exempt", "trunk_block",
     "trunk_load_tier", "trunk_development", "trunk_block_functions",
     "core_development_slots", "main_exercise_count", "core_block_count",
+    "late_core_maintenance",
 })
 
 
