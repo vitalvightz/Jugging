@@ -47,9 +47,6 @@ create table if not exists public.training_focus_inferences (
 create index if not exists training_focus_inferences_ready_idx
   on public.training_focus_inferences (athlete_id, training_day desc)
   where status = 'ready' and dismissed_at is null;
-create index if not exists training_focus_inferences_generated_idx
-  on public.training_focus_inferences (athlete_id, generated_at)
-  where generated_at is not null;
 
 drop trigger if exists set_training_focus_inferences_updated_at on public.training_focus_inferences;
 create trigger set_training_focus_inferences_updated_at
