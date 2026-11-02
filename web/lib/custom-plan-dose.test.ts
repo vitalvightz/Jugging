@@ -38,6 +38,35 @@ test("with no library format, last session sets the dose", () => {
   assert.equal(result?.source, "Your last session");
 });
 
+test("a mode-only verified format cannot turn into the previous session's incompatible mode", () => {
+  for (const mode of ["duration", "intervals"] as const) {
+    const result = libraryPrefill(suggestion({ format_dose: blankDose(mode) }), past({ sets: 4, reps: 6, load: { value: 80, unit: "kg" } }));
+    assert.equal(result?.dose.mode, mode);
+    assert.equal(result?.dose.sets, null);
+    assert.equal(result?.dose.reps, null);
+    assert.equal(result?.dose.load_or_intensity, null);
+    assert.equal(result?.source, "Library format");
+  }
+});
+
+test("a mode-only format can reuse matching previous workout values", () => {
+  const result = libraryPrefill(suggestion({ format_dose: blankDose("intervals") }),
+    past({ rounds: 5, work: { value: 180, unit: "seconds" }, rest: { value: 60, unit: "seconds" } }));
+  assert.equal(result?.dose.mode, "intervals");
+  assert.equal(result?.dose.rounds, 5);
+  assert.equal(result?.dose.work_seconds, 180);
+  assert.equal(result?.dose.rest_seconds, 60);
+  assert.equal(result?.source, "Library format · your last session");
+});
+
+test("empty text formats do not create invented prescriptions", () => {
+  for (const prescription of ["", "   ", null]) {
+    assert.equal(libraryPrefill(suggestion({ format_dose: { ...blankDose("text"), prescription } }), null), null);
+  }
+  const authored = { ...blankDose("text"), prescription: "3 coached circuits" };
+  assert.deepEqual(libraryPrefill(suggestion({ format_dose: authored }), null), { dose: authored, source: "Library format" });
+});
+
 test("no reliable source means no prefill, never an invented dose", () => {
   assert.equal(libraryPrefill(null, null), null);
   assert.equal(libraryPrefill(suggestion({}), null), null);
