@@ -368,20 +368,23 @@ def strength_adaptation_relevance(item: dict[str, Any], *, prescription_type: st
 # rotational power, a plank punch-reach resists rotation.
 TRUNK_FUNCTIONS = (
     "anti_extension", "anti_rotation", "anti_lateral_flexion", "loaded_carry",
-    "rotational_power", "rotation", "flexion", "trunk_stability",
+    "rotational_power", "rotation", "flexion", "extension", "trunk_stability",
 )
 _TRUNK_FUNCTION_NAME_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("loaded_carry", re.compile(r"\b(?:carry|carries|farmer|yoke walk)\b", re.I)),
     ("rotational_power", re.compile(r"\b(?:slam|throw|toss|scoop|woodchop\w*)\b", re.I)),
-    ("anti_lateral_flexion", re.compile(r"\b(?:side plank|copenhagen side|suitcase)\b", re.I)),
+    ("anti_lateral_flexion", re.compile(
+        r"\b(?:side plank|copenhagen side|suitcase|side bend|windmill|lateral med-ball catch)\b", re.I)),
     ("anti_rotation", re.compile(
         r"\b(?:pallof|anti-rotation|chop holds?|staggered stance|shoulder taps?|bird[- ]?dog"
-        r"|punch[- ]reach|plank row|split-line|punch-specific|get-up)\b", re.I)),
+        r"|punch[- ]reach|plank row|split-line|punch-specific|get-up|renegade|dumbbell drag"
+        r"|perturbed|catch and stick)\b", re.I)),
     ("anti_extension", re.compile(
         r"\b(?:plank|rollout|ab wheel|dead[- ]?bug|hollow|stir the pot|body saw|swiss ball press"
-        r"|lower back hold)\b", re.I)),
-    ("rotation", re.compile(r"\b(?:twists?|rotations?|rotational)\b", re.I)),
-    ("flexion", re.compile(r"\b(?:leg raise|knee raise|crunch|sit-?ups?|v-?ups?)\b", re.I)),
+        r"|swiss-ball pike|pulldown brace|lower back hold)\b", re.I)),
+    ("extension", re.compile(r"\b(?:back extension|reverse hyper\w*)\b", re.I)),
+    ("rotation", re.compile(r"\b(?:twists?|rotations?|rotational|low-to-high|high-to-low)\b", re.I)),
+    ("flexion", re.compile(r"\b(?:leg raise|knee raise|crunch|sit-?ups?|v-?ups?|compression)\b", re.I)),
 )
 
 

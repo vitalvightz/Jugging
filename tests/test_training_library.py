@@ -31,12 +31,12 @@ def copied_data(tmp_path):
 
 
 def test_inventory_categories_and_boundaries(index):
-    assert len(index.by_id) == 2888  # one fewer: Staggered Stance Hold retired
-    assert Counter(r["summary"]["category"] for r in index.records) == dict(training=1028, rehab=1514, learn=346)
+    assert len(index.by_id) == 2903  # Staggered Stance Hold retired, 15 core exercises added
+    assert Counter(r["summary"]["category"] for r in index.records) == dict(training=1043, rehab=1514, learn=346)
     assert all(not r["summary"]["prescription_allowed"] for r in index.records)
     for category, boundary in (("training", "training_validation_required"), ("rehab", "rehab_pathway_only"), ("learn", "excluded")):
         found = lib.search(index, category=category)
-        assert found["catalogue_total"] == 2888  # one fewer: Staggered Stance Hold retired
+        assert found["catalogue_total"] == 2903  # Staggered Stance Hold retired, 15 core exercises added
         assert {r["selection_boundary"] for r in found["entries"]} == {boundary}
 
 
@@ -233,9 +233,9 @@ def test_duplicate_names_keep_ids_and_distinguishing_context(index):
 
 
 def test_pagination_deterministic_and_complete(index):
-    pages = [lib.search(index, offset=offset, limit=50) for offset in range(0, 1028, 50)]
+    pages = [lib.search(index, offset=offset, limit=50) for offset in range(0, 1043, 50)]
     ids = [e["catalogue_id"] for page in pages for e in page["entries"]]
-    assert len(ids) == len(set(ids)) == 1028  # one fewer: Staggered Stance Hold retired
+    assert len(ids) == len(set(ids)) == 1043  # one fewer: Staggered Stance Hold retired
     assert pages[-1]["next_offset"] is None
     assert lib.search(index, offset=50, limit=50) == pages[1]
 
