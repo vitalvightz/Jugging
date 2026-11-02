@@ -8,7 +8,7 @@ import { Fragment, useCallback, useEffect, useRef, useState, type TransitionEven
 import { useAppSession } from "@/components/auth-provider";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { Skeleton } from "@/components/skeleton";
-import { HistoryHint } from "@/components/once-hint";
+import { HistoryHint } from "@/components/history-hint";
 import { shouldShowAdminPanelLink } from "@/lib/admin-nav-visibility";
 import { getShellSurface, isAuthSurfaceRoute, shouldShowBrandTopbar } from "@/lib/app-surface";
 import { isSafeAvatarImageUrl } from "@/lib/avatar-image-url";

@@ -342,7 +342,7 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
     def edit_history_plan_session(completion_id: UUID, body: HistoryCompletionEdit,
                                   profile: ProfileRecord = Depends(require_profile),
                                   store: AppStore = Depends(get_store)):
-        require_health_feature_access(profile)
+        # Like completing on Today: allowed without consent, minus pain after.
         row = edit_plan_completion(store, profile.athlete_id, str(completion_id), body,
             health_consent_granted=evaluate_profile_compliance(profile).health_consent_granted)
         return {**row, "source": "unlxck", "id": str(row["id"]), "history_editable": True,

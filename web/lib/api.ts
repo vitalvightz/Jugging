@@ -640,7 +640,7 @@ export function deleteManualExercise(token: string, sessionId: string, entryId: 
     { method: "DELETE", token }));
 }
 
-export type PlanCompletionEdit = { session_rpe: number | null; pain_after: number | null; notes: string };
+export type PlanCompletionEdit = { session_rpe?: number | null; pain_after?: number | null; notes?: string };
 
 export function editPlanCompletion(token: string, id: string, body: PlanCompletionEdit): Promise<TrainingHistorySession> {
   const payload = JSON.stringify(body);
@@ -1548,11 +1548,12 @@ export function listSessionCompletionHistory(
   );
 }
 
-/** The athlete's sparring log and its 7- and 28-day totals (History). */
+/** The last sparring focus, for "Last training focus" before relevant sessions. */
 export function getTrainingFocus(token: string, signal?: AbortSignal): Promise<TrainingFocus> {
   return readJson<TrainingFocus>("/api/today/training-focus", { token, signal });
 }
 
+/** The athlete's sparring log and its 7- and 28-day totals (History). */
 export function listSparringLogHistory(
   token: string,
   limit = 60,

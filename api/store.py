@@ -4590,23 +4590,30 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
                                          fields: dict[str, Any]) -> dict[str, Any] | None:
         """History's limited edit: RPE, pain after and notes only."""
         response = (self.client.table("session_completions")
-            .update({key: fields.get(key) for key in ("session_rpe", "pain_after", "notes")})
+            .update({key: fields[key] for key in ("session_rpe", "pain_after", "notes") if key in fields})
             .eq("athlete_id", athlete_id).eq("id", completion_id).execute())
         return (getattr(response, "data", None) or [None])[0]
 
-    def delete_session_exercise_logs(self, athlete_id: str, *, plan_id: str, session_id: str, training_day: str) -> None:
-        """Remove one session occurrence's exercise results (History removal)."""
-        (self.client.table("exercise_logs").delete()
-            .eq("athlete_id", athlete_id).eq("plan_id", plan_id)
-            .eq("session_id", session_id).eq("training_day", training_day).execute())
+    def reset_history_plan_session(self, athlete_id: str, completion_id: str) -> dict[str, Any] | None:
+        """Remove a finished plan session from History (public.reset_history_plan_session).
 
-    def reset_session_completion(self, athlete_id: str, completion_id: str) -> dict[str, Any] | None:
-        """Remove a finished plan session from History: the row stays, marked not started."""
-        response = (self.client.table("session_completions")
-            .update({"status": "not_started", "started_at": None, "completed_at": None, "session_rpe": None,
-                     "pain_after": None, "modification_reason": "", "notes": ""})
-            .eq("athlete_id", athlete_id).eq("id", completion_id).execute())
-        return (getattr(response, "data", None) or [None])[0]
+        One transaction: its exercise results are deleted and the completion is
+        marked not started, or neither happens. The row and its id stay. None
+        when the completion is not the athlete's.
+        """
+        operation = f"reset_history_plan_session athlete_id={athlete_id}"
+        try:
+            response = self.client.rpc(
+                "reset_history_plan_session", {"p_athlete_id": athlete_id, "p_completion_id": completion_id},
+            ).execute()
+        except _STORE_CLIENT_ERRORS as exc:
+            if "rehab_exposure_cannot_be_reset" in str(exc):
+                raise HTTPException(status_code=409, detail="This session can't be changed from History.") from exc
+            self._raise_operation_http_error(operation=operation, detail="failed to remove session", exc=exc)
+        payload = getattr(response, "data", None)
+        if isinstance(payload, list):
+            payload = payload[0] if payload else None
+        return payload if isinstance(payload, dict) else None
 
     def list_session_detail_exercise_logs(self, athlete_id: str, *, plan_id: str,
                                          training_day: str, session_ids: list[str]) -> list[dict[str, Any]]:
@@ -5673,13 +5680,16 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
         return (getattr(response, "data", None) or [None])[0]
 
     def list_sparring_logs(
-        self, athlete_id: str, *, limit: int = 60, from_day: str | None = None
+        self, athlete_id: str, *, limit: int = 60, from_day: str | None = None, with_focus: bool = False
     ) -> list[dict[str, Any]]:
         """The athlete's sparring logs, newest training day first (served by
         ``sparring_logs_athlete_day_idx``), optionally only on/after ``from_day``."""
         query = self.client.table("sparring_logs").select("*").eq("athlete_id", athlete_id)
         if from_day:
             query = query.gte("training_day", from_day)
+        if with_focus:
+            # Filtered before the limit, so blank rows never crowd out a focus.
+            query = query.neq("focus", "")
         response = (
             query.order("training_day", desc=True)
             .order("created_at", desc=True)

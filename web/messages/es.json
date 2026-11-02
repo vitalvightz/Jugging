@@ -35,6 +35,7 @@
     "plan": "Plan",
     "planMeta": "Planes activos y guardados",
     "history": "Historia",
+    "historyHint": "Consulta todo tu trabajo en Historia",
     "historyMeta": "Sesiones, revisiones, lesiones",
     "timer": "Temporizador de asaltos",
     "timerMeta": "Asaltos y descanso, cuando quieras",

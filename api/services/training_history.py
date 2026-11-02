@@ -141,7 +141,17 @@ def plan_completion_history_editable(row: dict) -> bool:
     """
     return bool(row.get("plan_id")) and row.get("status") in {"done", "modified"} \
         and row.get("completion_origin") == "reported" \
-        and not row.get("rehab_response_contexts") and not row.get("rehab_performance")
+        and not row.get("rehab_response_contexts") and not row.get("rehab_performance") \
+        and not _frozen_rehab_blocks(row)
+
+
+def _frozen_rehab_blocks(row: dict) -> bool:
+    """A saved prescription holding rehab work (the database refuses to reset those)."""
+    snapshot = row.get("prescription_snapshot")
+    session = snapshot.get("session") if isinstance(snapshot, dict) else None
+    blocks = session.get("blocks") if isinstance(session, dict) else None
+    return any(isinstance(block, dict) and (block.get("block_type") == "rehab" or "policy_id" in block
+                                            or "clinical_review_pin" in block) for block in blocks or [])
 
 
 def _editable_plan_completion(store, athlete_id: str, completion_id: str) -> dict:
@@ -155,11 +165,12 @@ def _editable_plan_completion(store, athlete_id: str, completion_id: str) -> dic
 
 def edit_plan_completion(store, athlete_id: str, completion_id: str, body: HistoryCompletionEdit, *,
                          health_consent_granted: bool) -> dict:
-    row = _editable_plan_completion(store, athlete_id, completion_id)
-    fields = body.model_dump()
+    _editable_plan_completion(store, athlete_id, completion_id)
+    # Only the fields sent change; an RPE-only edit keeps notes and pain.
+    fields = body.model_dump(exclude_unset=True)
     if not health_consent_granted:
         # Pain is health data: without consent the stored value is kept as is.
-        fields["pain_after"] = row.get("pain_after")
+        fields.pop("pain_after", None)
     updated = store.update_session_completion_fields(athlete_id, completion_id, fields)
     if updated is None:
         raise HTTPException(404, "Training session not found.")
@@ -171,13 +182,11 @@ def delete_plan_completion(store, athlete_id: str, completion_id: str) -> dict |
     row = store.get_session_completion_by_id(athlete_id, completion_id)
     if row and row.get("status") == "not_started":
         return None
-    row = _editable_plan_completion(store, athlete_id, completion_id)
-    # Its exercise results go too, so a redo starts clean and progression never
-    # reads results from a session the athlete removed. The completion row (and
-    # its id, which keys earned XP) stays, so redoing it cannot award XP twice.
-    store.delete_session_exercise_logs(athlete_id, plan_id=str(row["plan_id"]), session_id=str(row["session_id"]),
-                                       training_day=str(row["training_day"])[:10])
-    updated = store.reset_session_completion(athlete_id, completion_id)
+    _editable_plan_completion(store, athlete_id, completion_id)
+    # One transaction removes its exercise results with it (a redo starts
+    # clean, progression never reads removed results) or changes nothing. The
+    # row and its id, which keys earned XP, stay: a redo cannot award twice.
+    updated = store.reset_history_plan_session(athlete_id, completion_id)
     if updated is None:
         raise HTTPException(404, "Training session not found.")
     return updated

@@ -525,6 +525,8 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         self.sparring_log_requests: dict[tuple[str, str], str] = {}
         self.sparring_logs: list[dict] = []
         self.exercise_logs: list[dict] = []
+        # Makes reset_history_plan_session fail, as the rehab reset guard does.
+        self.fail_history_reset = False
         # Simulates the bulk write failing in the database (nothing commits).
         self.fail_next_exercise_log_batch = False
         # Simulates the admin-review insert failing inside record_sparring_log.
@@ -2013,14 +2015,22 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
 
     def update_session_completion_fields(self, athlete_id: str, completion_id: str, fields: dict) -> dict | None:
         return self._update_completion(athlete_id, completion_id,
-                                       {key: fields.get(key) for key in ("session_rpe", "pain_after", "notes")})
+                                       {key: fields[key] for key in ("session_rpe", "pain_after", "notes") if key in fields})
 
-    def delete_session_exercise_logs(self, athlete_id: str, *, plan_id: str, session_id: str, training_day: str) -> None:
-        self.exercise_logs[:] = [row for row in self.exercise_logs if not (
-            row.get("athlete_id") == athlete_id and row.get("plan_id") == plan_id
-            and row.get("session_id") == session_id and str(row.get("training_day")) == training_day)]
-
-    def reset_session_completion(self, athlete_id: str, completion_id: str) -> dict | None:
+    def reset_history_plan_session(self, athlete_id: str, completion_id: str) -> dict | None:
+        """Mirrors public.reset_history_plan_session: all or nothing, idempotent."""
+        row = next((row for row in self.session_completions.get(athlete_id, [])
+                    if row.get("athlete_id") == athlete_id and row.get("id") == completion_id), None)
+        if row is None:
+            return None
+        if row.get("status") not in {"done", "modified"}:
+            return dict(row)
+        if self.fail_history_reset:
+            # Raised before any write, as the RPC's transaction would roll back.
+            raise HTTPException(status_code=409, detail="This session can't be changed from History.")
+        self.exercise_logs[:] = [log for log in self.exercise_logs if not (
+            log.get("athlete_id") == athlete_id and log.get("plan_id") == row.get("plan_id")
+            and log.get("session_id") == row.get("session_id") and str(log.get("training_day")) == str(row.get("training_day")))]
         return self._update_completion(athlete_id, completion_id, {
             "status": "not_started", "started_at": None, "completed_at": None, "session_rpe": None,
             "pain_after": None, "modification_reason": "", "notes": ""})
@@ -2899,12 +2909,14 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         row["focus"] = focus
         return dict(row)
 
-    def list_sparring_logs(self, athlete_id: str, *, limit: int = 60, from_day: str | None = None) -> list[dict]:
+    def list_sparring_logs(self, athlete_id: str, *, limit: int = 60, from_day: str | None = None,
+                           with_focus: bool = False) -> list[dict]:
         rows = [
             dict(row)
             for row in self.sparring_logs
             if row.get("athlete_id") == athlete_id
             and (from_day is None or str(row.get("training_day")) >= from_day)
+            and (not with_focus or str(row.get("focus") or "") != "")
         ]
         rows.sort(key=lambda row: (str(row.get("training_day")), str(row.get("created_at"))), reverse=True)
         return rows[:limit]

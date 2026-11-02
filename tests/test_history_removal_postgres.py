@@ -14,7 +14,7 @@ MIGRATIONS = (
     "20261010184612_add_external_training_sessions.sql",
     "20261019150000_add_external_training_discipline.sql",
     "20261102010200_add_external_training_run_distance.sql",
-    "20261102999999_history_removal_and_run_checks.sql",
+    "20261102013439_history_removal_and_run_checks.sql",
 )
 
 

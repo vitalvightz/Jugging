@@ -123,3 +123,16 @@ def test_overlapping_corrections_never_let_the_older_focus_win(monkeypatch):
     assert older.status_code == 201
     assert older.json()["log"]["focus"] != "Older"
     assert focus(client)["focus"] == "Newest"
+
+
+def test_many_newer_blank_logs_do_not_hide_a_focus():
+    client, store, _ = _build_client()
+    today = date.fromisoformat(resolve_training_day(None))
+    def add(day, text):
+        store.sparring_logs.append({"id": str(uuid4()), "athlete_id": "athlete-1", "training_day": day.isoformat(),
+                                    "source": "free", "intensity": "light", "rounds_completed": 3, "head_contact": "none",
+                                    "rocked": False, "notes": "", "focus": text, "created_at": f"{day}T10:00:00+00:00"})
+    add(today - timedelta(days=10), "Feint the jab")
+    for _ in range(70):
+        add(today, "")
+    assert focus(client)["focus"] == "Feint the jab"

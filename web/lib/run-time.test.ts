@@ -8,6 +8,7 @@ test("parses mm:ss and h:mm:ss run times", () => {
   assert.equal(parseRunTime(" 1:02:10 "), 3730);
   assert.equal(parseRunTime("75:00"), 4500);
   assert.equal(parseRunTime("24.35"), 1475);
+  assert.equal(parseRunTime("24,35"), 1475);
 });
 
 test("rejects malformed or out-of-range run times", () => {

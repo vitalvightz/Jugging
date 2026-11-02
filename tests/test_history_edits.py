@@ -5,7 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from api.contracts.external_training import ExternalTrainingFields
-from tests.support import _build_client
+from tests.support import _build_client, withdraw_health_consent
 
 AUTH = {"Authorization": "Bearer athlete-token"}
 DAY = "2026-10-10"
@@ -94,9 +94,10 @@ def test_run_distance_and_time_are_logged_and_edited(api):
     row = response.json()
     assert (row["distance_value"], row["distance_unit"], row["duration_seconds"]) == (5, "km", 1475)
     edited = client.patch(f"/api/training/sessions/{row['id']}", headers=AUTH,
-                          json=run(distance_value=3.1, distance_unit="miles"))
+                          json=run(distance_value=3.1, distance_unit="miles", duration_minutes=27, duration_seconds=26 * 60 + 5))
     assert edited.status_code == 200, edited.text
-    assert (edited.json()["distance_value"], edited.json()["distance_unit"]) == (3.1, "miles")
+    body = edited.json()
+    assert (body["distance_value"], body["distance_unit"], body["duration_seconds"], body["duration_minutes"]) == (3.1, "miles", 1565, 27)
 
 
 @pytest.mark.parametrize("changes", [
@@ -107,6 +108,7 @@ def test_run_distance_and_time_are_logged_and_edited(api):
     {"duration_minutes": 24},
     {"duration_seconds": 0},
     {"activity": "strength", "distance_value": None, "distance_unit": None},
+    {"distance_value": 0.001},
 ])
 def test_invalid_run_detail_is_rejected(changes):
     with pytest.raises(ValidationError):
@@ -132,3 +134,56 @@ def test_removal_clears_the_sessions_exercise_results_but_keeps_the_completion_i
     redone = store.upsert_session_completion("athlete-1", {"plan_id": row["plan_id"], "session_id": "s-strength",
                                                           "training_day": DAY, "status": "done"})
     assert redone["id"] == row["id"]
+
+
+def test_a_refused_removal_changes_nothing(api):
+    # The database refuses (e.g. the rehab reset guard): nothing is half-done.
+    client, store = api
+    row = completion(store)
+    log = {"athlete_id": "athlete-1", "plan_id": row["plan_id"], "session_id": "s-strength", "training_day": DAY, "block_id": "b1"}
+    store.exercise_logs.append(log)
+    store.fail_history_reset = True
+    assert client.delete(f"/api/training/history/unlxck/{row['id']}", headers=AUTH).status_code == 409
+    assert store.exercise_logs == [log]
+    assert store.get_session_completion_by_id("athlete-1", row["id"])["status"] == "done"
+    assert any(item["id"] == row["id"] for item in history_rows(client))
+
+
+def test_removal_goes_through_the_single_atomic_store_call(api, monkeypatch):
+    client, store = api
+    row = completion(store)
+    calls = []
+    real = store.reset_history_plan_session
+    monkeypatch.setattr(store, "reset_history_plan_session",
+                        lambda athlete_id, completion_id: calls.append(completion_id) or real(athlete_id, completion_id))
+    assert client.delete(f"/api/training/history/unlxck/{row['id']}", headers=AUTH).status_code == 204
+    assert calls == [row["id"]]
+
+
+def test_partial_plan_session_edit_keeps_the_other_fields(api):
+    client, store = api
+    row = completion(store)
+    response = client.patch(f"/api/training/history/unlxck/{row['id']}", headers=AUTH, json={"session_rpe": 9})
+    assert response.status_code == 200, response.text
+    stored = store.get_session_completion_by_id("athlete-1", row["id"])
+    assert (stored["session_rpe"], stored["pain_after"], stored["notes"]) == (9, 1, "felt ok")
+
+
+def test_plan_session_edit_works_without_health_consent_but_keeps_pain(api):
+    client, store = api
+    row = completion(store)
+    withdraw_health_consent(store)
+    response = client.patch(f"/api/training/history/unlxck/{row['id']}", headers=AUTH,
+                            json={"session_rpe": 6, "pain_after": 9, "notes": "ok"})
+    assert response.status_code == 200, response.text
+    stored = store.get_session_completion_by_id("athlete-1", row["id"])
+    assert (stored["session_rpe"], stored["pain_after"], stored["notes"]) == (6, 1, "ok")
+
+
+@pytest.mark.parametrize("block", [{"block_type": "rehab"}, {"block_type": "strength", "policy_id": "p"},
+                                   {"block_type": "strength", "clinical_review_pin": {}}])
+def test_a_saved_rehab_prescription_locks_the_session(api, block):
+    client, store = api
+    row = completion(store, prescription_snapshot={"session": {"blocks": [block]}})
+    assert next(item for item in history_rows(client) if item["id"] == row["id"])["history_editable"] is False
+    assert client.delete(f"/api/training/history/unlxck/{row['id']}", headers=AUTH).status_code == 409

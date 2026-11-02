@@ -35,6 +35,7 @@
     "plan": "Plan",
     "planMeta": "Active and saved plans",
     "history": "History",
+    "historyHint": "See all your work in History",
     "historyMeta": "Sessions, check-ins, injuries",
     "timer": "Round timer",
     "timerMeta": "Rounds and rest, any time",

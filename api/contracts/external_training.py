@@ -47,6 +47,8 @@ class ExternalTrainingFields(BaseModel):
             if self.distance_value > DISTANCE_LIMITS[self.distance_unit or "km"]:
                 raise ValueError(f"Distance cannot exceed {DISTANCE_LIMITS[self.distance_unit or 'km']:g} {self.distance_unit}.")
             self.distance_value = round(self.distance_value, 2)
+            if self.distance_value <= 0:
+                raise ValueError("Distance must be at least 0.01.")
         if self.duration_seconds is not None and self.activity != "roadwork":
             raise ValueError("An exact time can only be logged for roadwork.")
         if self.duration_seconds is not None and self.duration_minutes != ceil(self.duration_seconds / 60):

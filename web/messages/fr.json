@@ -35,6 +35,7 @@
     "plan": "Plan",
     "planMeta": "Plans actifs et économisés",
     "history": "Histoire",
+    "historyHint": "Retrouvez tout votre travail dans Histoire",
     "historyMeta": "Séances, bilès, blessures",
     "timer": "Minuteur de rounds",
     "timerMeta": "Rounds et repos, à tout moment",

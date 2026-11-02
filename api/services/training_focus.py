@@ -18,7 +18,7 @@ def latest_training_focus(store, athlete_id: str, *, today: str) -> dict:
     (they follow the athlete's own sport).
     """
     from_day = (date.fromisoformat(today) - timedelta(days=FOCUS_MAX_AGE_DAYS - 1)).isoformat()
-    for row in store.list_sparring_logs(athlete_id, limit=60, from_day=from_day):
+    for row in store.list_sparring_logs(athlete_id, limit=60, from_day=from_day, with_focus=True):
         focus = str(row.get("focus") or "").strip()
         if not focus:
             continue

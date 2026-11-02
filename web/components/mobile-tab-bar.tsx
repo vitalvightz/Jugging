@@ -7,7 +7,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useAppSession } from "@/components/auth-provider";
 import { useGenerationStatus } from "@/components/generation-status-provider";
-import { HistoryHint } from "@/components/once-hint";
+import { HistoryHint } from "@/components/history-hint";
 import { BOTTOM_NAV_ITEMS, showsMobileTabBar } from "@/lib/beta-navigation";
 
 const TAB_ICONS: Record<string, ReactNode> = {

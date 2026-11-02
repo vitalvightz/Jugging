@@ -604,7 +604,8 @@ function InjuryRows({ rows }: { rows: InjuryFlagRecord[] }) {
 export function HistoryScreen() {
   const { session, me } = useAppSession();
   // Reaching History is what the one-time hint points to.
-  useEffect(() => { markHistoryHintSeen(); }, []);
+  const athleteId = me?.profile.athlete_id ?? "";
+  useEffect(() => { markHistoryHintSeen(athleteId); }, [athleteId]);
   return <HistoryContent key={`${session?.access_token ?? "anonymous"}:${me?.profile.health_consent_granted ?? "unknown"}`} />;
 }
 

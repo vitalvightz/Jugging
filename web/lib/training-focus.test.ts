@@ -13,6 +13,7 @@ const generatedSparring: FocusSession = { session_type: "sparring", blocks: [{ b
 const generatedStrength: FocusSession = { session_type: "strength_power", blocks: [{ block_type: "strength" }] };
 // Generated "skill" sessions include mental work such as Fight Visualisation.
 const visualisation: FocusSession = { session_type: "skill", blocks: [{ block_type: "mindset" }] };
+const conditioning: FocusSession = { session_type: "conditioning", blocks: [{ block_type: "conditioning" }] };
 const focus = { focus: "Keep my right hand up after jabbing", training_day: "2026-11-02", sport: null };
 
 test("athlete-built technical and sparring sessions take a focus; their strength work does not", () => {
@@ -25,6 +26,7 @@ test("a generated session needs real sparring blocks; skill/mental work does not
   assert.equal(focusFitsSession({ session: generatedSparring, contactLeads: false }), true);
   assert.equal(focusFitsSession({ session: generatedStrength, contactLeads: false }), false);
   assert.equal(focusFitsSession({ session: visualisation, contactLeads: false }), false);
+  assert.equal(focusFitsSession({ session: conditioning, contactLeads: false }), false);
 });
 
 test("only the shown session counts, unless the card leads with the day's contact", () => {

@@ -2,7 +2,7 @@
 
 import { useState, useSyncExternalStore } from "react";
 
-import { HISTORY_HINT_KEY, markHistoryHintSeen, readStoredFlag, STORED_FLAG_EVENT, writeStoredFlag } from "@/lib/history-hint";
+import { readStoredFlag, STORED_FLAG_EVENT, writeStoredFlag } from "@/lib/history-hint";
 
 function subscribe(onChange: () => void): () => void {
   window.addEventListener("storage", onChange);
@@ -13,8 +13,8 @@ function subscribe(onChange: () => void): () => void {
   };
 }
 
-/** A localStorage value that every mounted reader sees change. Null on the
- * server, "blocked" when storage is unavailable. */
+/** A localStorage value that every mounted reader sees change. "server"
+ * during server rendering, "blocked" when storage is unavailable, null when unset. */
 export function useStoredFlag(key: string): string | null {
   return useSyncExternalStore(subscribe, () => readStoredFlag(key), () => "server");
 }
@@ -40,10 +40,4 @@ export function OnceHint({ className = "once-hint", label, onDismiss }: { classN
       <span aria-hidden="true">×</span>
     </button>
   );
-}
-
-/** "See all your work in History", shown once after the first saved session. */
-export function HistoryHint({ className }: { className: string }) {
-  const armed = useStoredFlag(HISTORY_HINT_KEY) === "armed";
-  return armed ? <OnceHint className={className} label="See all your work in History" onDismiss={markHistoryHintSeen} /> : null;
 }

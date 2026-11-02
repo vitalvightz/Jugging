@@ -51,7 +51,7 @@ function PlanSessionSheet({ token, row, onClose, onSaved }: {
     if (saving.current) return;
     saving.current = true; setBusy(true); setError(null);
     try {
-      const updated = await editPlanCompletion(token, row.id, { session_rpe: rpe, pain_after: askPain ? pain : row.pain_after ?? null, notes: notes.trim() });
+      const updated = await editPlanCompletion(token, row.id, { session_rpe: rpe, ...(askPain ? { pain_after: pain } : {}), notes: notes.trim() });
       showToast("Session updated.", { tone: "success" });
       onSaved({ ...row, ...updated });
     } catch (reason) {
