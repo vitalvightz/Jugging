@@ -569,26 +569,48 @@ def test_a_block_yields_when_recovery_must_cut_the_hosts_main_work():
     assert strength["satisfied"]
 
 
-def test_stage2_requests_carry_no_core_development_signal():
-    """Planner-only: Stage 2 sees block members as ordinary closed exercises."""
-    import asyncio
-    import os
+_STAGE2_MARKERS = ("core_development", "Core Development", "exercise_groups", "component_group",
+                   "trunk_function", "exercise_cap_exempt", "trunk_block", "trunk_load_tier")
+
+
+def _model_response(text):
     from types import SimpleNamespace
+    return SimpleNamespace(id="r", output_text=text,
+                           usage=SimpleNamespace(input_tokens=1, output_tokens=1, total_tokens=2))
+
+
+def _assert_no_marker(calls):
+    sent = json.dumps([call.get("input") for call in calls], default=str)
+    for marker in _STAGE2_MARKERS:
+        assert marker not in sent, marker
+
+
+def test_stage2_requests_carry_no_core_development_signal(monkeypatch):
+    """Planner-only: neither AI call sees the block as a group. Covers the
+    written plan (first_pass) and the structured card (structured_first and
+    its repair), the call suspected in the #3163 900 s runtime-cap failures."""
+    import asyncio
     from support import FakeOpenAIClient
     from api.stage2_automation import OpenAIStage2Automator
 
-    os.environ["UNLXCK_STAGE2_STRUCTURED_PLAN"] = "0"
+    monkeypatch.setenv("UNLXCK_STAGE2_STRUCTURED_PLAN", "1")
+    monkeypatch.setenv("UNLXCK_STAGE2_STRUCTURED_REPAIR", "1")
     stage1 = delivery._generate("king_no_cut")
-    assert any(_grouped(role) for _, role in _strength_roles(stage1["planning_brief"]))
-    response = SimpleNamespace(id="r", output_text=stage1.get("plan_text") or "plan",
-                               usage=SimpleNamespace(input_tokens=1, output_tokens=1, total_tokens=2))
-    client = FakeOpenAIClient([response] * 6)
-    try:
-        asyncio.run(OpenAIStage2Automator(client=client, model="m").finalize(stage1_result=stage1))
-    except Exception:
-        pass
-    sent = json.dumps([call.get("input") for call in client.responses.calls], default=str)
+    brief = stage1["planning_brief"]
+    host = next(role for _, role in _strength_roles(brief) if _grouped(role))
+    plan_text = stage1.get("plan_text") or ""
+
+    # Written plan: the real finalize path.
+    client = FakeOpenAIClient([_model_response(plan_text)] * 6)
+    asyncio.run(OpenAIStage2Automator(client=client, model="m").finalize(stage1_result=stage1))
     assert client.responses.calls
-    for marker in ("core_development", "Core Development", "exercise_groups", "component_group",
-                   "trunk_function", "exercise_cap_exempt"):
-        assert marker not in sent, marker
+    _assert_no_marker(client.responses.calls)
+
+    # Structured card: first pass returns no valid card, forcing the repair call.
+    client = FakeOpenAIClient([_model_response("{}"), _model_response("{}")])
+    automator = OpenAIStage2Automator(client=client, model="m")
+    rendered = plan_text + "\n" + "\n".join(f"- {m['name']}" for m in _members(host))
+    asyncio.run(automator._generate_structured_outcome(
+        final_plan_text=rendered, planning_brief=brief, source="test", costs=[]))
+    assert len(client.responses.calls) == 2  # structured_first + structured_repair
+    _assert_no_marker(client.responses.calls)

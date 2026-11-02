@@ -32,3 +32,19 @@ test("a lone tagged block or untagged plan renders unchanged", () => {
   assert.doesNotMatch(render([block("Plank", ["core_development"]), block("Squat")]), /<details/);
   assert.doesNotMatch(render([block("Squat"), block("Row")]), /<details/);
 });
+
+test("interleaved members still render together under one header with their own rows", () => {
+  const html = render([
+    block("Pallof Press", ["core_development"]),
+    block("Back Squat"),
+    block("Ab Wheel Rollout", ["core_development"]),
+    block("Suitcase Carry", ["core_development"]),
+  ]);
+  assert.equal(html.match(/<details/g)?.length, 1);
+  assert.match(html, /3 exercises/);
+  const groupHtml = html.slice(html.indexOf("<details"), html.indexOf("</details>"));
+  for (const name of ["Pallof Press", "Ab Wheel Rollout", "Suitcase Carry"]) assert.match(groupHtml, new RegExp(name));
+  assert.doesNotMatch(groupHtml, /Back Squat/);
+  // Original indexes are kept for each row.
+  assert.deepEqual([...html.matchAll(/data-row="(\d)"/g)].map(match => match[1]), ["0", "2", "3", "1"]);
+});

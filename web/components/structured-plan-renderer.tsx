@@ -756,30 +756,33 @@ export function groupBlockRows(
   blocks: StructuredBlock[],
   renderRow: (block: StructuredBlock, index: number) => ReactNode,
 ): ReactNode[] {
+  // Every member of a group renders inside one section placed at its first
+  // member, even when the written plan interleaved another exercise between
+  // them. Each member keeps its own row and original index (swap, edit, log).
+  const groups = new Map<string, number[]>();
+  blocks.forEach((block, index) => {
+    const group = blockComponentGroup(block);
+    if (group) groups.set(group, [...(groups.get(group) ?? []), index]);
+  });
   const rows: ReactNode[] = [];
-  let index = 0;
-  while (index < blocks.length) {
-    const group = blockComponentGroup(blocks[index]);
-    const start = index;
-    const members: ReactNode[] = [];
-    do {
-      members.push(renderRow(blocks[index], index));
-      index += 1;
-    } while (group && index < blocks.length && blockComponentGroup(blocks[index]) === group);
+  blocks.forEach((block, index) => {
+    const group = blockComponentGroup(block);
+    const members = group ? groups.get(group) ?? [] : [];
     if (!group || members.length < 2) {
-      rows.push(...members);
-      continue;
+      rows.push(renderRow(block, index));
+      return;
     }
+    if (members[0] !== index) return;
     rows.push(
-      <details key={`group-${group}-${start}`} className="ex-group" open>
+      <details key={`group-${group}-${index}`} className="ex-group" open>
         <summary className="ex-group-head">
           <span>{COMPONENT_GROUP_LABELS[group]}</span>
           <span className="ex-group-count">{members.length} exercises</span>
         </summary>
-        <div className="ex-group-rows">{members}</div>
+        <div className="ex-group-rows">{members.map(member => renderRow(blocks[member], member))}</div>
       </details>,
     );
-  }
+  });
   return rows;
 }
 
