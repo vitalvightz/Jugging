@@ -102,6 +102,7 @@ export function FightCountdown({
   plan,
   eventName,
   targetWeightKg,
+  calendarPending = false,
 }: {
   fightDate: string | null | undefined;
   trainingDay: string | null | undefined;
@@ -111,6 +112,9 @@ export function FightCountdown({
   eventName?: string | null;
   /** Target fight weight in kg (never current bodyweight); hidden when unset. */
   targetWeightKg?: number | null;
+  /** True while the plan calendar is still loading: the week line, bar and
+   * next line hold their space as shimmer instead of popping in later. */
+  calendarPending?: boolean;
 }) {
   const countdown = getFightCountdown({ fightDate, trainingDay, phase, plan });
   // If the date arrived before the calendar, keep its already-visible count
@@ -118,6 +122,9 @@ export function FightCountdown({
   const [initialCampDays] = useState(countdown?.campDays ?? null);
   const [ref, revealed] = useRevealed<HTMLElement>(countdown?.pct != null);
   const shown = useCountdownTick(countdown?.daysOut ?? 0, initialCampDays, revealed);
+  // Only a card that showed placeholders fades its rows in; a cached calendar
+  // renders straight away with nothing to settle.
+  const [startedPending] = useState(calendarPending);
   if (!countdown) {
     return null;
   }
@@ -137,6 +144,8 @@ export function FightCountdown({
       className="fight-countdown"
       data-revealed={revealed ? "true" : undefined}
       data-pending={initialCampDays !== null && pct !== null && !revealed ? "true" : undefined}
+      data-arrived={startedPending && !calendarPending ? "true" : undefined}
+      aria-busy={calendarPending || undefined}
       aria-label={`Fight countdown: ${label}`}
     >
       <div className="fight-countdown-heading">
@@ -168,8 +177,15 @@ export function FightCountdown({
           <h2 className="fight-countdown-event fight-countdown-event-side">{event}</h2>
         )}
       </div>
-      {meta ? <p className="fight-countdown-meta">{meta}</p> : null}
-      {pct !== null ? (
+      {calendarPending ? (
+        <>
+          <p className="fight-countdown-meta" aria-hidden="true"><Bone>Week 0 of 0 · General prep</Bone></p>
+          <div className="overview-progress-track fight-countdown-track" aria-hidden="true" />
+          <p className="fight-countdown-next" aria-hidden="true"><Bone>Next Specific prep starts in 00 days</Bone></p>
+        </>
+      ) : null}
+      {!calendarPending && meta ? <p className="fight-countdown-meta">{meta}</p> : null}
+      {!calendarPending && pct !== null ? (
         <div
           className="overview-progress-track fight-countdown-track"
           role="progressbar"
@@ -181,7 +197,7 @@ export function FightCountdown({
           <span className="overview-progress-fill fight-countdown-fill" style={{ width: `${pct}%` }} />
         </div>
       ) : null}
-      {nextLabel ? (
+      {!calendarPending && nextLabel ? (
         <p className="fight-countdown-next">
           <span className="fight-countdown-next-label">Next</span> {nextLabel}
         </p>

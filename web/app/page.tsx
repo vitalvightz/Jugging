@@ -680,6 +680,8 @@ export default function HomePage() {
       // Target fight weight from the plan's intake, never current bodyweight.
       // Under-18s have no weight-cut feature, so it never shows for them.
       targetWeightKg: me.profile.is_minor ? null : (activePlan.target_weight_kg ?? null),
+      // The calendar read for this plan hasn't settled yet (success or failure).
+      calendarPending: Boolean(activePlanId) && !(calendar?.token === session?.access_token && calendar?.id === activePlanId),
     };
     const showCountdown = !tracking && getFightCountdown(countdownProps) !== null;
     const trainingStreak = xpProgress.streaks.adherence.current;
