@@ -193,6 +193,7 @@ test("prehab and rehab-labelled blocks are never where a cue applies", () => {
   const session: FocusSession = { session_type: "strength", blocks: [
     { block_type: "prehab", display_name: "Split Squat Iso Hold" },
     { block_type: "knee_rehab", display_name: "Split Squat" },
+    { block_type: "rehabilitation", display_name: "Split Squat Hold" },
   ] };
   assert.equal(relevantFocus(splitSquat, card(session)), null);
 });

@@ -126,7 +126,8 @@ const NON_TRAINING_BLOCKS = new Set(["preparation", "mobility_activation", "cool
 function exerciseNames(session: FocusSession | null): string[] {
   return (session?.blocks ?? []).flatMap((block) => {
     const type = String(block.block_type ?? "").toLowerCase();
-    if (NON_TRAINING_BLOCKS.has(type) || /(?:^|_)(?:pre)?rehab(?:_|$)/.test(type)) return [];
+    // Any rehab-labelled type, as the API rule (incl. "prehab", "rehabilitation").
+    if (NON_TRAINING_BLOCKS.has(type) || type.includes("rehab")) return [];
     return [focusWords(block.display_name), focusWords(block.exercise_key)].filter(Boolean);
   });
 }

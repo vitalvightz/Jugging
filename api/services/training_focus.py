@@ -57,7 +57,8 @@ def _inferred_focuses(store, athlete_id: str, from_day: str, explicit: list[dict
     # One read of the window verifies every sparring-note inference, made only
     # when one of them needs it.
     logs_by_id = ({str(log.get("id")): log for log in store.list_sparring_logs(athlete_id, limit=200, from_day=from_day)}
-                  if any(row.get("source_kind") == "sparring_log" for row in rows) else {})
+                  if any(row.get("source_kind") == "sparring_log" and str(row.get("source_id")) not in explicit_logs
+                         for row in rows) else {})
     for row in rows:
         kind, source_id = row.get("source_kind"), str(row.get("source_id") or "")
         if kind == "sparring_log" and source_id in explicit_logs:

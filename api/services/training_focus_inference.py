@@ -212,8 +212,12 @@ def _categories_of(row: dict, *, manual: bool) -> set[str]:
             return {"sparring" if row.get("session_type") == "sparring" else "technique"}
         return {_ACTIVITY_CATEGORY[activity]} if activity in _ACTIVITY_CATEGORY else set()
     session = _snapshot_session(row)
-    types = [session.get("session_type")] + [block.get("block_type") for block in session.get("blocks") or []
-                                             if isinstance(block, dict)]
+    # Warm-up, cool-down and rehab blocks are not the session's training, so
+    # they add no category ("mobility_activation" is not mobility work).
+    types = [session.get("session_type")] + [
+        block.get("block_type") for block in session.get("blocks") or []
+        if isinstance(block, dict) and str(block.get("block_type") or "").lower() not in NON_TRAINING_BLOCKS
+        and "rehab" not in str(block.get("block_type") or "").lower()]
     return {_PLAN_CATEGORY_WORDS[word] for value in types for word in str(value or "").lower().split("_")
             if word in _PLAN_CATEGORY_WORDS}
 
@@ -562,6 +566,9 @@ def _run(store, athlete_id: str, kind: str, source_id: str, inferrer: FocusInfer
         for item in payload["context"]["noted_session"].get("exercises", []):
             item.pop("prescribed", None)
             item.pop("actual", None)
+    # Checked again at the last moment: context reads can take a while.
+    if not _health_consent_now(store, athlete_id):
+        return finish("none", "no_consent")
     try:
         result = inferrer.infer(payload)
     except Exception as exc:  # noqa: BLE001 - provider or parse failure
@@ -602,6 +609,10 @@ def refresh_day_focus(store, athlete_id: str, training_day: str | None = None, *
     and re-stamped; one that is not is withdrawn. Returns how many were
     withdrawn; never raises."""
     try:
+        # Nothing health-linked is read in the background without consent;
+        # Today's read is consent-gated, so cues stay hidden meanwhile.
+        if not _health_consent_now(store, athlete_id):
+            return 0
         if training_day is None and external_session_id:
             session = store.get_external_training_session(athlete_id, external_session_id)
             training_day = str((session or {}).get("training_day") or "")[:10] or None

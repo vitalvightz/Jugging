@@ -681,6 +681,7 @@ def test_migration_schema_and_requirements_agree():
 def test_privacy_notice_discloses_training_note_processing():
     notice = (ROOT / "docs" / "privacy-notice.md").read_text()
     assert "training-focus suggestions" in notice and "no screen catches every wording" in notice
+    assert "first 600 characters" in notice
 
 
 # -- Regressions: head impact never reaches the model --------------------------
@@ -879,9 +880,26 @@ def test_a_sport_change_on_the_noted_session_withdraws_the_technique_cue(api):
 @pytest.mark.parametrize("note", ["Ringing the bell at the end of each round helped my pacing.",
                                   "Memory drill for combos went well, but my jab dropped after the double."])
 def test_ordinary_words_near_head_impact_terms_still_reach_the_model(api, note):
+    client, store, fake = api
+    fake.answer = None
+    session = manual_session(client, activity="sparring", sport="boxing", session_type="sparring", effort="hard")
+    sparring_detail(client, session["id"], notes=note)
+    assert [payload["note"] for payload in fake.payloads] == [note]
+
+
+@pytest.mark.parametrize("note", ["Ears ringing after the session.", "Some memory loss after round two.",
+                                  "My head was ringing after that jab.", "Lost my memory for a second in round three.",
+                                  "Short memory lapse after the right hand."])
+def test_head_impact_symptom_wording_is_screened(note):
     from api.contracts.training_focus import mentions_health
-    assert not mentions_health(note)
-    assert mentions_health("Ears ringing after the session.") and mentions_health("Some memory loss after round two.")
+    assert mentions_health(note)
+
+
+@pytest.mark.parametrize("focus", ["Do more rounds on the bag.", "Use less duration per interval.",
+                                   "Add more duration to each hold."])
+def test_more_or_less_duration_and_rounds_are_workload(focus):
+    from api.contracts.training_focus import _WORKLOAD
+    assert _WORKLOAD.search(focus)
 
 
 def test_malformed_plan_metadata_does_not_break_inference():
@@ -900,4 +918,58 @@ def test_focus_read_skips_the_sparring_window_without_sparring_inferences(api, m
     real = store.list_sparring_logs
     monkeypatch.setattr(store, "list_sparring_logs", lambda athlete_id, **kw: windows.append(kw) or real(athlete_id, **kw))
     assert len(read_items(client)) == 1
+    assert all(kw.get("with_focus") for kw in windows)
+
+
+def test_warm_up_mobility_blocks_add_no_category(api):
+    client, store, fake = api
+    row = lower_body_completion(store)
+    snapshot = next(r for r in store.session_completions[ATHLETE_ID] if r["id"] == row["id"])["prescription_snapshot"]
+    snapshot["session"]["blocks"].insert(0, {"block_id": "w1", "block_type": "mobility_activation",
+                                             "display_name": "Hip Openers"})
+    snapshot["session"]["blocks"].append({"block_id": "c1", "block_type": "cooldown_recovery", "display_name": "Breathing"})
+    fake.answer = {**SPLIT_SQUAT, "category": "mobility"}
+    edit_notes(client, row["id"], "Balance on split squats was poor.")
+    assert fake.payloads[0]["context"]["categories"] == ["strength"]
+    assert read_items(client) == []
+
+
+def test_consent_withdrawn_while_context_is_read_stops_the_send(api, monkeypatch):
+    client, store, fake = api
+    fake.answer = SPLIT_SQUAT
+    row = lower_body_completion(store, notes="Balance on split squats was poor.")
+    real = inference.build_context
+
+    def withdraw_then_build(*args, **kwargs):
+        withdraw_health_consent(store)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(inference, "build_context", withdraw_then_build)
+    assert inference.run_focus_inference(store, ATHLETE_ID, "plan_completion", row["id"], inferrer=fake) == "no_consent"
+    assert fake.payloads == []
+
+
+def test_refresh_reads_nothing_without_consent(api, monkeypatch):
+    client, store, fake = api
+    fake.answer = SPLIT_SQUAT
+    row = lower_body_completion(store)
+    edit_notes(client, row["id"], "Balance on split squats was poor.")
+    withdraw_health_consent(store)
+    monkeypatch.setattr(inference, "build_context", lambda *a, **k: pytest.fail("read without consent"))
+    assert inference.refresh_day_focus(store, ATHLETE_ID, row["training_day"]) == 0
+
+
+def test_explicit_sparring_focus_does_not_trigger_the_sparring_window_read(api, monkeypatch):
+    client, store, fake = api
+    fake.answer = {"focus": "Keep the rear hand home.", "scope": "sport_technique", "category": "sparring",
+                   "sport": "boxing", "exercise_targets": [], "movement_patterns": []}
+    session = manual_session(client, activity="sparring", sport="boxing", session_type="sparring", effort="hard")
+    log = sparring_detail(client, session["id"], notes="Got caught with the right hand.")
+    sparring_detail(client, session["id"], notes="Got caught with the right hand.", focus="Slip outside the jab",
+                    detail_revision=2)
+    assert any(row["source_id"] == log["id"] for row in store.training_focus_inferences)
+    windows = []
+    real = store.list_sparring_logs
+    monkeypatch.setattr(store, "list_sparring_logs", lambda athlete_id, **kw: windows.append(kw) or real(athlete_id, **kw))
+    assert [item["origin"] for item in read_items(client)] == ["athlete"]
     assert all(kw.get("with_focus") for kw in windows)

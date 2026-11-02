@@ -112,7 +112,8 @@ _HEALTH = re.compile(
     r"hit my head|banged my head|bumped my head|"
     r"(got|was|been) (dropped|clipped|buzzed|stunned|wobbled|knocked)|dropped me|knockdown\w*|"
     r"buzzed|stunned|wobbled|wobbly legs|saw stars|rang my bell|bell (rung|rang)|glassy|"
-    r"ringing (in|of) (my |the )?ears|ears? ringing|foggy|brain fog|memory (loss|problem\w*|issue\w*|gap\w*)|"
+    r"ringing (in|of) (my |the )?ears|ears? ringing|head (was |is |kept )?ringing|ringing head|foggy|brain fog|"
+    r"memory (loss|lapse\w*|problem\w*|issue\w*|gap\w*)|lost (my )?memory|"
     r"blank(ed)? out|lights? (went )?out)\b",
     re.IGNORECASE,
 )
@@ -121,7 +122,7 @@ _WORKLOAD = re.compile(
     r"\d|\b(increase\w*|decrease\w*|reduce\w*|add(ing)? (weight|load|sets?|reps?|rounds?|volume)|heavier|lighter|"
     r"more (sets?|reps?|rounds?|weight|load|volume)|fewer|extra|skip\w*|deload\w*|push through|max(imal|imum)?|"
     r"failure|ignore\w*|instead of|replace\w*|swap\w*|rest (day|longer)|(less|more|shorter|longer) rest|"
-    r"(faster|slower) pace|(longer|shorter) (duration|rounds?|sets?)|harder)\b",
+    r"(faster|slower) pace|(more|less|longer|shorter) (duration|rounds?|sets?)|harder)\b",
     re.IGNORECASE,
 )
 
