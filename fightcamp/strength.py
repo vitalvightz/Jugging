@@ -1916,7 +1916,7 @@ def _build_strength_candidate_reservoir(
 _CORE_DEVELOPMENT_PER_FUNCTION = 2
 
 
-def _core_development_candidates(weighted_exercises: list[tuple[dict, float, dict]]) -> list[dict]:
+def _core_development_candidates(weighted_exercises: list[tuple[dict, float, dict]], *, is_safe=None) -> list[dict]:
     """Trunk-targeted candidates for a Core Development Block, per trunk function.
 
     The per-movement reservoir keeps only the top few items of each role, so a
@@ -1933,6 +1933,8 @@ def _core_development_candidates(weighted_exercises: list[tuple[dict, float, dic
     for exercise, score, reasons in weighted_exercises:
         function = trunk_function(exercise)
         if not function or not exercise.get("name") or per_function[function] >= _CORE_DEVELOPMENT_PER_FUNCTION:
+            continue
+        if is_safe is not None and not is_safe(exercise):
             continue
         per_function[function] += 1
         kept.append({
@@ -3591,7 +3593,9 @@ def generate_strength_block(*, flags: dict, weaknesses=None):
         elif source_candidate_count > 500:
             log_fail_safe_degrade(module="strength", phase=phase, reason="candidate_reservoir_capped", target=source_candidate_count, actual=len(capped_weighted))
         reservoir = _build_strength_candidate_reservoir(capped_weighted)
-        reservoir["__core_development__"] = _core_development_candidates(capped_weighted)
+        reservoir["__core_development__"] = _core_development_candidates(
+            capped_weighted, is_safe=lambda ex: _cached_guarded_decision(ex).action != "exclude"
+        )
         return reservoir
     candidate_reservoir = _run_real_poststep("candidate_reservoir_build", _build_capped_candidate_reservoir)
     deduped_late_blocks = {
