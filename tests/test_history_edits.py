@@ -106,6 +106,7 @@ def test_run_distance_and_time_are_logged_and_edited(api):
     {"distance_unit": "miles", "distance_value": 126},
     {"duration_minutes": 24},
     {"duration_seconds": 0},
+    {"activity": "strength", "distance_value": None, "distance_unit": None},
 ])
 def test_invalid_run_detail_is_rejected(changes):
     with pytest.raises(ValidationError):
@@ -114,3 +115,20 @@ def test_invalid_run_detail_is_rejected(changes):
 
 def test_sessions_without_run_detail_still_validate():
     assert ExternalTrainingFields(activity="sparring", duration_minutes=60, effort="hard").distance_value is None
+
+
+def test_removal_clears_the_sessions_exercise_results_but_keeps_the_completion_id(api):
+    client, store = api
+    row = completion(store)
+    keep = {"athlete_id": "athlete-1", "plan_id": row["plan_id"], "session_id": "other", "training_day": DAY, "block_id": "b2"}
+    store.exercise_logs.extend([
+        {"athlete_id": "athlete-1", "plan_id": row["plan_id"], "session_id": "s-strength", "training_day": DAY, "block_id": "b1"},
+        keep,
+    ])
+    assert client.delete(f"/api/training/history/unlxck/{row['id']}", headers=AUTH).status_code == 204
+    # Only the removed session's results go; other sessions that day stay.
+    assert store.exercise_logs == [keep]
+    # Redoing it writes to the same row, and XP is keyed by that id, so no second award.
+    redone = store.upsert_session_completion("athlete-1", {"plan_id": row["plan_id"], "session_id": "s-strength",
+                                                          "training_day": DAY, "status": "done"})
+    assert redone["id"] == row["id"]

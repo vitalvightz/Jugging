@@ -149,7 +149,7 @@ def _apply_sparring_focus(store: AppStore, athlete_id: str, row: dict[str, Any],
     if int(row.get("detail_revision") or 0) != body.detail_revision:
         return row
     try:
-        updated = store.set_sparring_log_focus(athlete_id, str(row["id"]), body.focus)
+        updated = store.set_sparring_log_focus(athlete_id, str(row["id"]), body.focus, revision=body.detail_revision)
     except Exception:  # noqa: BLE001 - the sparring log itself is saved
         logger.exception("[sparring] focus write failed athlete_id=%s", athlete_id)
         return row

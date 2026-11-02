@@ -171,7 +171,12 @@ def delete_plan_completion(store, athlete_id: str, completion_id: str) -> dict |
     row = store.get_session_completion_by_id(athlete_id, completion_id)
     if row and row.get("status") == "not_started":
         return None
-    _editable_plan_completion(store, athlete_id, completion_id)
+    row = _editable_plan_completion(store, athlete_id, completion_id)
+    # Its exercise results go too, so a redo starts clean and progression never
+    # reads results from a session the athlete removed. The completion row (and
+    # its id, which keys earned XP) stays, so redoing it cannot award XP twice.
+    store.delete_session_exercise_logs(athlete_id, plan_id=str(row["plan_id"]), session_id=str(row["session_id"]),
+                                       training_day=str(row["training_day"])[:10])
     updated = store.reset_session_completion(athlete_id, completion_id)
     if updated is None:
         raise HTTPException(404, "Training session not found.")

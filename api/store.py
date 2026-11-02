@@ -4594,6 +4594,12 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
             .eq("athlete_id", athlete_id).eq("id", completion_id).execute())
         return (getattr(response, "data", None) or [None])[0]
 
+    def delete_session_exercise_logs(self, athlete_id: str, *, plan_id: str, session_id: str, training_day: str) -> None:
+        """Remove one session occurrence's exercise results (History removal)."""
+        (self.client.table("exercise_logs").delete()
+            .eq("athlete_id", athlete_id).eq("plan_id", plan_id)
+            .eq("session_id", session_id).eq("training_day", training_day).execute())
+
     def reset_session_completion(self, athlete_id: str, completion_id: str) -> dict[str, Any] | None:
         """Remove a finished plan session from History: the row stays, marked not started."""
         response = (self.client.table("session_completions")
@@ -5656,10 +5662,14 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
             )
         return payload
 
-    def set_sparring_log_focus(self, athlete_id: str, log_id: str, focus: str) -> dict[str, Any] | None:
-        """Owner-scoped write of the optional focus only; never the safety fields."""
+    def set_sparring_log_focus(self, athlete_id: str, log_id: str, focus: str, *, revision: int) -> dict[str, Any] | None:
+        """Owner-scoped write of the optional focus only; never the safety fields.
+
+        Conditional on ``revision`` in the same statement, so a request whose
+        answers a newer correction replaced in the meantime writes nothing.
+        """
         response = (self.client.table("sparring_logs").update({"focus": focus})
-            .eq("athlete_id", athlete_id).eq("id", log_id).execute())
+            .eq("athlete_id", athlete_id).eq("id", log_id).eq("detail_revision", revision).execute())
         return (getattr(response, "data", None) or [None])[0]
 
     def list_sparring_logs(

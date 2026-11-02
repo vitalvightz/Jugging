@@ -1,37 +1,63 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
-import { focusFitsDay, focusFitsSport, relevantFocus } from "./training-focus.ts";
-import type { StructuredDay, StructuredSession } from "./types";
+import { focusFitsSession, focusFitsSport, relevantFocus, upcomingSport, type FocusSession } from "./training-focus.ts";
 
-const sparringDay = { today_card: { coach_led_contact: "Hard sparring" }, sessions: [] } as unknown as StructuredDay;
-const strengthDay = { day_type: "moderate", today_card: { headline: "Strength" }, sessions: [{}] } as unknown as StructuredDay;
-const strength = { session_type: "strength_power", blocks: [{ block_type: "strength" }] } as unknown as StructuredSession;
-const sparringSession = { session_type: "sparring", blocks: [{ block_type: "sparring" }] } as unknown as StructuredSession;
-const visualisation = { session_type: "skill", blocks: [{ block_type: "mindset" }] } as unknown as StructuredSession;
+// Real compiled athlete-built sessions; tests/test_custom_session_focus_contract.py
+// keeps this file in step with the backend.
+const custom = JSON.parse(readFileSync(new URL("../test/fixtures/custom-plan-focus-sessions.json", import.meta.url), "utf8")) as (FocusSession & { title: string })[];
+const byTitle = (title: string) => custom.find((session) => session.title === title)!;
+
+const generatedSparring: FocusSession = { session_type: "sparring", blocks: [{ block_type: "warmup" }, { block_type: "sparring" }] };
+const generatedStrength: FocusSession = { session_type: "strength_power", blocks: [{ block_type: "strength" }] };
+// Generated "skill" sessions include mental work such as Fight Visualisation.
+const visualisation: FocusSession = { session_type: "skill", blocks: [{ block_type: "mindset" }] };
 const focus = { focus: "Keep my right hand up after jabbing", training_day: "2026-11-02", sport: null };
 
-test("contact days and sparring sessions take a focus", () => {
-  assert.equal(focusFitsDay(sparringDay, []), true);
-  assert.equal(focusFitsDay(strengthDay, [sparringSession]), true);
+test("athlete-built technical and sparring sessions take a focus; their strength work does not", () => {
+  assert.equal(focusFitsSession({ session: byTitle("Light Technical"), contactLeads: false }), true);
+  assert.equal(focusFitsSession({ session: byTitle("Hard Sparring"), contactLeads: false }), true);
+  assert.equal(focusFitsSession({ session: byTitle("Strength"), contactLeads: false }), false);
 });
 
-test("strength, conditioning and skill/mental sessions do not", () => {
-  assert.equal(focusFitsDay(strengthDay, [strength]), false);
-  assert.equal(focusFitsDay(strengthDay, [visualisation]), false);
-  assert.equal(focusFitsDay(null, []), false);
+test("a generated session needs real sparring blocks; skill/mental work does not count", () => {
+  assert.equal(focusFitsSession({ session: generatedSparring, contactLeads: false }), true);
+  assert.equal(focusFitsSession({ session: generatedStrength, contactLeads: false }), false);
+  assert.equal(focusFitsSession({ session: visualisation, contactLeads: false }), false);
 });
 
-test("a focus from another sport stays hidden; unknown sport follows the athlete", () => {
-  assert.equal(focusFitsSport(null, ["boxing"]), true);
-  assert.equal(focusFitsSport("boxing", ["boxing", "muay_thai"]), true);
-  assert.equal(focusFitsSport("muay_thai", ["boxing"]), false);
-  assert.equal(focusFitsSport("boxing", []), false);
+test("only the shown session counts, unless the card leads with the day's contact", () => {
+  // Strength shown on a mixed day: no reminder, whatever else the day holds.
+  assert.equal(focusFitsSession({ session: generatedStrength, contactLeads: false }), false);
+  // A coach-led contact day (with or without an app session) is about that contact.
+  assert.equal(focusFitsSession({ session: generatedStrength, contactLeads: true }), true);
+  assert.equal(focusFitsSession({ session: null, contactLeads: true }), true);
+  assert.equal(focusFitsSession({ session: null, contactLeads: false }), false);
+});
+
+test("the upcoming sport is used only when unambiguous", () => {
+  assert.equal(upcomingSport("boxing", ["boxing", "muay_thai"]), "boxing");
+  assert.equal(upcomingSport("Muay Thai", []), "muay_thai");
+  assert.equal(upcomingSport("boxing, muay_thai", ["boxing", "muay_thai"]), null);
+  assert.equal(upcomingSport(null, ["boxing"]), "boxing");
+  assert.equal(upcomingSport(null, ["boxing", "muay_thai"]), null);
+  assert.equal(upcomingSport("combat_sports", ["boxing", "muay_thai"]), null);
+});
+
+test("a sport-specific focus needs that exact upcoming sport", () => {
+  assert.equal(focusFitsSport(null, null), true);
+  assert.equal(focusFitsSport("boxing", "boxing"), true);
+  // A two-sport fighter's Muay Thai note is not shown before boxing, or when unsure.
+  assert.equal(focusFitsSport("muay_thai", "boxing"), false);
+  assert.equal(focusFitsSport("muay_thai", null), false);
 });
 
 test("relevantFocus combines both and ignores blanks", () => {
-  assert.equal(relevantFocus(focus, sparringDay, [], ["boxing"]), "Keep my right hand up after jabbing");
-  assert.equal(relevantFocus(focus, strengthDay, [strength], ["boxing"]), null);
-  assert.equal(relevantFocus({ ...focus, focus: "  " }, sparringDay, [], ["boxing"]), null);
-  assert.equal(relevantFocus(null, sparringDay, [], ["boxing"]), null);
+  const target = { session: generatedSparring, contactLeads: false, sport: "boxing" };
+  assert.equal(relevantFocus(focus, target), "Keep my right hand up after jabbing");
+  assert.equal(relevantFocus({ ...focus, sport: "muay_thai" }, target), null);
+  assert.equal(relevantFocus(focus, { ...target, session: generatedStrength }), null);
+  assert.equal(relevantFocus({ ...focus, focus: "  " }, target), null);
+  assert.equal(relevantFocus(null, target), null);
 });

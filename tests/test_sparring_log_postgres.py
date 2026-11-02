@@ -224,3 +224,19 @@ def test_focus_sits_beside_the_rpc_and_survives_a_correction(dsn, athlete):
                         detail_revision=2, rounds_completed=4)
     assert corrected["log"]["rounds_completed"] == 4
     assert corrected["log"]["focus"] == "Hands up"
+
+
+def test_a_stale_focus_write_matches_nothing_after_a_newer_correction(dsn, athlete):
+    import psycopg
+
+    session = _session(dsn, athlete)
+    first = _record(dsn, athlete, external_session_id=session, client_request_id=str(uuid4()), detail_revision=1)
+    _record(dsn, athlete, external_session_id=session, client_request_id=str(uuid4()), detail_revision=2)
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        # The API's statement: owner, id and the revision its answers carried.
+        stale = conn.execute("update public.sparring_logs set focus = 'Older' where athlete_id = %s and id = %s "
+                             "and detail_revision = 1", (athlete, first["log"]["id"])).rowcount
+        current = conn.execute("update public.sparring_logs set focus = 'Newer' where athlete_id = %s and id = %s "
+                               "and detail_revision = 2", (athlete, first["log"]["id"])).rowcount
+    assert (stale, current) == (0, 1)
+    assert _scalar(dsn, "select focus from public.sparring_logs where id = %s", first["log"]["id"]) == "Newer"

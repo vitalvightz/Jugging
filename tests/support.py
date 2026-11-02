@@ -2015,6 +2015,11 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         return self._update_completion(athlete_id, completion_id,
                                        {key: fields.get(key) for key in ("session_rpe", "pain_after", "notes")})
 
+    def delete_session_exercise_logs(self, athlete_id: str, *, plan_id: str, session_id: str, training_day: str) -> None:
+        self.exercise_logs[:] = [row for row in self.exercise_logs if not (
+            row.get("athlete_id") == athlete_id and row.get("plan_id") == plan_id
+            and row.get("session_id") == session_id and str(row.get("training_day")) == training_day)]
+
     def reset_session_completion(self, athlete_id: str, completion_id: str) -> dict | None:
         return self._update_completion(athlete_id, completion_id, {
             "status": "not_started", "started_at": None, "completed_at": None, "session_rpe": None,
@@ -2887,9 +2892,9 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
             self.sparring_log_requests[(athlete_id, request_id)] = row["id"]
         return {"log": dict(row), "review": review_of(row), "replayed": False}
 
-    def set_sparring_log_focus(self, athlete_id: str, log_id: str, focus: str) -> dict | None:
+    def set_sparring_log_focus(self, athlete_id: str, log_id: str, focus: str, *, revision: int) -> dict | None:
         row = next((row for row in self.sparring_logs if row.get("athlete_id") == athlete_id and row.get("id") == log_id), None)
-        if row is None:
+        if row is None or int(row.get("detail_revision") or 0) != revision:
             return None
         row["focus"] = focus
         return dict(row)

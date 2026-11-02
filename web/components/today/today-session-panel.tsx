@@ -37,7 +37,7 @@ import { SessionReview } from "@/components/today/session-review";
 import { SparringLogPrompt, type SparringDraft } from "@/components/today/sparring-log-prompt";
 import { useTodayExerciseLogs } from "@/components/today/use-exercise-logs";
 import { useTrainingFocus } from "@/components/today/use-training-focus";
-import { relevantFocus } from "@/lib/training-focus";
+import { relevantFocus, upcomingSport } from "@/lib/training-focus";
 import { useToast } from "@/components/toast-provider";
 import { submitTodaySessionCompletion } from "@/lib/api";
 import { offerPushNotifications } from "@/lib/push-prompt";
@@ -1373,8 +1373,16 @@ export function TodaySessionPanel({
   // in as a handoff rather than swapping in one frame.
   const cardKey = `${session.session_id ?? ""}:${session.calendar_date ?? ""}:${isSessionPreview ? "preview" : "today"}`;
   // "Last training focus": before relevant work only, never during or after it.
+  // Matched to the session this card shows (not any session that day), or to
+  // the declared contact when the card leads with it.
+  const focusSession = current.sessions.find((item) => item.session_id === session.session_id)
+    ?? { session_type: session.session_type, blocks: calmBlocks };
   const focusText = !safeSession && (isSessionPreview || status === "not_started")
-    ? relevantFocus(trainingFocus, current.inRange ? current.day : null, current.sessions, athleteSports)
+    ? relevantFocus(trainingFocus, {
+        session: session.session_id ? focusSession : null,
+        contactLeads: contactLeads || Boolean(previewContactTarget),
+        sport: upcomingSport(structuredPlan?.plan_metadata?.sport, athleteSports),
+      })
     : null;
 
   return (

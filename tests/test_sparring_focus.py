@@ -99,3 +99,27 @@ def test_focus_is_hidden_without_health_consent():
     _post(client, focus="Hands up")
     withdraw_health_consent(store)
     assert focus(client)["focus"] is None
+
+
+def test_overlapping_corrections_never_let_the_older_focus_win(monkeypatch):
+    # Request A (revision 1) passes the route's check, then request B (revision
+    # 2) lands in full before A's focus write runs. A's write must do nothing.
+    client, store, _ = _build_client()
+    session = _manual_session(client)
+    _manual_detail(client, session["id"], client_request_id=str(uuid4()), detail_revision=1, focus="First")
+    real_write = store.set_sparring_log_focus
+    raced = {"done": False}
+
+    def write_after_newer_correction(athlete_id, log_id, text, *, revision):
+        if not raced["done"]:
+            raced["done"] = True
+            monkeypatch.setattr(store, "set_sparring_log_focus", real_write)
+            newer = _manual_detail(client, session["id"], client_request_id=str(uuid4()), detail_revision=3, focus="Newest")
+            assert newer.status_code == 201, newer.text
+        return real_write(athlete_id, log_id, text, revision=revision)
+
+    monkeypatch.setattr(store, "set_sparring_log_focus", write_after_newer_correction)
+    older = _manual_detail(client, session["id"], client_request_id=str(uuid4()), detail_revision=2, focus="Older")
+    assert older.status_code == 201
+    assert older.json()["log"]["focus"] != "Older"
+    assert focus(client)["focus"] == "Newest"
