@@ -209,8 +209,9 @@ def test_pipeline_records_why_maintenance_was_withheld(key, source):
 # ---------------------------------------------------------------------------
 
 def test_maintenance_adds_members_only_inside_the_existing_session(monkeypatch):
-    """Same calendar with and without maintenance; the host keeps its own members
-    first and in order, and its realised stress is no higher."""
+    """Same calendar with and without maintenance. The host keeps its lead and
+    any meaningful work in order; only support-only primer complements may give
+    way (recorded), and its realised stress is no higher."""
     import fightcamp.stage2_payload as payload
 
     with_maintenance = _brief(_SCENARIO)
@@ -225,12 +226,15 @@ def test_maintenance_adds_members_only_inside_the_existing_session(monkeypatch):
     before = next(r for w, r in _roles(without)
                   if (w.get("week_index"), role_d_day(w, r), r.get("role_key"))
                   == (week.get("week_index"), role_d_day(week, host), host.get("role_key")))
-    original = [m["name"] for m in _members(before)]
-    members = [m["name"] for m in _members(host)]
-    assert members[:len(original)] == original  # nothing replaced
-    added = members[len(original):]
-    assert added == [m["name"] for m in _maintenance_members(host)]
-    assert len(added) <= LATE_CORE_MAINTENANCE_TARGET
+    original = _members(before)
+    added = [m["name"] for m in _maintenance_members(host)]
+    kept = [m["name"] for m in _members(host) if m["name"] not in added]
+    displaced = [m for m in original if m["name"] not in kept]
+    assert [m["name"] for m in _members(host)] == kept + added  # original order, core last
+    assert kept[0] == original[0]["name"]  # the primer's lead stays
+    assert all(m.get("primer_complement") and m.get("support_only") is True for m in displaced)
+    assert [m["name"] for m in displaced] == _maintenance(host).get("displaced_primer_complements", [])
+    assert all(m["name"] in kept for m in original if not m.get("support_only"))  # meaningful work stays
     # No duplicate exercise anywhere on that day.
     day = [m["name"] for w, r in _roles(with_maintenance) if w is week and role_d_day(w, r) == role_d_day(week, host)
            for m in _members(r)]
@@ -238,6 +242,39 @@ def test_maintenance_adds_members_only_inside_the_existing_session(monkeypatch):
     # The composed session stays at or below its own realised load.
     for axis in ("systemic", "neural_mechanical"):
         assert host["calendar_stress"][axis] <= before["calendar_stress"][axis]
+
+
+@pytest.mark.parametrize("key", [_SCENARIO, "king_no_cut", "core_goal", "muaythai28_power_trunk"])
+def test_every_late_primer_session_respects_the_member_cap(key):
+    from fightcamp.stage2_payload import LATE_PRIMER_MAX_MEMBERS, LATE_PRIMER_ROLE_KEYS
+
+    for _, role in _roles(_brief(key)):
+        if role.get("late_fight_tail_owned") and role.get("role_key") in LATE_PRIMER_ROLE_KEYS:
+            assert len(_members(role)) <= LATE_PRIMER_MAX_MEMBERS, (key, [m["name"] for m in _members(role)])
+
+
+def test_maintenance_is_withheld_when_only_the_cap_could_make_room(monkeypatch):
+    """A full primer with no support-only complement to stand in for keeps every
+    member; maintenance is withheld with the cap as its reason."""
+    import fightcamp.stage2_payload as payload
+    from fightcamp.planner_context import planner_athlete_model_context
+
+    apply = payload._apply_late_core_maintenance
+    monkeypatch.setattr(payload, "_apply_late_core_maintenance", lambda *args, **kwargs: None)
+    brief = delivery._generate(_SCENARIO)["planning_brief"]
+    host = next(r for w, r in _tail_strength(brief) if role_d_day(w, r) == 13)
+    full = [{**m, "support_only": False} for m in _members(host)]
+    assert len(full) == payload.LATE_PRIMER_MAX_MEMBERS
+    host["selected_exercise_assignments"] = full
+    tail = [r for _, r in _roles(brief) if r.get("late_fight_tail_owned")]
+    token = planner_athlete_model_context.set(brief["athlete_snapshot"])
+    try:
+        apply(brief["weekly_role_map"], tail, brief["candidate_pools"], brief["athlete_snapshot"])
+    finally:
+        planner_athlete_model_context.reset(token)
+    assert host["selected_exercise_assignments"] == full
+    assert _maintenance(host) == {"intent": "maintenance", "status": "constrained",
+                                  "reason_code": "primer_member_cap"}
 
 
 # ---------------------------------------------------------------------------

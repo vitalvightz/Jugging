@@ -1791,8 +1791,9 @@ def _apply_late_core_maintenance(
     """Core maintenance (D-13..D-7) inside one existing tail strength session a week.
 
     Adds 2-3 complementary low-fatigue trunk members from Stage 1's verified
-    candidates beside the session's own members; it never replaces them, never
-    adds a session and stamps no grouping. The composed session must stay
+    candidates within the primer's ``LATE_PRIMER_MAX_MEMBERS`` cap. It keeps
+    the session's lead and meaningful members, may stand in only for support-only
+    primer complements (recorded), never adds a session and stamps no grouping. The composed session must stay
     inside the primer's own load envelope and canonical day legality, exactly
     as a primer complement must; otherwise maintenance is withheld and the
     reason recorded on the session's planner-only ``late_core_maintenance``
@@ -1851,6 +1852,12 @@ def _apply_late_core_maintenance(
             cap = late_fight_strength_dose_cap(d_day) or {}
             lead_stress = (_late_primer_session_stress(role, existing, set())
                            if existing and None not in existing else None)
+            # The primer's member cap holds for the final session. Core takes
+            # free room first; beyond that it may stand in only for the
+            # primer's own support-only, single-set complements -- never its
+            # lead or any meaningful work -- and says which.
+            displaceable = [index for index, m in enumerate(current)
+                            if m.get("primer_complement") and m.get("support_only") is True]
             for target in range(LATE_CORE_MAINTENANCE_TARGET, LATE_CORE_MAINTENANCE_MINIMUM - 1, -1):
                 picks = late_core_maintenance_additions(
                     records, loaded_allowed=cap.get("loaded_allowed", True) is not False, target=target)
@@ -1859,7 +1866,14 @@ def _apply_late_core_maintenance(
                 if lead_stress is None:
                     outcome["reason_code"] = "session_stress_unknown"
                     break
-                trial = [*existing, *((phase, "strength_slots", r["slot"]) for r in picks)]
+                overflow = len(current) + len(picks) - LATE_PRIMER_MAX_MEMBERS
+                if overflow > len(displaceable):
+                    outcome["reason_code"] = "primer_member_cap"
+                    continue
+                dropped = set(displaceable[len(displaceable) - overflow:]) if overflow > 0 else set()
+                kept = [m for index, m in enumerate(current) if index not in dropped]
+                trial = [*(match for index, match in enumerate(existing) if index not in dropped),
+                         *((phase, "strength_slots", r["slot"]) for r in picks)]
                 stress = _late_primer_session_stress(role, trial, set())
                 if (not _late_primer_within_envelope(role, lead_stress, stress)
                         or _late_primer_neighbour_rank(role, stress, tail_roles)
@@ -1873,10 +1887,12 @@ def _apply_late_core_maintenance(
                         assignment.update(role_key=role.get("role_key"), phase=phase,
                                           scheduled_countdown_label=f"D-{d_day}")
                         additions.append(assignment)
-                role["selected_exercise_assignments"] = [*current, *additions]
+                role["selected_exercise_assignments"] = [*kept, *additions]
                 role["calendar_stress"] = _stress_stamp(stress)
                 outcome = {"intent": "maintenance", "status": "delivered",
                            "members": [a["name"] for a in additions]}
+                if dropped:
+                    outcome["displaced_primer_complements"] = [current[index]["name"] for index in sorted(dropped)]
                 delivered = True
                 break
             role["late_core_maintenance"] = outcome
