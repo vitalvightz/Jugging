@@ -2213,6 +2213,7 @@ export function PlanIntakeForm() {
   ];
   const campSetupReviewItems = [
     { label: "Fight date", value: formatFightDateValue(form.fight_date) },
+    ...(!noScheduledFight && form.event_name?.trim() ? [{ label: "Event", value: form.event_name.trim() }] : []),
     { label: "Rounds", value: formatValue(form.rounds_format) },
     { label: "Training days per week", value: formatValue(form.weekly_training_frequency) },
     { label: "Fatigue level", value: formatValue(form.fatigue_level || "low") },
@@ -2729,6 +2730,20 @@ export function PlanIntakeForm() {
                       <p id="fightDate-error" className="error-text" role="alert">{error}</p>
                     ) : null}
                   </div>
+                  {!noScheduledFight ? (
+                    <div className="field">
+                      <label htmlFor="eventName">Event name (optional)</label>
+                      <input
+                        id="eventName"
+                        type="text"
+                        maxLength={80}
+                        autoComplete="off"
+                        placeholder="e.g. London Regionals"
+                        value={form.event_name ?? ""}
+                        onChange={(event) => updateField("event_name", event.target.value)}
+                      />
+                    </div>
+                  ) : null}
                   <div className={`field${invalidFieldId === "roundCount" ? " field-invalid" : ""}`}>
                     <label htmlFor="roundCount">Fight rounds</label>
                     <CustomSelect

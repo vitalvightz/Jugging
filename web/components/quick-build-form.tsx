@@ -950,6 +950,20 @@ function QuickBuildFormInner() {
             <FieldError message={visibleError("fight_date")} />
           </div>
         ) : null}
+        {!input.no_scheduled_fight ? (
+          <div className="field">
+            <label htmlFor="qb-event-name">Event name (optional)</label>
+            <input
+              id="qb-event-name"
+              type="text"
+              maxLength={80}
+              autoComplete="off"
+              placeholder="e.g. London Regionals"
+              value={input.event_name ?? ""}
+              onChange={(event) => patch("event_name", event.target.value)}
+            />
+          </div>
+        ) : null}
 
         <div className="form-grid">
           <div className="field">

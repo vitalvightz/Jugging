@@ -125,6 +125,7 @@ AVATAR_URL_MAX_CHARS = 256 * 1024
 ATHLETE_STYLE_LIST_MAX_ITEMS = 32
 ATHLETE_LIST_ITEM_MAX_CHARS = 120
 PLAN_LIST_ITEM_MAX_CHARS = 120
+EVENT_NAME_MAX_CHARS = 80
 PLAN_DAY_ITEM_MAX_CHARS = 80
 INJURIES_MAX_CHARS = 2000
 TRAINING_PREFERENCE_MAX_CHARS = 1000
@@ -876,6 +877,9 @@ MAX_OPEN_CAMP_WEEKS = 24
 class PlanRequest(BaseModel):
     athlete: AthleteProfileInput
     fight_date: str = ""
+    # Optional event/competition name for the scheduled fight (e.g. "London
+    # Regionals"). Display-only: shown on Home's fight countdown card.
+    event_name: str = Field(default="", max_length=EVENT_NAME_MAX_CHARS)
     no_scheduled_fight: bool = False
     open_camp_weeks: int = _DEFAULT_OPEN_CAMP_WEEKS
     rounds_format: str = ""
@@ -935,6 +939,13 @@ class PlanRequest(BaseModel):
         updated = dict(value)
         updated["no_scheduled_fight"] = True
         return updated
+
+    @field_validator("event_name", mode="before")
+    @classmethod
+    def clean_event_name(cls, value: Any) -> str:
+        if value is None:
+            return ""
+        return " ".join(str(value).split())
 
     @field_validator("weekly_training_frequency", mode="before")
     @classmethod

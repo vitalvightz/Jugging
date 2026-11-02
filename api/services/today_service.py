@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 import uuid
 from contextlib import contextmanager
@@ -3113,6 +3114,24 @@ def _merge_risks(*risk_lists: list[RiskWatchItem]) -> list[RiskWatchItem]:
     return merged
 
 
+def _fight_card_fields_from_intake(intake: Mapping[str, Any]) -> dict[str, Any]:
+    """Event name and target fight weight from the plan's own intake, for Home's
+    fight countdown card. Display-only; absent values are simply omitted."""
+    fields: dict[str, Any] = {}
+    event_name = " ".join(str(intake.get("event_name") or "").split())
+    if event_name:
+        fields["event_name"] = event_name
+    athlete = intake.get("athlete")
+    raw_target = athlete.get("target_weight_kg") if isinstance(athlete, Mapping) else None
+    try:
+        target = float(raw_target) if raw_target is not None and not isinstance(raw_target, bool) else None
+    except (TypeError, ValueError):
+        target = None
+    if target is not None and math.isfinite(target) and target > 0:
+        fields["target_weight_kg"] = target
+    return fields
+
+
 def _plan_with_resolved_phase(
     plan_row: Mapping[str, Any],
     week: Any,
@@ -3716,6 +3735,7 @@ def _build_today_command_view(
 
     intake, _intake_ok = _checked_intake_payload_for_readiness(store, plan_row)
     equipment = _rehab_equipment_from_intake(intake)
+    resolved_plan.update(_fight_card_fields_from_intake(intake))
     # Today logs the entire training day. Reconcile every scheduled block,
     # preserving the primary completion identity and checking sibling demands.
     training_session = _entry_mapping_for_readiness(today_session_entry) if today_session_entry else None

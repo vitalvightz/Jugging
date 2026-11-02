@@ -464,3 +464,12 @@ test("validateQuickBuildInput blocks more combat days than total weekly sessions
   assert.match(validateQuickBuildInput(input).combat_sessions ?? "", /3 combat days but entered 2 training days per week/);
   assert.equal(validateQuickBuildInput({ ...input, weekly_training_frequency: 3 }).combat_sessions, undefined);
 });
+
+test("event name rides with the fight date and is dropped for an open camp", () => {
+  const input = { ...emptyQuickBuildInput("Ari"), fight_date: "2099-01-10", event_name: "  London Regionals " };
+  const plan = quickBuildToPlanRequest(input);
+  assert.equal(plan.event_name, "London Regionals");
+  assert.equal(planRequestToQuickBuildInput(plan).event_name, "London Regionals");
+  const open = quickBuildToPlanRequest({ ...input, fight_date: "", no_scheduled_fight: true });
+  assert.equal(open.event_name, "");
+});

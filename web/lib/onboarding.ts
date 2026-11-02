@@ -66,6 +66,7 @@ export function applyNoScheduledFightSnapshot(form: PlanRequest, noScheduledFigh
     ...form,
     no_scheduled_fight: true,
     fight_date: "",
+    event_name: "",
   };
 }
 

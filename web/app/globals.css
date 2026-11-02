@@ -3329,6 +3329,37 @@ html[data-theme="light"] .today-safe-list[data-kind="blocked"] li::before {
   color: var(--text-primary);
 }
 
+/* Weight tracker shortcut wears the plan's optional mental-support styling
+   (Tactical Watch): the same purple surface, lavender text and slow sweep. */
+html:root .overview-risk-more.overview-weigh-in {
+  position: relative;
+  overflow: hidden;
+  border-color: #393244;
+  background: #1b1926;
+  color: #c8b7ef;
+}
+
+html:root .overview-risk-more.overview-weigh-in::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, #ad93e510 50%, transparent 65%);
+  transform: translateX(-120%);
+  animation: sp-optional-sweep 10s ease-in-out infinite;
+}
+
+html:root .overview-risk-more.overview-weigh-in:hover,
+html:root .overview-risk-more.overview-weigh-in:focus-visible {
+  border-color: #4a3f5c;
+  background: #221f30;
+  color: #ddd0f7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:root .overview-risk-more.overview-weigh-in::after { animation: none; }
+}
+
 /* Deduped decision copy: an ALL-CAPS command title with a calm two-line body,
    the title clearly separated from the reason + action. */
 .overview-decision-title {
@@ -3614,6 +3645,7 @@ html[data-theme="light"] .today-safe-list[data-kind="blocked"] li::before {
    change. On load the bar sweeps in while the day count ticks down to today
    (see FightCountdown); both are off under reduced motion. */
 .fight-countdown {
+  container-type: inline-size;
   display: grid;
   gap: 14px;
   min-width: 0;
@@ -3633,11 +3665,95 @@ html[data-theme="light"] .today-safe-list[data-kind="blocked"] li::before {
 }
 
 .fight-countdown-head {
+  min-width: 0;
+}
+
+/* Event name: prominent, wraps (never overflows) and clamps to two lines. */
+.fight-countdown-event {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: clamp(22px, 4.6vw, 28px);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* Countdown on the left, target fight weight on the right behind a hairline,
+   always on one row: type scales with the card's width (container units) so
+   phone-width cards stay compact instead of wrapping. */
+.fight-countdown-stats {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 6px 16px;
+  gap: clamp(6px, 3cqi, 16px);
+  min-width: 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--progress-gold-border);
+}
+
+.fight-countdown-count {
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 2.5cqi, 12px);
+  min-width: 0;
+}
+
+.fight-countdown-count-copy {
+  min-width: 0;
+}
+
+.fight-countdown-weight {
+  display: flex;
+  align-items: center;
+  gap: clamp(5px, 2cqi, 10px);
+  flex: none;
+  padding-left: clamp(8px, 3cqi, 16px);
+  border-left: 1px solid var(--progress-gold-border);
+}
+
+.fight-countdown-weight-icon {
+  display: grid;
+  color: var(--text-secondary);
+}
+
+.fight-countdown-weight-icon svg {
+  width: clamp(16px, 8cqi, 22px);
+  height: auto;
+}
+
+.fight-countdown-weight-label {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: clamp(10.5px, 4.5cqi, 14px);
+  white-space: nowrap;
+}
+
+.fight-countdown-weight-value {
+  margin: 2px 0 0;
+  color: var(--text-primary);
+  font-size: clamp(14px, 6.5cqi, 20px);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Only the smallest phones stack the weight under the countdown. */
+@container (max-width: 210px) {
+  .fight-countdown .fight-countdown-stats {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .fight-countdown .fight-countdown-weight {
+    padding-left: 0;
+    border-left: 0;
+  }
 }
 
 .fight-countdown-kicker {
@@ -3653,8 +3769,12 @@ html[data-theme="light"] .today-safe-list[data-kind="blocked"] li::before {
 .fight-countdown-days {
   margin: 0;
   color: var(--text-secondary);
-  font-size: var(--type-body-lg);
+  font-size: clamp(11px, 5cqi, 18px);
   font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .fight-countdown-number {
@@ -3664,18 +3784,22 @@ html[data-theme="light"] .today-safe-list[data-kind="blocked"] li::before {
 }
 
 .fight-countdown .fight-countdown-number {
-  font-size: clamp(44px, 7vw, 64px);
+  font-size: clamp(32px, 16cqi, 64px);
   line-height: 1;
   letter-spacing: -0.03em;
 }
 
 .fight-countdown-date {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
+  white-space: nowrap;
   color: var(--text-muted);
-  font-size: var(--type-body-sm);
+  font-size: clamp(10.5px, 4.5cqi, 14px);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .fight-countdown-meta {
+  margin: 0;
   color: var(--progress-gold);
   font-family: var(--font-mono), monospace;
   font-size: var(--type-meta);

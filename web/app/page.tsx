@@ -676,6 +676,10 @@ export default function HomePage() {
       trainingDay: commandState?.today?.training_day,
       phase: activePlan.phase ? String(activePlan.phase) : null,
       plan: structuredPlan,
+      eventName: activePlan.event_name ?? null,
+      // Target fight weight from the plan's intake, never current bodyweight.
+      // Under-18s have no weight-cut feature, so it never shows for them.
+      targetWeightKg: me.profile.is_minor ? null : (activePlan.target_weight_kg ?? null),
     };
     const showCountdown = !tracking && getFightCountdown(countdownProps) !== null;
     const trainingStreak = xpProgress.streaks.adherence.current;
@@ -782,7 +786,7 @@ export default function HomePage() {
               {showCountdown ? <XpProgressCard /> : null}
             </>
           )}
-          <Link href="/nutrition" className="overview-risk-more">Weight tracker: log a weigh-in</Link>
+          <Link href="/nutrition" className="overview-risk-more overview-weigh-in">Weight tracker: log a weigh-in</Link>
           <OverviewRiskWatch risks={risks} />
         </section>
       </>

@@ -32,6 +32,7 @@ export type QuickBuildInput = {
   technical_style: string[];
   tactical_style: string[];
   fight_date: string;
+  event_name?: string;
   no_scheduled_fight: boolean;
   rounds_format: string;
   weekly_training_frequency: number;
@@ -87,6 +88,7 @@ export function planRequestToQuickBuildInput(plan: PlanRequest): QuickBuildInput
       TACTICAL_STYLE_OPTIONS,
     ).slice(0, 1),
     fight_date: plan.no_scheduled_fight ? "" : (plan.fight_date ?? ""),
+    event_name: plan.no_scheduled_fight ? "" : (plan.event_name ?? ""),
     no_scheduled_fight: Boolean(plan.no_scheduled_fight),
     rounds_format: plan.rounds_format || "3 x 3",
     weekly_training_frequency: weeklyFrequency,
@@ -251,6 +253,7 @@ export function quickBuildToPlanRequest(
       athlete_timezone: options?.savedTimeZone?.trim() || base.athlete.athlete_timezone || detectDeviceTimeZone(),
     },
     fight_date: input.no_scheduled_fight ? "" : input.fight_date,
+    event_name: input.no_scheduled_fight ? "" : (input.event_name ?? "").trim(),
     no_scheduled_fight: input.no_scheduled_fight,
     rounds_format: input.rounds_format || "3 x 3",
     weekly_training_frequency: input.weekly_training_frequency,
