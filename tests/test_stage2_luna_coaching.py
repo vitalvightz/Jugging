@@ -253,6 +253,7 @@ def test_prompt_states_the_coaching_job_without_word_caps():
     for removed in ("at most 9 words", "at most seven words", "Progress: none this block", "Coach call:"):
         assert removed not in prompt
     assert "concise, personalised coaching" in prompt
+    assert "one specific, practical modification" in prompt
     assert "structural week and day headers" in prompt  # Header separator is not a style violation.
 
 

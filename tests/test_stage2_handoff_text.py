@@ -223,12 +223,8 @@ def test_stage2_handoff_gives_finalizer_exercise_selection_authority():
     assert "use only those exercises" in handoff
     assert "Do not add, restore, or substitute candidates" in handoff
     assert "Draft text is candidate material" in handoff
-    assert "Every app-owned session must include exact drill/exercise" in handoff
-    assert "sets/reps/duration, rest, intensity or RPE, one concise execution cue" in handoff
-    assert "has an authoritative volume but does not supply rest or intensity/RPE" in handoff
-    assert "create and state the missing value using a conservative dose" in handoff
-    assert "one concise execution cue" in handoff
-    assert "Missing rest or effort does not make" in handoff
+    assert "has an authoritative volume but no rest or effort, state a conservative value" in handoff
+    assert "Missing rest or effort is not an unresolved-dose conflict" in handoff
     assert "session_count_summary.reduced_from_planned" in handoff
     assert "Lead notes come first" in handoff
     assert "Taper means reduce volume, not remove sharpness" in handoff
