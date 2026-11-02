@@ -158,16 +158,26 @@ def test_every_development_week_including_spp_hosts_a_block():
 def test_spp_core_candidates_come_from_stage1_and_stay_out_of_session_selection():
     brief = _brief("king_no_cut")
     spp = brief["candidate_pools"]["SPP"]
+    core = spp["core_development_slots"]
     # Late-window-approved maintenance candidates share the pool (one lookup for
-    # pricing, identity and evidence) but only the D-13..D-7 tail draws on them.
-    core = [slot for slot in spp["core_development_slots"] if slot["role"] != "core_maintenance"]
-    assert core and all(slot["session_index"] == 0 and slot["role"] == "core_development" for slot in core)
+    # pricing, identity and evidence); every slot is one of the two kinds.
+    assert core and all(slot["session_index"] == 0
+                        and slot["role"] in {"core_development", "core_maintenance"} for slot in core)
+    assert any(slot["role"] == "core_development" for slot in core)
     offered = {o["name"] for slot in spp["strength_slots"] for o in [slot["selected"], *slot["alternates"]]}
     assert not offered & {slot["selected"]["name"] for slot in core}
-    names = {slot["selected"]["name"] for slot in core}
+    roles = {slot["selected"]["name"]: slot["role"] for slot in core}
     for _, role in _strength_roles(brief):
+        maintenance = set((role.get("late_core_maintenance") or {}).get("members") or [])
         for member in _members(role):
-            if member["name"] in names:  # only ever as a block member
+            if member["name"] not in roles:
+                continue
+            if member["name"] in maintenance:
+                # Only ever as a delivered late-tail maintenance member.
+                assert role.get("late_fight_tail_owned") and roles[member["name"]] == "core_maintenance"
+            else:
+                # Otherwise only ever as a development block member.
+                assert roles[member["name"]] == "core_development"
                 assert member.get("component_group") == TRUNK_BLOCK_GROUP and member.get("exercise_cap_exempt")
     # No trunk target: no core candidates at all.
     assert all("core_development_slots" not in pool for pool in _brief("boxer28_strength_fullgym")["candidate_pools"].values())

@@ -1858,10 +1858,17 @@ def _apply_late_core_maintenance(
             # lead or any meaningful work -- and says which.
             displaceable = [index for index, m in enumerate(current)
                             if m.get("primer_complement") and m.get("support_only") is True]
+            # Trunk work the session already holds counts: its functions are
+            # not repeated and it spends the maintenance load budget.
+            held = _candidate_records([match[2] for match in existing if match is not None])
+            loaded_allowed = cap.get("loaded_allowed", True) is not False
             for target in range(LATE_CORE_MAINTENANCE_TARGET, LATE_CORE_MAINTENANCE_MINIMUM - 1, -1):
                 picks = late_core_maintenance_additions(
-                    records, loaded_allowed=cap.get("loaded_allowed", True) is not False, target=target)
+                    records, loaded_allowed=loaded_allowed, target=target, held=held)
                 if not picks:
+                    if outcome["reason_code"] == "insufficient_complementary_candidates" and \
+                            late_core_maintenance_additions(records, loaded_allowed=loaded_allowed, target=target):
+                        outcome["reason_code"] = "trunk_load_limits"
                     break
                 if lead_stress is None:
                     outcome["reason_code"] = "session_stress_unknown"

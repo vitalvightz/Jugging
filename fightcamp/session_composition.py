@@ -1108,7 +1108,12 @@ def late_core_maintenance_ineligibility(
     for the development block.
     """
     d_day = role_d_day(week, role)
-    if d_day is None or not LATE_CORE_MAINTENANCE_MIN_D_DAY <= d_day <= LATE_CORE_MAINTENANCE_MAX_D_DAY:
+    if d_day is None:
+        return {"reason_code": "unscheduled"}
+    if d_day > LATE_CORE_MAINTENANCE_MAX_D_DAY:
+        # D-14 and earlier belong to the Core Development Block.
+        return {"reason_code": "development_window"}
+    if d_day < LATE_CORE_MAINTENANCE_MIN_D_DAY:
         return {"reason_code": "fight_proximity"}
     if role.get("coach_owned") or not role.get("selected_exercise_assignments"):
         return {"reason_code": "no_eligible_host"}
@@ -1122,12 +1127,16 @@ def late_core_maintenance_ineligibility(
 
 def late_core_maintenance_additions(
     records: list[dict[str, Any]], *, loaded_allowed: bool, target: int = LATE_CORE_MAINTENANCE_TARGET,
+    held: list[dict[str, Any]] = (),
 ) -> list[dict[str, Any]] | None:
     """2-3 complementary low-fatigue trunk members, or None.
 
     The development block's own search, with a maintenance budget: no ballistic
     rotational power, no authored high-cost or high-eccentric item, and at most
     one resisted member (none on a day whose countdown cap forbids loading).
+    Trunk work the session already ``held`` counts exactly as it does for the
+    block: its functions are not repeated, and it spends the same budget (a
+    session already over budget gets no maintenance).
     """
     from .strength_session_quality import trunk_high_cost
 
@@ -1139,7 +1148,12 @@ def late_core_maintenance_additions(
 
     candidates = [r for r in records if r.get("trunk_targeted") and low_fatigue(r)]
     limits = {"rotational_power": 0, "high_cost": 0, "loaded": 1 if loaded_allowed else 0}
-    return _trunk_block_additions(candidates, [], {}, family_limit=2, room=target, target=target,
+    held = [r for r in held if r.get("trunk_targeted")]
+    family_counts: dict[str, int] = {}
+    for record in held:
+        for family in record["families"] - {"support"}:
+            family_counts[family] = family_counts.get(family, 0) + 1
+    return _trunk_block_additions(candidates, held, family_counts, family_limit=2, room=target, target=target,
                                   tier_limits=limits, minimum=LATE_CORE_MAINTENANCE_MINIMUM)
 
 
