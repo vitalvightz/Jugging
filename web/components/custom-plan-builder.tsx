@@ -825,11 +825,15 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
               onCreate={name => createManual(adding.sessionId, name)}
               onBrowse={query => setSelecting({ sessionId: adding.sessionId, query })} />
             {addedHere.length ? <section className={styles.added} aria-labelledby="custom-added-heading">
-              <h3 id="custom-added-heading">Added · {addedHere.length}</h3>
+              <h3 id="custom-added-heading">Added · {addedHere.length}
+                {/* Collapsed rows still say which doses are missing, so none get lost. */}
+                {addedHere.some(e => doseIncomplete(e.dose)) ? <span className={styles.addedTodo}> · {addedHere.filter(e => doseIncomplete(e.dose)).length} to finish</span> : null}
+              </h3>
               <ol>
                 {addedHere.map(exercise => {
                   const open = openAdded === exercise.id;
-                  return <li key={exercise.id} className={styles.addedRow} role="group" aria-label={nameOf(exercise)}>
+                  return <li key={exercise.id} className={styles.addedRow} role="group" aria-label={nameOf(exercise)}
+                    data-attention={doseIncomplete(exercise.dose) ? "true" : undefined}>
                     <button type="button" className={styles.addedHead} aria-expanded={open}
                       onClick={() => setOpenAdded(open ? undefined : exercise.id)}>
                       <span className={styles.addedText}>

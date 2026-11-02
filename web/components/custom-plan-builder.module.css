@@ -376,6 +376,9 @@
 .addedText { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
 .addedText strong, .addedText small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .addedText strong { font-size: 15px; }
+.addedTodo { color: var(--progress-gold); }
+.addedRow[data-attention="true"] { border-color: color-mix(in srgb, var(--progress-gold) 45%, transparent); }
+.addedRow[data-attention="true"] .addedText small { color: var(--progress-gold); }
 .addedText small { font-size: 13px; color: var(--text-secondary); }
 .chevron { flex: 0 0 auto; width: 8px; height: 8px; border-right: 1.5px solid var(--text-muted); border-bottom: 1.5px solid var(--text-muted); transform: translateY(-3px) rotate(45deg); transition: transform var(--transition-fast); }
 .addedHead[aria-expanded="true"] .chevron { transform: translateY(2px) rotate(-135deg); }

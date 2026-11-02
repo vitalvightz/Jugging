@@ -242,6 +242,7 @@ test("several library exercises go in from one sheet, each starting from its ver
     assert.equal(field(row("Bike sprints"), "Rounds").value, "5");
     assert.match(row("Bike sprints").textContent!, /Library format/);
     assert.equal(field(row("Back squat"), "Sets"), null, "opening one closes the other");
+    assert.doesNotMatch(sheet.textContent!, /to finish/, "both doses are complete");
 
     await act(async () => button(sheet, "Done").click());
     await wait(250);
@@ -306,6 +307,8 @@ test("a late suggestion never overwrites a dose the athlete already typed", asyn
     await wait();
     const row = () => topSheet().querySelector<HTMLElement>('[role="group"][aria-label="Back squat"]')!;
     assert.match(row().textContent!, /Checking the library and your history/);
+    assert.equal(row().dataset.attention, "true", "an unset dose stands out even when collapsed");
+    assert.match(topSheet().textContent!, /Added · 1 · 1 to finish/);
     await act(async () => type(field(row(), "Sets"), "4"));
     await act(async () => answer(formats["cat-squat"]));
     await wait(); await wait();
