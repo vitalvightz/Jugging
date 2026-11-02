@@ -349,6 +349,9 @@ _LATE_FIGHT_ANNOTATION_LABEL = re.compile(
     r"notes?|coach(?:ing)?\s+(?:note|cue)s?|coach\s+calls?|cues?|"
     r"duration|prescriptions?|intensity|"
     r"stop\s+rule|easier|"
+    # An optional Swap is shown beside the scheduled exercise; it is validated
+    # coaching, never rendered membership.
+    r"swaps?|substitutions?|"
     # "progression / regression / stop" style labels in any order or combination
     # (e.g. "Progression/regression/stop:", "Regression/stop:", "Stop/regress -").
     r"(?:progress(?:ion)?s?|regress(?:ion)?s?|stop)"
@@ -3185,7 +3188,7 @@ _AMBIGUOUS_WORKING_DOSE = re.compile(
     re.IGNORECASE,
 )
 _OPTIONAL_DOSE_LINE = re.compile(
-    r"^(?:easier|alternative|regression|stop|safety|red flags?|warning|limit|cap)\s*:",
+    r"^(?:easier|alternative|regression|swaps?|substitutions?|stop|safety|red flags?|warning|limit|cap)\s*:",
     re.IGNORECASE,
 )
 

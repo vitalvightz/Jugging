@@ -188,12 +188,13 @@ def test_open_ongoing_render_mode_prompt_defers_to_the_rotation():
     assert "Week 2-4" not in prompt
 
 
-def test_open_plan_render_contract_demands_one_exercise_and_a_progress_line():
-    """Source lines must name one exercise and carry their own progression.
+def test_open_plan_render_contract_demands_one_exercise_and_authorised_progress_only():
+    """Source lines must name one exercise; Progress appears only where work advances.
 
     An "A or B" main-work line leaves the athlete choosing mid-session and the
-    dose ambiguous, and a card with no Progress: line is what pushed the
-    structured conversion into recycling the Easier: line as a progression.
+    dose ambiguous. A forced "Progress: none this block" line is no longer
+    needed to stop the conversion recycling Easier as a progression: source
+    projection owns progression_rule (see test_stage2_luna_coaching).
     """
     from fightcamp.stage2_payload import _OPEN_ONGOING_RENDER_MODE_INSTRUCTIONS
 
@@ -206,7 +207,9 @@ def test_open_plan_render_contract_demands_one_exercise_and_a_progress_line():
         assert "one exercise per main-work line" in text.lower()
         assert '"A + B"' in text
         assert "Progress:" in text
-        assert "none this block" in text
+        assert "none this block" not in text
+        assert "Omit" in text
+    assert "9 words" not in prompt
     # The swap/safety split must stay explicit in the authoring prompt.
     assert 'belongs on `Easier:` or `Stop:`, never on `Progress:`' in prompt
 

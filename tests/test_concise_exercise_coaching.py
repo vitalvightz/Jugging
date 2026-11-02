@@ -47,8 +47,9 @@ def test_actual_band_punch_preserves_authored_easier_short_cue_and_all_four_stop
     record = RECORDS[1]
     current = next(b for b in blocks(recover_selected_coaching(record["card"], record["brief"]))
                    if b["display_name"] == "Band-Resisted Punch")
-    assert current["coaching_cues"][0] == "Keep punches balanced; return to guard"
-    assert len(current["coaching_cues"][0].split()) <= 7
+    # The saved card's whole instruction survives; the stance reset is technique, not filler.
+    assert current["coaching_cues"] == ["Keep punches balanced; return to guard and reset stance between exchanges"]
+    assert len(current["coaching_cues"][0].split()) <= 20  # KS3 sentence cap
     source = next(b for b in blocks(record["card"]) if b["display_name"] == "Band-Resisted Punch")
     assert current["regression_options"] == source["regression_options"]
     assert current["stop_rules"] == [
@@ -94,8 +95,26 @@ def test_overlapping_stops_combine_without_losing_distinct_safety_action():
 
 def test_short_cues_do_not_cut_conditional_or_negated_safety_instructions():
     cue = "Keep your wrist neutral and do not continue if sharp pain appears."
-    assert short_cue(cue) == cue  # safety takes precedence over the seven-word aim
-    assert short_cue("Set up like fight stance and explode on the first beat.") == "Explode on the first beat"
+    assert short_cue(cue) == cue  # safety is never cut
+
+
+@pytest.mark.parametrize("cue", [
+    "Set up like fight stance and explode on the first beat.",
+    "Keep your front foot planted and control the lowering phase.",
+    "Rotate through your hips and return to guard after every combination.",
+])
+def test_complete_cues_within_the_ks3_cap_are_kept_whole(cue):
+    assert short_cue(cue) == cue
+    assert short_cue(f"Cue: {cue}") == cue
+    assert concise_coaching({"coaching_cues": [cue]})["coaching_cues"] == [cue]
+
+
+def test_only_over_long_prose_is_compacted_to_one_clause():
+    prose = ("Set up in your fight stance with your weight centred over both feet, explode on the first "
+             "beat and recover your guard straight away on every single rep.")
+    assert len(prose.split()) > 20
+    compact = short_cue(prose)
+    assert compact != prose and compact.casefold() in prose.casefold().replace(",", "")
 
 
 def test_labelled_and_unlabelled_versions_of_one_cue_do_not_multiply():
@@ -131,8 +150,8 @@ def test_coach_fields_win_over_fallback_and_keep_full_technical_detail():
                   "regression_options": ["Use the yellow rehabilitation band."],
                   "stop_rules": ["Stop for shoulder pain."]}
     actual = exercise_coaching(assignment, {}, phase="TAPER", d_day=13)
-    assert actual["coaching_cues"][0] == "Keep the elbow below shoulder height"
-    assert actual["coaching_cues"] == [short_cue(assignment["coaching_cues"][0])]
+    # The coach's full technical instruction wins over the fallback, unshortened.
+    assert actual["coaching_cues"] == assignment["coaching_cues"]
     assert actual["regression_options"] == assignment["regression_options"]
     assert actual["stop_rules"] == assignment["stop_rules"]
     assert not actual.get("progression_rule")

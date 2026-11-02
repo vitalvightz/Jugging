@@ -168,7 +168,7 @@ def build_open_ongoing_payload(*, athlete_model: dict[str, Any]) -> dict[str, An
                 "Render one Weekly Rhythm section only.",
                 "Render app-owned days as session cards using Objective/Main work/Fallback/Rehab / mobility/Coach note/Stop rule.",
                 "Name one exercise per main-work line. A choice such as \"A or B\" is never the exercise name: pick one and put the alternative on that line's Easier/Swap line. Only a deliberate superset or contrast pair may pair two movements, written as \"A + B\" with the dose for the pair.",
-                "Give every programmed exercise a Progress: line in its own units, stepped from its own dose, using the variable that suits the work. Write \"Progress: none this block\" where the work should not advance, and never cite a load the plan has not prescribed.",
+                "Give each programmed exercise that advances in the block a Progress: line in its own units, stepped from its own dose, using the variable that suits the work. Omit the line where the work should not advance, and never cite a load the plan has not prescribed.",
                 "Never number the weeks inside a Progress: line. The athlete sees one week at a time, so write the single step (\"Progress: add one more burst\") and put the block's easy week on its own Deload: line.",
                 "Do not render GPP/SPP/TAPER headings, countdown labels, D-day labels, fight-week rules, or fight-day protocol.",
                 "Use 4-Week Development Block + 4-Week Reassessment Gate instead of fixed phase blocks.",

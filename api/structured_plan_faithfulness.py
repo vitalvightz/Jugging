@@ -180,7 +180,9 @@ def _open_source_sessions(source: str) -> dict[tuple, list[list[str]]]:
             # Older Open Plans used "Strength. Monday" or "Monday. Strength"
             # instead of "Monday — Strength". Read those only inside cards;
             # weekly-rhythm summaries must never become exercise authority.
-            match = re.match(r"([A-Za-z]+)\s*(?:[—–]|\s-\s)\s*(.+)$", heading)
+            # A colon is the dash-free form of the same card heading
+            # ("Monday: Strength"), which the no-long-dash rule produces.
+            match = re.match(r"([A-Za-z]+)\s*(?:[—–:]|\s-\s)\s*(.+)$", heading)
             weekday, title = (normalize_weekday(match[1]), match[2]) if match else (None, None)
             if not weekday and in_cards:
                 if match := re.match(r"(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\.\s+(.+)$", heading, re.I):
@@ -256,7 +258,19 @@ def project_source_adjustments(plan: dict[str, Any], source: str) -> dict[str, A
                         block["progression_rule"] = expected["progression_rule"]
                     else:
                         block.pop("progression_rule", None)
-                    for key in ("sets", "reps", "rounds", "duration", "work", "rest", "distance", "effort", "load", "execution_instructions", "coaching_cues", "stop_rules"):
+                    # Swap is validated source coaching like Easier: the source
+                    # line wins, and a converter-invented swap is removed. It is
+                    # an optional alternative; the block keeps its exercise.
+                    if expected.get("substitutions") or block.get("substitutions"):
+                        block["substitutions"] = list(expected.get("substitutions") or [])
+                    # A labelled source Cue/Stop is the approved instruction; a
+                    # converter paraphrase or generic bank line never replaces it.
+                    segment = _source_block_segment("\n".join(block_lines), name)
+                    if expected.get("coaching_cues") and _SOURCE_CUE_RE.search(segment):
+                        block["coaching_cues"] = copy.deepcopy(expected["coaching_cues"])
+                    if expected.get("stop_rules") and re.search(r"^\s*Stop\s*:", segment, re.I | re.M):
+                        block["stop_rules"] = copy.deepcopy(expected["stop_rules"])
+                    for key in ("sets", "reps", "rounds", "duration", "work", "rest", "distance", "effort", "load", "execution_instructions", "coaching_cues", "stop_rules", "purpose"):
                         if expected.get(key) and not block.get(key):
                             block[key] = copy.deepcopy(expected[key])
                     # Cluster rows and qualitative rest are structure the

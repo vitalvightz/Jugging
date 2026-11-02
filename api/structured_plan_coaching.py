@@ -8,6 +8,7 @@ from fightcamp.exercise_instructions import nested_rows, recover_execution_instr
 from fightcamp.coaching_copy import concise_coaching, is_null_progression
 from fightcamp.exercise_coaching import (
     exercise_coaching, is_profile_progression, is_profile_cue, easier_rejection, clinical_coaching_rejection,
+    swap_rejection,
 )
 from fightcamp.exercise_progression import (
     build_progression_context, occurrence_key, progress_rejection, effective_exercise_prescription, structured_dose, measured_dose,
@@ -60,10 +61,10 @@ def _dose_matches(block: dict, role: dict, assignment: dict) -> bool:
 
 
 def _recover_programming(block: dict, role: dict, assignment: dict, context: dict | None,
-                         athlete: dict, brief: dict, source: dict | None = None) -> None:
+                         athlete: dict, brief: dict, source: dict | None = None, d_day: int | None = None) -> None:
     matches = _dose_matches(block, role, assignment)
     if source is not None:
-        for key in ("progression_rule", "regression_options"):
+        for key in ("progression_rule", "regression_options", "substitutions"):
             if source.get(key):
                 block[key] = deepcopy(source[key])
             else:
@@ -74,6 +75,10 @@ def _recover_programming(block: dict, role: dict, assignment: dict, context: dic
     block["regression_options"] = [text for text in block.get("regression_options") or []
         if not easier_rejection(text, assignment, role, athlete, brief=brief,
                                 current_dose=None if matches else _current_card_dose(block))]
+    if block.get("substitutions"):
+        block["substitutions"] = [text for text in block["substitutions"]
+            if not (swap_rejection(text, assignment, role, athlete, brief=brief, d_day=d_day)
+                    or clinical_coaching_rejection(text, brief))]
 
 
 def recover_selected_coaching(plan: dict[str, Any], brief: dict[str, Any],
@@ -81,9 +86,16 @@ def recover_selected_coaching(plan: dict[str, Any], brief: dict[str, Any],
     if brief.get("custom_plan"):
         return plan
     plan = recover_execution_instructions(plan)
-    from fightcamp.exercise_coaching_source import source_coaching, validate_source_coaching, coaching_identity
+    from fightcamp.exercise_coaching_source import (
+        source_coaching, validate_source_coaching, coaching_identity, lookup_occurrence)
     validated_text, _ = validate_source_coaching(brief, source_text)
     authored = source_coaching(validated_text)
+    card_keys = [
+        (int(str(day.get("countdown_label"))[2:]) if str(day.get("countdown_label") or "")[2:].isdigit() else None,
+         coaching_identity(session.get("title")), coaching_identity(block.get("display_name")))
+        for week in nested_rows(plan, "weeks") for day in nested_rows(week, "days") if isinstance(day, dict)
+        for session in nested_rows(day, "sessions") for block in nested_rows(session, "blocks")
+        if isinstance(session, dict) and isinstance(block, dict)]
     selected = {}
     for week in (brief.get("weekly_role_map") or {}).get("weeks") or []:
         for role in week.get("session_roles") or []:
@@ -158,11 +170,11 @@ def recover_selected_coaching(plan: dict[str, Any], brief: dict[str, Any],
                             continue  # Adjustment notes are owned by the final-session LLM.
                         if value and not block.get(field):
                             block[field] = deepcopy(value)
-                    source = authored.get((offset, coaching_identity(session.get("title")),
-                                           coaching_identity(block.get("display_name"))))
+                    source = lookup_occurrence(authored, (offset, coaching_identity(session.get("title")),
+                                                          coaching_identity(block.get("display_name"))), card_keys)
                     _recover_programming(block, role, assignment, programming_context,
                                          brief.get("athlete_snapshot") or {}, brief,
-                                         source["fields"] if source else None)
+                                         source["fields"] if source else None, d_day=offset)
                     compact = concise_coaching({k: block.get(k) for k in (
                         "coaching_cues", "regression_options", "stop_rules")})
                     block.update(compact)
