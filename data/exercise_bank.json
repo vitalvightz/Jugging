@@ -16957,7 +16957,7 @@
       "mech_lower_hip_hinge",
       "mech_trunk_stability"
     ],
-    "equipment": "bench,plate",
+    "equipment": "back_extension_bench,plate",
     "movement_cost": "moderate",
     "impact_cost": "low",
     "eccentric_cost": "moderate",
