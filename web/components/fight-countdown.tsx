@@ -139,7 +139,7 @@ export function FightCountdown({
       data-pending={initialCampDays !== null && pct !== null && !revealed ? "true" : undefined}
       aria-label={`Fight countdown: ${label}`}
     >
-      <div className="fight-countdown-head">
+      <div className="fight-countdown-heading">
         <p className="fight-countdown-kicker">Upcoming fight</p>
         <h2 className="fight-countdown-event">{event}</h2>
       </div>
@@ -198,7 +198,7 @@ function Bone({ children }: { children: string }) {
 export function FightCountdownSkeleton() {
   return (
     <section className="fight-countdown fight-countdown-skeleton" aria-busy="true" aria-label="Fight countdown loading">
-      <div className="fight-countdown-head">
+      <div className="fight-countdown-heading">
         <p className="fight-countdown-kicker"><Bone>Upcoming fight</Bone></p>
         <p className="fight-countdown-event"><Bone>Fight Camp</Bone></p>
       </div>

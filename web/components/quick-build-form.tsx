@@ -929,6 +929,7 @@ function QuickBuildFormInner() {
                   ...current,
                   no_scheduled_fight: event.target.checked,
                   fight_date: event.target.checked ? "" : current.fight_date,
+                  event_name: event.target.checked ? "" : current.event_name,
                 }));
               }}
             />
@@ -1055,7 +1056,7 @@ function QuickBuildFormInner() {
               className="secondary-button"
               onClick={() => {
                 setSubmitError(null);
-                setInput((current) => ({ ...current, no_scheduled_fight: true, fight_date: "" }));
+                setInput((current) => ({ ...current, no_scheduled_fight: true, fight_date: "", event_name: "" }));
                 setMessage("Open Plan selected. Continue with your available training schedule.");
               }}
             >

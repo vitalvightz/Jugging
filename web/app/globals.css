@@ -3665,6 +3665,16 @@ html:root .overview-risk-more.overview-weigh-in:focus-visible {
 }
 
 .fight-countdown-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+/* Upcoming-fight heading: kicker above the event name. Its own class because
+   .fight-countdown-head is shared with the tracking cards on Home. */
+.fight-countdown-heading {
   min-width: 0;
 }
 
@@ -3769,12 +3779,8 @@ html:root .overview-risk-more.overview-weigh-in:focus-visible {
 .fight-countdown-days {
   margin: 0;
   color: var(--text-secondary);
-  font-size: clamp(11px, 5cqi, 18px);
+  font-size: var(--type-body-lg);
   font-weight: 600;
-  line-height: 1.25;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .fight-countdown-number {
@@ -3784,18 +3790,38 @@ html:root .overview-risk-more.overview-weigh-in:focus-visible {
 }
 
 .fight-countdown .fight-countdown-number {
-  font-size: clamp(32px, 16cqi, 64px);
+  font-size: clamp(44px, 7vw, 64px);
   line-height: 1;
   letter-spacing: -0.03em;
 }
 
 .fight-countdown-date {
-  margin: 4px 0 0;
-  white-space: nowrap;
+  margin: 6px 0 0;
   color: var(--text-muted);
-  font-size: clamp(10.5px, 4.5cqi, 14px);
+  font-size: var(--type-body-sm);
+}
+
+/* The upcoming-fight countdown row only (the tracking cards reuse the classes
+   above): single-line copy whose type scales with the card's width. */
+.fight-countdown-count .fight-countdown-number {
+  font-size: clamp(32px, 16cqi, 64px);
+}
+
+.fight-countdown-count-copy .fight-countdown-days,
+.fight-countdown-count-copy .fight-countdown-date {
   overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.fight-countdown-count-copy .fight-countdown-days {
+  font-size: clamp(11px, 5cqi, 18px);
+  line-height: 1.25;
+}
+
+.fight-countdown-count-copy .fight-countdown-date {
+  margin-top: 4px;
+  font-size: clamp(10.5px, 4.5cqi, 14px);
 }
 
 .fight-countdown-meta {

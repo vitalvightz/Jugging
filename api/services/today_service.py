@@ -3114,6 +3114,18 @@ def _merge_risks(*risk_lists: list[RiskWatchItem]) -> list[RiskWatchItem]:
     return merged
 
 
+def _athlete_is_adult(store: AppStore, athlete_id: str) -> bool:
+    """True only when the profile positively reads as 18+. A missing profile or
+    a failed read fails closed, so a minor's target weight is never exposed."""
+    try:
+        from api.compliance import evaluate_profile_compliance
+        profile = store.get_profile_compliance(athlete_id)
+        return profile is not None and not evaluate_profile_compliance(profile).is_minor
+    except Exception:
+        logger.exception("[today] profile_compliance_read_failed athlete_id=%s", athlete_id)
+        return False
+
+
 def _fight_card_fields_from_intake(intake: Mapping[str, Any]) -> dict[str, Any]:
     """Event name and target fight weight from the plan's own intake, for Home's
     fight countdown card. Display-only; absent values are simply omitted."""
@@ -3735,7 +3747,11 @@ def _build_today_command_view(
 
     intake, _intake_ok = _checked_intake_payload_for_readiness(store, plan_row)
     equipment = _rehab_equipment_from_intake(intake)
-    resolved_plan.update(_fight_card_fields_from_intake(intake))
+    fight_card = _fight_card_fields_from_intake(intake)
+    if "target_weight_kg" in fight_card and not _athlete_is_adult(store, athlete_id):
+        # Under-18s have no weight-cut feature: never send a target weight.
+        fight_card.pop("target_weight_kg")
+    resolved_plan.update(fight_card)
     # Today logs the entire training day. Reconcile every scheduled block,
     # preserving the primary completion identity and checking sibling demands.
     training_session = _entry_mapping_for_readiness(today_session_entry) if today_session_entry else None
