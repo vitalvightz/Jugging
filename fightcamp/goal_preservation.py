@@ -884,7 +884,10 @@ def trunk_dose_adequate(stimulus: dict) -> bool:
 def _mark_trunk_development(stimuli: list[dict]) -> None:
     """Stamp each trunk stimulus with whether its session delivers a block."""
     trunk = [s for s in stimuli if "trunk_training" in s.get("intents", ())]
-    adequate = [s for s in trunk if s.get("trunk_function") and trunk_dose_adequate(s)]
+    # Only dedicated (support-class) core work counts toward a block; main
+    # power or strength lifts with a trunk tag stay ordinary trunk exposure.
+    adequate = [s for s in trunk if s.get("trunk_function") and trunk_dose_adequate(s)
+                and s.get("quality_class") in {"support_accessory", "support_isometric", "rehab_support"}]
     functions = sorted({s["trunk_function"] for s in adequate})
     resisted = any(s.get("trunk_load_tier") in {"loaded", "rotational_power"} for s in adequate)
     block = len(functions) >= TRUNK_DEVELOPMENT_MIN_FUNCTIONS and resisted

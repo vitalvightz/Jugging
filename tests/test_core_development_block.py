@@ -223,8 +223,10 @@ def _synthetic(names):
 
 
 _LIFTS = ["Back Squat", "Romanian Deadlift (RDL)", "Z Press", "Push-Up (Weighted)"]
-_CORE = ["Plank", "Pallof Press", "Suitcase Carry (Heavy)", "Med-Ball Rotational Slam",
-         "Ab Wheel Rollout (Kneeling)", "Bear Hug Carry", "Anti-Rotation Med Ball Slam"]
+# Dedicated (support-class) core options only: an anchor-class power movement
+# such as a med-ball slam is main work and never fills a core slot.
+_CORE = ["Plank", "Pallof Press", "Suitcase Carry (Heavy)", "Russian Twist (Weighted)",
+         "Ab Wheel Rollout (Kneeling)", "Bear Hug Carry", "Copenhagen Side Plank"]
 
 
 def test_four_main_exercises_and_a_four_exercise_core_block_coexist():
@@ -428,8 +430,9 @@ def test_unrelated_programmes_carry_no_core_block():
 # Validation: a token trunk exercise is not development
 # ---------------------------------------------------------------------------
 
-def _stimulus(function, sets, amount, unit="reps", tier="stability"):
-    item = {"intents": ["trunk_training"], "trunk_function": function, "trunk_load_tier": tier, "sets": sets,
+def _stimulus(function, sets, amount, unit="reps", tier="stability", quality="support_accessory"):
+    item = {"intents": ["trunk_training"], "trunk_function": function, "trunk_load_tier": tier,
+            "quality_class": quality, "sets": sets,
             "reps": amount if unit == "reps" else 0}
     if unit != "reps":
         item.update(volume_unit=unit, volume_amount=amount)
@@ -503,7 +506,13 @@ def test_trunk_functions_come_from_the_exercise_not_loose_tags():
 def test_open_plan_builds_a_grouped_core_block_every_week():
     spec = open_plan._spec("core_weakness")
     coverage = next(c for c in spec["goal_coverage"] if c["goal"] == "trunk_strength")
-    assert (coverage["state"], coverage["satisfied"], coverage["contract_errors"]) == ("build", True, [])
+    assert coverage["satisfied"] and coverage["contract_errors"] == []
+    if coverage["state"] != "build":
+        # This pool offers no dedicated, resisted three-function block (its
+        # trunk options are a plyometric plank and bodyweight holds): the
+        # obligation is kept as maintenance with the composition cause cited.
+        assert coverage["state"] == "maintain" and coverage["constraints"]
+        assert all(c["authority"] == "session_composition.trunk_block" for c in coverage["constraints"])
     for week in spec["weekly_session_plan"]["weeks"]:
         # Planner-only: the open-plan projection carries ordinary exercises,
         # each with its own dose, and no grouping signal for Stage 2.
@@ -614,3 +623,31 @@ def test_stage2_requests_carry_no_core_development_signal(monkeypatch):
         final_plan_text=rendered, planning_brief=brief, source="test", costs=[]))
     assert len(client.responses.calls) == 2  # structured_first + structured_repair
     _assert_no_marker(client.responses.calls)
+
+def test_main_power_or_strength_work_never_fills_a_core_slot():
+    """A landmine press or rotational slam carries a trunk tag but is main work:
+    it neither joins the block nor counts toward its three functions."""
+    names = ["Back Squat", "Landmine Press", "Med-Ball Rotational Slam", "Plank", "Pallof Press", "Suitcase Carry (Heavy)"]
+    records = _synthetic(names)
+    selected, _ = _select_bounded_records(records, role_key="primary_strength_day", cap=3, pressure=0,
+                                          preserve_trunk_support=True, trunk_block_target=3)
+    block = {r["name"] for r in trunk_block_members(selected)}
+    assert block and not block & {"Landmine Press", "Med-Ball Rotational Slam"}
+    anchored = [_stimulus("anti_rotation", 3, 8, tier="loaded", quality="anchor_loaded"),
+                _stimulus("anti_extension", 4, 15, "sec"), _stimulus("anti_lateral_flexion", 3, 20, "sec")]
+    _mark_trunk_development(anchored)
+    assert not any(s["trunk_development"] for s in anchored)
+
+
+def test_per_side_reps_written_as_the_card_prompt_asks_are_not_a_dose_change():
+    """The card prompt asks for reps "as '6 per side'"; the source parser reads
+    "3 x 6 per side" as reps 6. That was rejecting every per-side core card
+    (Kettlebell Windmill) as PRESCRIPTION_CHANGED."""
+    from api.structured_plan_deterministic_fallback import _source_block
+    from api.structured_plan_faithfulness import _prescription_value
+
+    expected = _source_block(["### D-21 (Monday) — Strength",
+                              "- Kettlebell Windmill — 3 x 6 per side @ RPE 7; rest 75s."], "Kettlebell Windmill")
+    for written in (6, "6", "6 per side", "6/side", "6 each side"):
+        assert _prescription_value(written) == _prescription_value(expected["reps"]), written
+    assert _prescription_value(12) != _prescription_value(expected["reps"])  # a real change still fails
