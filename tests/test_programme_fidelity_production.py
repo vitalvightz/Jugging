@@ -35,6 +35,22 @@ FIXTURES = Path(__file__).parent / "fixtures" / "programme_fidelity"
 ROWS_ADDED_AFTER_RECORDING = frozenset({
     "Tempo Push-Up (3-1-1)", "Feet-Elevated Push-Up", "Pike Push-Up", "Band Bent-Over Row",
     "Half-Kneeling Single-Arm Band Row", "Split Squat (Bodyweight Tempo 3-1-1)",
+    # Core Development exercises added with PR #3163.
+    "Bear Plank Dumbbell Drag",
+    "Renegade Row",
+    "Partner-Perturbed Guard Hold",
+    "Standing Cable Side Bend",
+    "Kettlebell Windmill",
+    "Lateral Med-Ball Catch and Stick",
+    "Slider Body Saw",
+    "Swiss-Ball Pike",
+    "Tall-Kneeling Cable Pulldown Brace",
+    "Reverse Crunch with Pelvic Lift",
+    "Seated Pike Compression Lift-Off",
+    "Kneeling Cable Crunch",
+    "Weighted 45° Back Extension",
+    "Low-to-High Cable Lift",
+    "Rotational Med-Ball Catch and Stick",
 })
 PHASES_AT_RECORDING = {"Bulgarian Split Squat": ["SPP"]}
 # Rows retired from the bank since the recording, restored for the replay only,

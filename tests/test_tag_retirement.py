@@ -17,6 +17,8 @@ from tools.injury_tag_authority import collect_generated_injury_tags
 from tools import validate_banks
 
 PLAN_FIXTURE = check.ROOT / "tests/fixtures/tag_retirement_plans.json"
+# Reviewed canonical tags registered after the retirement (data/tag_registry_review.json).
+ADDED_AFTER_RETIREMENT = frozenset({"anti_lateral_flexion"})
 
 
 @pytest.fixture(scope="module")
@@ -49,6 +51,9 @@ def test_only_reviewed_declarations_are_removed_in_original_order(review):
     current = read_tag_vocabulary_items(check.VOCABULARY)
     assert len(original) == 355
     assert len(retired) == 16
+    # Canonical tags reviewed and registered after this retirement review.
+    assert set(current) - set(original) == ADDED_AFTER_RETIREMENT
+    current = [tag for tag in current if tag not in ADDED_AFTER_RETIREMENT]
     assert current == [tag for tag in original if tag not in retired]
     assert len(current) == 339
     assert set(original) - set(current) == retired
@@ -91,11 +96,13 @@ def test_bank_validation_findings_are_identical_with_old_and_retained_vocabulary
     current_status = validate_banks.run_validation("strict", emit=after.append)
     with monkeypatch.context() as original:
         original.setattr(validate_banks, "read_tag_vocabulary_items",
-                         lambda _path: list(review["original_vocabulary"]))
+                         lambda _path: [*review["original_vocabulary"], *sorted(ADDED_AFTER_RETIREMENT)])
         original_status = validate_banks.run_validation("strict", emit=before.append)
     assert current_status == original_status
     # Only the explicitly intended allowlist-size message may change.
-    assert after == [line.replace("Tag vocabulary loaded: 355 tags", "Tag vocabulary loaded: 339 tags")
+    loaded = 355 + len(ADDED_AFTER_RETIREMENT)
+    assert after == [line.replace(f"Tag vocabulary loaded: {loaded} tags",
+                                  f"Tag vocabulary loaded: {339 + len(ADDED_AFTER_RETIREMENT)} tags")
                      for line in before]
 
 

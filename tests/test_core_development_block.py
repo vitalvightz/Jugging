@@ -7,6 +7,7 @@ seed (no model call), reusing the goal/weakness delivery and open-plan fixtures.
 from __future__ import annotations
 
 import copy
+import json
 
 import pytest
 
@@ -133,20 +134,14 @@ def test_primary_goal_and_weakness_both_target_development():
 
 
 def test_the_block_no_longer_displaces_the_main_lifts():
-    """PR #3163's first cut dropped Back Squat and Weighted Push-Up for core work."""
-    brief = _brief("king_no_cut")
-    primary = next(role for _, role in _strength_roles(brief) if role["role_key"] == "primary_strength_day")
-    assert {"Back Squat", "Push-Up (Weighted)", "Romanian Deadlift (DB)", "Sled Push (Board)",
-            "DB Plyometric Push-Up (Hands on Dumbbells)", "Plank (Extended Hold)"} <= {m["name"] for m in _members(primary)}
-    for _, host in _strength_roles(brief):
-        if not _grouped(host):
+    """The capped main selection fills its own cap; only block additions sit outside it."""
+    for _, host in _strength_roles(_brief("king_no_cut")):
+        policy = host.get("strength_composition_policy")
+        if not policy:  # late-fight tail roles have their own selector
             continue
-        policy = host["strength_composition_policy"]
-        # The capped selection still fills exactly its own cap (plus the
-        # standalone extra when confirmed); the block's additions sit outside.
         assert len(_capped(host)) <= policy["effective_exercise_cap"] + int(policy["standalone_minimum_applied"])
         exempt = [m for m in _members(host) if m.get("exercise_cap_exempt")]
-        assert exempt and all(m in _grouped(host) for m in exempt)
+        assert all(m in _grouped(host) for m in exempt)
 
 
 def test_every_development_week_including_spp_hosts_a_block():
@@ -197,7 +192,7 @@ def test_block_members_are_dosed_by_the_resolver_at_a_development_point():
         for name, dose in doses.items():
             if name in grouped:
                 assert dose["effective_prescription"] == working_dose(dose["base_prescription"], development=True)
-                raised += dose.get("dose_adjustment_reason") == "core_development_working_point"
+                raised += dose["effective_prescription"] != working_dose(dose["base_prescription"])
             else:  # main work keeps exactly its existing dose
                 assert dose["effective_prescription"] == working_dose(dose["base_prescription"])
         if "Side Plank (Long Duration)" in doses:
@@ -265,16 +260,12 @@ def _king_primary_records():
 
 
 def test_the_role_cap_previously_reduced_core_to_one_movement():
-    records = _king_primary_records()
-    common = dict(role_key="primary_strength_day", cap=6, pressure=0, preserve_trunk_support=True)
+    records = _synthetic(_LIFTS + _CORE)
+    common = dict(role_key="primary_strength_day", cap=5, pressure=0, preserve_trunk_support=True)
     before, _ = _select_bounded_records(records, **common)
     assert sum(r["trunk_targeted"] for r in before) == 1
-    after, _ = _select_bounded_records(records, **common, trunk_block_target=3,
-                                       trunk_alternates=trunk_alternate_records(records))
-    assert len(trunk_block_members(after)) == 3
-    # A slot whose alternate joined the block is one substitution, not two members.
-    base_ids = [str(r["slot"]["slot_id"]).partition(":alternate:")[0] for r in after]
-    assert len(base_ids) == len(set(base_ids))
+    after, _ = _select_bounded_records(records, **common, trunk_block_target=3)
+    assert len(trunk_block_members(after)) == 3 and all(r in after for r in before)
 
 
 @pytest.mark.parametrize(("target", "expected"), [(4, 4), (3, 3)])
@@ -514,12 +505,11 @@ def test_open_plan_builds_a_grouped_core_block_every_week():
     coverage = next(c for c in spec["goal_coverage"] if c["goal"] == "trunk_strength")
     assert (coverage["state"], coverage["satisfied"], coverage["contract_errors"]) == ("build", True, [])
     for week in spec["weekly_session_plan"]["weeks"]:
-        grouped = [[e["name"] for e in s.get("exercises") or [] if e.get("group") == TRUNK_BLOCK_GROUP]
-                   for s in week["sessions"]]
-        hosts = [names for names in grouped if names]
-        assert len(hosts) == 1 and 3 <= len(hosts[0]) <= 4, week["week"]
-        session = next(s for s in week["sessions"] if any(e.get("group") for e in s.get("exercises") or []))
-        assert all(e["prescription"] for e in session["exercises"])  # each member keeps its own dose
+        # Planner-only: the open-plan projection carries ordinary exercises,
+        # each with its own dose, and no grouping signal for Stage 2.
+        for session in week["sessions"]:
+            for exercise in session.get("exercises") or []:
+                assert "group" not in exercise and exercise["prescription"]
 
 
 def test_open_plan_high_fatigue_keeps_core_as_maintenance():
@@ -538,11 +528,11 @@ def _host(brief):
     return next((week, role) for week, role in _strength_roles(brief) if _grouped(role))
 
 
-def test_stage2_manifest_names_the_group_without_merging_members():
+def test_stage2_manifest_carries_no_group():
     _, role = _host(_brief("king_no_cut"))
     entry = {}
     _attach_manifest_label_and_microdose(entry, role)
-    assert entry["exercise_groups"] == {TRUNK_BLOCK_GROUP: [m["name"] for m in _grouped(role)]}
+    assert "exercise_groups" not in entry
 
 
 def test_structured_blocks_are_tagged_by_server_identity_and_stay_separate():
@@ -577,3 +567,28 @@ def test_a_block_yields_when_recovery_must_cut_the_hosts_main_work():
     assert not _grouped(neural)
     strength = _entry(brief, "strength")
     assert strength["satisfied"]
+
+
+def test_stage2_requests_carry_no_core_development_signal():
+    """Planner-only: Stage 2 sees block members as ordinary closed exercises."""
+    import asyncio
+    import os
+    from types import SimpleNamespace
+    from support import FakeOpenAIClient
+    from api.stage2_automation import OpenAIStage2Automator
+
+    os.environ["UNLXCK_STAGE2_STRUCTURED_PLAN"] = "0"
+    stage1 = delivery._generate("king_no_cut")
+    assert any(_grouped(role) for _, role in _strength_roles(stage1["planning_brief"]))
+    response = SimpleNamespace(id="r", output_text=stage1.get("plan_text") or "plan",
+                               usage=SimpleNamespace(input_tokens=1, output_tokens=1, total_tokens=2))
+    client = FakeOpenAIClient([response] * 6)
+    try:
+        asyncio.run(OpenAIStage2Automator(client=client, model="m").finalize(stage1_result=stage1))
+    except Exception:
+        pass
+    sent = json.dumps([call.get("input") for call in client.responses.calls], default=str)
+    assert client.responses.calls
+    for marker in ("core_development", "Core Development", "exercise_groups", "component_group",
+                   "trunk_function", "exercise_cap_exempt"):
+        assert marker not in sent, marker

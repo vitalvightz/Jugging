@@ -3993,7 +3993,8 @@ def build_structured_plan_prompt(
         # deterministic and drops the internal pools entirely.
         brief_context = _select_brief_context(planning_brief)
         try:
-            brief_json = json.dumps(brief_context, ensure_ascii=False)
+            from fightcamp.stage2_payload import scrub_planner_only_keys
+            brief_json = json.dumps(scrub_planner_only_keys(brief_context), ensure_ascii=False)
         except (TypeError, ValueError):
             brief_json = ""
         if not brief_json:

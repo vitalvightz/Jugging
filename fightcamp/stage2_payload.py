@@ -1915,7 +1915,6 @@ def _open_block_session(role: dict[str, Any]) -> dict[str, Any] | None:
             "prescription": doses.get(str(member.get("name") or ""))
             or str(member.get("effective_prescription") or member.get("base_prescription") or ""),
             # Presentation grouping only; each exercise keeps its own dose.
-            **({"group": member["component_group"]} if member.get("component_group") else {}),
         }
         for member in role.get("selected_exercise_assignments") or []
         if isinstance(member, dict) and member.get("name")
@@ -2003,16 +2002,11 @@ def _project_open_goal_coverage(block: dict[str, Any]) -> list[dict[str, Any]]:
     return coverage
 
 
-_CORE_DEVELOPMENT_RENDER_RULE = (
-    "Exercises grouped core_development form one Core Development section: keep them consecutive, "
-    "each as its own exercise with its own dose. Never merge them into one circuit line or add a combined dose."
-)
 _OPEN_BLOCK_RENDER_RULES = [
     "open_plan_spec.weekly_session_plan is the deterministic planner's session plan. Build the Weekly Rhythm and Session Cards from it: each session's weekday, purpose and order are fixed.",
     "Each session's exercises list is closed membership with its authoritative prescription: render every listed exercise with that dose (one exact value inside any range), and never add, replace or substitute an exercise. A session with no exercises is coach-owned or support work: keep it as written in its label.",
     "Use weekly_session_plan weeks 2-4 for the 4-Week Development Block: describe what changes week to week from those sessions, never by inventing new ones.",
     "open_plan_spec.goal_coverage is the planner's verdict on the athlete's goals: explain it faithfully and never claim a goal is trained by an exercise not listed in its evidence.",
-    _CORE_DEVELOPMENT_RENDER_RULE,
 ]
 
 
@@ -3017,7 +3011,7 @@ def _build_core_development_slots(strength_block: dict | None, phase: str, stren
             continue
         quality_profile = classify_strength_item(exercise)
         slots.append({
-            "slot_id": f"{phase.lower()}_core_{index}_{slugify(name)}",
+            "slot_id": f"{phase.lower()}_strength_{1000 + index}_{slugify(name)}",
             "role": "core_development",
             "purpose": candidate.get("explanation", "balanced selection"),
             "selected": _serialize_strength_option(
@@ -3880,8 +3874,25 @@ Rules:
 - Never number the weeks inside a `Progress:` line. The athlete sees one week at a time, so "Progress: week 2 add 1 more burst, week 3 add 1 more burst, week 4 keep same low volume" prints other weeks' work on every card. Write the step alone ("Progress: add one more burst") and put the block's easy week on its own `Deload:` line ("Deload: keep the same low volume").
 """
 
+# Core Development Block metadata is planner/UI-only: Stage 2 renders block
+# members as ordinary closed exercises and must never see the grouping.
+PLANNER_ONLY_PROMPT_KEYS = frozenset({
+    "component_group", "trunk_function", "exercise_cap_exempt", "trunk_block",
+    "trunk_load_tier", "trunk_development", "trunk_block_functions",
+    "core_development_slots", "main_exercise_count", "core_block_count",
+})
+
+
+def scrub_planner_only_keys(value):
+    if isinstance(value, dict):
+        return {k: scrub_planner_only_keys(v) for k, v in value.items() if k not in PLANNER_ONLY_PROMPT_KEYS}
+    if isinstance(value, list):
+        return [scrub_planner_only_keys(v) for v in value]
+    return value
+
+
 def _json_block(value: dict | list) -> str:
-    return "```json\n" + json.dumps(value, separators=(",", ":"), ensure_ascii=False) + "\n```"
+    return "```json\n" + json.dumps(scrub_planner_only_keys(value), separators=(",", ":"), ensure_ascii=False) + "\n```"
 
 
 
@@ -4151,12 +4162,6 @@ def _attach_manifest_label_and_microdose(entry: dict, role: dict) -> None:
     microdose = role.get("priority_microdose")
     if isinstance(microdose, dict) and str(microdose.get("name") or "").strip():
         entry["priority_microdose"] = microdose
-    groups: dict[str, list[str]] = {}
-    for member in role.get("selected_exercise_assignments") or []:
-        if isinstance(member, dict) and member.get("component_group") and member.get("name"):
-            groups.setdefault(str(member["component_group"]), []).append(str(member["name"]))
-    if groups:
-        entry["exercise_groups"] = groups
 
 
 def _closed_membership_exercise_lines(
@@ -4451,9 +4456,6 @@ def build_stage2_handoff_text(
             "Render every exercise_lines entry once under its owning day and role, "
             "then add coaching details. selected_count is the required membership count. "
             "Do not promote one member to primary and discard the others. "
-            "exercise_groups lists members that form one logical component "
-            "(core_development is the Core Development section): keep them consecutive, "
-            "each as its own exercise with its own dose - never one merged circuit line. "
             "An entry whose dose reads DOSE_UNRESOLVED is a scheduled exercise the "
             "planner did not dose: prescribe an appropriate dose for it from the athlete "
             "profile and the scheduled day, stay inside any dose cap the packet supplies, "

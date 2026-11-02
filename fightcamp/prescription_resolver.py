@@ -921,8 +921,6 @@ def resolve_strength_slot_prescription(
             "effective_prescription": working_dose(base_prescription, development=development),
             "dose_authority": "exercise_bank",
         }
-        if development and result["effective_prescription"] != working_dose(base_prescription):
-            result["dose_adjustment_reason"] = "core_development_working_point"
         return result
 
     semantic_kind = _role_kind(slot)
