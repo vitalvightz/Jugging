@@ -2888,16 +2888,27 @@ html[data-theme="light"] .overview-session-state-pill {
 .overview-operational-strip {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px 18px;
-  padding-top: 8px;
+  padding-top: 4px;
 }
 
+/* Hairline dividers between the rows and between the two columns. */
 .overview-operational-item {
   display: grid;
   align-content: start;
   gap: 4px;
   min-width: 0;
+  padding: 12px 16px 12px 0;
   overflow-wrap: anywhere;
+}
+
+.overview-operational-item:nth-child(2n) {
+  padding-right: 0;
+  padding-left: 16px;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.overview-operational-item:not(:nth-last-child(-n + 2)) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .overview-operational-label {
@@ -11009,9 +11020,6 @@ html[data-theme="light"] .today-injury-other-warning {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .overview-operational-strip {
-    gap: 12px 14px;
-  }
 
   .step-progress {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -16403,7 +16411,7 @@ html[data-theme="light"] .overview-command-shell::before {
 }
 
 html[data-theme="light"] .overview-operational-item {
-  border-right-color: rgba(80, 81, 84, 0.08);
+  border-color: rgba(80, 81, 84, 0.1);
 }
 
 html[data-theme="light"] .overview-next-action {
