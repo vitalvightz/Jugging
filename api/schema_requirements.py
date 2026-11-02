@@ -538,6 +538,11 @@ REQUIRED_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "sparring_log_requests": ("athlete_id", "client_request_id", "sparring_log_id", "created_at"),
     "exercise_logs": REQUIRED_EXERCISE_LOGS_COLUMNS,
     "external_training_sessions": REQUIRED_EXTERNAL_TRAINING_COLUMNS,
+    # Inferred focus from existing notes (api/services/training_focus_inference.py).
+    "training_focus_inferences": ("id", "athlete_id", "source_kind", "source_id", "training_day", "source_revision",
+                                  "status", "reason", "focus", "scope", "category", "sport", "exercise_targets",
+                                  "movement_patterns", "model", "input_tokens", "output_tokens", "generated_at",
+                                  "dismissed_at", "created_at", "updated_at"),
     "manual_exercise_entries": REQUIRED_MANUAL_EXERCISE_ENTRIES_COLUMNS,
     "personal_exercises": ("id", "athlete_id", "name", "name_key", "created_at", "updated_at"),
     "custom_training_plans": ("id", "athlete_id", "name", "kind", "sessions", "incomplete", "created_at", "updated_at"),
@@ -612,6 +617,8 @@ REQUIRED_FUNCTIONS: tuple[str, ...] = (
     "public.invalidate_notification_action",
     # Atomic sparring log + rocked/dropped admin review (api/store.py::record_sparring_log).
     "public.record_sparring_log",
+    # Claims one note revision for focus inference (api/store.py::claim_training_focus_inference).
+    "public.claim_training_focus_inference",
     # Plan-free daily check-in upsert (api/store.py::upsert_today_checkin).
     "public.upsert_plan_free_today_checkin",
     "public.record_rehab_exposure",

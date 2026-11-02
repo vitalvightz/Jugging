@@ -5698,6 +5698,54 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
         )
         return getattr(response, "data", None) or []
 
+    # -- Inferred training focus (public.training_focus_inferences) -----------
+    # One row per note; see api/services/training_focus_inference.py.
+
+    def claim_training_focus_inference(self, athlete_id: str, source_kind: str, source_id: str, *,
+                                       training_day: str, source_revision: str) -> bool:
+        """Atomically claim this note revision for one model call (False: already
+        generated or in flight)."""
+        response = self.client.rpc("claim_training_focus_inference", {
+            "p_athlete_id": athlete_id, "p_source_kind": source_kind, "p_source_id": source_id,
+            "p_training_day": training_day, "p_source_revision": source_revision}).execute()
+        payload = getattr(response, "data", None)
+        if isinstance(payload, list):
+            payload = payload[0] if payload else None
+        return payload is True
+
+    def finish_training_focus_inference(self, athlete_id: str, source_kind: str, source_id: str, *,
+                                        source_revision: str, fields: dict[str, Any]) -> bool:
+        """Write the result only while the row is still pending for this revision."""
+        values = {key: fields[key] for key in ("status", "reason", "focus", "scope", "category", "sport",
+                                               "exercise_targets", "movement_patterns", "model",
+                                               "input_tokens", "output_tokens") if key in fields}
+        if fields.get("generated"):
+            values["generated_at"] = datetime.now(timezone.utc).isoformat()
+        response = (self.client.table("training_focus_inferences").update(values)
+            .eq("athlete_id", athlete_id).eq("source_kind", source_kind).eq("source_id", source_id)
+            .eq("source_revision", source_revision).eq("status", "pending").execute())
+        return bool(getattr(response, "data", None))
+
+    def list_training_focus_inferences(self, athlete_id: str, *, from_day: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Ready, undismissed inferences on or after ``from_day``, newest day first."""
+        response = (self.client.table("training_focus_inferences").select("*")
+            .eq("athlete_id", athlete_id).eq("status", "ready").is_("dismissed_at", "null")
+            .gte("training_day", from_day).order("training_day", desc=True).order("updated_at", desc=True)
+            .limit(limit).execute())
+        return getattr(response, "data", None) or []
+
+    def dismiss_training_focus_inference(self, athlete_id: str, inference_id: str) -> bool:
+        response = (self.client.table("training_focus_inferences")
+            .update({"dismissed_at": datetime.now(timezone.utc).isoformat()})
+            .eq("athlete_id", athlete_id).eq("id", inference_id).execute())
+        return bool(getattr(response, "data", None))
+
+    def count_training_focus_generations(self, athlete_id: str, *, hours: int = 24) -> int:
+        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        response = (self.client.table("training_focus_inferences").select("id", count="exact")
+            .eq("athlete_id", athlete_id).gte("generated_at", since).limit(1).execute())
+        return int(getattr(response, "count", None) or 0)
+
     def latest_sparring_log_day(
         self, athlete_id: str, *, hard: bool = False, rocked: bool = False
     ) -> str | None:

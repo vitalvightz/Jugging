@@ -2413,16 +2413,34 @@ class SparringLogRecord(BaseModel):
     created_at: str = ""
 
 
+class TrainingFocusItem(BaseModel):
+    """One candidate focus. ``athlete``: written by the fighter after sparring.
+    ``inferred``: drawn by AI from a note they wrote, shown only before work its
+    ``scope``, ``exercise_targets`` and ``movement_patterns`` match."""
+
+    id: str
+    origin: Literal["athlete", "inferred"]
+    focus: str
+    training_day: str
+    sport: str | None = None
+    scope: Literal["specific_exercise", "movement_pattern", "general_quality", "sport_technique"] | None = None
+    category: str | None = None
+    exercise_targets: list[str] = Field(default_factory=list)
+    movement_patterns: list[str] = Field(default_factory=list)
+
+
 class TrainingFocusResponse(BaseModel):
     """The athlete's latest recorded sparring focus, for the next relevant session.
 
     ``focus`` is None when there is nothing recent to show. ``sport`` is the
     sport it was recorded for when known (a manual session's sport), else None.
+    ``items`` holds every recent candidate, explicit and inferred, newest first.
     """
 
     focus: str | None = None
     training_day: str | None = None
     sport: str | None = None
+    items: list[TrainingFocusItem] = Field(default_factory=list)
 
 
 class SparringLogResponse(BaseModel):

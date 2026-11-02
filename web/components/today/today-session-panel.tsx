@@ -37,9 +37,9 @@ import { SessionReview } from "@/components/today/session-review";
 import { SparringLogPrompt, type SparringDraft } from "@/components/today/sparring-log-prompt";
 import { useTodayExerciseLogs } from "@/components/today/use-exercise-logs";
 import { useTrainingFocus } from "@/components/today/use-training-focus";
-import { relevantFocus, upcomingSport } from "@/lib/training-focus";
+import { announceTrainingFocusChanged, relevantFocusItem, upcomingSport } from "@/lib/training-focus";
 import { useToast } from "@/components/toast-provider";
-import { submitTodaySessionCompletion } from "@/lib/api";
+import { dismissTrainingFocus, submitTodaySessionCompletion } from "@/lib/api";
 import { offerPushNotifications } from "@/lib/push-prompt";
 import { timerAudio } from "@/lib/session-timer/audio";
 import {
@@ -491,6 +491,7 @@ export function TodaySessionPanel({
   const fadeThrough = useFadeThrough();
   // Sparring focus is health-adjacent: read only with consent (the server checks too).
   const trainingFocus = useTrainingFocus(token, painReasonAllowed);
+  const [dismissedFocusIds, setDismissedFocusIds] = useState<readonly string[]>([]);
   const [intent, setIntent] = useState<CompletionIntent>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [rehabCheckOff, setRehabCheckOff] = useState<{ value: "done" | "modified" | "skipped"; label: string; saved?: boolean } | null>(null);
@@ -1375,15 +1376,26 @@ export function TodaySessionPanel({
   // "Last training focus": before relevant work only, never during or after it.
   // Matched to the session this card shows (not any session that day), or to
   // the declared contact when the card leads with it.
-  const focusSession = current.sessions.find((item) => item.session_id === session.session_id)
-    ?? { session_type: session.session_type, blocks: calmBlocks };
-  const focusText = !safeSession && (isSessionPreview || status === "not_started")
-    ? relevantFocus(trainingFocus, {
+  // Today's card matches its live (safety-adjusted) prescription; a preview its planned blocks.
+  const plannedFocusSession = current.sessions.find((item) => item.session_id === session.session_id);
+  const focusSession = plannedFocusSession && (isSessionPreview || !livePrescription)
+    ? plannedFocusSession
+    : { ...plannedFocusSession, session_type: plannedFocusSession?.session_type ?? session.session_type, blocks: calmBlocks };
+  const visibleFocus = trainingFocus?.items
+    ? { ...trainingFocus, items: trainingFocus.items.filter((item) => !dismissedFocusIds.includes(item.id)) }
+    : trainingFocus;
+  const shownFocus = !safeSession && (isSessionPreview || status === "not_started")
+    ? relevantFocusItem(visibleFocus, {
         session: session.session_id ? focusSession : null,
         contactLeads: contactLeads || Boolean(previewContactTarget),
         sport: upcomingSport(structuredPlan?.plan_metadata?.sport, athleteSports),
       })
     : null;
+  const dismissShownFocus = (id: string) => {
+    setDismissedFocusIds((ids) => [...ids, id]);
+    // Hidden at once; the server keeps it hidden. A failed write shows it again next read.
+    void dismissTrainingFocus(token, id).catch(() => undefined).finally(announceTrainingFocusChanged);
+  };
 
   return (
     <section
@@ -1410,9 +1422,22 @@ export function TodaySessionPanel({
             {summaryChips.length > 0 ? (
               <SummaryChipList chips={summaryChips} />
             ) : null}
-            {focusText ? (
+            {shownFocus ? (
               <p className="today-session-focus today-fade-in">
-                <span className="today-detail-label">Last training focus</span> {focusText}
+                <span className="today-detail-label">
+                  {shownFocus.origin === "inferred" ? "Focus from your notes" : "Last training focus"}
+                </span>{" "}
+                {shownFocus.text}
+                {shownFocus.origin === "inferred" && shownFocus.id ? (
+                  <button
+                    type="button"
+                    className="today-session-focus-dismiss"
+                    aria-label="Dismiss this focus"
+                    onClick={() => dismissShownFocus(shownFocus.id!)}
+                  >
+                    Dismiss
+                  </button>
+                ) : null}
               </p>
             ) : null}
           </div>

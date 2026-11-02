@@ -1,0 +1,18 @@
+{
+  "description": "Coarse movement patterns for matching an inferred training focus to upcoming work. Read by api/contracts/training_focus.py (grounding the model's output in the noted session) and web/lib/training-focus.ts (matching the session Today shows). An exercise name takes the first pattern whose phrase appears in it as whole words, in the order listed; a name matching none has no pattern and only an exact exercise target can match it.",
+  "patterns": [
+    {"id": "jump", "phrases": ["jump", "jumps", "hop", "hops", "bound", "bounds", "bounding", "plyo", "plyometric", "depth drop"]},
+    {"id": "single_leg_hinge", "phrases": ["single leg rdl", "single leg deadlift", "single leg romanian deadlift", "b stance rdl", "kickstand rdl"]},
+    {"id": "unilateral_squat", "phrases": ["split squat", "lunge", "lunges", "step up", "step ups", "pistol squat", "skater squat", "single leg squat", "rear foot elevated"]},
+    {"id": "hinge", "phrases": ["deadlift", "rdl", "romanian deadlift", "good morning", "hip thrust", "glute bridge", "kettlebell swing", "swing", "pull through"]},
+    {"id": "squat", "phrases": ["squat", "squats", "leg press", "wall sit"]},
+    {"id": "vertical_push", "phrases": ["overhead press", "shoulder press", "push press", "military press", "z press", "landmine press"]},
+    {"id": "horizontal_push", "phrases": ["bench press", "bench", "push up", "push ups", "pushup", "pushups", "press up", "press ups", "floor press", "chest press", "dip", "dips"]},
+    {"id": "vertical_pull", "phrases": ["pull up", "pull ups", "pullup", "pullups", "chin up", "chin ups", "chinup", "lat pulldown", "pulldown"]},
+    {"id": "horizontal_pull", "phrases": ["row", "rows", "inverted row", "face pull"]},
+    {"id": "carry", "phrases": ["carry", "carries", "farmer", "farmers", "suitcase"]},
+    {"id": "trunk_stability", "phrases": ["plank", "side plank", "pallof", "dead bug", "hollow", "bird dog", "anti rotation"]},
+    {"id": "rotation", "phrases": ["rotational", "woodchop", "chop", "russian twist", "scoop toss", "rotation"]},
+    {"id": "calf", "phrases": ["calf raise", "calf raises"]}
+  ]
+}

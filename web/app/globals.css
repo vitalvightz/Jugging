@@ -23176,3 +23176,16 @@ a, button, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
   display: block;
   margin-bottom: 2px;
 }
+
+.today-session-focus-dismiss {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}

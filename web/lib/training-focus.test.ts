@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { focusFitsSession, focusFitsSport, relevantFocus, upcomingSport, type FocusSession } from "./training-focus.ts";
+import type { TrainingFocusItem } from "./api-schema.generated.ts";
+import {
+  focusFitsSession, focusFitsSport, movementPattern, relevantFocus, relevantFocusItem, upcomingSport, type FocusSession,
+} from "./training-focus.ts";
 
 // Real compiled athlete-built sessions; tests/test_custom_session_focus_contract.py
 // keeps this file in step with the backend.
@@ -62,4 +65,78 @@ test("relevantFocus combines both and ignores blanks", () => {
   assert.equal(relevantFocus(focus, { ...target, session: generatedStrength }), null);
   assert.equal(relevantFocus({ ...focus, focus: "  " }, target), null);
   assert.equal(relevantFocus(null, target), null);
+});
+
+// -- AI-inferred focus: shown only where the upcoming work is the same work ----
+
+const inferred = (fields: Partial<TrainingFocusItem>): TrainingFocusItem => ({
+  id: "inf-1", origin: "inferred", focus: "Stay balanced through each split squat.", training_day: "2026-11-01",
+  sport: null, scope: "specific_exercise", category: "strength", exercise_targets: ["split squat"],
+  movement_patterns: [], ...fields,
+});
+const withItems = (...items: TrainingFocusItem[]) => ({ focus: null, training_day: null, sport: null, items });
+const strengthSession = (...names: string[]): FocusSession => ({
+  session_type: "strength", blocks: [{ block_type: "warmup", display_name: "Bodyweight Split Squat" },
+    ...names.map((display_name) => ({ block_type: "strength", display_name }))],
+});
+const card = (session: FocusSession | null, extra: { contactLeads?: boolean; sport?: string | null } = {}) =>
+  ({ session, contactLeads: extra.contactLeads ?? false, sport: extra.sport ?? null });
+const splitSquat = withItems(inferred({}));
+
+test("a split-squat issue shows before split squats, in any variant", () => {
+  assert.equal(relevantFocus(splitSquat, card(strengthSession("Split Squat", "Calf Raises"))), "Stay balanced through each split squat.");
+  assert.equal(relevantFocus(splitSquat, card(strengthSession("Bulgarian Split Squat"))), "Stay balanced through each split squat.");
+});
+
+test("a split-squat issue stays hidden before deadlifts or an unrelated upper-body day", () => {
+  assert.equal(relevantFocus(splitSquat, card(strengthSession("Trap Bar Deadlift", "Romanian Deadlift (RDL)"))), null);
+  assert.equal(relevantFocus(splitSquat, card(strengthSession("Bench Press", "Pull-Up"))), null);
+  // A warm-up drill of the same movement is not where the cue applies.
+  assert.equal(relevantFocus(splitSquat, card(strengthSession("Assault Bike"))), null);
+});
+
+test("missing or ambiguous session detail hides a specific reminder", () => {
+  assert.equal(relevantFocus(splitSquat, card(null)), null);
+  assert.equal(relevantFocus(splitSquat, card({ session_type: "strength", blocks: [] })), null);
+  assert.equal(relevantFocus(splitSquat, card({ session_type: "strength" })), null);
+  // A contact-led card says nothing about the exercises.
+  assert.equal(relevantFocus(splitSquat, card(null, { contactLeads: true })), null);
+});
+
+test("pattern transfer only where the inference grounded it", () => {
+  const bracing = withItems(inferred({ focus: "Brace before every loaded rep.", scope: "general_quality",
+    exercise_targets: [], movement_patterns: ["hinge", "squat"] }));
+  assert.equal(relevantFocus(bracing, card(strengthSession("Trap Bar Deadlift"))), "Brace before every loaded rep.");
+  assert.equal(relevantFocus(bracing, card(strengthSession("Goblet Squat"))), "Brace before every loaded rep.");
+  assert.equal(relevantFocus(bracing, card(strengthSession("Overhead Press"))), null);
+  // A general quality with no pattern never matches on the broad label alone.
+  assert.equal(relevantFocus(withItems(inferred({ scope: "general_quality", exercise_targets: [], movement_patterns: [] })),
+    card(strengthSession("Trap Bar Deadlift"))), null);
+});
+
+test("a boxing technique focus shows before boxing technical work, never before a conditioning run", () => {
+  const jab = withItems(inferred({ focus: "Bring the jab straight back to guard.", scope: "sport_technique",
+    category: "sparring", sport: "boxing", exercise_targets: [] }));
+  const technical = byTitle("Light Technical");
+  assert.equal(relevantFocus(jab, card(technical, { sport: "boxing" })), "Bring the jab straight back to guard.");
+  assert.equal(relevantFocus(jab, card(generatedSparring, { sport: "boxing" })), "Bring the jab straight back to guard.");
+  assert.equal(relevantFocus(jab, card(conditioning, { sport: "boxing" })), null);
+  assert.equal(relevantFocus(jab, card({ session_type: "conditioning", blocks: [{ block_type: "conditioning", display_name: "Easy Run" }] },
+    { sport: "boxing" })), null);
+  assert.equal(relevantFocus(jab, card(technical, { sport: "muay_thai" })), null);
+});
+
+test("the newest focus that fits wins; the athlete's own focus keeps its existing rules", () => {
+  const explicit: TrainingFocusItem = { ...inferred({}), id: "log-1", origin: "athlete", focus: "Slip outside the jab",
+    scope: null, category: null, exercise_targets: [] };
+  const both = withItems(explicit, inferred({}));
+  assert.deepEqual(relevantFocusItem(both, card(generatedSparring)), { id: "log-1", text: "Slip outside the jab", origin: "athlete" });
+  assert.deepEqual(relevantFocusItem(both, card(strengthSession("Split Squat"))),
+    { id: "inf-1", text: "Stay balanced through each split squat.", origin: "inferred" });
+  assert.equal(relevantFocusItem(withItems(), card(generatedSparring)), null);
+});
+
+test("movement patterns match the backend's shared fixture", () => {
+  const cases = JSON.parse(readFileSync(new URL("../test/fixtures/training-focus-patterns.json", import.meta.url), "utf8")) as Record<string, string | null>;
+  for (const [name, pattern] of Object.entries(cases)) assert.equal(movementPattern(name), pattern, name);
 });

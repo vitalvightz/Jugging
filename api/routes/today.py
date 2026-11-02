@@ -13,7 +13,7 @@ import logging
 from typing import Any, Literal, Mapping
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 
 from api.contracts.external_training import ExternalTrainingCreate, ExternalTrainingFields, ExternalTrainingTakeaway, TrainingHistorySession, TrainingHistoryResponse
@@ -29,6 +29,7 @@ from api.contracts.manual_exercises import ManualExerciseEntry, PerformedExercis
 from api.services.manual_exercises import delete_session_exercise, list_session_exercises, save_session_exercise
 from api.services.tracking_xp import reconcile_training_xp
 from api.services.training_focus import latest_training_focus
+from api.services.training_focus_inference import schedule_focus_inference
 from api.services.exercise_library import exercise_library, exercise_performances
 
 from api.compliance_guards import require_health_feature_access
@@ -277,10 +278,14 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
 
     @router.put("/api/training/sessions/{entry_id}/takeaway", response_model=TrainingHistorySession)
     def save_external_training_takeaway(entry_id: UUID, body: ExternalTrainingTakeaway,
+                                        background_tasks: BackgroundTasks,
                                         profile: ProfileRecord = Depends(require_profile),
                                         store: AppStore = Depends(get_store)):
         require_health_feature_access(profile)
-        return set_external_training_takeaway(store, profile.athlete_id, str(entry_id), body)
+        row = set_external_training_takeaway(store, profile.athlete_id, str(entry_id), body)
+        schedule_focus_inference(background_tasks, store, profile.athlete_id, "manual_takeaway", entry_id,
+                                 note=body.takeaway, health_consent_granted=True)
+        return row
 
     @router.delete("/api/training/sessions/{entry_id}", status_code=204)
     def remove_external_training(entry_id: UUID,
@@ -340,11 +345,16 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
     # for removed manual sessions.
     @router.patch("/api/training/history/unlxck/{completion_id}", response_model=TrainingHistorySession)
     def edit_history_plan_session(completion_id: UUID, body: HistoryCompletionEdit,
+                                  background_tasks: BackgroundTasks,
                                   profile: ProfileRecord = Depends(require_profile),
                                   store: AppStore = Depends(get_store)):
         # Like completing on Today: allowed without consent, minus pain after.
+        consent = evaluate_profile_compliance(profile).health_consent_granted
         row = edit_plan_completion(store, profile.athlete_id, str(completion_id), body,
-            health_consent_granted=evaluate_profile_compliance(profile).health_consent_granted)
+            health_consent_granted=consent)
+        if "notes" in body.model_fields_set:
+            schedule_focus_inference(background_tasks, store, profile.athlete_id, "plan_completion", row.get("id"),
+                                     note=str(row.get("notes") or ""), health_consent_granted=consent)
         return {**row, "source": "unlxck", "id": str(row["id"]), "history_editable": True,
                 "title": _history_title(store, profile.athlete_id, row, {}) or "Unlxck session"}
 
@@ -578,11 +588,13 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
     )
     def update_session_completion(
         request_body: SessionCompletionRequest,
+        background_tasks: BackgroundTasks,
         profile: ProfileRecord = Depends(require_profile),
         store: AppStore = Depends(get_store),
     ) -> SessionCompletionResponse:
         payload = request_body.model_dump()
-        if not evaluate_profile_compliance(profile).health_consent_granted:
+        consent = evaluate_profile_compliance(profile).health_consent_granted
+        if not consent:
             # Completion is mixed-purpose: preserve the training log while
             # dropping the sole health field after consent withdrawal.
             payload["pain_after"] = None
@@ -593,6 +605,9 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
             payload=payload,
         )
         completion_status = completion_status_of(row)
+        if completion_status in {"done", "modified"} and row.get("completion_origin") != "day_credit":
+            schedule_focus_inference(background_tasks, store, profile.athlete_id, "plan_completion", row.get("id"),
+                                     note=str(row.get("notes") or ""), health_consent_granted=consent)
         # All consumers see the persisted completion. Share only post-save
         # plan/history reads across streaks, XP, week progress and rehab prompts.
         store = CompletionReads(store)
@@ -784,6 +799,7 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
     )
     def submit_sparring_log(
         request_body: SparringLogRequest,
+        background_tasks: BackgroundTasks,
         profile: ProfileRecord = Depends(require_profile),
         store: AppStore = Depends(get_store),
     ) -> SparringLogResponse:
@@ -849,6 +865,10 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
                 detail="Your sparring log was not saved. Please try again.",
             )
         row = _apply_sparring_focus(store, profile.athlete_id, row, request_body)
+        # An explicit focus is the athlete's own answer: no inference for this log.
+        if not str(row.get("focus") or "").strip() and not rocked:
+            schedule_focus_inference(background_tasks, store, profile.athlete_id, "sparring_log", row.get("id"),
+                                     note=str(row.get("notes") or ""), health_consent_granted=True)
         return SparringLogResponse(
             log=_sparring_log_record(row),
             review_created=review_created,
@@ -860,12 +880,24 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
         profile: ProfileRecord = Depends(require_profile),
         store: AppStore = Depends(get_store),
     ) -> TrainingFocusResponse:
-        """The last sparring focus, for the next relevant session. Read with
-        health consent only, like the sparring log it comes from."""
+        """Recent training focuses (explicit and inferred), for the next
+        relevant session. Read with health consent only, like the notes they
+        come from. Never generates: inference runs when a note is saved."""
         if not evaluate_profile_compliance(profile).health_consent_granted:
             return TrainingFocusResponse()
         return TrainingFocusResponse(**latest_training_focus(
             store, profile.athlete_id, today=resolve_training_day(profile.athlete_timezone)))
+
+    @router.delete("/api/today/training-focus/{inference_id}", status_code=204)
+    def dismiss_training_focus(
+        inference_id: UUID,
+        profile: ProfileRecord = Depends(require_profile),
+        store: AppStore = Depends(get_store),
+    ) -> Response:
+        """Hide one inferred focus for good (the note it came from is kept).
+        Idempotent; an explicit focus is the athlete's own and is not dismissed here."""
+        store.dismiss_training_focus_inference(profile.athlete_id, str(inference_id))
+        return Response(status_code=204)
 
     @router.post(
         "/api/today/exercise-log",

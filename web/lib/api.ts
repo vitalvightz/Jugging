@@ -1553,6 +1553,11 @@ export function getTrainingFocus(token: string, signal?: AbortSignal): Promise<T
   return readJson<TrainingFocus>("/api/today/training-focus", { token, signal });
 }
 
+/** Hide one AI-inferred focus for good; the note it came from is kept. */
+export function dismissTrainingFocus(token: string, id: string): Promise<void> {
+  return withTransientRetries(() => requestVoid(`/api/today/training-focus/${encodeURIComponent(id)}`, { method: "DELETE", token }));
+}
+
 /** The athlete's sparring log and its 7- and 28-day totals (History). */
 export function listSparringLogHistory(
   token: string,

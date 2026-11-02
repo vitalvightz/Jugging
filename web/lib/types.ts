@@ -1364,7 +1364,14 @@ export type SparringLogRequest = {
 };
 
 /** The last sparring focus, for the next relevant session; `focus` null when none is recent. */
-export type TrainingFocus = { focus: string | null; training_day: string | null; sport: string | null };
+export type TrainingFocus = {
+  focus: string | null;
+  training_day: string | null;
+  sport: string | null;
+  /** Every recent candidate (the athlete's own or AI-inferred from a note they
+   * wrote), newest first; absent from older API builds. */
+  items?: import("./api-schema.generated").TrainingFocusItem[];
+};
 
 export type SparringLogRecord = Omit<SparringLogRequest, "client_request_id" | "detail_revision"> & {
   id: string;
