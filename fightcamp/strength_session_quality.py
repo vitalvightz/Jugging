@@ -426,7 +426,8 @@ def trunk_function(item: dict[str, Any], *, trunk_targeted: bool | None = None) 
 # ``loaded``: external resistance or authored meaningful/moderate-high cost.
 # ``rotational_power``: ballistic / explosive rotational work (neural cost).
 TRUNK_LOAD_TIERS = ("stability", "loaded", "rotational_power")
-_UNLOADED_TRUNK_EQUIPMENT = frozenset({"", "bodyweight", "none", "stability_ball", "swiss_ball", "bench", "mat"})
+# Support or apparatus that adds no external resistance (a hang is bodyweight).
+_UNLOADED_TRUNK_EQUIPMENT = frozenset({"", "bodyweight", "none", "stability_ball", "swiss_ball", "bench", "mat", "pullup_bar"})
 
 
 def trunk_load_tier(item: dict[str, Any], *, trunk_targeted: bool | None = None) -> str:

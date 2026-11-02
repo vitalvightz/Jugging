@@ -19719,7 +19719,7 @@ html[data-theme="light"] .loading-operational-item {
    member rows. Members keep their own row, controls and logging. */
 .ex-group {
   display: grid;
-  gap: 8px;
+  gap: inherit; /* follow the row list's own spacing in every layout */
 }
 .ex-group-head {
   display: flex;
@@ -19753,7 +19753,7 @@ html[data-theme="light"] .loading-operational-item {
 }
 .ex-group-rows {
   display: grid;
-  gap: 8px;
+  gap: inherit;
 }
 .ex-row {
   background: var(--bg-stat);

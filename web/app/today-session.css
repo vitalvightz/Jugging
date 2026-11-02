@@ -279,7 +279,10 @@
   background: transparent;
 }
 
-.sp-session[data-layout="section"] .ex-row + .ex-row {
+.sp-session[data-layout="section"] .ex-row + .ex-row,
+.sp-session[data-layout="section"] .ex-group + .ex-row,
+.sp-session[data-layout="section"] .ex-row + .ex-group,
+.sp-session[data-layout="section"] .ex-group + .ex-group {
   border-top: 1px solid var(--border-subtle);
 }
 

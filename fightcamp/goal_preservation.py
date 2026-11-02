@@ -1904,7 +1904,23 @@ def _refresh_downgrade_constraints(entry: dict, brief: dict, evidence: list[dict
         return
     initial = {**entry, "state": entry["initial_state"]}
     _, initial_missing = _coverage(initial, brief, evidence)
-    current = _deferral_constraints(initial, brief, initial_missing) if initial_missing else []
+    classified = {"fight_proximity", "high_fatigue", "weight_cut_pressure", _HARD_SPARRING_STRENGTH_LIMIT,
+                  *_PRIORITY_REASON_CODES.values()}
+    if not initial_missing:
+        # A later repair restored the original obligation: the downgrade and
+        # its causes no longer apply.
+        stale = {c.get("reason_code") for c in entry["constraints"]} - classified
+        entry.update(state=entry["initial_state"], constraints=[],
+                     reason_codes=[code for code in entry.get("reason_codes") or [] if code not in stale])
+        return
+    current = _deferral_constraints(initial, brief, initial_missing)
+    if not current:
+        # No cause survives: drop the stale citations so validation reports the
+        # unexplained downgrade instead of trusting an outdated reason.
+        stale = {c.get("reason_code") for c in entry["constraints"]} - classified
+        entry["constraints"] = []
+        entry["reason_codes"] = [code for code in entry.get("reason_codes") or [] if code not in stale]
+        return
     if current:
         # Classification-level codes (priority, fatigue, cut, proximity) stay.
         classified = {"fight_proximity", "high_fatigue", "weight_cut_pressure", _HARD_SPARRING_STRENGTH_LIMIT,

@@ -10,8 +10,10 @@ _RANGE = re.compile(r"(?<![\d\-–—])(\d+(?:\.\d+)?)\s*[-–—]\s*(\d+(?:\.\d
 
 def working_dose(text: str, *, duration_max: bool = False, development: bool = False) -> str:
     """``development`` chooses the middle of each authorised work/effort range
-    (rounded up) instead of its floor: a development stimulus, never beyond what
-    the bank authorised. Rest still takes its upper bound."""
+    instead of its floor: a development stimulus, never beyond what the bank
+    authorised. Integer ranges round the middle up ("6-10" -> 8, "3-5" -> 4);
+    a decimal range keeps its exact middle ("1.5-2" -> 1.75). Rest still takes
+    its upper bound."""
     # A template's optional throw count is not an additional working dose.
     text = re.sub(r"\s*\(or\s+[^)]*\)", "", str(text or ""), flags=re.I)
     def choose(match):

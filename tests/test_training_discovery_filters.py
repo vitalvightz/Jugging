@@ -38,7 +38,7 @@ def test_dictionary_is_field_scoped_descriptive_and_source_supported():
     sample["content_class"] = "rehabilitation"
     assert exercise_details(sample, index.projection) == []
     training = [r for r in index.records if r["summary"]["category"] == "training"]
-    # Original catalogue goal coverage stays unchanged; the new running bank
+    # Catalogue goal coverage changes only by reviewed bank additions and retirements; the new running bank
     # contributes seven reviewed goal-filterable workouts.
     added_running = {
         "5K Steady Run", "One-Mile Timed Run", "Continuous Tempo Run",
@@ -48,8 +48,8 @@ def test_dictionary_is_field_scoped_descriptive_and_source_supported():
         "Boxing Round Running Intervals (10-10-10)",
     }
     assert sum(bool(r["facets"]["goal"]) for r in training
-               if r["entry"]["name"] not in added_running) == 284  # Staggered Stance Hold retired; 15 core exercises added
-    assert sum(bool(r["facets"]["goal"]) for r in training) == 290  # Staggered Stance Hold retired; 15 core exercises added
+               if r["entry"]["name"] not in added_running) == 284  # net +4 Goal-faceted rows vs before: core additions minus the retired Staggered Stance Hold
+    assert sum(bool(r["facets"]["goal"]) for r in training) == 290  # net +4 Goal-faceted rows vs before: core additions minus the retired Staggered Stance Hold
     assert sum(bool(r["summary"]["exercise_details"]) for r in training) > 483
     holds = lib.search(index, filters={"training_method": "static_holds"}, limit=3000)
     assert holds["total"] > 0
