@@ -882,9 +882,19 @@ def _record_trunk_tier(record: dict[str, Any]) -> str:
 
 # The block's own load budget: core is real training, so a block may carry at
 # most one explosive rotational-power member (neural cost beside the session's
-# own power work) and two loaded members (carries, resisted or authored
-# high-cost trunk work); the rest is low-cost stability.
-_TRUNK_BLOCK_MAX_TIER = {"rotational_power": 1, "loaded": 2}
+# own power work), at most one authored HIGH-cost member (a heavy carry, a long
+# brutal hold, a get-up) and at most three resisted members, so it is never a
+# high-volume loaded circuit.
+_TRUNK_BLOCK_MAX_TIER = {"rotational_power": 1, "high_cost": 1, "loaded": 3}
+
+
+def _record_budget_keys(record: dict[str, Any]) -> list[str]:
+    from .strength_session_quality import trunk_high_cost
+
+    keys = [_record_trunk_tier(record)]
+    if trunk_high_cost(_slot_selected_item(record["slot"])):
+        keys.append("high_cost")
+    return keys
 
 
 def _trunk_block_additions(
@@ -911,7 +921,8 @@ def _trunk_block_additions(
     base_functions = {_record_trunk_function(r) for r in held} - {""}
     base_tiers: dict[str, int] = {}
     for record in held:
-        base_tiers[_record_trunk_tier(record)] = base_tiers.get(_record_trunk_tier(record), 0) + 1
+        for key in _record_budget_keys(record):
+            base_tiers[key] = base_tiers.get(key, 0) + 1
     selected_names = {r["name"] for r in selected}
     used_slots = {_base_slot_id(r) for r in selected}
     # A slot's own selection first; an alternate only to add a missing function.
@@ -936,17 +947,20 @@ def _trunk_block_additions(
             return len(functions) >= target
         for index in range(start, len(candidates)):
             record = candidates[index]
-            function, tier = _record_trunk_function(record), _record_trunk_tier(record)
+            function, keys = _record_trunk_function(record), _record_budget_keys(record)
             if (function in functions or _base_slot_id(record) in slots
                     or any(r["name"] == record["name"] for r in chosen)
-                    or tiers.get(tier, 0) >= limits.get(tier, len(candidates) + len(held) + 1)
+                    or any(tiers.get(key, 0) >= limits.get(key, len(candidates) + len(held) + 1) for key in keys)
                     or _would_exceed_family_limit(record["families"], counts, family_limit)):
                 continue
             next_counts = dict(counts)
             for family in record["families"]:
                 next_counts[family] = next_counts.get(family, 0) + 1
+            next_tiers = dict(tiers)
+            for key in keys:
+                next_tiers[key] = next_tiers.get(key, 0) + 1
             if search(index + 1, [*chosen, record], functions | {function},
-                      {**tiers, tier: tiers.get(tier, 0) + 1}, next_counts, slots | {_base_slot_id(record)}):
+                      next_tiers, next_counts, slots | {_base_slot_id(record)}):
                 return True
         return False
 

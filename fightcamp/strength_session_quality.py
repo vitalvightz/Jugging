@@ -447,6 +447,17 @@ def trunk_load_tier(item: dict[str, Any], *, trunk_targeted: bool | None = None)
     return "stability"
 
 
+def trunk_high_cost(item: dict[str, Any]) -> bool:
+    """Authored high recovery cost (a heavy carry, a long brutal hold, a get-up):
+    a high movement/CNS/soreness cost or a systemic-fatigue mechanical tag."""
+    metadata = item.get("selection_metadata") if isinstance(item.get("selection_metadata"), dict) else {}
+    mech = {str(t).lower() for t in [*(item.get("mechanical_risk_tags") or []),
+                                     *(metadata.get("mechanical_risk_tags") or [])]}
+    costs = {str(item.get(field) or metadata.get(field) or "").lower()
+             for field in ("movement_cost", "cns_load", "soreness_risk")}
+    return "high" in costs or "mech_systemic_fatigue" in mech
+
+
 def infer_strength_sessions(exercises: list[dict[str, Any]], num_sessions: int) -> list[dict[str, Any]]:
     session_count = max(1, int(num_sessions or 1))
     if not exercises:

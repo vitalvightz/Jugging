@@ -83,8 +83,10 @@ def _capped(role) -> list[dict]:
 
 
 def _tiers_within_budget(names):
+    from fightcamp.strength_session_quality import trunk_high_cost
     tiers = [trunk_load_tier(_BANK[name]) for name in names]
-    return tiers.count("rotational_power") <= 1 and tiers.count("loaded") <= 2
+    return (tiers.count("rotational_power") <= 1 and tiers.count("loaded") <= 3
+            and sum(trunk_high_cost(_BANK[name]) for name in names) <= 1)
 
 
 @pytest.mark.parametrize("key", _DEVELOPMENT)
@@ -278,7 +280,7 @@ def test_load_tiers_separate_stability_loaded_and_rotational_power():
 
 
 def test_heavy_core_options_are_capped_by_the_block_load_budget():
-    """Three carries/presses and two slams on offer: at most two loaded, one explosive."""
+    """Heavy carries, presses and two slams on offer: one explosive, one high-cost."""
     names = ["Back Squat", "Bear Hug Carry", "Cable Pallof Press", "Barbell Rollout",
              "Med-Ball Rotational Slam", "Woodchopper (Cable)", "Russian Twist (Weighted)", "Plank"]
     selected, _ = _select_bounded_records(_synthetic(names), role_key="primary_strength_day", cap=1,
