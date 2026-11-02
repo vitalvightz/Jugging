@@ -1913,6 +1913,39 @@ def _build_strength_candidate_reservoir(
     return dict(reservoirs)
 
 
+_CORE_DEVELOPMENT_PER_FUNCTION = 2
+
+
+def _core_development_candidates(weighted_exercises: list[tuple[dict, float, dict]]) -> list[dict]:
+    """Trunk-targeted candidates for a Core Development Block, per trunk function.
+
+    The per-movement reservoir keeps only the top few items of each role, so a
+    phase whose scoring favours power (SPP) can drop every non-explosive trunk
+    option. This keeps the best ``_CORE_DEVELOPMENT_PER_FUNCTION`` of each trunk
+    function from the SAME phase-, equipment- and safety-filtered, scored list,
+    in score order. Selection-only: nothing here is scheduled unless the
+    planner composes a block from it.
+    """
+    from .strength_session_quality import trunk_function
+
+    kept: list[dict] = []
+    per_function: dict[str, int] = defaultdict(int)
+    for exercise, score, reasons in weighted_exercises:
+        function = trunk_function(exercise)
+        if not function or not exercise.get("name") or per_function[function] >= _CORE_DEVELOPMENT_PER_FUNCTION:
+            continue
+        per_function[function] += 1
+        kept.append({
+            "exercise": exercise.copy(),
+            "score": score,
+            "reasons": (reasons or {}).copy(),
+            "explanation": _strength_explanation(reasons or {}),
+            "score_evidence": build_score_evidence(score=score, reasons=reasons or {}),
+            "trunk_function": function,
+        })
+    return kept
+
+
 def format_strength_block(phase: str, fatigue: str, exercises: list[dict]) -> str:
     """Return the formatted strength block for the given phase."""
     phase = phase.upper()
@@ -3557,7 +3590,9 @@ def generate_strength_block(*, flags: dict, weaknesses=None):
             log_fail_safe_degrade(module="strength", phase=phase, reason="candidate_reservoir_capped", target=len(metadata_safe), actual=len(capped_weighted))
         elif source_candidate_count > 500:
             log_fail_safe_degrade(module="strength", phase=phase, reason="candidate_reservoir_capped", target=source_candidate_count, actual=len(capped_weighted))
-        return _build_strength_candidate_reservoir(capped_weighted)
+        reservoir = _build_strength_candidate_reservoir(capped_weighted)
+        reservoir["__core_development__"] = _core_development_candidates(capped_weighted)
+        return reservoir
     candidate_reservoir = _run_real_poststep("candidate_reservoir_build", _build_capped_candidate_reservoir)
     deduped_late_blocks = {
         (

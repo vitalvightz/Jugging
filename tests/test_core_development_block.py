@@ -134,20 +134,46 @@ def test_primary_goal_and_weakness_both_target_development():
 
 def test_the_block_no_longer_displaces_the_main_lifts():
     """PR #3163's first cut dropped Back Squat and Weighted Push-Up for core work."""
-    host = next(role for _, role in _strength_roles(_brief("king_no_cut")) if _grouped(role))
-    main = [m["name"] for m in _main(host)]
+    brief = _brief("king_no_cut")
+    primary = next(role for _, role in _strength_roles(brief) if role["role_key"] == "primary_strength_day")
     assert {"Back Squat", "Push-Up (Weighted)", "Romanian Deadlift (DB)", "Sled Push (Board)",
-            "DB Plyometric Push-Up (Hands on Dumbbells)"} <= set(main)
-    # The capped main selection is unchanged: its own trunk pick (Plank,
-    # Extended Hold) now leads the block and the rest of the block is added.
-    grouped = [m["name"] for m in _grouped(host)]
-    assert "Plank (Extended Hold)" in grouped
-    cap = host["strength_composition_policy"]["effective_exercise_cap"]
-    # The capped selection still fills exactly its cap (Plank included), and the
-    # block's two additions sit outside it: grouping frees no cap room.
-    assert len(_capped(host)) == cap
-    assert {m["name"] for m in _members(host) if m.get("exercise_cap_exempt")} == set(grouped) - {"Plank (Extended Hold)"}
-    assert len(_members(host)) == cap + 2
+            "DB Plyometric Push-Up (Hands on Dumbbells)", "Plank (Extended Hold)"} <= {m["name"] for m in _members(primary)}
+    for _, host in _strength_roles(brief):
+        if not _grouped(host):
+            continue
+        policy = host["strength_composition_policy"]
+        # The capped selection still fills exactly its own cap (plus the
+        # standalone extra when confirmed); the block's additions sit outside.
+        assert len(_capped(host)) <= policy["effective_exercise_cap"] + int(policy["standalone_minimum_applied"])
+        exempt = [m for m in _members(host) if m.get("exercise_cap_exempt")]
+        assert exempt and all(m in _grouped(host) for m in exempt)
+
+
+def test_every_development_week_including_spp_hosts_a_block():
+    """Stage 1's core candidates let SPP weeks host a block too."""
+    for key in ("king_no_cut", "boxer28_trunk_fullgym", "core_goal"):
+        brief = _brief(key)
+        phases = {week.get("phase") for week, role in _strength_roles(brief) if _block(role).get("status") == "delivered"}
+        assert {"GPP", "SPP"} <= phases, key
+        entry = _entry(brief, "trunk_strength")
+        assert (entry["state"], entry["satisfied"], entry["constraints"]) == ("build", True, []), key
+        assert len(entry["evidence"]) == len(entry["coverage_requirements"])
+
+
+def test_spp_core_candidates_come_from_stage1_and_stay_out_of_session_selection():
+    brief = _brief("king_no_cut")
+    spp = brief["candidate_pools"]["SPP"]
+    core = spp["core_development_slots"]
+    assert core and all(slot["session_index"] == 0 and slot["role"] == "core_development" for slot in core)
+    offered = {o["name"] for slot in spp["strength_slots"] for o in [slot["selected"], *slot["alternates"]]}
+    assert not offered & {slot["selected"]["name"] for slot in core}
+    names = {slot["selected"]["name"] for slot in core}
+    for _, role in _strength_roles(brief):
+        for member in _members(role):
+            if member["name"] in names:  # only ever as a block member
+                assert member.get("component_group") == TRUNK_BLOCK_GROUP and member.get("exercise_cap_exempt")
+    # No trunk target: no core candidates at all.
+    assert all("core_development_slots" not in pool for pool in _brief("boxer28_strength_fullgym")["candidate_pools"].values())
 
 
 @pytest.mark.parametrize("key", [k for k in _DEVELOPMENT if k != "core_knee"])
@@ -162,18 +188,21 @@ def test_delivered_block_is_the_development_evidence(key):
 
 def test_block_members_are_dosed_by_the_resolver_at_a_development_point():
     from fightcamp.working_dose import working_dose
-    host = next(role for _, role in _strength_roles(_brief("king_no_cut")) if _grouped(role))
-    doses = {p["name"]: p for p in host["effective_strength_prescriptions"]}
-    grouped = {m["name"] for m in _grouped(host)}
     raised = 0
-    for name, dose in doses.items():
-        if name in grouped:
-            assert dose["effective_prescription"] == working_dose(dose["base_prescription"], development=True)
-            raised += dose.get("dose_adjustment_reason") == "core_development_working_point"
-        else:  # main work keeps exactly its existing dose
-            assert dose["effective_prescription"] == working_dose(dose["base_prescription"])
-    assert raised >= 2
-    assert doses["Plank (Extended Hold)"]["effective_prescription"].startswith("4 holds x 15s")
+    for _, host in _strength_roles(_brief("king_no_cut")):
+        if not _grouped(host):
+            continue
+        doses = {p["name"]: p for p in host["effective_strength_prescriptions"]}
+        grouped = {m["name"] for m in _grouped(host)}
+        for name, dose in doses.items():
+            if name in grouped:
+                assert dose["effective_prescription"] == working_dose(dose["base_prescription"], development=True)
+                raised += dose.get("dose_adjustment_reason") == "core_development_working_point"
+            else:  # main work keeps exactly its existing dose
+                assert dose["effective_prescription"] == working_dose(dose["base_prescription"])
+        if "Side Plank (Long Duration)" in doses:
+            assert doses["Side Plank (Long Duration)"]["effective_prescription"].startswith("4 holds x 15s")
+    assert raised >= 3
 
 
 def test_an_injury_keeps_block_doses_at_the_floor_and_says_so():
@@ -340,7 +369,7 @@ def test_a_weight_cut_records_readiness_as_the_reason_no_block_was_built():
 def test_an_injury_keeps_the_block_inside_injury_filtered_candidates():
     brief = _brief("core_knee")
     pool_names = {option.get("name") for pool in brief["candidate_pools"].values()
-                  for slot in pool.get("strength_slots") or []
+                  for slot in [*(pool.get("strength_slots") or []), *(pool.get("core_development_slots") or [])]
                   for option in [slot.get("selected") or {}, *(slot.get("alternates") or [])]}
     grouped = [m["name"] for _, role in _strength_roles(brief) for m in _grouped(role)]
     assert grouped and set(grouped) <= pool_names
@@ -533,3 +562,18 @@ def test_structured_blocks_are_tagged_by_server_identity_and_stay_separate():
         assert block.get("exercise_key")  # each member keeps its own identity for logging
     assert not rendered[-1].get("tags")  # a model-written tag is never trusted
     assert len(rendered) == len(blocks)
+
+
+def test_a_block_yields_when_recovery_must_cut_the_hosts_main_work():
+    """power_trunk: the SPP host sits the day after a heavy ballistic session.
+    Its block yields to recovery, so goal repair can still move that session
+    with its main lifts intact and the strength goal stays covered."""
+    from scripts.audit_training_intelligence import generate_scenario
+
+    brief = generate_scenario("power_trunk")["brief"]
+    assert validate_goal_preservation(brief) == []
+    neural = next(role for _, role in _strength_roles(brief) if role["role_key"] == "neural_plus_strength_day")
+    assert {"Barbell Thruster", "DB Bench Press → Plyo Push-Up"} <= {m["name"] for m in _members(neural)}
+    assert not _grouped(neural)
+    strength = _entry(brief, "strength")
+    assert strength["satisfied"]

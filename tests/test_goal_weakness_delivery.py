@@ -420,17 +420,17 @@ def test_every_conditioning_day_says_why_it_carries_no_trunk_support(key):
 
 
 
-def test_without_the_cut_king_builds_a_core_block_where_a_session_can_hold_one():
-    """The GPP week gets a 3-function block; the SPP week's only strength session
-    is a capped power/strength transfer day owning one trunk slot, so development
-    there is recorded as constrained instead of credited to one plank-punch-reach."""
+def test_without_the_cut_king_builds_a_core_block_every_week():
+    """A 3-function Core Development Block in both build weeks, GPP and SPP,
+    instead of one plank or plank-punch-reach credited as development."""
     brief = _brief("king_no_cut")
-    blocks = {role_d_day(week, role): (role.get("strength_composition_policy") or {}).get("trunk_block") or {}
-              for week, role in _roles(brief) if role.get("category") == "strength"}
-    assert any(b.get("status") == "delivered" and len(set(b["functions"])) >= 3 for b in blocks.values())
+    blocks = [(week.get("phase"), (role.get("strength_composition_policy") or {}).get("trunk_block") or {})
+              for week, role in _roles(brief) if role.get("category") == "strength"]
+    delivered = [(phase, b) for phase, b in blocks if b.get("status") == "delivered"]
+    assert {phase for phase, _ in delivered} == {"GPP", "SPP"}
+    assert all(len(set(b["functions"])) >= 3 for _, b in delivered)
     entry = _entry(brief, "trunk_strength")
-    assert (entry["initial_state"], entry["state"], entry["satisfied"]) == ("build", "maintain", True)
-    assert {c["reason_code"] for c in entry["constraints"]} == {"insufficient_complementary_candidates"}
+    assert (entry["initial_state"], entry["state"], entry["satisfied"], entry["constraints"]) == ("build", "build", True, [])
     assert not any(e["goal"] == "trunk_strength" for e in validate_goal_preservation(brief))
 
 

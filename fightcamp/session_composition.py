@@ -1034,6 +1034,22 @@ def trunk_development_targeted(athlete_model: dict[str, Any] | None) -> bool:
     return trunk_development_block_target(athlete_model) > 0
 
 
+def _pre_hard_contact_day(ctx: dict[str, Any]) -> bool:
+    """The canonical pre-hard-contact decision for this role's day, asked now.
+
+    ``apply_pre_hard_contact_strength_exposure_cap`` marks such a role only
+    after composition; its doses are then capped to D17-D14 retention, so the
+    same calendar policy is consulted here rather than re-derived.
+    """
+    from .pre_hard_contact_strength import PRE_HARD_CONTACT_REASON, _decision_for_role
+
+    weekly_role_map = ctx.get("weekly_role_map")
+    if not isinstance(weekly_role_map, dict):
+        return False
+    decision = _decision_for_role(weekly_role_map, ctx["week"], ctx["week_position"], ctx["role"])
+    return decision is not None and getattr(decision, "reason_code", None) == PRE_HARD_CONTACT_REASON
+
+
 def _trunk_block_ineligibility(ctx: dict[str, Any]) -> dict[str, Any] | None:
     """Why this session may not host the block, or None when it may."""
     week, role = ctx["week"], ctx["role"]
@@ -1042,11 +1058,20 @@ def _trunk_block_ineligibility(ctx: dict[str, Any]) -> dict[str, Any] | None:
         return {"reason_code": "taper_phase"}
     if d_day is None or d_day < _TRUNK_BLOCK_MIN_D_DAY:
         return {"reason_code": "fight_proximity"}
+    from .late_camp_role_morph import FULL_STRENGTH_ROLE_KEYS, STRENGTH_NEURAL_MORPH_MAX_D
+
+    if (str(role.get("role_key") or "").strip().lower() in FULL_STRENGTH_ROLE_KEYS
+            and d_day <= STRENGTH_NEURAL_MORPH_MAX_D) or isinstance(role.get("strength_dose_cap"), dict):
+        # The late-camp morph caps this session to a D-17..D-14 retention
+        # touch (its own rule, read here): retention doses cannot develop core.
+        return {"reason_code": "fight_proximity", "source": "late_camp_strength_retention"}
     sources = [reason for key, reason in _PRESSURE_SOURCE_REASONS
                if int(ctx["pressure_state"].get(key) or 0) > 0]
     if ctx["exercise_count_pressure"] > 0:
         return {"reason_code": "readiness_capacity", "pressure_sources": sources or ["readiness_pressure"]}
-    if role.get("pre_hard_contact_managed_stress") is True or ctx["microdose_only"]:
+    if role.get("pre_hard_contact_managed_stress") is True or ctx["microdose_only"] or _pre_hard_contact_day(ctx):
+        # Hard contact is near: the day keeps one capped retention exposure
+        # (its doses are reduced by the resolver), so it cannot develop core.
         return {"reason_code": "hard_sparring_priority", "source": "pre_hard_contact_strength"}
     if _hard_sparring_day_offsets(week, role) & {0, 1}:
         # Hard sparring today or tomorrow owns this athlete's freshness.
@@ -1058,6 +1083,7 @@ def _trunk_block_outcome(
     selected: list[dict[str, Any]],
     records: list[dict[str, Any]],
     *,
+    core_records: list[dict[str, Any]] = (),
     host: bool,
     ineligible: dict[str, Any] | None = None,
     target: int = _TRUNK_BLOCK_TARGET,
@@ -1074,7 +1100,7 @@ def _trunk_block_outcome(
         return {"intent": "development", "status": "not_eligible", **ineligible}
     if not host:
         return {"intent": "development", "status": "hosted_elsewhere"}
-    alternates = trunk_alternate_records(records)
+    alternates = [*trunk_alternate_records(records), *core_records]
     available = {_record_trunk_function(r) for r in [*records, *alternates] if r.get("trunk_targeted")}
     # With unlimited room, could this session's own slots (one member each)
     # form a block at all? If not, supply limits it; otherwise capacity does.
@@ -1639,6 +1665,13 @@ def _apply_adjacent_strength_recovery(
             if not record["material_movement_cost"]
             or not (record["mechanical_risk_tags"] & previous_substantial_tags)
         ]
+        # A session whose own main work must be cut to recover from yesterday
+        # is no place to add core load: its Core Development Block yields (and
+        # says why) rather than sit on a recovery-reduced session.
+        block_yielded = bool(current.get("trunk_block_target"))
+        if block_yielded:
+            current["trunk_block_target"] = 0
+            current["trunk_block_additions"] = []
         selected_records, dropped = _select_bounded_records(
             safe_records,
             role_key=current["role_key"],
@@ -1648,18 +1681,7 @@ def _apply_adjacent_strength_recovery(
             preserve_adaptation=current.get("preserve_adaptation", ""),
             preserve_weakness=current.get("preserve_weakness", ""),
             preserve_strength=current.get("preserve_strength", False),
-            trunk_block_target=current.get("trunk_block_target", 0),
-            trunk_alternates=trunk_alternate_records(safe_records) if current.get("trunk_block_target") else (),
         )
-        if current.get("trunk_block_target"):
-            main_only, _ = _select_bounded_records(
-                safe_records, role_key=current["role_key"], cap=current["effective_cap"],
-                pressure=current["pressure"], preserve_trunk_support=current["preserve_trunk_support"],
-                preserve_adaptation=current.get("preserve_adaptation", ""),
-                preserve_weakness=current.get("preserve_weakness", ""),
-                preserve_strength=current.get("preserve_strength", False),
-            )
-            current["trunk_block_additions"] = [r for r in selected_records if r not in main_only]
         if selected_records:
             _assign_selected_records(current, selected_records)
             policy = current["role"]["strength_composition_policy"]
@@ -1669,18 +1691,9 @@ def _apply_adjacent_strength_recovery(
                     role_key=current["role_key"], pressure_state=policy,
                     preserve_adaptation=current.get("preserve_adaptation", ""),
                 )
-            if current.get("trunk_development"):
-                outcome = _trunk_block_outcome(
-                    selected_records, safe_records, host=current.get("trunk_block_target", 0) > 0,
-                    ineligible=current.get("trunk_block_ineligible"),
-                    target=current.get("trunk_block_target") or _TRUNK_BLOCK_TARGET,
-                )
-                if outcome["status"] == "constrained":
-                    # The recovery pass removed members the block needed.
-                    outcome["reason_code"] = _ADJACENT_STRENGTH_RECOVERY_REASON
-                elif outcome["status"] == "delivered" and policy.get("injury_restricted"):
-                    outcome["dose_held_by"] = "injury_constraint"
-                policy["trunk_block"] = outcome
+            if current.get("trunk_development") and block_yielded:
+                policy["trunk_block"] = {"intent": "development", "status": "not_eligible",
+                                         "reason_code": _ADJACENT_STRENGTH_RECOVERY_REASON}
             existing_dropped = {
                 str(item.get("name") or ""): str(item.get("reason") or "")
                 for item in policy.get("dropped") or []
@@ -1929,6 +1942,10 @@ def compose_normal_strength_assignments(
                 else None
             )
             microdose_only = role.get("pre_hard_contact_microdose_only") is True
+            # Stage 1's core candidates for this phase: block-only, never main.
+            held_names = {r["name"] for r in records}
+            core_records = [r for r in _candidate_records((pool or {}).get("core_development_slots") or [])
+                            if r["trunk_targeted"] and r["name"] not in held_names]
             # Selection waits until every role of the week is known: the Core
             # Development Block picks ONE host per week. The placeholder keeps
             # this role's position in ``composed_roles``.
@@ -1947,6 +1964,8 @@ def compose_normal_strength_assignments(
                 "standalone_pressure": pressure,
                 "week_position": week_position,
                 "prior_standalone_minimum": prior_standalone_minimum,
+                "core_records": core_records,
+                "weekly_role_map": weekly_role_map,
             }
             pending.append(ctx)
             composed_roles.append(ctx)
@@ -1962,7 +1981,8 @@ def compose_normal_strength_assignments(
             preserve_weakness=primary_weakness,
             preserve_strength=strength_selected,
             trunk_block_target=block_target,
-            trunk_alternates=trunk_alternate_records(ctx["records"]) if block_target else (),
+            trunk_alternates=([*trunk_alternate_records(ctx["records"]), *ctx["core_records"]]
+                              if block_target else ()),
         )
 
     # One host per week: the eligible session that can hold a complementary
@@ -2045,7 +2065,7 @@ def compose_normal_strength_assignments(
         if trunk_development:
             outcome = _trunk_block_outcome(
                 selected_records, records, host=host, ineligible=ctx.get("trunk_block_ineligible"),
-                target=trunk_block_size,
+                target=trunk_block_size, core_records=ctx["core_records"],
             )
             if outcome["status"] == "delivered" and pressure_state.get("injury_restricted"):
                 # The members are safe to train, but the resolver's injury
@@ -2322,12 +2342,16 @@ def apply_standalone_strength_minimum(
         roles = _strength_roles_by_position(role_map)
         for position, assignment in accepted:
             role = roles[position]
-            role["selected_exercise_assignments"] = [
-                *(role.get("selected_exercise_assignments") or []),
-                deepcopy(assignment),
-            ]
+            # The extra is main work: it goes before a Core Development Block,
+            # which stays contiguous and last.
+            role["selected_exercise_assignments"] = sorted(
+                [*(role.get("selected_exercise_assignments") or []), deepcopy(assignment)],
+                key=lambda item: item.get("component_group") == TRUNK_BLOCK_GROUP,
+            )
             policy = role["strength_composition_policy"]
             policy["selected_count"] = len(role["selected_exercise_assignments"])
+            if "main_exercise_count" in policy:
+                policy["main_exercise_count"] = main_exercise_count(role["selected_exercise_assignments"])
             policy["selected_names"] = [
                 item["name"] for item in role["selected_exercise_assignments"]
             ]

@@ -650,7 +650,8 @@ def _member_slot(member: dict, pools: dict, fallback_phase: str, slot_group: str
         return None
     phase = str(member.get("source_phase") or member.get("phase") or fallback_phase or "").strip().upper()
     pool = pools.get(phase) if isinstance(pools.get(phase), dict) else {}
-    slots = [*(pool.get(slot_group) or []), *((pool.get("late_tail_candidates") or []) if slot_group == "conditioning_slots" else [])]
+    slots = [*(pool.get(slot_group) or []), *((pool.get("late_tail_candidates") or []) if slot_group == "conditioning_slots" else []),
+             *((pool.get("core_development_slots") or []) if slot_group == "strength_slots" else [])]
     base_id, _, alternate = slot_id.partition(":alternate:")
     for slot in slots:
         if not isinstance(slot, dict) or str(slot.get("slot_id") or "") != base_id:

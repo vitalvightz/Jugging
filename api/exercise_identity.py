@@ -129,7 +129,7 @@ def _pool_keys(planning_brief: Mapping[str, Any]) -> set[str]:
     for pool in pools.values():
         if not isinstance(pool, Mapping):
             continue
-        for group in ("strength_slots", "conditioning_slots"):
+        for group in ("strength_slots", "conditioning_slots", "core_development_slots"):
             for slot in _as_list(pool.get(group)):
                 if not isinstance(slot, Mapping):
                     continue

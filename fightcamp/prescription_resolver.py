@@ -1008,7 +1008,10 @@ def _strength_slots_for_phase(candidate_pools: dict[str, Any], phase: str) -> li
     slots = phase_pool.get("strength_slots")
     if not isinstance(slots, list):
         return []
-    return [slot for slot in slots if isinstance(slot, dict)]
+    # A Core Development Block member may come from Stage 1's core candidates;
+    # it is priced and resolved exactly like a strength slot.
+    core = phase_pool.get("core_development_slots") if isinstance(phase_pool.get("core_development_slots"), list) else []
+    return [slot for slot in [*slots, *core] if isinstance(slot, dict)]
 
 
 def _assignment_strength_slot(
