@@ -10,7 +10,7 @@
 --    its unit are stored together (a NULL half no longer passes the CHECK),
 --    and an exact time is roadwork-only, matching the API.
 --
--- Repeatable: every step is guarded or replaces in place.
+-- Repeatable and non-destructive: every step is guarded or replaces in place.
 
 create or replace function public.reset_history_plan_session(p_athlete_id uuid, p_completion_id uuid)
 returns jsonb
@@ -45,18 +45,27 @@ $$;
 revoke all on function public.reset_history_plan_session(uuid, uuid) from public, anon, authenticated;
 grant execute on function public.reset_history_plan_session(uuid, uuid) to service_role;
 
-alter table public.external_training_sessions
-  drop constraint if exists external_training_sessions_run_distance,
-  drop constraint if exists external_training_sessions_duration_seconds;
-
-alter table public.external_training_sessions
-  add constraint external_training_sessions_run_distance check (
-    (distance_value is null and distance_unit is null)
-    or (distance_value is not null and distance_unit is not null and activity = 'roadwork'
-        and distance_value > 0 and (
-          (distance_unit = 'km' and distance_value <= 200)
-          or (distance_unit = 'miles' and distance_value <= 125)))),
-  add constraint external_training_sessions_duration_seconds check (
-    duration_seconds is null
-    or (activity = 'roadwork' and duration_seconds between 1 and 36000
-        and duration_minutes = ceil(duration_seconds / 60.0)));
+-- Added beside the original checks rather than replacing them (nothing is
+-- dropped). Anything these accept also satisfies the originals, which are now
+-- redundant and can be removed in a later cleanup.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'external_training_sessions_run_distance_v2'
+      and conrelid = 'public.external_training_sessions'::regclass) then
+    alter table public.external_training_sessions
+      add constraint external_training_sessions_run_distance_v2 check (
+        (distance_value is null and distance_unit is null)
+        or (distance_value is not null and distance_unit is not null and activity = 'roadwork'
+            and distance_value > 0 and (
+              (distance_unit = 'km' and distance_value <= 200)
+              or (distance_unit = 'miles' and distance_value <= 125))));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'external_training_sessions_duration_seconds_v2'
+      and conrelid = 'public.external_training_sessions'::regclass) then
+    alter table public.external_training_sessions
+      add constraint external_training_sessions_duration_seconds_v2 check (
+        duration_seconds is null
+        or (activity = 'roadwork' and duration_seconds between 1 and 36000
+            and duration_minutes = ceil(duration_seconds / 60.0)));
+  end if;
+end $$;
