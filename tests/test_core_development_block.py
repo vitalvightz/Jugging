@@ -77,6 +77,11 @@ def _main(role) -> list[dict]:
     return [m for m in _members(role) if m.get("component_group") != TRUNK_BLOCK_GROUP]
 
 
+def _capped(role) -> list[dict]:
+    """Members the exercise cap governs (everything but the block's additions)."""
+    return [m for m in _members(role) if not m.get("exercise_cap_exempt")]
+
+
 def _tiers_within_budget(names):
     tiers = [trunk_load_tier(_BANK[name]) for name in names]
     return tiers.count("rotational_power") <= 1 and tiers.count("loaded") <= 2
@@ -108,9 +113,12 @@ def test_development_week_holds_one_complementary_core_block(key):
         # The exercise cap governs the MAIN session only; the block is counted
         # on its own, and the full membership count stays accurate.
         policy = role["strength_composition_policy"]
-        assert policy["main_exercise_count"] == len(_main(role))
+        assert policy["main_exercise_count"] == len(_capped(role))
         assert policy["main_exercise_count"] <= policy["effective_exercise_cap"] + int(policy["standalone_minimum_applied"])
-        assert policy["selected_count"] == len(_members(role)) == len(_main(role)) + policy["core_block_count"]
+        assert policy["core_block_count"] == len(members)
+        assert policy["selected_count"] == len(_members(role))
+        # Only block members are ever cap-exempt.
+        assert all(m.get("component_group") == TRUNK_BLOCK_GROUP for m in _members(role) if m.get("exercise_cap_exempt"))
         # Contiguous and last, after the session's main work.
         names = [m["name"] for m in _members(role)]
         assert names[-len(members):] == [m["name"] for m in members]
@@ -132,8 +140,12 @@ def test_the_block_no_longer_displaces_the_main_lifts():
     # Extended Hold) now leads the block and the rest of the block is added.
     grouped = [m["name"] for m in _grouped(host)]
     assert "Plank (Extended Hold)" in grouped
-    assert len(main) + 1 == host["strength_composition_policy"]["effective_exercise_cap"]
-    assert len(_members(host)) == len(main) + len(grouped) > host["strength_composition_policy"]["effective_exercise_cap"]
+    cap = host["strength_composition_policy"]["effective_exercise_cap"]
+    # The capped selection still fills exactly its cap (Plank included), and the
+    # block's two additions sit outside it: grouping frees no cap room.
+    assert len(_capped(host)) == cap
+    assert {m["name"] for m in _members(host) if m.get("exercise_cap_exempt")} == set(grouped) - {"Plank (Extended Hold)"}
+    assert len(_members(host)) == cap + 2
 
 
 @pytest.mark.parametrize("key", [k for k in _DEVELOPMENT if k != "core_knee"])

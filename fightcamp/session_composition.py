@@ -956,9 +956,11 @@ def _trunk_block_additions(
 
 
 def main_exercise_count(assignments: list[dict[str, Any]] | None) -> int:
-    """Members the role's exercise cap governs: everything outside the block."""
+    """Members the role's exercise cap governs: everything except the block's
+    own additions. A trunk item the capped selection chose itself still counts,
+    even when it leads the block, so grouping never frees cap room."""
     return sum(1 for item in assignments or []
-               if isinstance(item, dict) and item.get("component_group") != TRUNK_BLOCK_GROUP)
+               if isinstance(item, dict) and not item.get("exercise_cap_exempt"))
 
 
 def trunk_block_members(selected: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1071,7 +1073,8 @@ def _trunk_block_outcome(
 
 
 def _stamp_trunk_block(
-    assignments: list[dict[str, Any]], selected: list[dict[str, Any]], *, host: bool
+    assignments: list[dict[str, Any]], selected: list[dict[str, Any]], *, host: bool,
+    additions: list[dict[str, Any]] = (),
 ) -> list[dict[str, Any]]:
     """Group block members as one logical component, kept contiguous and last.
 
@@ -1079,12 +1082,18 @@ def _stamp_trunk_block(
     slot identity and dose, and counts in every exercise/volume/load check.
     """
     members = {r["name"]: _record_trunk_function(r) for r in trunk_block_members(selected)} if host else {}
+    added = {r["name"] for r in additions} if host else set()
     for assignment in assignments:
         assignment.pop("component_group", None)
         assignment.pop("trunk_function", None)
+        assignment.pop("exercise_cap_exempt", None)
         if assignment.get("name") in members:
             assignment["component_group"] = TRUNK_BLOCK_GROUP
             assignment["trunk_function"] = members[assignment["name"]]
+        if assignment.get("name") in added:
+            # The block's own capacity: outside the role's exercise-count cap,
+            # inside every load, recovery and safety check.
+            assignment["exercise_cap_exempt"] = True
     return sorted(assignments, key=lambda item: item.get("component_group") == TRUNK_BLOCK_GROUP)
 
 
@@ -1529,13 +1538,14 @@ def _assign_selected_records(
                       else assignment_from_slot(entry["phase"], "strength_slots", record["slot"]))
         if assignment:
             assignments.append(assignment)
-    assignments = _stamp_trunk_block(assignments, selected_records, host=entry.get("trunk_block_target", 0) > 0)
+    assignments = _stamp_trunk_block(assignments, selected_records, host=entry.get("trunk_block_target", 0) > 0,
+                                     additions=entry.get("trunk_block_additions") or ())
     entry["role"]["selected_exercise_assignments"] = assignments
     policy = entry["role"]["strength_composition_policy"]
     policy["selected_count"] = len(assignments)
     policy["selected_names"] = [item["name"] for item in assignments]
     policy["main_exercise_count"] = main_exercise_count(assignments)
-    policy["core_block_count"] = len(assignments) - policy["main_exercise_count"]
+    policy["core_block_count"] = sum(1 for a in assignments if a.get("component_group") == TRUNK_BLOCK_GROUP)
     entry["selected_records"] = selected_records
 
 
@@ -1627,6 +1637,15 @@ def _apply_adjacent_strength_recovery(
             trunk_block_target=current.get("trunk_block_target", 0),
             trunk_alternates=trunk_alternate_records(safe_records) if current.get("trunk_block_target") else (),
         )
+        if current.get("trunk_block_target"):
+            main_only, _ = _select_bounded_records(
+                safe_records, role_key=current["role_key"], cap=current["effective_cap"],
+                pressure=current["pressure"], preserve_trunk_support=current["preserve_trunk_support"],
+                preserve_adaptation=current.get("preserve_adaptation", ""),
+                preserve_weakness=current.get("preserve_weakness", ""),
+                preserve_strength=current.get("preserve_strength", False),
+            )
+            current["trunk_block_additions"] = [r for r in selected_records if r not in main_only]
         if selected_records:
             _assign_selected_records(current, selected_records)
             policy = current["role"]["strength_composition_policy"]
@@ -1970,6 +1989,8 @@ def compose_normal_strength_assignments(
         host = id(role) in hosts
         block_target = trunk_block_size if host else 0
         selected_records, dropped = _select(ctx, block_target)
+        main_records = _select(ctx, 0)[0] if block_target else selected_records
+        additions = [r for r in selected_records if r not in main_records]
 
         assignments: list[dict[str, Any]] = []
         for record in selected_records:
@@ -1978,7 +1999,7 @@ def compose_normal_strength_assignments(
                           else assignment_from_slot(phase, "strength_slots", record["slot"]))
             if assignment:
                 assignments.append(assignment)
-        assignments = _stamp_trunk_block(assignments, selected_records, host=host)
+        assignments = _stamp_trunk_block(assignments, selected_records, host=host, additions=additions)
         role["selected_exercise_assignments"] = assignments
         role["strength_composition_policy"] = {
             **pressure_state,
@@ -1996,7 +2017,7 @@ def compose_normal_strength_assignments(
             # The exercise cap governs main members; a Core Development Block
             # has its own capacity and is counted separately.
             "main_exercise_count": main_exercise_count(assignments),
-            "core_block_count": len(assignments) - main_exercise_count(assignments),
+            "core_block_count": sum(1 for a in assignments if a.get("component_group") == TRUNK_BLOCK_GROUP),
             "dropped": [
                 {"name": name, "reason": reason}
                 for name, reason in dropped.items()
@@ -2026,6 +2047,7 @@ def compose_normal_strength_assignments(
                 "preserve_weakness": primary_weakness,
                 "preserve_strength": strength_selected,
                 "trunk_block_target": block_target,
+                "trunk_block_additions": additions,
                 "trunk_development": trunk_development,
                 "week_ordinal": ctx["week_position"] + 1,
                 "standalone_eligible": (
@@ -2127,8 +2149,8 @@ def _propose_standalone_strength_minimum(
         }:
             continue
         selected = entry["selected_records"]
-        block_names = {r["name"] for r in trunk_block_members(selected)} if entry.get("trunk_block_target") else set()
-        if len([r for r in selected if r["name"] not in block_names]) >= _STANDALONE_STRENGTH_MINIMUM:
+        added = entry.get("trunk_block_additions") or []
+        if len([r for r in selected if r not in added]) >= _STANDALONE_STRENGTH_MINIMUM:
             continue
         if not _strength_role_is_standalone(
             weekly_role_map, week, entry["week_ordinal"], role
@@ -3899,8 +3921,9 @@ def consolidate_compatible_physical_sessions(
                 composition["selected_count"] = len(trial_host["selected_exercise_assignments"])
                 if "main_exercise_count" in composition:
                     composition["main_exercise_count"] = main_exercise_count(trial_host["selected_exercise_assignments"])
-                    composition["core_block_count"] = (composition["selected_count"]
-                                                       - composition["main_exercise_count"])
+                    composition["core_block_count"] = sum(
+                        1 for a in trial_host["selected_exercise_assignments"]
+                        if a.get("component_group") == TRUNK_BLOCK_GROUP)
                 composition["selected_names"] = [
                     item["name"] for item in trial_host["selected_exercise_assignments"]
                 ]

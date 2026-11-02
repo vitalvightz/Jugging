@@ -1430,9 +1430,9 @@ def apply_effective_strength_prescriptions(
         if isinstance(policy, dict):
             policy.update(selected_count=len(names), selected_names=names)
             if "main_exercise_count" in policy:
-                main = sum(1 for a in role["selected_exercise_assignments"]
-                           if a.get("component_group") != "core_development")
-                policy.update(main_exercise_count=main, core_block_count=len(names) - main)
+                members = role["selected_exercise_assignments"]
+                policy.update(main_exercise_count=sum(1 for a in members if not a.get("exercise_cap_exempt")),
+                              core_block_count=sum(1 for a in members if a.get("component_group") == "core_development"))
         # The numeric loaded-strength ceiling envelope is a scheduled-day cap
         # artefact.  A normal-camp role has no cap to summarise and keeps the
         # complete-allow-list envelope already built above.
