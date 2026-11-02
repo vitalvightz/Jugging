@@ -301,7 +301,7 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
               })() : null}
               {canRepeatTraining(row) ? <LogTraining accessToken={token} repeatEntry={row} onSaved={created => { onUpdate(created); setRepeated({ row: created, source: row }); setSaved(`${created.title} logged successfully. Saved to Training History.`); }} /> : null}
               <LogTraining accessToken={token} entry={row} onSaved={onUpdate} />
-              {token && row.activity !== "sparring" ? <TakeawayEditor token={token} row={row} onSaved={onUpdate} /> : null}
+              {token ? <TakeawayEditor token={token} row={row} onSaved={onUpdate} /> : null}
               <button className="history-session-delete" type="button" disabled={deleting !== null} aria-label={`Delete ${row.title}`} onClick={() => void remove(row)}>{deleting === row.id ? "Deleting…" : "Delete"}</button>
             </div> : row.source === "unlxck" && row.history_editable && token ? <div className="history-session-actions">
               <PlanSessionEditor token={token} row={row} onSaved={onUpdate} />
@@ -340,12 +340,25 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
   );
 }
 
-function SparringRows({ history, token, onSaved }: {
-  history: SparringLogHistoryResponse; token: string | null; onSaved: (log: SparringLogRecord) => void;
+/** Sparring the athlete logged by hand but never described: still sparring history. */
+export function unreportedSparringSessions(sessions: TrainingHistorySession[], logs: SparringLogRecord[]): TrainingHistorySession[] {
+  const reported = new Set(logs.map(log => log.external_session_id).filter(Boolean));
+  return sessions.filter(row => row.source === "external" && row.activity === "sparring"
+    && row.status !== "skipped" && !reported.has(row.id));
+}
+
+function SparringRows({ history, sessions, token, onSaved }: {
+  history: SparringLogHistoryResponse; sessions: TrainingHistorySession[]; token: string | null;
+  onSaved: (log: SparringLogRecord) => void;
 }) {
   const { logs, current_training_day: today } = history;
   const [draft, setDraft] = useState<SparringDraft | null>(null);
-  if (logs.length === 0) {
+  const unreported = unreportedSparringSessions(sessions, logs);
+  const items = [
+    ...logs.map(log => ({ day: log.training_day, log, session: null as TrainingHistorySession | null })),
+    ...unreported.map(session => ({ day: session.training_day, log: null as SparringLogRecord | null, session })),
+  ].sort((a, b) => b.day.localeCompare(a.day));
+  if (items.length === 0) {
     return (
       <EmptyState
         eyebrow="Sparring history"
@@ -405,7 +418,34 @@ function SparringRows({ history, token, onSaved }: {
       </section>
 
       <ul className="history-list">
-        {logs.map((row) => {
+        {items.map(({ log: row, session }) => {
+          if (!row) {
+            const manual = session!;
+            return (
+              <li key={`manual-${manual.id}`} className="history-row" data-tone="neutral">
+                <div className="history-row-head">
+                  <span className="history-row-date"><RowDate day={manual.training_day} today={today} /></span>
+                  <StatusBadge tone="neutral" label="No details" />
+                </div>
+                <div className="history-row-meta">
+                  <span>{manual.title?.trim() || "Sparring"}</span>
+                  <span>Added by you</span>
+                  {manual.duration_minutes ? <span>{manual.duration_minutes} min</span> : null}
+                  {manual.effort ? <span>{manual.effort.charAt(0).toUpperCase() + manual.effort.slice(1)}</span> : null}
+                </div>
+                {manual.takeaway?.trim() ? <p className="history-row-takeaway">{manual.takeaway}</p> : null}
+                {token ? (
+                  <div className="history-session-actions">
+                    <button className="history-session-delete" type="button" aria-haspopup="dialog"
+                      aria-label={`Add sparring details for ${formatAppDate(manual.training_day)}`}
+                      onClick={() => setDraft(manualSparringDraft(manual))}>
+                      Add details
+                    </button>
+                  </div>
+                ) : null}
+              </li>
+            );
+          }
           const difference = sparringPlanDifference(row.planned_intensity, row.intensity);
           return (
             <li
@@ -691,6 +731,12 @@ function HistoryContent() {
       void load(exercises, getExerciseLibrary, setExercises);
     } else if (tab === "sparring") {
       void load(sparring, listSparringLogHistory, setSparring);
+      // Manual sparring logged without details is still sparring history.
+      void load(sessions, async accessToken => {
+        const page = await getTrainingHistory(accessToken, true);
+        if (!cancelled) setSessionCursor(page.next_before_day ?? null);
+        return page.sessions;
+      }, setSessions);
     } else if (tab === "checkins") {
       void load(checkins, listTodayCheckinHistory, setCheckins);
     } else {
@@ -822,7 +868,7 @@ function HistoryContent() {
       ) : tab === "exercises" ? (
         exercises.rows && token ? <ExerciseLibrary library={exercises.rows} token={token} cache={exerciseHistoryCache} /> : <ListSkeleton />
       ) : tab === "sparring" ? (
-        sparring.rows ? <SparringRows history={sparring.rows} token={token} onSaved={onSparringSaved} /> : <ListSkeleton />
+        sparring.rows ? <SparringRows history={sparring.rows} sessions={sessions.rows ?? []} token={token} onSaved={onSparringSaved} /> : <ListSkeleton />
       ) : tab === "checkins" ? (
         <CheckinRows rows={checkins.rows ?? []} today={today} />
       ) : (
