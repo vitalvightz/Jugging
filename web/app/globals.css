@@ -3360,6 +3360,24 @@ html:root .overview-risk-more.overview-weigh-in:focus-visible {
   html:root .overview-risk-more.overview-weigh-in::after { animation: none; }
 }
 
+/* Light theme: the brand red instead of purple, same sweep. */
+html[data-theme="light"]:root .overview-risk-more.overview-weigh-in {
+  border-color: rgba(189, 16, 32, 0.22);
+  background: rgba(189, 16, 32, 0.06);
+  color: var(--brand-red, #bd1020);
+}
+
+html[data-theme="light"]:root .overview-risk-more.overview-weigh-in::after {
+  background: linear-gradient(105deg, transparent 35%, rgba(189, 16, 32, 0.1) 50%, transparent 65%);
+}
+
+html[data-theme="light"]:root .overview-risk-more.overview-weigh-in:hover,
+html[data-theme="light"]:root .overview-risk-more.overview-weigh-in:focus-visible {
+  border-color: rgba(189, 16, 32, 0.36);
+  background: rgba(189, 16, 32, 0.1);
+  color: var(--brand-red, #bd1020);
+}
+
 /* Deduped decision copy: an ALL-CAPS command title with a calm two-line body,
    the title clearly separated from the reason + action. */
 .overview-decision-title {
