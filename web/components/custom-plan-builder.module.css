@@ -336,10 +336,64 @@
   .editorPanel > :global(.injury-sheet-header) { position: sticky; top: 0; z-index: 2; padding: 20px 28px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-panel); }
   .editorPanel .sheet { padding: 24px 28px 28px; gap: 24px; }
   .sessionSheet { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .sessionSheet > label:first-child { grid-column: 1 / -1; }
+  .sessionSheet > .typeField { grid-column: 1 / -1; }
   .exerciseEditor { grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); align-items: start; }
   .exercisePrescription { border-left: 1px solid var(--border-subtle); padding-left: 24px; }
   .exerciseEditor > .editorActions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: flex-end; padding-top: 20px; border-top: 1px solid var(--border-subtle); }
   .editorActions > button { min-height: 48px; }
   .editorActions > :global(.cta) { min-width: 200px; }
+}
+
+/* Optional extras fold away; the summary says what is inside. */
+.advanced { border: 1px solid var(--border-subtle); border-radius: 12px; color: var(--text-secondary); font-size: 14px; min-width: 0; }
+.advanced summary { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 14px; cursor: pointer; list-style: none; }
+.advanced summary::-webkit-details-marker { display: none; }
+.advanced summary::before { content: ""; flex: 0 0 auto; width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform var(--transition-fast); }
+.advanced[open] summary::before { transform: rotate(45deg); }
+.advanced summary > span { font-weight: 600; color: var(--text-primary); }
+.advanced summary > small { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 12px; }
+.advanced summary:focus-visible { outline: 2px solid var(--brand-red); outline-offset: -2px; }
+.groupBody { display: grid; gap: 12px; padding: 0 14px 14px; }
+.advanced .dose.groupBody { display: grid; }
+
+/* Session type: one tap, every option visible. */
+.typeField { display: grid; gap: 8px; color: var(--text-secondary); font-size: 14px; min-width: 0; }
+.typeChips { display: flex; flex-wrap: wrap; gap: 6px; }
+.typeChips button { min-height: 40px; padding: 0 14px; border: 1px solid var(--border-default); border-radius: 999px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 14px; cursor: pointer; }
+.typeChips button[aria-pressed="true"] { color: var(--text-primary); border-color: var(--brand-red); background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
+.typeChips button:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+
+/* Add sheet: search, one-tap add, then each added exercise's dose in place. */
+.picker { display: grid; gap: 10px; min-width: 0; }
+.pickerSearch input[type="search"] { -webkit-appearance: none; appearance: none; }
+.pickerNotice { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text-secondary); font-size: 13px; }
+.results { list-style: none; margin: 0; padding: 0; display: grid; transition: opacity 140ms; }
+.results[data-refreshing="true"] { opacity: 0.55; }
+.result { display: flex; align-items: center; gap: 8px; min-width: 0; border-bottom: 1px solid var(--border-subtle); }
+.resultMain { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; padding: 10px 0; border: 0; background: transparent; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
+.resultName { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.resultMeta { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resultAdd, .removeAdded { flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--border-default); border-radius: 999px; background: transparent; color: var(--text-primary); font: inherit; font-size: 20px; line-height: 1; cursor: pointer; }
+.resultAdd svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.resultAdd:disabled { opacity: 0.4; cursor: not-allowed; }
+.removeAdded { border-color: transparent; color: var(--text-muted); }
+.resultAdd:focus-visible, .removeAdded:focus-visible, .resultMain:focus-visible, .textButton:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.textButton { justify-self: start; width: auto; min-height: 44px; padding: 0 4px; border: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 14px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.pickerActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.pickerActions .addChoice { min-height: 56px; padding: 10px 12px; }
+.pickerActions .addChoice strong { font-size: 14px; overflow-wrap: anywhere; }
+.pickerActions .addChoice small { font-size: 12px; }
+.addChoice:disabled { opacity: 0.5; cursor: not-allowed; }
+.added { display: grid; gap: 8px; min-width: 0; padding-top: 4px; }
+.added h3 { margin: 0; font: 600 11px/1.4 var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+.added ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.addedRow { display: grid; gap: 6px; padding: 10px 12px 12px; border: 1px solid var(--border-subtle); border-radius: 12px; min-width: 0; }
+.addedHead { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.addedHead strong { flex: 1 1 auto; min-width: 0; font-size: 15px; overflow-wrap: anywhere; }
+.addedSource { color: var(--text-muted); font-size: 12px; line-height: 1.4; }
+/* Compact fields: as many per row as fit, never squeezed below a usable width. */
+.addedRow .dose { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.addedRow .dose label { font-size: 12px; gap: 4px; }
+@media (min-width: 900px) {
+  .addPanel:global(.injury-sheet) { width: min(100%, 640px); border-radius: 18px; }
 }

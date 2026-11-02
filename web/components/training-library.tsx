@@ -94,10 +94,12 @@ export function DrillPreview({ entry, token, onClose, onAdd, selfDirected = fals
   </InjuryDetailSheet>;
 }
 
-export function TrainingLibrary({ accessToken, onSelect, onBack, onSelectCommunity }: {
+export function TrainingLibrary({ accessToken, onSelect, onBack, onSelectCommunity, initialQuery = "" }: {
   accessToken: string; onSelect?: (entry: LibraryPreview) => void; onBack?: () => void; onSelectCommunity?: (entry: CommunityEntry) => void;
+  /** A search the athlete already typed elsewhere carries over. */
+  initialQuery?: string;
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [category, setCategory] = useState<Category>("training");
   const [filters, setFilters] = useState<Filters>({});
   const [selectedLabels, setSelectedLabels] = useState<Filters>({});

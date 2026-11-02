@@ -38,13 +38,15 @@ function DurationField({
     </label>
   );
 }
-export function CustomDoseEditor({ dose, onChange, movement, past }: {
+export function CustomDoseEditor({ dose, onChange, movement, past, essential = false }: {
   dose: CustomDose;
   onChange: (dose: CustomDose) => void;
   /** The catalogue movement, whose format says whether it is weighed. */
   movement?: object | null;
   /** The athlete's own record of this exercise, for the last weight. */
   past?: PersonalExercise | null;
+  /** Only the fields that complete the dose, for quick entry while adding exercises. */
+  essential?: boolean;
 }) {
   function number(
     field: "sets" | "reps" | "rest_seconds" | "rounds" | "rpe" | "distance",
@@ -76,7 +78,7 @@ export function CustomDoseEditor({ dose, onChange, movement, past }: {
   }
   return (
     <div className={styles.dose}>
-      <label>
+      {essential ? null : <label>
         <span>Format</span>
         <select
           aria-label="Dose format"
@@ -89,12 +91,12 @@ export function CustomDoseEditor({ dose, onChange, movement, past }: {
           <option value="distance">Distance / carries</option>
           <option value="text">Text prescription</option>
         </select>
-      </label>
+      </label>}
       {dose.mode === "reps" ? (
         <>
           {number("sets", "Sets", 1, 100)}
           {number("reps", "Reps", 1, 1000)}
-          {number("rest_seconds", "Rest (sec)", 0, 3600)}
+          {essential ? null : number("rest_seconds", "Rest (sec)", 0, 3600)}
         </>
       ) : dose.mode === "duration" || dose.mode === "distance" ? (
         <>
@@ -103,8 +105,9 @@ export function CustomDoseEditor({ dose, onChange, movement, past }: {
             label="Duration"
             onChange={(value) => onChange({ ...dose, duration_seconds: value })}
           /> : null}
-          {number("sets", "Sets (optional)", 1, 100)}
-          {number("distance", "Distance (optional)", 0.001, 100000, 0.001)}
+          {essential ? null : number("sets", "Sets (optional)", 1, 100)}
+          {essential && dose.mode === "duration" ? null : <>
+          {number("distance", dose.mode === "distance" ? "Distance" : "Distance (optional)", 0.001, 100000, 0.001)}
           <label>
             <span>Distance unit</span>
             <select
@@ -123,7 +126,8 @@ export function CustomDoseEditor({ dose, onChange, movement, past }: {
               ))}
             </select>
           </label>
-          {number("rest_seconds", "Rest (sec)", 0, 3600)}
+          </>}
+          {essential ? null : number("rest_seconds", "Rest (sec)", 0, 3600)}
         </>
       ) : dose.mode === "intervals" ? (
         <>
@@ -146,6 +150,7 @@ export function CustomDoseEditor({ dose, onChange, movement, past }: {
           />
         </label>
       )}
+      {essential ? null : <>
       <LoadField
         // A new format starts the field over on its own default.
         key={dose.mode}
@@ -155,27 +160,37 @@ export function CustomDoseEditor({ dose, onChange, movement, past }: {
         last={pastLoad(past)}
         onChange={(text) => onChange({ ...dose, load_or_intensity: text || null })}
       />
-      {number("rpe", "RPE (optional)", 1, 10, 0.5)}
+      {/* Per side changes how the reps read, so it stays with them, not behind the fold. */}
       {dose.mode === "reps" ? (
-        <>
-          <label>
-            <span>Tempo (optional)</span>
-            <input
-              maxLength={40}
-              value={dose.tempo ?? ""}
-              onChange={(e) => onChange({ ...dose, tempo: e.target.value || null })}
-            />
-          </label>
-          <label className={styles.row}>
-            <input
-              type="checkbox"
-              checked={dose.per_side ?? false}
-              onChange={(e) => onChange({ ...dose, per_side: e.target.checked })}
-            />
-            Per side
-          </label>
-        </>
+        <label className={`${styles.row} ${styles.wide}`}>
+          <input
+            type="checkbox"
+            checked={dose.per_side ?? false}
+            onChange={(e) => onChange({ ...dose, per_side: e.target.checked })}
+          />
+          Per side
+        </label>
       ) : null}
+      {/* Optional extras stay one tap away; a value already set keeps them open. */}
+      <details className={`${styles.advanced} ${styles.wide}`} open={dose.rpe != null || Boolean(dose.tempo) || undefined}>
+        <summary><span>Effort{dose.mode === "reps" ? " & tempo" : ""}</span>
+          {dose.rpe != null || dose.tempo ? <small>{[dose.rpe != null ? `RPE ${dose.rpe}` : null, dose.tempo ? `tempo ${dose.tempo}` : null].filter(Boolean).join(" · ")}</small> : null}
+        </summary>
+        <div className={`${styles.dose} ${styles.groupBody}`}>
+          {number("rpe", "RPE (optional)", 1, 10, 0.5)}
+          {dose.mode === "reps" ? (
+            <label>
+              <span>Tempo (optional)</span>
+              <input
+                maxLength={40}
+                value={dose.tempo ?? ""}
+                onChange={(e) => onChange({ ...dose, tempo: e.target.value || null })}
+              />
+            </label>
+          ) : null}
+        </div>
+      </details>
+      </>}
     </div>
   );
 }

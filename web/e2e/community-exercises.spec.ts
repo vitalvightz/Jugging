@@ -36,8 +36,9 @@ for(const width of [320,390,1280]) {
  test(`Explicit community consent and public self-directed discovery (${width}px)`,async({page,baseURL})=>{
   await page.setViewportSize({width,height:900});const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   const {saved}=await setup(page,baseURL!);const actions=await mockCommunity(page,entry('private'));
-  await page.goto('/plans/custom');await page.getByRole('button',{name:'+ Add Session',exact:true}).click();
-  await page.getByRole('button',{name:'Add exercise to Training',exact:true}).click();await page.getByRole('button',{name:'Create my exercise',exact:true}).click();await page.getByLabel('Exercise name',{exact:true}).fill('My defensive drill');
+  await page.goto('/plans/custom');await page.getByRole('button',{name:'Add session on Monday',exact:true}).click();await page.getByRole('button',{name:'Add session',exact:true}).click();
+  await page.getByRole('button',{name:/^Create my exercise/}).click();await page.getByLabel('Exercise name',{exact:true}).fill('My defensive drill');
+  await page.getByText('Video & sharing',{exact:true}).click();
   await page.getByRole('button',{name:'Share with community',exact:true}).click();
   const consent=page.getByRole('dialog',{name:'Community exercise',exact:true});
   await expect(consent.getByRole('button',{name:'Submit for review'})).toBeDisabled();
@@ -52,13 +53,17 @@ for(const width of [320,390,1280]) {
   await consent.getByRole('checkbox').nth(0).check();await consent.getByRole('checkbox').nth(1).check();
   await consent.getByRole('button',{name:'Submit for review'}).click();await expect(consent.getByText('In review',{exact:true})).toBeVisible();expect(actions).toEqual(['draft','submit']);
   await consent.getByRole('button',{name:'Close',exact:true}).click();await page.getByRole('button',{name:'Add exercise',exact:true}).click();
+  await page.getByRole('dialog',{name:'Add to Training',exact:true}).getByRole('button',{name:'Done',exact:true}).click();
   await page.getByRole('button',{name:'Save draft',exact:true}).click();await expect(page).toHaveURL(/custom\?plan=/);
   expect([...saved.values()][0].sessions[0].exercises[0]).toMatchObject({origin:'manual',community_id:id,equipment:'Heavy Bag, Pads / Mitts'});
   await mockCommunity(page,{...entry('published'),verified:true,confirmed:true});
-  await page.getByRole('button',{name:'Add exercise to Training',exact:true}).click();await page.getByRole('button',{name:'Add from library',exact:true}).click();await page.getByText('Community exercises',{exact:true}).click();
+  // Community exercises live in the full library, one tap from the add sheet.
+  await page.getByRole('button',{name:'Add exercise to Training',exact:true}).click();await page.getByRole('button',{name:/^Filters & community/}).click();await page.getByText('Community exercises',{exact:true}).click();
   await page.getByRole('list',{name:'Community drill results'}).getByRole('button').click();
   const preview=page.getByRole('dialog',{name:'My defensive drill',exact:true});await expect(preview.getByText('Community · Added by @fighter')).toBeVisible();
   await preview.getByRole('button',{name:'Add to Session',exact:true}).click();
+  const add=page.getByRole('dialog',{name:'Add to Training',exact:true});await expect(add.getByRole('group',{name:'My defensive drill'})).toBeVisible();
+  await add.getByRole('button',{name:'Done',exact:true}).click();
   await page.getByRole('button',{name:'Save draft',exact:true}).click();
   await expect.poll(()=>[...saved.values()][0].sessions[0].exercises.length).toBe(2);
   expect([...saved.values()][0].sessions[0].exercises[1]).toMatchObject({origin:'manual',community_revision_id:revision,media_id:null});
@@ -101,9 +106,9 @@ test('Video added after submission requires a new reviewed revision',async({page
     return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body)});
   });
   await page.goto('/plans/custom');
-  await page.getByRole('button',{name:'+ Add Session',exact:true}).click();
-  await page.getByRole('button',{name:'Add exercise to Training',exact:true}).click();await page.getByRole('button',{name:'Create my exercise',exact:true}).click();
-  await page.getByLabel('Exercise name',{exact:true}).fill('My defensive drill');
+  await page.getByRole('button',{name:'Add session on Monday',exact:true}).click();await page.getByRole('button',{name:'Add session',exact:true}).click();
+  await page.getByRole('button',{name:/^Create my exercise/}).click();await page.getByLabel('Exercise name',{exact:true}).fill('My defensive drill');
+  await page.getByText('Video & sharing',{exact:true}).click();
   await page.getByRole('button',{name:'Share with community',exact:true}).click();
   let sheet=page.getByRole('dialog',{name:'Community exercise',exact:true});
   await expect(sheet.getByText('No video attached to this community submission.')).toBeVisible();
@@ -127,6 +132,7 @@ test('Video added after submission requires a new reviewed revision',async({page
   expect(actions).toEqual(['draft','submit','draft','submit']);
   await sheet.getByRole('button',{name:'Close'}).click();
   await page.getByRole('button',{name:'Add exercise',exact:true}).click();
+  await page.getByRole('dialog',{name:'Add to Training',exact:true}).getByRole('button',{name:'Done',exact:true}).click();
   await page.getByRole('button',{name:'Save draft',exact:true}).click();
   expect([...saved.values()][0].sessions[0].exercises[0]).toMatchObject({media_id:mediaId,community_id:id});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

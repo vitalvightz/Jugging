@@ -1,4 +1,5 @@
-import type { CustomDose } from "./api-schema.generated";
+import type { CustomDose, CustomDoseSuggestion, PersonalExercise } from "./api-schema.generated";
+import { withPastDose } from "./load-entry";
 export const blankDose = (mode: CustomDose["mode"] = "reps"): CustomDose => ({
   mode,
   sets: null,
@@ -49,4 +50,25 @@ export function doseIncomplete(d: CustomDose): boolean {
   if (d.mode === "duration") return !d.duration_seconds || Boolean(d.distance) !== Boolean(d.distance_unit);
   if (d.mode === "intervals") return !(d.rounds && d.work_seconds) || d.rest_seconds == null;
   return !d.prescription?.trim();
+}
+
+const filled = (d: CustomDose) => Object.entries(d).some(([key, value]) => key !== "mode" && value != null);
+
+/**
+ * The dose a newly added library exercise starts with: the library's source
+ * dose, else its verified format, with the athlete's last session filling what
+ * those leave open. Null when no source has anything to say, so nothing is
+ * invented. `source` names where the values came from for the athlete.
+ */
+export function libraryPrefill(
+  suggestion: CustomDoseSuggestion | null | undefined,
+  past: PersonalExercise | null | undefined,
+): { dose: CustomDose; source: string } | null {
+  const format = (suggestion?.dose && suggestion.dose.mode !== "text" ? suggestion.dose : suggestion?.format_dose) ?? null;
+  const start = format ?? blankDose();
+  const dose = withPastDose(start, past);
+  if (JSON.stringify(dose) === JSON.stringify(blankDose())) return null;
+  const fromLibrary = Boolean(format && (filled(format) || format.mode !== "reps"));
+  const fromPast = JSON.stringify(dose) !== JSON.stringify(start);
+  return { dose, source: fromLibrary && fromPast ? "Library format · your last session" : fromLibrary ? "Library format" : "Your last session" };
 }
