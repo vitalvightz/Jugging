@@ -94,6 +94,7 @@ export const EQUIPMENT_ACCESS_GROUPS: EquipmentAccessGroup[] = [
       { label: "Trap Bar", value: "trap_bar" },
       { label: "Plates", value: "plate" },
       { label: "Bench", value: "bench" },
+      { label: "45° Back-Extension Bench", value: "back_extension_bench" },
       { label: "Cable", value: "cable" },
       { label: "Landmine", value: "landmine" },
       { label: "Log", value: "log" },
