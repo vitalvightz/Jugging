@@ -875,7 +875,8 @@ def trunk_dose_adequate(stimulus: dict) -> bool:
         return False
     if unit == "sec" and amount < _TRUNK_MIN_HOLD_SEC:
         return False
-    if unit == "reps" and stimulus.get("trunk_load_tier") == "rotational_power":
+    if unit == "reps" and (stimulus.get("trunk_load_tier") == "rotational_power"
+                           or stimulus.get("trunk_function") == "rotational_braking"):
         return sets * amount >= _TRUNK_MIN_POWER_REPS
     return sets * amount >= _TRUNK_MIN_TOTAL.get(unit, 1)
 
