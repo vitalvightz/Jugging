@@ -742,11 +742,6 @@ function ExerciseGlyph({ block }: { block: StructuredBlock }) {
   return <ExerciseGlyphIcon name={exerciseGlyph(block)} />;
 }
 
-/**
- * One exercise in a session: a compact row (name, headline stat, demo thumbnail)
- * that expands to the demo, what the exercise builds, why it is in today's
- * session, and the full prescription. Rows in a session are single-open.
- */
 // A planner presentation group (the Core Development block) is a server-owned
 // block tag. Consecutive members render under one collapsible header; every
 // member stays its own ExerciseRow, so each is still swappable, editable,
@@ -788,6 +783,11 @@ export function groupBlockRows(
   return rows;
 }
 
+/**
+ * One exercise in a session: a compact row (name, headline stat, demo thumbnail)
+ * that expands to the demo, what the exercise builds, why it is in today's
+ * session, and the full prescription. Rows in a session are single-open.
+ */
 export function ExerciseRow({
   block,
   open,
