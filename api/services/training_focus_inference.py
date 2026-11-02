@@ -31,7 +31,7 @@ from typing import Any, Callable, Protocol
 from fastapi import BackgroundTasks, HTTPException
 
 from api.contracts.training_focus import (
-    InferredFocus, grounded_focus, mentions_health, movement_pattern, response_schema,
+    InferredFocus, contains_words, grounded_focus, mentions_health, movement_pattern, response_schema, words,
 )
 from api.services.session_details import session_details
 
@@ -238,7 +238,7 @@ def _compact_actual(actual: Any) -> dict:
 PERFORMED = frozenset({"done", "modified"})
 
 
-def _exercises(store, athlete_id: str, source: str, row: dict, *, compact: bool) -> list[dict]:
+def _exercises(store, athlete_id: str, source: str, row: dict) -> list[dict]:
     """Prescribed vs performed, from the History projection (rehab and health
     notes left out: they are never a training cue)."""
     try:
@@ -249,7 +249,7 @@ def _exercises(store, athlete_id: str, source: str, row: dict, *, compact: bool)
     any_logged = any(block.status for block in blocks)
     whole_session_done = source == "unlxck" and row.get("status") == "done" and not any_logged
     exercises = []
-    for block in blocks[:_MAX_OTHER_BLOCKS if compact else _MAX_BLOCKS]:
+    for block in blocks[:_MAX_BLOCKS]:
         item: dict[str, Any] = {"name": block.name[:60]}
         pattern = movement_pattern(block.name)
         if pattern:
@@ -262,25 +262,25 @@ def _exercises(store, athlete_id: str, source: str, row: dict, *, compact: bool)
             item["status"] = "done" if block.status == "as_prescribed" else "modified"
         else:
             item["status"] = "done" if whole_session_done else "unverified"
-        if not compact:
-            if block.reason and block.reason != "pain":
-                item["reason"] = block.reason
-            prescribed = {key: block.prescribed[key] for key in ("sets", "reps", "rounds") if key in block.prescribed}
-            if prescribed and block.source == "plan":
-                item["prescribed"] = prescribed
-            actual = _compact_actual(block.actual)
-            if actual:
-                item["actual"] = actual
+        if block.reason and block.reason != "pain":
+            item["reason"] = block.reason
+        prescribed = {key: block.prescribed[key] for key in ("sets", "reps", "rounds", "load", "duration")
+                      if key in block.prescribed}
+        if prescribed and block.source == "plan":
+            item["prescribed"] = prescribed
+        actual = _compact_actual(block.actual)
+        if actual:
+            item["actual"] = actual
         exercises.append(item)
     return exercises
 
 
-def _session_entry(store, athlete_id: str, row: dict, *, manual: bool, compact: bool) -> dict:
+def _session_entry(store, athlete_id: str, row: dict, *, manual: bool) -> dict:
     if manual:
         entry = {"kind": "manual", "activity": row.get("activity"), "sport": row.get("sport"),
                  "session_type": row.get("session_type"), "status": "done"}
         categories = _categories_of(row, manual=True)
-        exercises = _exercises(store, athlete_id, "external", row, compact=compact)
+        exercises = _exercises(store, athlete_id, "external", row)
     else:
         session = _snapshot_session(row)
         entry = {"kind": "plan", "title": str(session.get("title") or "")[:80] or None,
@@ -288,12 +288,60 @@ def _session_entry(store, athlete_id: str, row: dict, *, manual: bool, compact: 
         if row.get("modification_reason") and not mentions_health(str(row["modification_reason"])):
             entry["modified_because"] = str(row["modification_reason"])[:120]
         categories = _categories_of(row, manual=False)
-        exercises = _exercises(store, athlete_id, "unlxck", row, compact=compact)
+        exercises = _exercises(store, athlete_id, "unlxck", row)
     entry = {key: value for key, value in entry.items() if value not in (None, "")}
     if exercises:
         entry["exercises"] = exercises
     return {"entry": entry, "categories": categories, "sport": row.get("sport") if manual else None,
+            "plan_id": None if manual else row.get("plan_id"),
             "at": str(row.get("completed_at") or row.get("created_at") or "")}
+
+
+def _compact_entry(entry: dict) -> dict:
+    """Another session as the model sees it: what was done, not the dose."""
+    compact = {key: value for key, value in entry.items() if key != "exercises"}
+    if entry.get("exercises"):
+        compact["exercises"] = [{key: item[key] for key in ("name", "pattern", "status") if key in item}
+                                for item in entry["exercises"][:_MAX_OTHER_BLOCKS]]
+    return compact
+
+
+def _own_sports(values: Any) -> set[str]:
+    from api.contracts.training_disciplines import SPORTS
+
+    items = values if isinstance(values, (list, tuple, set)) else str(values or "").split(",")
+    return {key for key in (str(value).strip().lower().replace(" ", "_").replace("-", "_") for value in items)
+            if key in SPORTS}
+
+
+def _plan_sport(store, athlete_id: str, plan_id: Any) -> set[str]:
+    if not plan_id:
+        return set()
+    plan = store.get_plan_for_athlete(str(plan_id), athlete_id) or {}
+    structured = plan.get("structured_plan")
+    if isinstance(structured, str):
+        try:
+            structured = json.loads(structured)
+        except ValueError:
+            structured = None
+    metadata = structured.get("plan_metadata") if isinstance(structured, dict) else None
+    return _own_sports((metadata or {}).get("sport"))
+
+
+def _known_sports(store, athlete_id: str, sessions: list[dict], noted_plan_id: Any) -> set[str]:
+    """The sport the noted work was for, as the athlete would match it later:
+    a manual session's own sport, else the plan's single sport, else the
+    athlete's single sport. Empty when it cannot be told apart."""
+    sports = {str(item["sport"]) for item in sessions if item["sport"]}
+    if sports:
+        return sports
+    plan_sports = _plan_sport(store, athlete_id, noted_plan_id)
+    if len(plan_sports) == 1:
+        return plan_sports
+    if plan_sports:
+        return set()
+    own = _own_sports((store.get_profile(athlete_id) or {}).get("technical_style") or [])
+    return own if len(own) == 1 else set()
 
 
 def _same_day(rows: list[dict], day: str) -> list[dict]:
@@ -313,26 +361,26 @@ def build_context(store, athlete_id: str, kind: str, source: dict) -> dict | Non
         sparring = {"intensity": row.get("intensity"), "rounds": row.get("rounds_completed")}
         if row.get("external_session_id"):
             manual = store.get_external_training_session(athlete_id, str(row["external_session_id"]))
-            noted = _session_entry(store, athlete_id, manual, manual=True, compact=False) if manual else None
+            noted = _session_entry(store, athlete_id, manual, manual=True) if manual else None
             noted_ids.add(("external", str(row["external_session_id"])))
         else:
             completion = (store.get_session_completion(athlete_id, str(row["session_id"]), day)
                           if row.get("session_id") else None)
             if completion and completion.get("status") in {"done", "modified"}:
-                noted = _session_entry(store, athlete_id, completion, manual=False, compact=False)
+                noted = _session_entry(store, athlete_id, completion, manual=False)
                 noted_ids.add(("unlxck", str(completion.get("id"))))
             else:
                 noted = {"entry": {"kind": "sparring"}, "categories": set(), "sport": None,
-                         "at": str(row.get("created_at") or "")}
+                         "plan_id": row.get("plan_id"), "at": str(row.get("created_at") or "")}
         if noted is None:
             return None
         noted["entry"]["sparring"] = sparring
         noted["categories"] = {"sparring", "technique"}
     elif kind == "manual_takeaway":
-        noted = _session_entry(store, athlete_id, row, manual=True, compact=False)
+        noted = _session_entry(store, athlete_id, row, manual=True)
         noted_ids.add(("external", str(row["id"])))
     else:
-        noted = _session_entry(store, athlete_id, row, manual=False, compact=False)
+        noted = _session_entry(store, athlete_id, row, manual=False)
         noted_ids.add(("unlxck", str(row["id"])))
 
     next_day = (date.fromisoformat(day) + timedelta(days=1)).isoformat()
@@ -341,11 +389,11 @@ def build_context(store, athlete_id: str, kind: str, source: dict) -> dict | Non
         if ("unlxck", str(completion.get("id"))) in noted_ids or completion.get("completion_origin") == "day_credit" \
                 or completion.get("status") not in {"done", "modified", "skipped"}:
             continue
-        others.append(_session_entry(store, athlete_id, completion, manual=False, compact=True))
+        others.append(_session_entry(store, athlete_id, completion, manual=False))
     for manual in _same_day(store.list_external_training_sessions(athlete_id, limit=12, before_day=next_day), day):
         if ("external", str(manual.get("id"))) in noted_ids or manual.get("deleted_at"):
             continue
-        others.append(_session_entry(store, athlete_id, manual, manual=True, compact=True))
+        others.append(_session_entry(store, athlete_id, manual, manual=True))
     others = sorted(others, key=lambda item: item["at"])[:_MAX_OTHER_SESSIONS]
     # "order" lets a note say "this morning" or "the second session".
     for position, item in enumerate(sorted([noted, *others], key=lambda item: item["at"]), start=1):
@@ -355,14 +403,17 @@ def build_context(store, athlete_id: str, kind: str, source: dict) -> dict | Non
     performed = [exercise for item in sessions for exercise in item["entry"].get("exercises", [])
                  if exercise["status"] in PERFORMED]
     categories = set().union(*(item["categories"] for item in sessions))
-    sports = {str(item["sport"]) for item in sessions if item["sport"]}
+    # The noted work's own sport only: another class that day says nothing about it.
+    sports = _known_sports(store, athlete_id, [noted], noted.get("plan_id"))
     return {
         "payload": {
             "categories": sorted(categories),
             "sports": sorted(sports),
             "noted_session": noted["entry"],
-            "other_sessions_same_day": [item["entry"] for item in others],
+            "other_sessions_same_day": [_compact_entry(item["entry"]) for item in others],
         },
+        # Full detail (doses and results of every session) for the revision.
+        "sessions": [item["entry"] for item in sessions],
         "exercise_names": [exercise["name"] for exercise in performed],
         "patterns": {exercise["pattern"] for exercise in performed if exercise.get("pattern")},
         "categories": categories,
@@ -370,18 +421,41 @@ def build_context(store, athlete_id: str, kind: str, source: dict) -> dict | Non
     }
 
 
-def context_revision(context: dict | None) -> str:
-    """What a cue was grounded in: the day's sessions and each exercise's
-    performed status. A change here can make a stored cue wrong even when the
-    note itself is unchanged."""
+def _hash(value: Any) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:32]
+
+
+def _relevant_shape(context: dict, focus: dict) -> list:
+    """The record a cue depends on: the targeted exercises (or those of its
+    patterns) with their status, prescription and logged results, wherever
+    they were done that day; for a technique cue, the noted session's report."""
+    if focus.get("scope") == "sport_technique":
+        noted = context["sessions"][0]
+        return [noted.get("kind"), noted.get("status"), noted.get("sparring")]
+    targets = [words(target) for target in focus.get("exercise_targets") or []]
+    patterns = set(focus.get("movement_patterns") or [])
+    shape = []
+    for entry in context["sessions"]:
+        for item in entry.get("exercises", []):
+            name = words(item["name"])
+            if any(contains_words(name, target) for target in targets) or item.get("pattern") in patterns:
+                shape.append([item["name"], item["status"], item.get("prescribed"), item.get("actual")])
+    return shape
+
+
+def context_revision(context: dict | None, focus: dict | None = None) -> str:
+    """``<day>:<cue>`` hashes of what a cue was grounded in. ``day`` covers
+    every session that day with each exercise's status, dose and logged
+    results; ``cue`` only the part the cue depends on. A change to the cue's
+    part (a skipped set, different reps or load) withdraws it; any other change
+    is re-checked and kept when it still holds."""
     if context is None:
         return ""
-    payload = context["payload"]
-    sessions = [payload["noted_session"], *payload["other_sessions_same_day"]]
-    shape = [[item.get("kind"), item.get("status"), item.get("session_type"), item.get("activity"),
-              [[exercise["name"], exercise["status"]] for exercise in item.get("exercises", [])]]
-             for item in sessions]
-    return hashlib.sha256(json.dumps(shape, sort_keys=True).encode("utf-8")).hexdigest()
+    day = [[entry.get("kind"), entry.get("status"), entry.get("session_type"), entry.get("activity"),
+            entry.get("sparring"),
+            [[item["name"], item["status"], item.get("prescribed"), item.get("actual")]
+             for item in entry.get("exercises", [])]] for entry in context["sessions"]]
+    return f"{_hash(day)}:{_hash(_relevant_shape(context, focus) if focus else [])}"
 
 
 # -- Run ------------------------------------------------------------------------
@@ -401,6 +475,12 @@ def _explicit_focus_covers(store, athlete_id: str, kind: str, source: dict) -> b
         if kind == "plan_completion" and log.get("session_id") and log.get("session_id") == row.get("session_id"):
             return True
     return False
+
+
+def _head_impact_reported(kind: str, row: dict) -> bool:
+    """A sparring report of a rocked/dropped moment or heavy head contact: the
+    note is head-impact evidence, never a training cue."""
+    return kind == "sparring_log" and (bool(row.get("rocked")) or row.get("head_contact") == "heavy")
 
 
 def run_focus_inference(store, athlete_id: str, kind: str, source_id: str, *,
@@ -433,7 +513,7 @@ def _run(store, athlete_id: str, kind: str, source_id: str, inferrer: FocusInfer
 
     # No model call at all for health language, a head-impact report, or a
     # session where the athlete wrote their own focus.
-    if mentions_health(note) or (kind == "sparring_log" and source["row"].get("rocked")):
+    if mentions_health(note) or _head_impact_reported(kind, source["row"]):
         return finish("none", "health")
     if _explicit_focus_covers(store, athlete_id, kind, source):
         return finish("none", "explicit_focus")
@@ -461,16 +541,25 @@ def _run(store, athlete_id: str, kind: str, source_id: str, inferrer: FocusInfer
     # Ground against the day as it is now: results logged or skipped while the
     # model was answering count, and the stored revision says which state it was.
     current = build_context(store, athlete_id, kind, source) or context
-    usage["context_revision"] = context_revision(current)
     grounded = _ground(result.inferred, current) if result.inferred else None
+    usage["context_revision"] = context_revision(current, grounded)
     if grounded is None:
         return finish("none", "no_suggestion", **usage)
     return finish("ready", "ready", **grounded, **usage)
 
 
 def _ground(inferred: InferredFocus, context: dict) -> dict | None:
-    return grounded_focus(inferred, exercise_names=context["exercise_names"], patterns=context["patterns"],
-                          categories=context["categories"], sports=context["sports"])
+    sports = context["sports"]
+    if inferred.scope == "sport_technique" and not inferred.sport and len(sports) == 1:
+        # The model may leave it out; the noted work's known sport is kept.
+        inferred = inferred.model_copy(update={"sport": next(iter(sports))})
+    grounded = grounded_focus(inferred, exercise_names=context["exercise_names"], patterns=context["patterns"],
+                              categories=context["categories"], sports=sports)
+    # A technique cue without a known sport could be shown before another
+    # combat sport, so it is not kept.
+    if grounded and grounded["scope"] == "sport_technique" and not grounded["sport"]:
+        return None
+    return grounded
 
 
 def refresh_day_focus(store, athlete_id: str, training_day: str | None = None, *,
@@ -494,13 +583,19 @@ def refresh_day_focus(store, athlete_id: str, training_day: str | None = None, *
             if not source or note_revision(source["note"]) != row.get("source_revision"):
                 continue
             context = build_context(store, athlete_id, kind, source)
-            revision = context_revision(context)
+            focus = {"scope": row.get("scope"), "exercise_targets": list(row.get("exercise_targets") or []),
+                     "movement_patterns": list(row.get("movement_patterns") or [])}
+            revision = context_revision(context, focus)
             if revision == row.get("context_revision"):
                 continue
             stored = InferredFocus(focus=row.get("focus"), scope=row.get("scope"), category=row.get("category"),
-                                   sport=row.get("sport"), exercise_targets=list(row.get("exercise_targets") or []),
-                                   movement_patterns=list(row.get("movement_patterns") or []))
-            still = context is not None and _ground(stored, context) is not None
+                                   sport=row.get("sport"), exercise_targets=focus["exercise_targets"],
+                                   movement_patterns=focus["movement_patterns"])
+            # What the cue itself rests on changed (results, dose, status): the
+            # guidance was drawn from a different session than the one now on
+            # record, so it is withdrawn rather than re-checked.
+            cue_changed = revision.split(":")[-1] != str(row.get("context_revision") or "").split(":")[-1]
+            still = context is not None and not cue_changed and _ground(stored, context) is not None
             fields = {"context_revision": revision} if still else \
                 {"context_revision": revision, "status": "none", "reason": "context_changed"}
             if store.restamp_training_focus_inference(athlete_id, str(row["id"]), source_revision=row["source_revision"],

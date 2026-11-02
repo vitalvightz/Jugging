@@ -681,3 +681,138 @@ def test_migration_schema_and_requirements_agree():
 def test_privacy_notice_discloses_training_note_processing():
     notice = (ROOT / "docs" / "privacy-notice.md").read_text()
     assert "training-focus suggestions" in notice and "Notes about pain, injury" in notice
+
+
+# -- Regressions: head impact never reaches the model --------------------------
+
+
+@pytest.mark.parametrize("note", [
+    "Took a lot of head contact in round two.",
+    "Ate too many head shots, need to keep my hands up.",
+    "Got clipped late and kept going.",
+    "He caught me on the chin twice with the overhand.",
+    "Too many shots to the head off the jab.",
+    "Was wobbled in the third, keep my guard higher.",
+    "Saw stars after the right hand.",
+])
+def test_head_impact_notes_are_blocked_before_any_model_call(api, note):
+    client, store, fake = api
+    fake.answer = {"focus": "Keep your guard high after the jab.", "scope": "sport_technique", "category": "sparring",
+                   "sport": "boxing", "exercise_targets": [], "movement_patterns": []}
+    session = manual_session(client, activity="sparring", sport="boxing", session_type="sparring", effort="hard")
+    sparring_detail(client, session["id"], notes=note)
+    save_takeaway(client, session["id"], note)
+    row = lower_body_completion(store)
+    edit_notes(client, row["id"], note)
+    assert fake.payloads == []
+    assert read_items(client) == []
+
+
+def test_heavy_head_contact_report_blocks_the_note_whatever_it_says(api):
+    client, store, fake = api
+    fake.answer = {"focus": "Keep your guard high after the jab.", "scope": "sport_technique", "category": "sparring",
+                   "sport": "boxing", "exercise_targets": [], "movement_patterns": []}
+    session = manual_session(client, activity="sparring", sport="boxing", session_type="sparring", effort="hard")
+    sparring_detail(client, session["id"], notes="Guard dropped after the jab.", head_contact="heavy")
+    assert fake.payloads == []
+
+
+def test_technique_notes_that_only_sound_alike_still_work(api):
+    client, store, fake = api
+    fake.answer = {"focus": "Return the jab straight to guard.", "scope": "sport_technique", "category": "sparring",
+                   "sport": "boxing", "exercise_targets": [], "movement_patterns": []}
+    session = manual_session(client, activity="sparring", sport="boxing", session_type="sparring", effort="hard")
+    sparring_detail(client, session["id"], notes="Kept dropping my right hand after the jab; chin was tucked.")
+    assert len(fake.payloads) == 1 and len(read_items(client)) == 1
+
+
+# -- Regressions: logged performance of the cue's exercise ----------------------
+
+
+def put_lunges(client, session_id, entry_id, *, reps, revision, name="Walking Lunge"):
+    response = client.put(f"/api/training/sessions/{session_id}/exercises/{entry_id}", headers=AUTH, json={
+        "exercise": {"name": name}, "format": "strength", "actual": {"sets": 3, "reps": reps}, "revision": revision})
+    assert response.status_code in {200, 201}, response.text
+
+
+def test_changed_results_for_the_targeted_exercise_withdraw_the_cue(api):
+    client, store, fake = api
+    session, lunge = lunge_cue(client, fake)
+    put_lunges(client, session["id"], lunge, reps=4, revision=1)
+    assert read_items(client) == []
+    assert store.training_focus_inferences[0]["reason"] == "context_changed"
+    assert len(fake.payloads) == 1
+
+
+def test_changed_results_for_another_exercise_keep_the_cue(api):
+    client, store, fake = api
+    session, _ = lunge_cue(client, fake)
+    calf = str(uuid4())
+    put_lunges(client, session["id"], calf, reps=15, revision=0, name="Calf Raises")
+    put_lunges(client, session["id"], calf, reps=20, revision=1, name="Calf Raises")
+    assert [item["exercise_targets"] for item in read_items(client)] == [["walking lunge"]]
+
+
+def test_changed_plan_results_for_the_targeted_exercise_withdraw_the_cue(api):
+    client, store, fake = api
+    fake.answer = SPLIT_SQUAT
+    row = lower_body_completion(store, exercise_logs=[("b1", "as_prescribed", {"sets": 3, "reps": 8})])
+    edit_notes(client, row["id"], "Balance on split squats was poor.")
+    assert len(read_items(client)) == 1
+    next(log for log in store.exercise_logs if log["block_id"] == "b1").update(status="modified", actual={"sets": 1, "reps": 8})
+    assert inference.refresh_day_focus(store, ATHLETE_ID, row["training_day"]) == 1
+    assert read_items(client) == []
+
+
+# -- Regressions: a technique cue keeps the sport it was recorded for ------------
+
+
+TECHNIQUE = {"focus": "Return the jab straight to guard.", "scope": "sport_technique", "category": "sparring",
+             "sport": None, "exercise_targets": [], "movement_patterns": []}
+
+
+def timer_sparring(client, store, *, plan_sport=None, **fields):
+    from tests.test_api_sparring_log import PLAN_ID, _body, _seed_plan
+    _seed_plan(store)
+    if plan_sport:
+        store.plans[PLAN_ID]["structured_plan"] = {"plan_metadata": {"sport": plan_sport}}
+    response = client.post("/api/today/sparring-log", headers=AUTH, json=_body(
+        **{"notes": "Hand came back low after every jab.", "head_contact": "light", **fields}))
+    assert response.status_code == 201, response.text
+
+
+def test_timer_note_takes_the_athletes_single_sport(api):
+    client, store, fake = api
+    store.profiles[ATHLETE_ID]["technical_style"] = ["Boxing"]
+    fake.answer = TECHNIQUE
+    timer_sparring(client, store)
+    assert fake.payloads[0]["context"]["sports"] == ["boxing"]
+    [item] = read_items(client)
+    assert item["sport"] == "boxing"
+
+
+def test_plan_sport_wins_over_the_athletes_styles(api):
+    client, store, fake = api
+    store.profiles[ATHLETE_ID]["technical_style"] = ["boxing", "muay_thai"]
+    fake.answer = TECHNIQUE
+    timer_sparring(client, store, plan_sport="Muay Thai")
+    [item] = read_items(client)
+    assert item["sport"] == "muay_thai"
+
+
+def test_technique_cue_without_a_known_sport_is_not_kept(api):
+    client, store, fake = api
+    store.profiles[ATHLETE_ID]["technical_style"] = ["boxing", "muay_thai"]
+    fake.answer = TECHNIQUE
+    timer_sparring(client, store)
+    assert len(fake.payloads) == 1
+    assert read_items(client) == []
+    assert store.training_focus_inferences[0]["reason"] == "no_suggestion"
+
+
+def test_technique_cue_cannot_claim_a_different_sport(api):
+    client, store, fake = api
+    fake.answer = {**TECHNIQUE, "sport": "muay_thai"}
+    session = manual_session(client, activity="sparring", sport="boxing", session_type="sparring", effort="hard")
+    sparring_detail(client, session["id"], notes="Hand came back low after every jab.")
+    assert read_items(client) == []

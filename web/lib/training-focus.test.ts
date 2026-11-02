@@ -4,7 +4,8 @@ import { readFileSync } from "node:fs";
 
 import type { TrainingFocusItem } from "./api-schema.generated.ts";
 import {
-  focusFitsSession, focusFitsSport, movementPattern, relevantFocus, relevantFocusItem, upcomingSport, type FocusSession,
+  focusFitsSession, focusFitsSport, focusSessionFor, movementPattern, relevantFocus, relevantFocusItem, upcomingSport,
+  type FocusSession,
 } from "./training-focus.ts";
 
 // Real compiled athlete-built sessions; tests/test_custom_session_focus_contract.py
@@ -147,4 +148,43 @@ test("every candidate is considered: an older match behind many newer misses sti
   const older = inferred({ id: "older", focus: "Stay balanced through each split squat." });
   assert.deepEqual(relevantFocusItem(withItems(...misses, older), card(strengthSession("Split Squat"))),
     { id: "older", text: "Stay balanced through each split squat.", origin: "inferred" });
+});
+
+// -- Only the upcoming session's own work, never the whole day -----------------
+
+const dayWideLive = [
+  { block_type: "strength", display_name: "Bench Press", source_session_id: "am-upper" },
+  { block_type: "strength", display_name: "Split Squat", source_session_id: "pm-lower" },
+];
+
+test("today's day-wide live blocks are narrowed to the session the card shows", () => {
+  const upper = focusSessionFor({ sessionId: "am-upper", sessionType: "strength", liveBlocks: dayWideLive, plannedSessionCount: 2 });
+  assert.deepEqual(upper?.blocks?.map((block) => block.display_name), ["Bench Press"]);
+  // A split-squat cue never shows on the upper-body card because a later session that day has split squats.
+  assert.equal(relevantFocus(splitSquat, card(upper)), null);
+  const lower = focusSessionFor({ sessionId: "pm-lower", sessionType: "strength", liveBlocks: dayWideLive, plannedSessionCount: 2 });
+  assert.equal(relevantFocus(splitSquat, card(lower)), "Stay balanced through each split squat.");
+});
+
+test("untagged live blocks count only on a one-session day", () => {
+  const untagged = [{ block_type: "strength", display_name: "Split Squat" }];
+  assert.equal(focusSessionFor({ sessionId: "s1", liveBlocks: untagged, plannedSessionCount: 1 })?.blocks?.length, 1);
+  assert.equal(focusSessionFor({ sessionId: "s1", liveBlocks: untagged, plannedSessionCount: 2 })?.blocks?.length, 0);
+  assert.equal(focusSessionFor({ sessionId: null, liveBlocks: untagged, plannedSessionCount: 1 }), null);
+});
+
+test("a preview uses that session's planned blocks, not today's live prescription", () => {
+  const planned: FocusSession = { session_type: "strength", blocks: [{ block_type: "strength", display_name: "Trap Bar Deadlift" }] };
+  const preview = focusSessionFor({ sessionId: "tomorrow", planned, cardBlocks: [], plannedSessionCount: 1 });
+  assert.deepEqual(preview?.blocks?.map((block) => block.display_name), ["Trap Bar Deadlift"]);
+  assert.equal(relevantFocus(splitSquat, card(preview)), null);
+});
+
+test("an inferred technique cue needs its own known sport to match", () => {
+  const technique = (sport: string | null) => withItems(inferred({ focus: "Return the jab to guard.", scope: "sport_technique",
+    category: "sparring", sport, exercise_targets: [] }));
+  assert.equal(relevantFocus(technique("boxing"), card(generatedSparring, { sport: "boxing" })), "Return the jab to guard.");
+  assert.equal(relevantFocus(technique("boxing"), card(generatedSparring, { sport: "muay_thai" })), null);
+  assert.equal(relevantFocus(technique("boxing"), card(generatedSparring, { sport: null })), null);
+  assert.equal(relevantFocus(technique(null), card(generatedSparring, { sport: "boxing" })), null);
 });

@@ -14,8 +14,37 @@ export function announceTrainingFocusChanged(): void {
 export type FocusSession = {
   session_type?: string | null;
   prescription_source?: "athlete" | null;
-  blocks?: readonly Pick<StructuredBlock, "block_type" | "display_name" | "exercise_key">[] | null;
+  blocks?: readonly Pick<StructuredBlock, "block_type" | "display_name" | "exercise_key" | "source_session_id">[] | null;
 };
+
+/**
+ * The one session a focus is matched against: the session this card shows,
+ * never the whole day. Today's live prescription is day-wide (every session's
+ * blocks in one list), so it is narrowed to this session's blocks by
+ * ``source_session_id``; untagged live blocks belong to this session only when
+ * the day plans no other session. Anything unattributable is left out, which
+ * hides exercise-specific reminders rather than guessing.
+ */
+export function focusSessionFor({ sessionId, sessionType, planned, cardBlocks, liveBlocks, plannedSessionCount }: {
+  sessionId: string | null | undefined;
+  sessionType?: string | null;
+  /** This session as the plan stores it (by session_id), if found. */
+  planned?: FocusSession | null;
+  /** The card's own session blocks, used when there is no live prescription for it. */
+  cardBlocks?: FocusSession["blocks"];
+  /** Today's live (safety-adjusted) prescription blocks, only when the card shows today. */
+  liveBlocks?: FocusSession["blocks"];
+  plannedSessionCount: number;
+}): FocusSession | null {
+  if (!sessionId) return null;
+  const base = { session_type: planned?.session_type ?? sessionType ?? null, prescription_source: planned?.prescription_source ?? null };
+  if (!liveBlocks) return { ...base, blocks: planned?.blocks ?? cardBlocks ?? [] };
+  const tagged = liveBlocks.some((block) => block.source_session_id);
+  const blocks = tagged
+    ? liveBlocks.filter((block) => block.source_session_id === sessionId)
+    : plannedSessionCount <= 1 ? liveBlocks : [];
+  return { ...base, blocks };
+}
 
 export type FocusTarget = {
   /** The session the card shows; null on a day with no app session. */
@@ -109,7 +138,11 @@ function exerciseNames(session: FocusSession | null): string[] {
  * Missing session detail means no.
  */
 export function inferredFocusFits(item: TrainingFocusItem, target: FocusTarget): boolean {
-  if (item.scope === "sport_technique") return focusFitsSport(item.sport, target.sport) && focusFitsSession(target);
+  // An inferred technique cue must name its sport and meet that exact sport:
+  // a boxing cue is never shown before Muay Thai, or when the sport is unknown.
+  if (item.scope === "sport_technique") {
+    return Boolean(item.sport) && item.sport === target.sport && focusFitsSession(target);
+  }
   const names = exerciseNames(target.session);
   if (item.scope === "specific_exercise") {
     const targets = item.exercise_targets.map(focusWords).filter(Boolean);

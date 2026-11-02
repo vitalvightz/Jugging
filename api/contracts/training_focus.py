@@ -104,7 +104,15 @@ _HEALTH = re.compile(
     r"black(ed)? ?out|knocked (out|down)|rocked|ko|numb\w*|tingl\w*|swell\w*|swollen|sprain\w*|strain(ed)?|"
     r"tweak\w*|pulled (a|my)|bleed\w*|blood\w*|bruis\w*|fractur\w*|broken|tendon\w*|tendin\w*|ligament\w*|"
     r"acl|mcl|physio\w*|doctor\w*|medic\w*|rehab\w*|flare\w*|cramp\w*|blurr\w*|seeing stars|faint\w*|"
-    r"sick|ill|fever\w*|chest tight\w*|can'?t breathe|migraine\w*|stiff neck|whiplash)\b",
+    r"sick|ill|fever\w*|chest tight\w*|can'?t breathe|migraine\w*|stiff neck|whiplash|"
+    # Head impact in any wording: never a training cue, whatever the note asks.
+    r"head ?(contact|shots?|hits?|impacts?|knocks?|trauma|injur\w*)|"
+    r"(hit|struck|caught|clipped|tagged|cracked|smacked|punched|kicked|kneed|elbowed) (me |him )?(in|on|to) the (head|chin|jaw|temple|face)|"
+    r"(shots?|blows?|punch\w*|kicks?|knees?|elbows?) (to|on) the (head|chin|jaw|temple)|"
+    r"hit my head|banged my head|bumped my head|"
+    r"(got|was|been) (dropped|clipped|buzzed|stunned|wobbled|knocked)|dropped me|knockdown\w*|"
+    r"buzzed|stunned|wobbled|wobbly legs|saw stars|rang my bell|bell (rung|rang)|glassy|ringing|"
+    r"foggy|brain fog|memory|blank(ed)? out|lights? (went )?out)\b",
     re.IGNORECASE,
 )
 # A cue is technique or attention only. It never changes the prescribed work.
