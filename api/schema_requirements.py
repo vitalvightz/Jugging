@@ -541,8 +541,9 @@ REQUIRED_COLUMNS: Mapping[str, tuple[str, ...]] = {
     # Inferred focus from existing notes (api/services/training_focus_inference.py).
     "training_focus_inferences": ("id", "athlete_id", "source_kind", "source_id", "training_day", "source_revision",
                                   "status", "reason", "focus", "scope", "category", "sport", "exercise_targets",
-                                  "movement_patterns", "model", "input_tokens", "output_tokens", "generated_at",
-                                  "dismissed_at", "created_at", "updated_at"),
+                                  "movement_patterns", "context_revision", "model", "input_tokens", "output_tokens",
+                                  "generated_at", "dismissed_at", "created_at", "updated_at"),
+    "training_focus_call_budget": ("athlete_id", "usage_day", "calls"),
     "manual_exercise_entries": REQUIRED_MANUAL_EXERCISE_ENTRIES_COLUMNS,
     "personal_exercises": ("id", "athlete_id", "name", "name_key", "created_at", "updated_at"),
     "custom_training_plans": ("id", "athlete_id", "name", "kind", "sessions", "incomplete", "created_at", "updated_at"),
@@ -619,6 +620,7 @@ REQUIRED_FUNCTIONS: tuple[str, ...] = (
     "public.record_sparring_log",
     # Claims one note revision for focus inference (api/store.py::claim_training_focus_inference).
     "public.claim_training_focus_inference",
+    "public.reserve_training_focus_call",
     # Plan-free daily check-in upsert (api/store.py::upsert_today_checkin).
     "public.upsert_plan_free_today_checkin",
     "public.record_rehab_exposure",

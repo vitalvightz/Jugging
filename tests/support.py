@@ -525,6 +525,8 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         self.sparring_log_requests: dict[tuple[str, str], str] = {}
         self.sparring_logs: list[dict] = []
         self.training_focus_inferences: list[dict] = []
+        # Mirrors public.training_focus_call_budget: model calls per athlete per UTC day.
+        self.training_focus_calls: dict[tuple[str, str], int] = {}
         self.exercise_logs: list[dict] = []
         # Makes reset_history_plan_session fail, as the rehab reset guard does.
         self.fail_history_reset = False
@@ -2929,7 +2931,7 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
                     and row["source_kind"] == source_kind and row["source_id"] == source_id), None)
         reset = {"source_revision": source_revision, "training_day": training_day, "status": "pending", "reason": "",
                  "focus": None, "scope": None, "category": None, "sport": None, "exercise_targets": [],
-                 "movement_patterns": [], "dismissed_at": None, "updated_at": _now()}
+                 "movement_patterns": [], "context_revision": None, "dismissed_at": None, "updated_at": _now()}
         if row is None:
             self.training_focus_inferences.append({"id": str(uuid4()), "athlete_id": athlete_id, "source_kind": source_kind,
                                                    "source_id": source_id, "created_at": _now(), "generated_at": None,
@@ -2965,8 +2967,25 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
                 return True
         return False
 
-    def count_training_focus_generations(self, athlete_id: str, *, hours: int = 24) -> int:
-        return sum(1 for row in self.training_focus_inferences if row["athlete_id"] == athlete_id and row.get("generated_at"))
+    def list_training_focus_inferences_for_day(self, athlete_id: str, training_day: str) -> list[dict]:
+        return [dict(row) for row in self.training_focus_inferences if row["athlete_id"] == athlete_id
+                and str(row["training_day"]) == training_day and row["status"] == "ready" and not row.get("dismissed_at")]
+
+    def restamp_training_focus_inference(self, athlete_id: str, inference_id: str, *, source_revision: str,
+                                         context_revision: str | None, fields: dict) -> bool:
+        for row in self.training_focus_inferences:
+            if (row["athlete_id"] == athlete_id and row["id"] == inference_id and row["status"] == "ready"
+                    and row["source_revision"] == source_revision and row.get("context_revision") == context_revision):
+                row.update(fields, updated_at=_now())
+                return True
+        return False
+
+    def reserve_training_focus_call(self, athlete_id: str, *, limit: int) -> bool:
+        key = (athlete_id, _now()[:10])
+        if self.training_focus_calls.get(key, 0) >= limit:
+            return False
+        self.training_focus_calls[key] = self.training_focus_calls.get(key, 0) + 1
+        return True
 
     def latest_sparring_log_day(self, athlete_id: str, *, hard: bool = False, rocked: bool = False) -> str | None:
         days = [

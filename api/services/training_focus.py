@@ -16,15 +16,17 @@ from api.services.training_focus_inference import note_revision, read_source
 
 # Older focuses are stale: a reminder from a month ago is noise, not context.
 FOCUS_MAX_AGE_DAYS = 28
-_MAX_ITEMS = 5
+# Candidates read per kind. Every one is returned: Today picks the first that
+# fits the session it shows, so a cap after merging could drop the only match.
+_MAX_CANDIDATES = 30
 
 
-def _explicit_focuses(store, athlete_id: str, from_day: str) -> list[dict]:
+def _explicit_focuses(store, athlete_id: str, logs: list[dict]) -> list[dict]:
     """Non-empty sparring focuses, newest first. A focus on a manual session
     that has since been deleted goes with it. ``sport`` is the manual session's
     sport; timer and plan logs leave it None (they follow the athlete's sport)."""
     items = []
-    for row in store.list_sparring_logs(athlete_id, limit=60, from_day=from_day, with_focus=True):
+    for row in logs:
         focus = str(row.get("focus") or "").strip()
         if not focus:
             continue
@@ -39,25 +41,26 @@ def _explicit_focuses(store, athlete_id: str, from_day: str) -> list[dict]:
                       "training_day": str(row.get("training_day") or "")[:10], "sport": sport,
                       "session_id": row.get("session_id"), "external_session_id": str(external_id or "") or None,
                       "created_at": str(row.get("created_at") or "")})
-        if len(items) >= _MAX_ITEMS:
+        if len(items) >= _MAX_CANDIDATES:
             break
     return items
 
 
-def _inferred_focuses(store, athlete_id: str, from_day: str, explicit: list[dict]) -> list[dict]:
+def _inferred_focuses(store, athlete_id: str, from_day: str, explicit: list[dict],
+                      logs_by_id: dict[str, dict]) -> list[dict]:
     """Ready inferences whose note is still exactly what they were generated
     from, on a live record, with no explicit focus from the same session."""
     explicit_logs = {item["id"] for item in explicit}
     explicit_manual = {item["external_session_id"] for item in explicit if item["external_session_id"]}
     explicit_plan = {(item["session_id"], item["training_day"]) for item in explicit if item["session_id"]}
     items = []
-    for row in store.list_training_focus_inferences(athlete_id, from_day=from_day, limit=_MAX_ITEMS):
+    for row in store.list_training_focus_inferences(athlete_id, from_day=from_day, limit=_MAX_CANDIDATES):
         kind, source_id = row.get("source_kind"), str(row.get("source_id") or "")
         if kind == "sparring_log" and source_id in explicit_logs:
             continue
         if kind == "manual_takeaway" and source_id in explicit_manual:
             continue
-        source = read_source(store, athlete_id, str(kind), source_id)
+        source = read_source(store, athlete_id, str(kind), source_id, sparring_logs=logs_by_id)
         if not source or source["explicit_focus"] or note_revision(source["note"]) != row.get("source_revision"):
             continue
         if kind == "plan_completion" and (source["row"].get("session_id"), source["training_day"]) in explicit_plan:
@@ -75,11 +78,16 @@ def latest_training_focus(store, athlete_id: str, *, today: str, include_inferre
     """The newest explicit focus (``focus``/``training_day``/``sport``, read by
     older clients unchanged) and every candidate in ``items``."""
     from_day = (date.fromisoformat(today) - timedelta(days=FOCUS_MAX_AGE_DAYS - 1)).isoformat()
-    explicit = _explicit_focuses(store, athlete_id, from_day)
-    inferred = _inferred_focuses(store, athlete_id, from_day, explicit) if include_inferred else []
+    explicit = _explicit_focuses(store, athlete_id,
+                                 store.list_sparring_logs(athlete_id, limit=60, from_day=from_day, with_focus=True))
+    inferred = []
+    if include_inferred:
+        # One read of the window verifies every sparring-note inference.
+        logs = {str(row.get("id")): row for row in store.list_sparring_logs(athlete_id, limit=200, from_day=from_day)}
+        inferred = _inferred_focuses(store, athlete_id, from_day, explicit, logs)
     # Newest day first; on the same day the athlete's own words come first.
     items = sorted(explicit + inferred, key=lambda item: (item["training_day"], item["origin"] == "athlete",
-                                                          item["created_at"]), reverse=True)[:_MAX_ITEMS]
+                                                          item["created_at"]), reverse=True)
     for item in items:
         for key in ("created_at", "session_id", "external_session_id"):
             item.pop(key, None)

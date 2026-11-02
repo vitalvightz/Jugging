@@ -5718,7 +5718,7 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
         """Write the result only while the row is still pending for this revision."""
         values = {key: fields[key] for key in ("status", "reason", "focus", "scope", "category", "sport",
                                                "exercise_targets", "movement_patterns", "model",
-                                               "input_tokens", "output_tokens") if key in fields}
+                                               "input_tokens", "output_tokens", "context_revision") if key in fields}
         if fields.get("generated"):
             values["generated_at"] = datetime.now(timezone.utc).isoformat()
         response = (self.client.table("training_focus_inferences").update(values)
@@ -5740,11 +5740,31 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
             .eq("athlete_id", athlete_id).eq("id", inference_id).execute())
         return bool(getattr(response, "data", None))
 
-    def count_training_focus_generations(self, athlete_id: str, *, hours: int = 24) -> int:
-        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
-        response = (self.client.table("training_focus_inferences").select("id", count="exact")
-            .eq("athlete_id", athlete_id).gte("generated_at", since).limit(1).execute())
-        return int(getattr(response, "count", None) or 0)
+    def list_training_focus_inferences_for_day(self, athlete_id: str, training_day: str) -> list[dict[str, Any]]:
+        """Ready, undismissed inferences for one training day (the refresh after its record changes)."""
+        response = (self.client.table("training_focus_inferences").select("*")
+            .eq("athlete_id", athlete_id).eq("training_day", training_day).eq("status", "ready")
+            .is_("dismissed_at", "null").limit(50).execute())
+        return getattr(response, "data", None) or []
+
+    def restamp_training_focus_inference(self, athlete_id: str, inference_id: str, *, source_revision: str,
+                                         context_revision: str | None, fields: dict[str, Any]) -> bool:
+        """Re-stamp or withdraw a ready inference, only while it still holds the
+        note and context revisions it was checked against."""
+        values = {key: fields[key] for key in ("context_revision", "status", "reason") if key in fields}
+        query = (self.client.table("training_focus_inferences").update(values)
+            .eq("athlete_id", athlete_id).eq("id", inference_id).eq("source_revision", source_revision)
+            .eq("status", "ready"))
+        query = query.is_("context_revision", "null") if context_revision is None else query.eq("context_revision", context_revision)
+        return bool(getattr(query.execute(), "data", None))
+
+    def reserve_training_focus_call(self, athlete_id: str, *, limit: int) -> bool:
+        """Atomically count one model call against today's (UTC) cap; False when it is spent."""
+        response = self.client.rpc("reserve_training_focus_call", {"p_athlete_id": athlete_id, "p_limit": limit}).execute()
+        payload = getattr(response, "data", None)
+        if isinstance(payload, list):
+            payload = payload[0] if payload else None
+        return payload is True
 
     def latest_sparring_log_day(
         self, athlete_id: str, *, hard: bool = False, rocked: bool = False

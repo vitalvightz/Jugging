@@ -186,7 +186,7 @@ export const PRIVACY_NOTICE: LegalDocument = {
   slug: "privacy-notice",
   title: "Privacy Notice",
   version: PRIVACY_NOTICE_VERSION,
-  lastUpdated: "25 October 2026",
+  lastUpdated: "2 November 2026",
   status: "Not ready for publication: the trading address is still to be inserted.",
   intro:
     "UNLXCK uses personal data to create, adapt and deliver personalised training guidance. This notice explains what we use, why, who receives it and your rights.",
@@ -240,6 +240,7 @@ export const PRIVACY_NOTICE: LegalDocument = {
       heading: "AI and automated adaptation",
       paragraphs: [
         "UNLXCK uses software rules and AI-assisted processing to help generate and adapt training guidance from the information you provide. Relevant plan context may be sent to service providers supporting this processing.",
+        "With health-data consent on, the notes you write after training (a sparring note, a manual session's takeaway or a completed session's notes) may be sent to OpenAI with that day's session types, exercise names and what you logged for them, to suggest one technique focus for your next matching session. Your name, email and profile are not sent. Notes about pain, injury or other health concerns are not sent for this, and a suggestion never changes your training load. Suggestions are stored separately from your notes, can be dismissed, and stop when you withdraw consent.",
         "These systems may change, restrict or withhold training guidance. We have assessed whether that is a decision based solely on automated processing with legal or similarly significant effects under Article 22 UK GDPR, and concluded it is not: it changes what training UNLXCK suggests to you, not your legal position or your access to anything comparable, and you remain free to train differently. We keep that assessment under review, and apply it more cautiously to athletes under 18.",
         "If you think an automated adaptation has got something wrong, contact us using the privacy contact above and a person will look at it.",
       ],
@@ -251,7 +252,7 @@ export const PRIVACY_NOTICE: LegalDocument = {
       ],
       bullets: [
         "Supabase: sign-in, database and file storage. Holds your account, profile, training, health and feedback data, on servers in the EU.",
-        "OpenAI: AI-assisted plan generation. Receives the plan context needed to build your training, which can include injury and restriction information. Your data is not used to train their models.",
+        "OpenAI: AI-assisted plan generation and training-focus suggestions. Receives the plan context needed to build your training, which can include injury and restriction information, and, with health-data consent, your training notes with that day's session and exercise details. Your data is not used to train their models.",
         "Vercel: hosting for the UNLXCK website and app. Handles request and device information.",
         "Hetzner: hosting for our backend and plan-generation service, on servers in Germany.",
         "Resend: service and feedback email.",

@@ -4378,6 +4378,7 @@ create table if not exists public.training_focus_inferences (
   sport text,
   exercise_targets jsonb not null default '[]'::jsonb,
   movement_patterns jsonb not null default '[]'::jsonb,
+  context_revision text,
   model text,
   input_tokens integer,
   output_tokens integer,
@@ -4420,7 +4421,7 @@ begin
   on conflict (athlete_id, source_kind, source_id) do update
     set source_revision = excluded.source_revision, training_day = excluded.training_day,
         status = 'pending', reason = '', focus = null, scope = null, category = null, sport = null,
-        exercise_targets = '[]'::jsonb, movement_patterns = '[]'::jsonb, dismissed_at = null
+        exercise_targets = '[]'::jsonb, movement_patterns = '[]'::jsonb, context_revision = null, dismissed_at = null
     where t.source_revision <> excluded.source_revision
        or (t.status = 'pending' and t.updated_at < now() - interval '5 minutes')
        or (t.status = 'failed' and t.updated_at < now() - interval '1 hour')
@@ -4431,3 +4432,39 @@ $$;
 
 revoke all on function public.claim_training_focus_inference(uuid, text, uuid, date, text) from public, anon, authenticated;
 grant execute on function public.claim_training_focus_inference(uuid, text, uuid, date, text) to service_role;
+
+create table if not exists public.training_focus_call_budget (
+  athlete_id uuid not null references public.profiles(id) on delete cascade,
+  usage_day date not null,
+  calls integer not null default 0 check (calls >= 0),
+  primary key (athlete_id, usage_day)
+);
+
+alter table public.training_focus_call_budget enable row level security;
+revoke all on public.training_focus_call_budget from anon, authenticated;
+grant all on public.training_focus_call_budget to service_role;
+
+create or replace function public.reserve_training_focus_call(p_athlete_id uuid, p_limit integer)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_calls integer;
+begin
+  if p_limit is null or p_limit <= 0 then
+    return false;
+  end if;
+  insert into public.training_focus_call_budget as b (athlete_id, usage_day, calls)
+  values (p_athlete_id, (now() at time zone 'utc')::date, 1)
+  on conflict (athlete_id, usage_day) do update
+    set calls = b.calls + 1
+    where b.calls < p_limit
+  returning b.calls into v_calls;
+  return v_calls is not null;
+end;
+$$;
+
+revoke all on function public.reserve_training_focus_call(uuid, integer) from public, anon, authenticated;
+grant execute on function public.reserve_training_focus_call(uuid, integer) to service_role;

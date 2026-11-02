@@ -176,7 +176,8 @@ def test_note_about_another_session_that_day_is_not_grounded(api):
                    "category": "strength", "sport": None, "exercise_targets": ["jab"], "movement_patterns": []}
     edit_notes(client, row["id"], "Jab kept dropping.")
     others = fake.payloads[0]["context"]["other_sessions_same_day"]
-    assert others == [{"kind": "manual", "activity": "boxing", "sport": "boxing", "session_type": "pads"}]
+    assert others == [{"kind": "manual", "activity": "boxing", "sport": "boxing", "session_type": "pads",
+                       "status": "done", "order": 2}]
     assert boxing["id"] not in json.dumps(fake.payloads[0])
     assert read_items(client) == []
     assert store.training_focus_inferences[0]["status"] == "none"
@@ -477,3 +478,206 @@ def test_movement_patterns_match_the_shared_web_fixture():
     cases = json.loads((ROOT / "web" / "test" / "fixtures" / "training-focus-patterns.json").read_text())
     for name, pattern in cases.items():
         assert movement_pattern(name) == pattern, name
+
+
+# -- Regressions: grounding in what was actually performed ----------------------
+
+
+@pytest.mark.parametrize("logs, completion_status", [
+    # The split squat itself was skipped.
+    ([("b1", "skipped", {}), ("b2", "as_prescribed", {"sets": 3, "reps": 6})], "modified"),
+    # Other blocks were logged but the split squat was not: no record it was done.
+    ([("b2", "as_prescribed", {"sets": 3, "reps": 6})], "done"),
+    # A modified session with no per-exercise record: blocks may have been replaced.
+    ([], "modified"),
+])
+def test_cues_are_never_grounded_in_skipped_or_unverified_work(api, logs, completion_status):
+    client, store, fake = api
+    fake.answer = SPLIT_SQUAT
+    row = lower_body_completion(store, exercise_logs=logs)
+    store.update_session_completion_fields(ATHLETE_ID, row["id"], {})
+    for stored in store.session_completions[ATHLETE_ID]:
+        if stored["id"] == row["id"]:
+            stored["status"] = completion_status
+    edit_notes(client, row["id"], "Balance on split squats was poor.")
+    split = fake.payloads[0]["context"]["noted_session"]["exercises"][0]
+    assert split["name"] == "Split Squat" and split["status"] in {"skipped", "unverified"}
+    assert read_items(client) == []
+    assert store.training_focus_inferences[0]["reason"] == "no_suggestion"
+
+
+def test_a_session_completed_as_prescribed_without_results_counts_as_performed(api):
+    client, store, fake = api
+    fake.answer = SPLIT_SQUAT
+    row = lower_body_completion(store)
+    edit_notes(client, row["id"], "Balance on split squats was poor.")
+    statuses = [item["status"] for item in fake.payloads[0]["context"]["noted_session"]["exercises"]]
+    assert statuses == ["done", "done", "done"]
+    assert len(read_items(client)) == 1
+
+
+# -- Regressions: notes that point at another session that day -----------------
+
+
+def test_a_sparring_note_can_point_at_an_earlier_session_that_day(api):
+    client, store, fake = api
+    lower_body_completion(store, exercise_logs=[("b1", "skipped", {}), ("b2", "as_prescribed", {"sets": 3, "reps": 6})])
+    session = manual_session(client, activity="sparring", sport="boxing", session_type="sparring", effort="hard")
+    fake.answer = {"focus": "Keep the bar close through every RDL.", "scope": "specific_exercise", "category": "strength",
+                   "sport": None, "exercise_targets": ["romanian deadlift"], "movement_patterns": []}
+    sparring_detail(client, session["id"], notes="Legs were gone from the RDLs this morning, bar drifted forward.")
+    context = fake.payloads[0]["context"]
+    [earlier] = context["other_sessions_same_day"]
+    assert earlier["order"] == 1 and context["noted_session"]["order"] == 2
+    assert [(item["name"], item["status"]) for item in earlier["exercises"]] == [
+        ("Split Squat", "skipped"), ("Romanian Deadlift (RDL)", "done"), ("Calf Raises", "unverified")]
+    assert "prescribed" not in earlier["exercises"][1]  # other sessions stay compact
+    assert set(context["categories"]) >= {"strength", "sparring"}
+    [item] = read_items(client)
+    assert item["exercise_targets"] == ["romanian deadlift"]
+
+
+def test_an_earlier_sessions_skipped_exercise_cannot_be_targeted(api):
+    client, store, fake = api
+    lower_body_completion(store, exercise_logs=[("b1", "skipped", {}), ("b2", "as_prescribed", {"sets": 3, "reps": 6})])
+    session = manual_session(client, activity="sparring", sport="boxing", session_type="sparring", effort="hard")
+    fake.answer = SPLIT_SQUAT
+    sparring_detail(client, session["id"], notes="Split squats this morning were shaky.")
+    assert read_items(client) == []
+
+
+# -- Regressions: exercise context changes after the cue ------------------------
+
+
+def lunge_cue(client, fake):
+    fake.answer = {"focus": "Keep your hips square on each lunge.", "scope": "specific_exercise",
+                   "category": "strength", "sport": None, "exercise_targets": ["walking lunge"], "movement_patterns": []}
+    session = manual_session(client)
+    lunge = str(uuid4())
+    client.put(f"/api/training/sessions/{session['id']}/exercises/{lunge}", headers=AUTH,
+               json={"exercise": {"name": "Walking Lunge"}, "format": "strength", "actual": {"sets": 3, "reps": 10}})
+    save_takeaway(client, session["id"], "Hips kept twisting on the lunges.")
+    assert len(read_items(client)) == 1
+    return session, lunge
+
+
+def test_removing_the_targeted_exercise_withdraws_the_cue_without_a_model_call(api):
+    client, store, fake = api
+    session, lunge = lunge_cue(client, fake)
+    assert client.delete(f"/api/training/sessions/{session['id']}/exercises/{lunge}", headers=AUTH).status_code == 204
+    assert read_items(client) == []
+    assert store.training_focus_inferences[0]["reason"] == "context_changed"
+    assert len(fake.payloads) == 1
+    # The note is unchanged, so the same takeaway is not re-sent either.
+    save_takeaway(client, session["id"], "Hips kept twisting on the lunges.")
+    assert len(fake.payloads) == 1
+
+
+def test_an_unrelated_context_change_keeps_and_restamps_the_cue(api):
+    client, store, fake = api
+    session, _ = lunge_cue(client, fake)
+    before = store.training_focus_inferences[0]["context_revision"]
+    client.put(f"/api/training/sessions/{session['id']}/exercises/{uuid4()}", headers=AUTH,
+               json={"exercise": {"name": "Calf Raises"}, "format": "strength", "actual": {"sets": 2, "reps": 15}})
+    [item] = read_items(client)
+    assert item["exercise_targets"] == ["walking lunge"]
+    assert store.training_focus_inferences[0]["context_revision"] not in {before, None}
+    assert len(fake.payloads) == 1
+
+
+def test_a_plan_exercise_skipped_after_the_note_withdraws_the_cue(api):
+    client, store, fake = api
+    fake.answer = SPLIT_SQUAT
+    row = lower_body_completion(store)
+    edit_notes(client, row["id"], "Balance on split squats was poor.")
+    assert len(read_items(client)) == 1
+    store.exercise_logs.append({"id": str(uuid4()), "athlete_id": ATHLETE_ID, "plan_id": row["plan_id"],
+                                "training_day": row["training_day"], "session_id": "s-lower", "block_id": "b1",
+                                "status": "skipped", "actual": {}, "created_at": f"{row['training_day']}T11:00:00+00:00"})
+    assert inference.refresh_day_focus(store, ATHLETE_ID, row["training_day"]) == 1
+    assert read_items(client) == []
+
+
+def test_record_changed_while_the_model_answers_is_grounded_on_the_new_record(api):
+    client, store, fake = api
+    session = manual_session(client)
+    lunge = str(uuid4())
+    client.put(f"/api/training/sessions/{session['id']}/exercises/{lunge}", headers=AUTH,
+               json={"exercise": {"name": "Walking Lunge"}, "format": "strength", "actual": {"sets": 3, "reps": 10}})
+    fake.answer = {"focus": "Keep your hips square on each lunge.", "scope": "specific_exercise",
+                   "category": "strength", "sport": None, "exercise_targets": ["walking lunge"], "movement_patterns": []}
+    fake.during = lambda: store.delete_manual_exercise(ATHLETE_ID, lunge)
+    save_takeaway(client, session["id"], "Hips kept twisting on the lunges.")
+    assert read_items(client) == []
+
+
+def test_exercise_log_writes_schedule_a_refresh(api, monkeypatch):
+    client, store, fake = api
+    calls = []
+    monkeypatch.setattr(inference, "refresh_day_focus", lambda store, athlete_id, day, **kw: calls.append(day))
+    monkeypatch.setattr(today_routes, "record_exercise_log", lambda *a, **k: {
+        "id": str(uuid4()), "athlete_id": ATHLETE_ID, "plan_id": str(uuid4()), "session_id": "s", "block_id": "b1",
+        "training_day": "2026-11-01", "status": "skipped", "prescribed": {}, "actual": {}, "created_at": "x", "updated_at": "x"})
+    monkeypatch.setattr(today_routes, "reconcile_training_xp", lambda *a, **k: None)
+    response = client.post("/api/today/exercise-log", headers=AUTH,
+                           json={"plan_id": str(uuid4()), "block_id": "b1", "status": "skipped"})
+    assert response.status_code == 201, response.text
+    assert calls == ["2026-11-01"]
+
+
+# -- Regressions: candidate window and call cap ---------------------------------
+
+
+def test_every_recent_candidate_is_returned_for_matching(api):
+    client, store, fake = api
+    fake.answer = SPLIT_SQUAT
+    for index in range(8):
+        row = lower_body_completion(store, session_id=f"s-{index}")
+        edit_notes(client, row["id"], f"Balance on split squats was poor, take {index}.")
+    assert len(read_items(client)) == 8
+
+
+def test_daily_cap_counts_every_call_not_rows(api, monkeypatch):
+    client, store, fake = api
+    monkeypatch.setenv("UNLXCK_FOCUS_DAILY_LIMIT", "2")
+    fake.answer = SPLIT_SQUAT
+    row = lower_body_completion(store)
+    edit_notes(client, row["id"], "Balance on split squats was poor.")
+    edit_notes(client, row["id"], "Balance on split squats was still poor.")
+    edit_notes(client, row["id"], "Balance on split squats was poor again.")
+    # One stored row, three edits: the third call is refused.
+    assert len(fake.payloads) == 2 and len(store.training_focus_inferences) == 1
+    assert store.training_focus_inferences[0]["reason"] == "daily_limit"
+
+
+def test_failed_calls_count_towards_the_cap(api, monkeypatch):
+    client, store, fake = api
+    monkeypatch.setenv("UNLXCK_FOCUS_DAILY_LIMIT", "1")
+    fake.error = RuntimeError("provider down")
+    row = lower_body_completion(store)
+    edit_notes(client, row["id"], "Balance on split squats was poor.")
+    fake.error = None
+    fake.answer = SPLIT_SQUAT
+    edit_notes(client, row["id"], "Balance on split squats was poor again.")
+    assert len(fake.payloads) == 1
+
+
+# -- Regressions: schema and disclosure ------------------------------------------
+
+
+def test_migration_schema_and_requirements_agree():
+    from api.schema_requirements import REQUIRED_COLUMNS as REQUIRED_TABLE_COLUMNS, REQUIRED_FUNCTIONS
+    migration = (ROOT / "supabase" / "migrations" / "20261102120000_add_training_focus_inferences.sql").read_text()
+    schema = (ROOT / "supabase" / "schema.sql").read_text()
+    for table in ("training_focus_inferences", "training_focus_call_budget"):
+        for column in REQUIRED_TABLE_COLUMNS[table]:
+            assert column in migration and column in schema, (table, column)
+    for function in ("public.claim_training_focus_inference", "public.reserve_training_focus_call"):
+        assert function in REQUIRED_FUNCTIONS
+        assert f"create or replace function {function}" in migration
+        assert f"create or replace function {function}" in schema
+
+
+def test_privacy_notice_discloses_training_note_processing():
+    notice = (ROOT / "docs" / "privacy-notice.md").read_text()
+    assert "training-focus suggestions" in notice and "Notes about pain, injury" in notice

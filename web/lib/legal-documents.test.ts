@@ -314,7 +314,7 @@ test("each document carries its own version, and the Terms track acceptance", ()
 
 test("the Terms carry an effective date and the notice a revision date", () => {
   assert.equal(TERMS_OF_USE.effectiveDate, "19 August 2026");
-  assert.equal(PRIVACY_NOTICE.lastUpdated, "25 October 2026");
+  assert.equal(PRIVACY_NOTICE.lastUpdated, "2 November 2026");
   assert.equal(TERMS_OF_USE.lastUpdated, undefined);
 });
 

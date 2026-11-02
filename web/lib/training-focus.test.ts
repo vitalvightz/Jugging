@@ -140,3 +140,11 @@ test("movement patterns match the backend's shared fixture", () => {
   const cases = JSON.parse(readFileSync(new URL("../test/fixtures/training-focus-patterns.json", import.meta.url), "utf8")) as Record<string, string | null>;
   for (const [name, pattern] of Object.entries(cases)) assert.equal(movementPattern(name), pattern, name);
 });
+
+test("every candidate is considered: an older match behind many newer misses still shows", () => {
+  const misses = Array.from({ length: 7 }, (_, index) =>
+    inferred({ id: `miss-${index}`, focus: `Cue ${index}`, exercise_targets: ["bench press"] }));
+  const older = inferred({ id: "older", focus: "Stay balanced through each split squat." });
+  assert.deepEqual(relevantFocusItem(withItems(...misses, older), card(strengthSession("Split Squat"))),
+    { id: "older", text: "Stay balanced through each split squat.", origin: "inferred" });
+});

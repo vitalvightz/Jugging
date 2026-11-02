@@ -29,7 +29,7 @@ from api.contracts.manual_exercises import ManualExerciseEntry, PerformedExercis
 from api.services.manual_exercises import delete_session_exercise, list_session_exercises, save_session_exercise
 from api.services.tracking_xp import reconcile_training_xp
 from api.services.training_focus import latest_training_focus
-from api.services.training_focus_inference import schedule_focus_inference
+from api.services.training_focus_inference import schedule_focus_inference, schedule_focus_refresh
 from api.services.exercise_library import exercise_library, exercise_performances
 
 from api.compliance_guards import require_health_feature_access
@@ -271,10 +271,13 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
 
     @router.patch("/api/training/sessions/{entry_id}", response_model=TrainingHistorySession)
     def edit_external_training(entry_id: UUID, body: ExternalTrainingFields,
+                               background_tasks: BackgroundTasks,
                                profile: ProfileRecord = Depends(require_profile),
                                store: AppStore = Depends(get_store)):
         require_health_feature_access(profile)
-        return update_external_training(store, profile.athlete_id, str(entry_id), body)
+        row = update_external_training(store, profile.athlete_id, str(entry_id), body)
+        schedule_focus_refresh(background_tasks, store, profile.athlete_id, training_day=row.get("training_day"))
+        return row
 
     @router.put("/api/training/sessions/{entry_id}/takeaway", response_model=TrainingHistorySession)
     def save_external_training_takeaway(entry_id: UUID, body: ExternalTrainingTakeaway,
@@ -289,9 +292,12 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
 
     @router.delete("/api/training/sessions/{entry_id}", status_code=204)
     def remove_external_training(entry_id: UUID,
+                                 background_tasks: BackgroundTasks,
                                  profile: ProfileRecord = Depends(require_profile),
                                  store: AppStore = Depends(get_store)):
+        row = store.get_external_training_session(profile.athlete_id, str(entry_id))
         delete_external_training(store, profile.athlete_id, str(entry_id))
+        schedule_focus_refresh(background_tasks, store, profile.athlete_id, training_day=(row or {}).get("training_day"))
         return Response(status_code=204)
 
     # Optional exercise results on a manual session. Writes record health data
@@ -304,18 +310,22 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
 
     @router.put("/api/training/sessions/{entry_id}/exercises/{exercise_entry_id}", response_model=ManualExerciseEntry)
     def save_manual_exercise(entry_id: UUID, exercise_entry_id: UUID, body: PerformedExerciseInput,
+                             background_tasks: BackgroundTasks,
                              profile: ProfileRecord = Depends(require_profile),
                              store: AppStore = Depends(get_store)):
         require_health_feature_access(profile)
         saved = save_session_exercise(store, profile.athlete_id, str(entry_id), str(exercise_entry_id), body)
         reconcile_training_xp(store, profile.athlete_id, athlete_timezone=profile.athlete_timezone)
+        schedule_focus_refresh(background_tasks, store, profile.athlete_id, external_session_id=entry_id)
         return saved
 
     @router.delete("/api/training/sessions/{entry_id}/exercises/{exercise_entry_id}", status_code=204)
     def remove_manual_exercise(entry_id: UUID, exercise_entry_id: UUID,
+                               background_tasks: BackgroundTasks,
                                profile: ProfileRecord = Depends(require_profile),
                                store: AppStore = Depends(get_store)):
         delete_session_exercise(store, profile.athlete_id, str(entry_id), str(exercise_entry_id))
+        schedule_focus_refresh(background_tasks, store, profile.athlete_id, external_session_id=entry_id)
         return Response(status_code=204)
 
     @router.get("/api/training/history", response_model=TrainingHistoryResponse)
@@ -360,11 +370,13 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
 
     @router.delete("/api/training/history/unlxck/{completion_id}", status_code=204)
     def remove_history_plan_session(completion_id: UUID,
+                                    background_tasks: BackgroundTasks,
                                     profile: ProfileRecord = Depends(require_profile),
                                     store: AppStore = Depends(get_store)):
         row = delete_plan_completion(store, profile.athlete_id, str(completion_id))
         if row is None:
             return Response(status_code=204)
+        schedule_focus_refresh(background_tasks, store, profile.athlete_id, training_day=row.get("training_day"))
         for reconcile in (reconcile_training_streak, reconcile_adherence_streak):
             try:
                 reconcile(store, athlete_id=profile.athlete_id, athlete_timezone=profile.athlete_timezone)
@@ -608,6 +620,8 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
         if completion_status in {"done", "modified"} and row.get("completion_origin") != "day_credit":
             schedule_focus_inference(background_tasks, store, profile.athlete_id, "plan_completion", row.get("id"),
                                      note=str(row.get("notes") or ""), health_consent_granted=consent)
+        # A session done, modified or skipped changes what other notes that day can point at.
+        schedule_focus_refresh(background_tasks, store, profile.athlete_id, training_day=row.get("training_day"))
         # All consumers see the persisted completion. Share only post-save
         # plan/history reads across streaks, XP, week progress and rehab prompts.
         store = CompletionReads(store)
@@ -906,6 +920,7 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
     )
     def submit_exercise_log(
         request_body: ExerciseLogRequest,
+        background_tasks: BackgroundTasks,
         profile: ProfileRecord = Depends(require_profile),
         store: AppStore = Depends(get_store),
     ) -> ExerciseLogResponse:
@@ -923,6 +938,7 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
             health_consent_granted=evaluate_profile_compliance(profile).health_consent_granted,
         )
         reconcile_training_xp(store, profile.athlete_id, athlete_timezone=profile.athlete_timezone)
+        schedule_focus_refresh(background_tasks, store, profile.athlete_id, training_day=row.get("training_day"))
         return ExerciseLogResponse(log=_exercise_log_record(row))
 
     @router.post(
@@ -932,6 +948,7 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
     )
     def submit_exercise_logs(
         request_body: ExerciseLogBatchRequest,
+        background_tasks: BackgroundTasks,
         profile: ProfileRecord = Depends(require_profile),
         store: AppStore = Depends(get_store),
     ) -> ExerciseLogBatchResponse:
@@ -950,6 +967,8 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
             keep_existing=request_body.keep_existing,
         )
         reconcile_training_xp(store, profile.athlete_id, athlete_timezone=profile.athlete_timezone)
+        for day in {str(row.get("training_day") or "") for row in rows} - {""}:
+            schedule_focus_refresh(background_tasks, store, profile.athlete_id, training_day=day)
         return ExerciseLogBatchResponse(logs=[_exercise_log_record(row) for row in rows])
 
     @router.get("/api/history/exercise-library", response_model=ExerciseLibraryResponse)
