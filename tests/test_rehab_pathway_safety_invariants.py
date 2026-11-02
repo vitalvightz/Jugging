@@ -35,7 +35,7 @@ def test_no_runtime_reference_to_the_removed_load_eligibility_path():
 
 # 2. Hashes, prescriptions and bundles match the pre-migration policy file.
 def test_shipped_policies_match_the_pre_migration_file_exactly():
-    from tests.test_rehab_pathway_equivalence import composed
+    from tests.rehab_pathway_migration import composed
     for before, after in zip(load_clinical_policies(LEGACY), composed()):
         assert policy_review_hash(after) == before.content_hash == after.content_hash
         assert after.prescriptions == before.prescriptions and after.stage_bundles == before.stage_bundles
@@ -182,7 +182,7 @@ def test_truncated_history_blocks_and_cannot_be_removed_by_a_profile():
     ("chest_strain", "chest", "strain", "calm"), ("chest_strain", "chest", "strain", "restore"),
     ("ankle_sprain", "ankle", "sprain", "calm"), ("ankle_sprain", "ankle", "sprain", "restore")])
 def test_frozen_snapshots_from_the_previous_file_are_not_held(policy_id, region, kind, stage):
-    from tests.test_rehab_pathway_equivalence import get_rehab_bank
+    from tests.rehab_pathway_migration import get_rehab_bank
     row = dict(id=str(uuid4()), episode_id=str(uuid4()), athlete_id=str(uuid4()), canonical_location=region,
                body_region=region, body_area=f"Left {region}", description=f"{region} {kind}", side="left",
                injury_type=kind, severity="mild", status="monitoring" if stage == "restore" else "open",
@@ -193,7 +193,7 @@ def test_frozen_snapshots_from_the_previous_file_are_not_held(policy_id, region,
     frozen = reconcile_session_prescription(None, decisions=[old], plan_id="p", training_day="2026-10-02",
                                             injuries=[row])
     assert frozen and frozen["session"]["blocks"]
-    from tests.test_rehab_pathway_equivalence import composed
+    from tests.rehab_pathway_migration import composed
     new = resolve_injury_policy(deepcopy(row), policies=composed(), bank=get_rehab_bank())
     held = reconcile_session_prescription(None, decisions=[new], plan_id="p", training_day="2026-10-02",
                                           frozen=frozen, injuries=[row])
