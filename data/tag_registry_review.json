@@ -5,7 +5,6 @@
     "adductor": {"decision": "allow_canonical", "category": "anatomy_movement", "rationale": "Identifies adductor-focused movement content."},
     "ankle_mobility": {"decision": "allow_canonical", "category": "anatomy_movement", "rationale": "Distinguishes ankle-specific mobility work from generic mobility."},
     "anti_extension": {"decision": "allow_canonical", "category": "movement_quality", "rationale": "Describes a distinct trunk-control demand."},
-    "anti_lateral_flexion": {"decision": "allow_canonical", "category": "movement_quality", "rationale": "Describes a distinct trunk-control demand: resisting or controlling side bending."},
     "balance_static": {"decision": "allow_canonical", "category": "movement_quality", "rationale": "Distinguishes static balance from broader balance work."},
     "bodyweight": {"decision": "remove_from_tags", "category": "setup_metadata", "rationale": "Load/equipment context belongs outside semantic tags."},
     "boxer_footwork": {"decision": "allow_canonical", "category": "combat_skill", "rationale": "Combat-specific footwork descriptor."},

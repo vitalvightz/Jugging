@@ -168,7 +168,7 @@ known_equipment = [
     "climbing_rope", "bosu_ball", "foam_roller", "assault_bike",
     "stationary_bike", "step_mill", "recumbent_bike", "arm_ergometer",
     "elliptical", "pool", "bodyweight", "battle_rope", "kettlebells",
-    "weight_belt", "jump_rope", "hurdles", "back_extension_bench"
+    "weight_belt", "jump_rope", "hurdles"
 ]
 
 

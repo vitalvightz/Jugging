@@ -48,8 +48,8 @@ def test_dictionary_is_field_scoped_descriptive_and_source_supported():
         "Boxing Round Running Intervals (10-10-10)",
     }
     assert sum(bool(r["facets"]["goal"]) for r in training
-               if r["entry"]["name"] not in added_running) == 279  # one fewer: Staggered Stance Hold retired
-    assert sum(bool(r["facets"]["goal"]) for r in training) == 285  # one fewer: Staggered Stance Hold retired
+               if r["entry"]["name"] not in added_running) == 280
+    assert sum(bool(r["facets"]["goal"]) for r in training) == 286
     assert sum(bool(r["summary"]["exercise_details"]) for r in training) > 483
     holds = lib.search(index, filters={"training_method": "static_holds"}, limit=3000)
     assert holds["total"] > 0
@@ -108,9 +108,9 @@ def test_api_combines_optional_groups_counts_pagination_and_category_boundary():
     assert result["total"] == len(expected_physical) > 0
     assert {e["catalogue_id"] for e in result["entries"]} == expected_physical
     no_goal = client.get("/api/training/library", headers=AUTH, params={"training_method": "static_holds", "limit": 50}).json()
-    assert no_goal["total"] == 76  # one fewer: Staggered Stance Hold retired
+    assert no_goal["total"] == 77
     assert any(not e["verified_goals"] for e in no_goal["entries"])
-    assert next(f["count"] for f in no_goal["facets"]["training_method"] if f["value"] == "static_holds") == 76  # one fewer: Staggered Stance Hold retired
+    assert next(f["count"] for f in no_goal["facets"]["training_method"] if f["value"] == "static_holds") == 77
     for group in lib.DETAIL_FILTERS:
         assert client.get("/api/training/library", headers=AUTH, params={group: "unknown"}).json()["total"] == 0
     for category in ("rehab", "learn"):

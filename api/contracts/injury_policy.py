@@ -617,9 +617,6 @@ def reconcile_session_prescription(
                 continue
         demands = string_set(block.get("mechanical_load_regions"))
         tags = string_set(block.get("tags"))
-        if tags and "core_development" in tags:
-            tags.discard("core_development")
-            tags = tags or None
         contact = contact_level(block)
         uncertain = bool(blocked_regions) and demands is None
         uncertain = uncertain or bool((demands or set()) - canonical_rehab_locations())
