@@ -637,3 +637,17 @@ def test_main_power_or_strength_work_never_fills_a_core_slot():
                 _stimulus("anti_extension", 4, 15, "sec"), _stimulus("anti_lateral_flexion", 3, 20, "sec")]
     _mark_trunk_development(anchored)
     assert not any(s["trunk_development"] for s in anchored)
+
+
+def test_per_side_reps_written_as_the_card_prompt_asks_are_not_a_dose_change():
+    """The card prompt asks for reps "as '6 per side'"; the source parser reads
+    "3 x 6 per side" as reps 6. That was rejecting every per-side core card
+    (Kettlebell Windmill) as PRESCRIPTION_CHANGED."""
+    from api.structured_plan_deterministic_fallback import _source_block
+    from api.structured_plan_faithfulness import _prescription_value
+
+    expected = _source_block(["### D-21 (Monday) — Strength",
+                              "- Kettlebell Windmill — 3 x 6 per side @ RPE 7; rest 75s."], "Kettlebell Windmill")
+    for written in (6, "6", "6 per side", "6/side", "6 each side"):
+        assert _prescription_value(written) == _prescription_value(expected["reps"]), written
+    assert _prescription_value(12) != _prescription_value(expected["reps"])  # a real change still fails

@@ -358,7 +358,15 @@ def _explicit_prescription_violations(plan: dict[str, Any], source: str, plannin
     return violations
 
 
+# The card prompt asks for per-side reps as text ("6 per side"), while the
+# source parser reads "3 x 6 per side" as reps 6. Both mean the same dose.
+_PER_SIDE_REPS = re.compile(
+    r"\s*(\d+(?:\.\d+)?)\s*(?:per\s+side|/\s*side|each\s+side|per\s+leg|per\s+arm|each)\s*", re.I)
+
+
 def _prescription_value(value: Any) -> Any:
+    if isinstance(value, str) and (per_side := _PER_SIDE_REPS.fullmatch(value)):
+        value = per_side.group(1)
     if isinstance(value, dict):
         if "method" in value:
             quantity = (str(value.get("method") or "").upper(), _prescription_value(value.get("value")))
