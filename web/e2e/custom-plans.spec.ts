@@ -28,8 +28,13 @@ for (const width of [320, 390, 1280, 1600]) {
     await expect(add.getByRole("group")).toHaveCount(entries.length);
     if (!process.env.CUSTOM_PLAN_TEST_API) {
       // Each added exercise starts from the library's format, shown and editable in place.
-      await expect(add.getByRole("group", { name: entries[0].name, exact: true })).toContainText("5 × 5 min · rest 30s · Library format");
-      await expect(add.getByRole("group", { name: entries[0].name, exact: true }).getByLabel("Rounds", { exact: true })).toHaveValue("5");
+      // Earlier additions collapse to one summary line; tap to open the dose.
+      const first = add.getByRole("group", { name: entries[0].name, exact: true });
+      await expect(first).toContainText("5 × 5 min · rest 30s");
+      await first.getByRole("button", { expanded: false }).click();
+      await expect(first.getByLabel("Rounds", { exact: true })).toHaveValue("5");
+      await expect(first).toContainText("Library format");
+      await add.getByRole("group", { name: entries[1].name, exact: true }).getByRole("button", { expanded: false }).click();
     }
     expect(await add.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
     if (process.env.CUSTOM_QA_DIR) await page.screenshot({ path: `${process.env.CUSTOM_QA_DIR}/custom-add-${width}.png` });

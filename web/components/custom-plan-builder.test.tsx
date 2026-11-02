@@ -229,13 +229,19 @@ test("several library exercises go in from one sheet, each starting from its ver
     const sheet = topSheet();
     assert.ok(sheet.querySelector('input[type="search"]'), "the add sheet stays open for the next exercise");
     assert.doesNotMatch(document.body.textContent!, /Find a Drill/, "no trip to the full library screen");
-    const bikeRow = sheet.querySelector<HTMLElement>('[role="group"][aria-label="Bike sprints"]')!;
-    assert.equal(field(bikeRow, "Rounds").value, "5");
-    assert.match(bikeRow.textContent!, /5 × 5 min · rest 30s · Library format/);
-    const squatRow = sheet.querySelector<HTMLElement>('[role="group"][aria-label="Back squat"]')!;
+    // Each added exercise is one line; only the newest is open for its dose.
+    const row = (name: string) => sheet.querySelector<HTMLElement>(`[role="group"][aria-label="${name}"]`)!;
+    assert.equal(row("Bike sprints").querySelector("button[aria-expanded]")!.getAttribute("aria-expanded"), "false");
+    assert.equal(field(row("Bike sprints"), "Rounds"), null, "a collapsed row shows only its summary");
+    assert.match(row("Bike sprints").textContent!, /5 × 5 min · rest 30s/);
+    const squatRow = row("Back squat");
     assert.equal(field(squatRow, "Sets").value, "3", "the library's sets, not last session's");
     assert.equal(field(squatRow, "Reps").value, "5");
-    assert.match(squatRow.textContent!, /3 × 5 · 100 kg · Library format · your last session/);
+    assert.match(squatRow.textContent!, /3 × 5 · 100 kg[\s\S]*Library format · your last session/);
+    await act(async () => row("Bike sprints").querySelector<HTMLButtonElement>("button[aria-expanded]")!.click());
+    assert.equal(field(row("Bike sprints"), "Rounds").value, "5");
+    assert.match(row("Bike sprints").textContent!, /Library format/);
+    assert.equal(field(row("Back squat"), "Sets"), null, "opening one closes the other");
 
     await act(async () => button(sheet, "Done").click());
     await wait(250);
@@ -357,7 +363,7 @@ test("a personal exercise starts from the search text, with extras folded away",
     await act(async () => submit(editor.querySelector("form")!));
     await wait(250);
     const row = topSheet().querySelector<HTMLElement>('[role="group"][aria-label="Bag rounds"]')!;
-    assert.match(row.textContent!, /3 × 10 · Your exercise/);
+    assert.match(row.textContent!, /3 × 10[\s\S]*Your exercise/);
     assert.equal(field(row, "Sets").value, "3");
   } finally {
     await ui.unmount();

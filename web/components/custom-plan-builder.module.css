@@ -357,24 +357,32 @@
 .resultMain { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; padding: 10px 0; border: 0; background: transparent; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
 .resultName { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .resultMeta { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.resultAdd, .removeAdded { flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--border-default); border-radius: 999px; background: transparent; color: var(--text-primary); font: inherit; font-size: 20px; line-height: 1; cursor: pointer; }
+.resultAdd { flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--border-default); border-radius: 999px; background: transparent; color: var(--text-primary); font: inherit; font-size: 20px; line-height: 1; cursor: pointer; }
 .resultAdd svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .resultAdd:disabled { opacity: 0.4; cursor: not-allowed; }
-.removeAdded { border-color: transparent; color: var(--text-muted); }
-.resultAdd:focus-visible, .removeAdded:focus-visible, .resultMain:focus-visible, .textButton:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.resultAdd:focus-visible, .resultMain:focus-visible, .textButton:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
 .textButton { justify-self: start; width: auto; min-height: 44px; padding: 0 4px; border: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 14px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 /* Secondary actions share one line; long text truncates instead of wrapping into a column. */
 .pickerLinks { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
-.pickerLinks .textButton { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pickerLinks .textButton { min-height: 36px; font-size: 13px; font-weight: 500; color: var(--text-secondary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pickerLinks .textButton:last-child { flex: 0 0 auto; }
 .textButton:disabled { opacity: 0.5; cursor: not-allowed; }
 .added { display: grid; gap: 8px; min-width: 0; padding-top: 4px; }
 .added h3 { margin: 0; font: 600 11px/1.4 var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
 .added ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.addedRow { display: grid; gap: 6px; padding: 10px 12px 12px; border: 1px solid var(--border-subtle); border-radius: 12px; min-width: 0; }
-.addedHead { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.addedHead strong { flex: 1 1 auto; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.addedSource { color: var(--text-muted); font-size: 12px; line-height: 1.4; }
+.addedRow { border: 1px solid var(--border-subtle); border-radius: 12px; min-width: 0; }
+.addedHead { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 14px; border: 0; background: transparent; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
+.addedHead:focus-visible { outline: 2px solid var(--text-primary); outline-offset: -2px; border-radius: 12px; }
+.addedText { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
+.addedText strong, .addedText small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.addedText strong { font-size: 15px; }
+.addedText small { font-size: 13px; color: var(--text-secondary); }
+.chevron { flex: 0 0 auto; width: 8px; height: 8px; border-right: 1.5px solid var(--text-muted); border-bottom: 1.5px solid var(--text-muted); transform: rotate(45deg); transition: transform var(--transition-fast); }
+.addedHead[aria-expanded="true"] .chevron { transform: rotate(-135deg); }
+.addedBody { display: grid; gap: 8px; padding: 0 14px 10px; }
+.addedFoot { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.addedFoot small { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 12px; }
+.addedFoot .textButton { min-height: 36px; font-size: 13px; }
 /* The quick dose reads as one line: [3] × [5] reps, [5] × [5][min] rest [30] s. */
 .inlineDose { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 14px; min-width: 0; }
 .sheet .inlineDose input[type="number"] { width: 56px; min-height: 40px; padding: 6px; text-align: center; }

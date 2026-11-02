@@ -122,6 +122,8 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   const [chosenDay, setChosenDay] = useState<Weekday>();
   // The add sheet remembers what it added this visit, so their doses can be set right there.
   const [adding, setAdding] = useState<{ sessionId: string; added: string[] }>();
+  // One added exercise is open at a time: the newest, so its dose can be set at once; the rest stay one line each.
+  const [openAdded, setOpenAdded] = useState<string>();
   const [openExercise, setOpenExercise] = useState<string | null>(null);
   const [error, setError] = useState<string>(),
     [message, setMessage] = useState<string>();
@@ -358,6 +360,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   /** Remembers an exercise added while the add sheet is open, so its dose shows there. */
   function noteAdded(sessionId: string, exerciseId: string) {
     setAdding(current => current?.sessionId === sessionId ? { ...current, added: [...current.added, exerciseId] } : current);
+    setOpenAdded(exerciseId);
   }
   function addLibrary(sessionId: string, entry: LibraryEntry | LibraryPreview) {
     if (entry.category !== "training") return;
@@ -824,26 +827,35 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
             {addedHere.length ? <section className={styles.added} aria-labelledby="custom-added-heading">
               <h3 id="custom-added-heading">Added · {addedHere.length}</h3>
               <ol>
-                {addedHere.map(exercise => <li key={exercise.id} className={styles.addedRow} role="group" aria-label={nameOf(exercise)}>
-                  <div className={styles.addedHead}>
-                    <strong>{nameOf(exercise)}</strong>
-                    <button type="button" className={styles.textButton} aria-label={`More options for ${nameOf(exercise)}`}
-                      onClick={() => edit(adding.sessionId, exercise)}>More</button>
-                    <button type="button" className={styles.removeAdded} aria-label={`Remove ${nameOf(exercise)}`}
-                      onClick={() => sessionChange(adding.sessionId, s => ({ ...s, exercises: s.exercises.filter(e => e.id !== exercise.id) }))}>
-                      <span aria-hidden="true">×</span>
+                {addedHere.map(exercise => {
+                  const open = openAdded === exercise.id;
+                  return <li key={exercise.id} className={styles.addedRow} role="group" aria-label={nameOf(exercise)}>
+                    <button type="button" className={styles.addedHead} aria-expanded={open}
+                      onClick={() => setOpenAdded(open ? undefined : exercise.id)}>
+                      <span className={styles.addedText}>
+                        <strong>{nameOf(exercise)}</strong>
+                        <small>{doseIncomplete(exercise.dose) ? "Prescription not set" : doseSummary(exercise.dose)}</small>
+                      </span>
+                      <span className={styles.chevron} aria-hidden="true" />
                     </button>
-                  </div>
-                  <small className={styles.addedSource}>
-                    {doseIncomplete(exercise.dose) ? null : <>{doseSummary(exercise.dose)} · </>}
-                    {exercise.origin === "manual" ? "Your exercise"
-                      : prefills[exercise.id] === undefined ? "Checking the library and your history…"
-                      : prefills[exercise.id] ?? "No set format. Enter your own."}
-                  </small>
-                  <CustomDoseEditor essential dose={exercise.dose}
-                    movement={exercise.origin === "catalogue" ? exercise.snapshot : null}
-                    onChange={dose => setDose(adding.sessionId, exercise.id, dose)} />
-                </li>)}
+                    {open ? <div className={styles.addedBody}>
+                      <CustomDoseEditor essential dose={exercise.dose}
+                        movement={exercise.origin === "catalogue" ? exercise.snapshot : null}
+                        onChange={dose => setDose(adding.sessionId, exercise.id, dose)} />
+                      <div className={styles.addedFoot}>
+                        <small>{exercise.origin === "manual" ? "Your exercise"
+                          : prefills[exercise.id] === undefined ? "Checking the library and your history…"
+                          : prefills[exercise.id] ?? "No set format. Enter your own."}</small>
+                        <button type="button" className={styles.textButton} aria-label={`More options for ${nameOf(exercise)}`}
+                          onClick={() => edit(adding.sessionId, exercise)}>More</button>
+                        <button type="button" className={styles.textButton} aria-label={`Remove ${nameOf(exercise)}`}
+                          onClick={() => sessionChange(adding.sessionId, s => ({ ...s, exercises: s.exercises.filter(e => e.id !== exercise.id) }))}>
+                          Remove
+                        </button>
+                      </div>
+                    </div> : null}
+                  </li>;
+                })}
               </ol>
             </section> : null}
             <button type="button" className="cta" onClick={() => setAdding(undefined)}>Done</button>
