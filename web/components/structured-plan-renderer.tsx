@@ -747,6 +747,47 @@ function ExerciseGlyph({ block }: { block: StructuredBlock }) {
  * that expands to the demo, what the exercise builds, why it is in today's
  * session, and the full prescription. Rows in a session are single-open.
  */
+// A planner presentation group (the Core Development block) is a server-owned
+// block tag. Consecutive members render under one collapsible header; every
+// member stays its own ExerciseRow, so each is still swappable, editable,
+// completable and logged on its own.
+const COMPONENT_GROUP_LABELS: Record<string, string> = { core_development: "Core Development" };
+
+function blockComponentGroup(block: StructuredBlock): string | null {
+  return (block.tags ?? []).find(tag => tag in COMPONENT_GROUP_LABELS) ?? null;
+}
+
+export function groupBlockRows(
+  blocks: StructuredBlock[],
+  renderRow: (block: StructuredBlock, index: number) => ReactNode,
+): ReactNode[] {
+  const rows: ReactNode[] = [];
+  let index = 0;
+  while (index < blocks.length) {
+    const group = blockComponentGroup(blocks[index]);
+    const start = index;
+    const members: ReactNode[] = [];
+    do {
+      members.push(renderRow(blocks[index], index));
+      index += 1;
+    } while (group && index < blocks.length && blockComponentGroup(blocks[index]) === group);
+    if (!group || members.length < 2) {
+      rows.push(...members);
+      continue;
+    }
+    rows.push(
+      <details key={`group-${group}-${start}`} className="ex-group" open>
+        <summary className="ex-group-head">
+          <span>{COMPONENT_GROUP_LABELS[group]}</span>
+          <span className="ex-group-count">{members.length} exercises</span>
+        </summary>
+        <div className="ex-group-rows">{members}</div>
+      </details>,
+    );
+  }
+  return rows;
+}
+
 export function ExerciseRow({
   block,
   open,
@@ -1413,7 +1454,7 @@ export function SessionCard({
         <ExerciseSessionScope date={occurrenceDate ?? day?.date} session={session}>
           {blocks.length > 0 ? (
             <div className="sp-blocks ex-rows">
-              {blocks.map((block, index) => (
+              {groupBlockRows(blocks, (block, index) => (
                 <ExerciseRow
                   key={cleanText(block.block_id) || `block-${index}`}
                   block={block}
@@ -1552,7 +1593,7 @@ export function SessionCard({
           {showDetails || planLayout ? (
             <ExerciseSessionScope date={occurrenceDate ?? day?.date} session={session}>
               <div id={detailsId} className="sp-blocks ex-rows">
-                {blocks.map((block, index) => (
+                {groupBlockRows(blocks, (block, index) => (
                   <ExerciseRow
                     key={cleanText(block.block_id) || `block-${index}`}
                     block={block}

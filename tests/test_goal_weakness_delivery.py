@@ -392,11 +392,12 @@ def test_king_trunk_weakness_is_checked_against_delivered_trunk_work():
     assert disposition["resolution"] == "delegated" and disposition["required_intent"] == "trunk_training"
     entry = _entry(brief, "trunk_strength")
     assert entry["initial_state"] == "build"
-    # Recomposition after a conflicting neighbour is removed restores safe
-    # trunk work inside the existing readiness cap. The cut no longer supplies
-    # a causal reason to demote this achievable build obligation.
-    assert (entry["state"], entry["satisfied"]) == ("build", True)
-    assert entry["constraints"] == []
+    # Development needs a Core Development Block; the cut's readiness pressure
+    # keeps every session to a maintenance dose, and composition records that
+    # cause, so the obligation is retained as cited maintenance, not faked.
+    assert (entry["state"], entry["satisfied"]) == ("maintain", True)
+    assert {c["reason_code"] for c in entry["constraints"]} == {"weight_cut_pressure"}
+    assert all(c["authority"] == "session_composition.trunk_block" for c in entry["constraints"])
     assert entry["missing_coverage"] == []
     for evidence in entry["evidence"]:
         assert "trunk_strength" in strength_adaptation_relevance(_BANK[evidence["name"]])
@@ -419,9 +420,18 @@ def test_every_conditioning_day_says_why_it_carries_no_trunk_support(key):
 
 
 
-def test_without_the_cut_king_builds_trunk_strength_every_week():
-    entry = _entry(_brief("king_no_cut"), "trunk_strength")
-    assert (entry["state"], entry["satisfied"], entry["constraints"]) == ("build", True, [])
+def test_without_the_cut_king_builds_a_core_block_where_a_session_can_hold_one():
+    """The GPP week gets a 3-function block; the SPP week's only strength session
+    is a capped power/strength transfer day, so development there is recorded as
+    session-capacity constrained instead of credited to one plank-punch-reach."""
+    brief = _brief("king_no_cut")
+    blocks = {role_d_day(week, role): (role.get("strength_composition_policy") or {}).get("trunk_block") or {}
+              for week, role in _roles(brief) if role.get("category") == "strength"}
+    assert any(b.get("status") == "delivered" and len(set(b["functions"])) >= 3 for b in blocks.values())
+    entry = _entry(brief, "trunk_strength")
+    assert (entry["initial_state"], entry["state"], entry["satisfied"]) == ("build", "maintain", True)
+    assert {c["reason_code"] for c in entry["constraints"]} == {"session_capacity"}
+    assert not any(e["goal"] == "trunk_strength" for e in validate_goal_preservation(brief))
 
 
 @pytest.mark.parametrize("key", ["boxer28_trunk_bodyweight", "muaythai28_power_trunk"])

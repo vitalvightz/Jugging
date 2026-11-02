@@ -361,6 +361,58 @@ def strength_adaptation_relevance(item: dict[str, Any], *, prescription_type: st
     return frozenset(adaptations)
 
 
+# The trunk function a trunk-targeted bank item mainly trains. The bank's tags
+# say the trunk is involved (``anti_rotation`` sits on a plain plank), not which
+# quality is developed, so the authored name decides first and tags only break a
+# tie. Ordered: a side plank row is anti-lateral-flexion, a med-ball slam is
+# rotational power, a plank punch-reach resists rotation.
+TRUNK_FUNCTIONS = (
+    "anti_extension", "anti_rotation", "anti_lateral_flexion", "loaded_carry",
+    "rotational_power", "rotation", "flexion", "trunk_stability",
+)
+_TRUNK_FUNCTION_NAME_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("loaded_carry", re.compile(r"\b(?:carry|carries|farmer|yoke walk)\b", re.I)),
+    ("rotational_power", re.compile(r"\b(?:slam|throw|toss|scoop|woodchop\w*)\b", re.I)),
+    ("anti_lateral_flexion", re.compile(r"\b(?:side plank|copenhagen side|suitcase)\b", re.I)),
+    ("anti_rotation", re.compile(
+        r"\b(?:pallof|anti-rotation|chop holds?|staggered stance|shoulder taps?|bird[- ]?dog"
+        r"|punch[- ]reach|plank row|split-line|punch-specific|get-up)\b", re.I)),
+    ("anti_extension", re.compile(
+        r"\b(?:plank|rollout|ab wheel|dead[- ]?bug|hollow|stir the pot|body saw|swiss ball press"
+        r"|lower back hold)\b", re.I)),
+    ("rotation", re.compile(r"\b(?:twists?|rotations?|rotational)\b", re.I)),
+    ("flexion", re.compile(r"\b(?:leg raise|knee raise|crunch|sit-?ups?|v-?ups?)\b", re.I)),
+)
+
+
+def trunk_function(item: dict[str, Any], *, trunk_targeted: bool | None = None) -> str:
+    """The primary trunk function of a bank item; ``""`` when not trunk-targeted.
+
+    A serialized Stage 1 option no longer carries its authored category, so a
+    caller holding Stage 1's own adaptation stamp passes ``trunk_targeted``.
+    """
+    if not isinstance(item, dict):
+        return ""
+    if trunk_targeted is None:
+        trunk_targeted = "trunk_strength" in strength_adaptation_relevance(item)
+    if not trunk_targeted:
+        return ""
+    name = str(item.get("name") or "")
+    for function, pattern in _TRUNK_FUNCTION_NAME_RULES:
+        if pattern.search(name):
+            return function
+    tags = _collect_tags(item)
+    if "anti_extension" in tags:
+        return "anti_extension"
+    if "mech_trunk_rotation" in tags and classify_strength_item(item)["quality_class"] == "anchor_power":
+        return "rotational_power"
+    if "anti_rotation" in tags:
+        return "anti_rotation"
+    if "mech_trunk_flexion" in tags:
+        return "flexion"
+    return "trunk_stability"
+
+
 def infer_strength_sessions(exercises: list[dict[str, Any]], num_sessions: int) -> list[dict[str, Any]]:
     session_count = max(1, int(num_sessions or 1))
     if not exercises:
