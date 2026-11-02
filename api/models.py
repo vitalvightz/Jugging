@@ -2434,7 +2434,9 @@ class TrainingFocusResponse(BaseModel):
 
     ``focus`` is None when there is nothing recent to show. ``sport`` is the
     sport it was recorded for when known (a manual session's sport), else None.
-    ``items`` holds every recent candidate, explicit and inferred, newest first.
+    ``items`` holds the recent candidates (up to 30 of each kind within the
+    28-day window), explicit and inferred, newest first; none are cut after
+    merging, so a client can pick the first that fits.
     """
 
     focus: str | None = None

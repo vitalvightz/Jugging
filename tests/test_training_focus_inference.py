@@ -667,7 +667,7 @@ def test_failed_calls_count_towards_the_cap(api, monkeypatch):
 
 def test_migration_schema_and_requirements_agree():
     from api.schema_requirements import REQUIRED_COLUMNS as REQUIRED_TABLE_COLUMNS, REQUIRED_FUNCTIONS
-    migration = (ROOT / "supabase" / "migrations" / "20261102120000_add_training_focus_inferences.sql").read_text()
+    migration = (ROOT / "supabase" / "migrations" / "20261102215720_add_training_focus_inferences.sql").read_text()
     schema = (ROOT / "supabase" / "schema.sql").read_text()
     for table in ("training_focus_inferences", "training_focus_call_budget"):
         for column in REQUIRED_TABLE_COLUMNS[table]:
@@ -680,7 +680,7 @@ def test_migration_schema_and_requirements_agree():
 
 def test_privacy_notice_discloses_training_note_processing():
     notice = (ROOT / "docs" / "privacy-notice.md").read_text()
-    assert "training-focus suggestions" in notice and "Notes about pain, injury" in notice
+    assert "training-focus suggestions" in notice and "no screen catches every wording" in notice
 
 
 # -- Regressions: head impact never reaches the model --------------------------
@@ -816,3 +816,88 @@ def test_technique_cue_cannot_claim_a_different_sport(api):
     session = manual_session(client, activity="sparring", sport="boxing", session_type="sparring", effort="hard")
     sparring_detail(client, session["id"], notes="Hand came back low after every jab.")
     assert read_items(client) == []
+
+
+# -- Follow-up review fixes -----------------------------------------------------
+
+
+def test_consent_withdrawn_before_the_background_run_stops_the_note(api):
+    client, store, fake = api
+    fake.answer = SPLIT_SQUAT
+    row = lower_body_completion(store, notes="Balance on split squats was poor.")
+    withdraw_health_consent(store)
+    assert inference.run_focus_inference(store, ATHLETE_ID, "plan_completion", row["id"], inferrer=fake) == "no_consent"
+    assert fake.payloads == [] and store.training_focus_inferences == []
+
+
+def test_warm_up_and_mindset_blocks_are_not_grounding_exercises(api):
+    client, store, fake = api
+    row = lower_body_completion(store)
+    snapshot = next(r for r in store.session_completions[ATHLETE_ID] if r["id"] == row["id"])["prescription_snapshot"]
+    snapshot["session"]["blocks"] = [
+        {"block_id": "w1", "block_type": "warmup", "display_name": "Bodyweight Split Squat"},
+        {"block_id": "m1", "block_type": "mindset", "display_name": "Fight Visualisation"},
+        {"block_id": "b2", "block_type": "strength", "display_name": "Romanian Deadlift (RDL)", "sets": 3, "reps": "6"},
+    ]
+    fake.answer = {**SPLIT_SQUAT, "exercise_targets": ["bodyweight split squat"]}
+    edit_notes(client, row["id"], "Balance on the split squats in the warm-up was poor.")
+    assert [item["name"] for item in fake.payloads[0]["context"]["noted_session"]["exercises"]] == ["Romanian Deadlift (RDL)"]
+    assert read_items(client) == []
+
+
+@pytest.mark.parametrize("focus", ["Use less rest between rounds.", "Take a faster pace on intervals.",
+                                   "Push harder on every split squat."])
+def test_rest_pace_and_intensity_changes_are_rejected(api, focus):
+    client, store, fake = api
+    fake.answer = {**SPLIT_SQUAT, "focus": focus}
+    row = lower_body_completion(store)
+    edit_notes(client, row["id"], "Balance on split squats was poor.")
+    assert read_items(client) == []
+
+
+def test_a_specific_exercise_cue_names_exactly_one_exercise(api):
+    client, store, fake = api
+    fake.answer = {**SPLIT_SQUAT, "exercise_targets": ["split squat", "calf raises"]}
+    row = lower_body_completion(store)
+    edit_notes(client, row["id"], "Balance on split squats was poor.")
+    assert read_items(client) == []
+
+
+def test_a_sport_change_on_the_noted_session_withdraws_the_technique_cue(api):
+    client, store, fake = api
+    fake.answer = {"focus": "Return the jab straight to guard.", "scope": "sport_technique", "category": "sparring",
+                   "sport": "boxing", "exercise_targets": [], "movement_patterns": []}
+    session = manual_session(client, activity="sparring", sport="boxing", session_type="sparring", effort="hard")
+    sparring_detail(client, session["id"], notes="Hand came back low after every jab.")
+    assert len(read_items(client)) == 1
+    edited = client.patch(f"/api/training/sessions/{session['id']}", headers=AUTH, json={
+        "activity": "sparring", "sport": "muay_thai", "session_type": "sparring", "duration_minutes": 45, "effort": "hard"})
+    assert edited.status_code == 200, edited.text
+    assert read_items(client) == []
+
+
+@pytest.mark.parametrize("note", ["Ringing the bell at the end of each round helped my pacing.",
+                                  "Memory drill for combos went well, but my jab dropped after the double."])
+def test_ordinary_words_near_head_impact_terms_still_reach_the_model(api, note):
+    from api.contracts.training_focus import mentions_health
+    assert not mentions_health(note)
+    assert mentions_health("Ears ringing after the session.") and mentions_health("Some memory loss after round two.")
+
+
+def test_malformed_plan_metadata_does_not_break_inference():
+    class Store:
+        def get_plan_for_athlete(self, plan_id, athlete_id):
+            return {"structured_plan": {"plan_metadata": "not-a-dict"}}
+    assert inference._plan_sport(Store(), ATHLETE_ID, "plan-1") == set()
+
+
+def test_focus_read_skips_the_sparring_window_without_sparring_inferences(api, monkeypatch):
+    client, store, fake = api
+    fake.answer = SPLIT_SQUAT
+    row = lower_body_completion(store)
+    edit_notes(client, row["id"], "Balance on split squats was poor.")
+    windows = []
+    real = store.list_sparring_logs
+    monkeypatch.setattr(store, "list_sparring_logs", lambda athlete_id, **kw: windows.append(kw) or real(athlete_id, **kw))
+    assert len(read_items(client)) == 1
+    assert all(kw.get("with_focus") for kw in windows)

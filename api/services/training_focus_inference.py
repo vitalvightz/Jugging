@@ -238,6 +238,24 @@ def _compact_actual(actual: Any) -> dict:
 PERFORMED = frozenset({"done", "modified"})
 
 
+# Warm-ups, cool-downs, rehab, mental and nutrition work are never where a cue
+# applies (the same set Today ignores in web/lib/training-focus.ts).
+NON_TRAINING_BLOCKS = frozenset({"preparation", "mobility_activation", "cooldown_recovery", "warmup", "cooldown",
+                                 "rehab", "prehab", "mindset", "nutrition", "recovery"})
+
+
+def _non_training_names(row: dict) -> set[str]:
+    """Names of a plan session's non-training blocks. History exposes every
+    non-rehab block as an exercise, so they are told apart by their frozen
+    block type; a name also used by a training block is kept."""
+    blocks = [block for block in _snapshot_session(row).get("blocks") or [] if isinstance(block, dict)]
+    def is_training(block):
+        kind = str(block.get("block_type") or "").lower()
+        return kind not in NON_TRAINING_BLOCKS and "rehab" not in kind
+    training = {words(block.get("display_name")) for block in blocks if is_training(block)}
+    return {words(block.get("display_name")) for block in blocks if not is_training(block)} - training
+
+
 def _exercises(store, athlete_id: str, source: str, row: dict) -> list[dict]:
     """Prescribed vs performed, from the History projection (rehab and health
     notes left out: they are never a training cue)."""
@@ -245,7 +263,9 @@ def _exercises(store, athlete_id: str, source: str, row: dict) -> list[dict]:
         details = session_details(store, athlete_id, source, str(row["id"]), health_consent_granted=True)
     except HTTPException:
         return []
-    blocks = [block for block in details.blocks if block.kind == "exercise" and block.name]
+    skipped_names = _non_training_names(row) if source == "unlxck" else set()
+    blocks = [block for block in details.blocks
+              if block.kind == "exercise" and block.name and words(block.name) not in skipped_names]
     any_logged = any(block.status for block in blocks)
     whole_session_done = source == "unlxck" and row.get("status") == "done" and not any_logged
     exercises = []
@@ -325,7 +345,7 @@ def _plan_sport(store, athlete_id: str, plan_id: Any) -> set[str]:
         except ValueError:
             structured = None
     metadata = structured.get("plan_metadata") if isinstance(structured, dict) else None
-    return _own_sports((metadata or {}).get("sport"))
+    return _own_sports(metadata.get("sport") if isinstance(metadata, dict) else None)
 
 
 def _known_sports(store, athlete_id: str, sessions: list[dict], noted_plan_id: Any) -> set[str]:
@@ -431,7 +451,7 @@ def _relevant_shape(context: dict, focus: dict) -> list:
     they were done that day; for a technique cue, the noted session's report."""
     if focus.get("scope") == "sport_technique":
         noted = context["sessions"][0]
-        return [noted.get("kind"), noted.get("status"), noted.get("sparring")]
+        return [noted.get("kind"), noted.get("status"), noted.get("sparring"), context["payload"]["sports"]]
     targets = [words(target) for target in focus.get("exercise_targets") or []]
     patterns = set(focus.get("movement_patterns") or [])
     shape = []
@@ -451,10 +471,11 @@ def context_revision(context: dict | None, focus: dict | None = None) -> str:
     is re-checked and kept when it still holds."""
     if context is None:
         return ""
-    day = [[entry.get("kind"), entry.get("status"), entry.get("session_type"), entry.get("activity"),
-            entry.get("sparring"),
-            [[item["name"], item["status"], item.get("prescribed"), item.get("actual")]
-             for item in entry.get("exercises", [])]] for entry in context["sessions"]]
+    day = [context["payload"]["categories"], context["payload"]["sports"],
+           [[entry.get("kind"), entry.get("status"), entry.get("session_type"), entry.get("activity"),
+             entry.get("sport"), entry.get("sparring"),
+             [[item["name"], item["status"], item.get("prescribed"), item.get("actual")]
+              for item in entry.get("exercises", [])]] for entry in context["sessions"]]]
     return f"{_hash(day)}:{_hash(_relevant_shape(context, focus) if focus else [])}"
 
 
@@ -494,9 +515,20 @@ def run_focus_inference(store, athlete_id: str, kind: str, source_id: str, *,
         return "error"
 
 
+def _health_consent_now(store, athlete_id: str) -> bool:
+    """Consent as stored at the moment of processing: a withdrawal after the
+    save returned stops the note being read or sent."""
+    from api.compliance import evaluate_profile_compliance
+
+    profile = store.get_profile(athlete_id)
+    return bool(profile) and evaluate_profile_compliance(profile).health_consent_granted
+
+
 def _run(store, athlete_id: str, kind: str, source_id: str, inferrer: FocusInferrer | None) -> str:
     if inferrer is None:
         return "disabled"
+    if not _health_consent_now(store, athlete_id):
+        return "no_consent"
     source = read_source(store, athlete_id, kind, source_id)
     note = " ".join(((source or {}).get("note") or "").split())[:_NOTE_MAX_CHARS]
     if not source or not note:

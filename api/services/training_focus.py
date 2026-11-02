@@ -46,15 +46,19 @@ def _explicit_focuses(store, athlete_id: str, logs: list[dict]) -> list[dict]:
     return items
 
 
-def _inferred_focuses(store, athlete_id: str, from_day: str, explicit: list[dict],
-                      logs_by_id: dict[str, dict]) -> list[dict]:
+def _inferred_focuses(store, athlete_id: str, from_day: str, explicit: list[dict]) -> list[dict]:
     """Ready inferences whose note is still exactly what they were generated
     from, on a live record, with no explicit focus from the same session."""
     explicit_logs = {item["id"] for item in explicit}
     explicit_manual = {item["external_session_id"] for item in explicit if item["external_session_id"]}
     explicit_plan = {(item["session_id"], item["training_day"]) for item in explicit if item["session_id"]}
     items = []
-    for row in store.list_training_focus_inferences(athlete_id, from_day=from_day, limit=_MAX_CANDIDATES):
+    rows = store.list_training_focus_inferences(athlete_id, from_day=from_day, limit=_MAX_CANDIDATES)
+    # One read of the window verifies every sparring-note inference, made only
+    # when one of them needs it.
+    logs_by_id = ({str(log.get("id")): log for log in store.list_sparring_logs(athlete_id, limit=200, from_day=from_day)}
+                  if any(row.get("source_kind") == "sparring_log" for row in rows) else {})
+    for row in rows:
         kind, source_id = row.get("source_kind"), str(row.get("source_id") or "")
         if kind == "sparring_log" and source_id in explicit_logs:
             continue
@@ -80,11 +84,7 @@ def latest_training_focus(store, athlete_id: str, *, today: str, include_inferre
     from_day = (date.fromisoformat(today) - timedelta(days=FOCUS_MAX_AGE_DAYS - 1)).isoformat()
     explicit = _explicit_focuses(store, athlete_id,
                                  store.list_sparring_logs(athlete_id, limit=60, from_day=from_day, with_focus=True))
-    inferred = []
-    if include_inferred:
-        # One read of the window verifies every sparring-note inference.
-        logs = {str(row.get("id")): row for row in store.list_sparring_logs(athlete_id, limit=200, from_day=from_day)}
-        inferred = _inferred_focuses(store, athlete_id, from_day, explicit, logs)
+    inferred = _inferred_focuses(store, athlete_id, from_day, explicit) if include_inferred else []
     # Newest day first; on the same day the athlete's own words come first.
     items = sorted(explicit + inferred, key=lambda item: (item["training_day"], item["origin"] == "athlete",
                                                           item["created_at"]), reverse=True)

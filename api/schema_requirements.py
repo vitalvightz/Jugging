@@ -72,6 +72,9 @@ REQUIRED_TABLES: tuple[str, ...] = (
     # movement names (PUT /api/training/sessions/{id}/exercises/{entry_id}).
     "manual_exercise_entries",
     "personal_exercises",
+    # Inferred training focus and its per-day model-call budget.
+    "training_focus_inferences",
+    "training_focus_call_budget",
     "custom_training_plans",
     "private_video_assets",
     "private_exercise_media",
@@ -738,6 +741,9 @@ INDEX_REQUIREMENTS: tuple[IndexRequirement, ...] = (
     ),
     IndexRequirement(label="external training request uniqueness", accepted_names=("external_training_sessions_request_key",)),
     IndexRequirement(label="external training athlete/day index", accepted_names=("external_training_sessions_athlete_day_idx",)),
+    # ON CONFLICT targets of claim_training_focus_inference and reserve_training_focus_call.
+    IndexRequirement(label="training focus one row per source", accepted_names=("training_focus_inferences_source_key",)),
+    IndexRequirement(label="training focus call budget per athlete/day", accepted_names=("training_focus_call_budget_pkey",)),
     # ON CONFLICT target: a retried exercise save never adds a second occurrence.
     IndexRequirement(label="manual exercise retry uniqueness", accepted_names=("manual_exercise_entries_request_key",)),
     IndexRequirement(label="personal exercise name uniqueness", accepted_names=("personal_exercises_name_key",)),
@@ -804,6 +810,8 @@ RLS_REQUIRED_TABLES: tuple[str, ...] = (
     "sparring_log_requests",
     "exercise_logs",
     "external_training_sessions",
+    "training_focus_inferences",
+    "training_focus_call_budget",
     "xp_accounts",
     "xp_awards",
     "beta_feedback",

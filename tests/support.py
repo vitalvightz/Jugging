@@ -2981,11 +2981,13 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         return False
 
     def reserve_training_focus_call(self, athlete_id: str, *, limit: int) -> bool:
-        key = (athlete_id, _now()[:10])
-        if self.training_focus_calls.get(key, 0) >= limit:
-            return False
-        self.training_focus_calls[key] = self.training_focus_calls.get(key, 0) + 1
-        return True
+        # Atomic like public.reserve_training_focus_call.
+        with self._generation_job_daily_limit_lock:
+            key = (athlete_id, _now()[:10])
+            if self.training_focus_calls.get(key, 0) >= limit:
+                return False
+            self.training_focus_calls[key] = self.training_focus_calls.get(key, 0) + 1
+            return True
 
     def latest_sparring_log_day(self, athlete_id: str, *, hard: bool = False, rocked: bool = False) -> str | None:
         days = [

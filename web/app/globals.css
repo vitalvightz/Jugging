@@ -23178,6 +23178,7 @@ a, button, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 }
 
 .today-session-focus-dismiss {
+  position: relative;
   margin-left: 8px;
   padding: 0;
   border: 0;
@@ -23188,4 +23189,11 @@ a, button, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
+}
+
+/* A 32px-tall hit area around the inline link, without moving the text. */
+.today-session-focus-dismiss::after {
+  content: "";
+  position: absolute;
+  inset: -8px -6px;
 }

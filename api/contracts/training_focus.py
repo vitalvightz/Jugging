@@ -111,15 +111,17 @@ _HEALTH = re.compile(
     r"(shots?|blows?|punch\w*|kicks?|knees?|elbows?) (to|on) the (head|chin|jaw|temple)|"
     r"hit my head|banged my head|bumped my head|"
     r"(got|was|been) (dropped|clipped|buzzed|stunned|wobbled|knocked)|dropped me|knockdown\w*|"
-    r"buzzed|stunned|wobbled|wobbly legs|saw stars|rang my bell|bell (rung|rang)|glassy|ringing|"
-    r"foggy|brain fog|memory|blank(ed)? out|lights? (went )?out)\b",
+    r"buzzed|stunned|wobbled|wobbly legs|saw stars|rang my bell|bell (rung|rang)|glassy|"
+    r"ringing (in|of) (my |the )?ears|ears? ringing|foggy|brain fog|memory (loss|problem\w*|issue\w*|gap\w*)|"
+    r"blank(ed)? out|lights? (went )?out)\b",
     re.IGNORECASE,
 )
 # A cue is technique or attention only. It never changes the prescribed work.
 _WORKLOAD = re.compile(
     r"\d|\b(increase\w*|decrease\w*|reduce\w*|add(ing)? (weight|load|sets?|reps?|rounds?|volume)|heavier|lighter|"
     r"more (sets?|reps?|rounds?|weight|load|volume)|fewer|extra|skip\w*|deload\w*|push through|max(imal|imum)?|"
-    r"failure|ignore\w*|instead of|replace\w*|swap\w*|rest (day|longer))\b",
+    r"failure|ignore\w*|instead of|replace\w*|swap\w*|rest (day|longer)|(less|more|shorter|longer) rest|"
+    r"(faster|slower) pace|(longer|shorter) (duration|rounds?|sets?)|harder)\b",
     re.IGNORECASE,
 )
 
@@ -155,8 +157,8 @@ def grounded_focus(inferred: InferredFocus, *, exercise_names: list[str], patter
     if inferred.sport and sport is None:
         return None
     if inferred.scope == "specific_exercise":
-        # Matched on the exercise only: a specific problem is never broadened.
-        if not targets:
+        # One exercise only: a specific problem is never broadened to others.
+        if len(set(targets)) != 1:
             return None
         chosen = []
     elif inferred.scope in {"movement_pattern", "general_quality"}:

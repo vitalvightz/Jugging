@@ -1398,8 +1398,10 @@ export function TodaySessionPanel({
     : null;
   const dismissShownFocus = (id: string) => {
     setDismissedFocusIds((ids) => [...ids, id]);
-    // Hidden at once; the server keeps it hidden. A failed write shows it again next read.
-    void dismissTrainingFocus(token, id).catch(() => undefined).finally(announceTrainingFocusChanged);
+    // Hidden at once; the server keeps it hidden. A failed write shows it again.
+    void dismissTrainingFocus(token, id)
+      .catch(() => setDismissedFocusIds((ids) => ids.filter((dismissedId) => dismissedId !== id)))
+      .finally(announceTrainingFocusChanged);
   };
 
   return (
