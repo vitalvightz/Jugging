@@ -236,6 +236,41 @@ def test_prompt_states_the_coaching_job_without_word_caps():
     assert "structural week and day headers" in prompt  # Header separator is not a style violation.
 
 
+OPEN_SOURCE = """# Session Cards
+
+## Monday{sep}Strength
+- Goblet Squat: 3 sets x 6 reps; rest 90 sec; RPE 7
+  Cue: Keep your chest tall and sit down between your hips.
+  Easier: Use a lighter kettlebell.
+  Stop: Stop if your knees cave.
+
+# 4-Week Development Block
+Week 2 small step.
+"""
+
+
+@pytest.mark.parametrize("sep", [" — ", ": "])
+def test_open_plan_card_cannot_recycle_easier_as_progress(sep):
+    from api.structured_plan_faithfulness import project_source_adjustments
+    plan = {"weeks": [{"week_index": 1, "days": [{"weekday": "Monday", "countdown_label": "", "sessions": [
+        {"title": "Strength", "blocks": [{"block_type": "strength", "display_name": "Goblet Squat", "sets": 3,
+         "reps": 6, "progression_rule": "Use a lighter kettlebell.", "regression_options": [],
+         "coaching_cues": ["Squat."]}]}]}]}]}
+    block = project_source_adjustments(plan, OPEN_SOURCE.format(sep=sep))["weeks"][0]["days"][0]["sessions"][0]["blocks"][0]
+    assert not block.get("progression_rule")  # No source Progress line: none on the card.
+    assert block["regression_options"] == ["Use a lighter kettlebell."]
+    assert "sit down between your hips" in block["coaching_cues"][0]
+
+
+def test_open_prompt_has_no_word_caps_or_forced_progress():
+    from fightcamp.stage2_payload import _OPEN_ONGOING_RENDER_MODE_INSTRUCTIONS as prompt
+    from fightcamp.stage2_payload_open_ongoing import build_open_ongoing_payload
+    rules = " ".join(build_open_ongoing_payload(athlete_model={})["open_plan_spec"]["render_rules"])
+    for text in (prompt, rules):
+        assert "none this block" not in text and "9 words" not in text
+    assert "only equipment the athlete has" in prompt
+
+
 def _assignment(brief, day, name):
     for week in brief["weekly_role_map"]["weeks"]:
         for role in week["session_roles"]:

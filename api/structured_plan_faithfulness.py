@@ -180,7 +180,9 @@ def _open_source_sessions(source: str) -> dict[tuple, list[list[str]]]:
             # Older Open Plans used "Strength. Monday" or "Monday. Strength"
             # instead of "Monday — Strength". Read those only inside cards;
             # weekly-rhythm summaries must never become exercise authority.
-            match = re.match(r"([A-Za-z]+)\s*(?:[—–]|\s-\s)\s*(.+)$", heading)
+            # A colon is the dash-free form of the same card heading
+            # ("Monday: Strength"), which the no-long-dash rule produces.
+            match = re.match(r"([A-Za-z]+)\s*(?:[—–:]|\s-\s)\s*(.+)$", heading)
             weekday, title = (normalize_weekday(match[1]), match[2]) if match else (None, None)
             if not weekday and in_cards:
                 if match := re.match(r"(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\.\s+(.+)$", heading, re.I):
