@@ -19738,6 +19738,14 @@ html[data-theme="light"] .loading-operational-item {
 .ex-group-head::-webkit-details-marker {
   display: none;
 }
+.ex-group-head::after {
+  content: "⌄";
+  font-size: 1rem;
+  transition: transform 0.2s ease;
+}
+.ex-group[open] > .ex-group-head::after {
+  transform: rotate(180deg);
+}
 .ex-group-count {
   font-weight: 500;
   letter-spacing: 0;
