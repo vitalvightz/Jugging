@@ -63,7 +63,7 @@ AUTHORED: dict[tuple[int, str], list[tuple[str, str, bool]]] = {
         ("Cue", "Drive up through your legs and punch the bar overhead in one move.", True),
         ("Easier", "Use 40 kg dumbbells instead.", False),
         ("Swap", "Goblet Squat with a kettlebell at the same dose.", True),
-        ("Swap", "Sled push at the same dose.", False),  # No sled on the equipment list.
+        ("Swap", "Sled push at the same dose.", True),  # A suggestion; not policed.
         ("Stop", "Stop if the bar path drifts forward or your back arches.", True),
     ],
     (27, "Easy Assault Bike"): [

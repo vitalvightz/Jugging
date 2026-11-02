@@ -349,10 +349,8 @@ _LATE_FIGHT_ANNOTATION_LABEL = re.compile(
     r"notes?|coach(?:ing)?\s+(?:note|cue)s?|coach\s+calls?|cues?|"
     r"duration|prescriptions?|intensity|"
     r"stop\s+rule|easier|"
-    # An optional Swap is shown beside the scheduled exercise; it is validated
-    # coaching, never rendered membership. Only the colon form is exempt: that
-    # is the only form the Swap validator parses, so "Swap - X" stays checked.
-    r"(?:swaps?|substitutions?)(?=\s*:)|"
+    # A Swap is a text suggestion beside the scheduled exercise, not membership.
+    r"swaps?|substitutions?|"
     # "progression / regression / stop" style labels in any order or combination
     # (e.g. "Progression/regression/stop:", "Regression/stop:", "Stop/regress -").
     r"(?:progress(?:ion)?s?|regress(?:ion)?s?|stop)"

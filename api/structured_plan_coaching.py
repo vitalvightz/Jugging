@@ -8,7 +8,6 @@ from fightcamp.exercise_instructions import nested_rows, recover_execution_instr
 from fightcamp.coaching_copy import concise_coaching, is_null_progression
 from fightcamp.exercise_coaching import (
     exercise_coaching, is_profile_progression, is_profile_cue, easier_rejection, clinical_coaching_rejection,
-    swap_rejection,
 )
 from fightcamp.exercise_progression import (
     build_progression_context, occurrence_key, progress_rejection, effective_exercise_prescription, structured_dose, measured_dose,
@@ -61,7 +60,7 @@ def _dose_matches(block: dict, role: dict, assignment: dict) -> bool:
 
 
 def _recover_programming(block: dict, role: dict, assignment: dict, context: dict | None,
-                         athlete: dict, brief: dict, source: dict | None = None, d_day: int | None = None) -> None:
+                         athlete: dict, brief: dict, source: dict | None = None) -> None:
     matches = _dose_matches(block, role, assignment)
     if source is not None:
         for key in ("progression_rule", "regression_options", "substitutions"):
@@ -75,10 +74,6 @@ def _recover_programming(block: dict, role: dict, assignment: dict, context: dic
     block["regression_options"] = [text for text in block.get("regression_options") or []
         if not easier_rejection(text, assignment, role, athlete, brief=brief,
                                 current_dose=None if matches else _current_card_dose(block))]
-    if block.get("substitutions"):
-        block["substitutions"] = [text for text in block["substitutions"]
-            if not (swap_rejection(text, assignment, role, athlete, brief=brief, d_day=d_day)
-                    or clinical_coaching_rejection(text, brief))]
 
 
 def recover_selected_coaching(plan: dict[str, Any], brief: dict[str, Any],
@@ -152,12 +147,6 @@ def recover_selected_coaching(plan: dict[str, Any], brief: dict[str, Any],
                                 block["regression_options"] = [text for text in block["regression_options"]
                                     if not easier_rejection(text, {"name": block.get("display_name")}, {},
                                         brief.get("athlete_snapshot") or {}, brief=brief, current_dose=_current_card_dose(block))]
-                            if block.get("substitutions"):
-                                # No matched assignment is still a checkable Swap:
-                                # equipment, restrictions, dose and fight week.
-                                block["substitutions"] = [text for text in block["substitutions"]
-                                    if not swap_rejection(text, {}, {}, brief.get("athlete_snapshot") or {},
-                                                          brief=brief, d_day=offset)]
                         continue  # Ambiguous context cannot author or license a number.
                     role, source_week, assignment = match
                     programming_context = progression_context.get(occurrence_key(role, assignment, offset))
@@ -180,7 +169,7 @@ def recover_selected_coaching(plan: dict[str, Any], brief: dict[str, Any],
                                                           coaching_identity(block.get("display_name"))), card_keys)
                     _recover_programming(block, role, assignment, programming_context,
                                          brief.get("athlete_snapshot") or {}, brief,
-                                         source["fields"] if source else None, d_day=offset)
+                                         source["fields"] if source else None)
                     compact = concise_coaching({k: block.get(k) for k in (
                         "coaching_cues", "regression_options", "stop_rules")})
                     block.update(compact)

@@ -9,7 +9,7 @@ import re
 
 from .calendar_context import role_d_day
 from .coaching_copy import is_null_progression
-from .exercise_coaching import easier_rejection, clinical_coaching_rejection, swap_rejection
+from .exercise_coaching import easier_rejection, clinical_coaching_rejection
 from .exercise_progression import build_progression_context, occurrence_key, progress_rejection
 from .structured_session_identity import identity_tokens
 from .mental_training_policy import mental_category
@@ -30,8 +30,6 @@ _FIELDS = {"how": "execution_instructions", "cue": "coaching_cues", "coaching cu
            "substitutions": "substitutions",
            "purpose": "purpose"}
 _LISTS = {"coaching_cues", "regression_options", "stop_rules", "substitutions"}
-# Fields a model line may only carry after it passes a field-specific check.
-_CHECKED = {"progression_rule", "regression_options", "substitutions"}
 
 
 def coaching_identity(value):
@@ -143,16 +141,12 @@ def validate_source_coaching(brief: dict, text: str) -> tuple[str, list[dict]]:
         elif exercise := _EXERCISE.match(line):
             name = coaching_identity(exercise[1])
         label = _LABEL.match(line)
-        if label and (day, title) not in nonphysical and _FIELDS[label[1].lower()] in _CHECKED:
+        if label and (day, title) not in nonphysical and _FIELDS[label[1].lower()] in {"progression_rule", "regression_options"}:
             candidates = lookup_occurrence(selected, (day, title, name), peers) or []
             role, assignment, current = candidates[0] if len(candidates) == 1 else ({}, {}, None)
             field = _FIELDS[label[1].lower()]
-            if field == "progression_rule":
-                reason = progress_rejection(label[2], current)
-            elif field == "regression_options":
-                reason = easier_rejection(label[2], assignment, role, athlete, brief=brief)
-            else:
-                reason = swap_rejection(label[2], assignment, role, athlete, brief=brief, d_day=day)
+            reason = (progress_rejection(label[2], current) if field == "progression_rule" else
+                      easier_rejection(label[2], assignment, role, athlete, brief=brief))
             reason = reason or clinical_coaching_rejection(label[2], brief)
             if reason:
                 findings.append({"code": "exercise_coaching_rejected", "field": field,

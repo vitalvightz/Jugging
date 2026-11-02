@@ -226,11 +226,11 @@ def coaching_lines(fields: dict[str, Any]) -> list[str]:
 
 
 def easier_rejection(text: str, assignment: dict, role: dict, athlete: dict, *, brief: dict | None = None, current_dose: dict | None = None) -> str | None:
-    """Check an AI Easier option against this movement and its restrictions.
+    """Reject only an Easier line that is unsafe or contradicts the dose.
 
-    Reductions are optional execution adjustments, never edits to the scheduled
-    prescription. Unknown quantities, equipment and movement substitutions fail
-    closed. Clinical restriction evaluation uses the existing safety guard.
+    Easier is optional AI advice, never an edit to the scheduled prescription.
+    Its wording is the model's; only stop-rule overrides, clinical restrictions
+    and numbers above the prescribed dose are rejected.
     """
     from .exercise_progression import effective_exercise_prescription, measured_dose
     value = normalise_measures(text)
@@ -239,19 +239,6 @@ def easier_rejection(text: str, assignment: dict, role: dict, athlete: dict, *, 
         return "stop_condition_override"
     if clinical_coaching_rejection(text, brief or {}):
         return "clinical_restriction"
-    if not _EASIER_ACTION.search(value):
-        return "unactionable_easier"
-    if reason := _equipment_rejection(value, assignment, athlete):
-        return reason
-    # A named replacement is a selection/safety decision, not Easier authoring.
-    if re.search(r"\b(?:switch|replace|swap|substitute)\b|\binstead\b(?!\s+of\s+\d)", value, re.I):
-        return "changed_movement"
-    name = str(assignment.get("name") or "")
-    for movement, family in _MOVEMENT_FAMILIES:
-        if re.search(r"\b" + movement + r"s?\b", value, re.I) and not re.search(family, name, re.I):
-            return "changed_movement"
-    if _INCREASE.search(value):
-        return "increased_workload"
     if re.search(r"\d", value):
         current = current_dose if current_dose is not None else measured_dose(effective_exercise_prescription(role, assignment), assignment)
         proposed = measured_dose(value)
@@ -297,104 +284,6 @@ def easier_rejection(text: str, assignment: dict, role: dict, athlete: dict, *, 
         if re.search(r"tempo|%|\d\s*[-–]\s*\d|\bby\s+\d", value, re.I):
             return "unverifiable_easier_change"
     return None
-
-
-# Verbs and reductions that make an Easier line an instruction. "Use bodyweight
-# and hold support" and "Reduce punch force" are both actionable regressions.
-_EASIER_ACTION = re.compile(
-    r"\b(?:use|reduce|lower|ease|slow|shorten|take|keep|relax|simplify|limit|less|fewer|lighter|light|"
-    r"shallower|smaller|shorter|softer|gentler|support|supported|assist(?:ed|ance)?|bodyweight|hold|"
-    r"stop|omit|skip|drop|cut|remove|pause|elevate|raise|widen|kneel(?:ing)?|partial|half|"
-    r"maintain|stay|step)\b", re.I)
-# More work, not an easier way to do the same work. "Add a band for assistance"
-# is support; "add a set" or "add load" is workload.
-_INCREASE = re.compile(
-    r"\b(?:increase|heavier|harder|faster|extra|deeper|shorten rest|shorter rest)\b|"
-    r"\badd(?:ing)?\s+(?:\d+\s*|an?\s+|one\s+|more\s+)*(?:load|weight|kg|lb|plates?|reps?|sets?|rounds?|time|"
-    r"volume|speed|intensity|jumps?|distance|resistance|effort|seconds?|minutes?)\b|"
-    r"\bmore\s+(?:load|weight|resistance|reps|sets|rounds|effort|speed|distance|duration|force|intensity)\b|"
-    r"\b(?:raise|raising|higher|bigger|greater|up)\s+(?:the\s+|your\s+)?(?:load|weight|resistance|effort|"
-    r"intensity|speed|rpe|volume|reps|sets|rounds)\b", re.I)
-# A Swap runs at the prescribed dose; fewer reps or longer rest is Easier's job.
-_REDUCE = re.compile(
-    r"\b(?:fewer|less|lower|reduced?|shorter|half|smaller)\s+(?:the\s+|your\s+)?(?:reps?|sets?|rounds?|dose|volume|"
-    r"time|work|duration|distance|load|weight|effort|intensity)\b|\brest\s+longer\b|\blonger\s+rest\b|"
-    r"\bcut\s+(?:the\s+)?(?:reps?|sets?|rounds?|volume)\b", re.I)
-# A Swap must name a movement, not just say "something easier".
-_MOVEMENT_WORD = re.compile(
-    r"\b(?:squat|lunge|split|step|press|push|pull|row|chin|hinge|deadlift|rdl|swing|clean|snatch|carry|walk|"
-    r"march|jump|hop|bound|skip|throw|slam|toss|pass|punch|jab|cross|hook|bag|shadow\w*|pad|sprint|run|jog|"
-    r"bike|cycle|rope|plank|pallof|chop|lift|crunch|bridge|thrust|raise|curl|fly|dip|hold|bear|crawl|twist|"
-    r"rotation(?:al)?|burpee|thruster|drill|stance|shuffle|slip|roll|sled|drag|climb|reach|dead ?bug|bird ?dog|"
-    r"windmill|get.?up|extension|calf|glute|hamstring|nordic|copenhagen|swim|stroke|skater|lateral|"
-    r"isometric|iso|wall|ball|bell|bar|band)s?\b", re.I)
-# Exercise names may carry a tempo or angle ("Tempo Split Squat (4-0-1)");
-# that is part of the name, not a second dose. Anything else numeric is.
-_NAME_NUMBER = re.compile(r"\(\s*\d+(?:\s*[-–]\s*[\dX]+){2,3}\s*\)|\b\d+\s*°|\b\d+\s*-\s*degree\b", re.I)
-# Words an Easier line may use when the movement itself carries them: a bag
-# round is punching, a slam is a throw, a hop is a jump.
-_MOVEMENT_FAMILIES = tuple((movement, r"\b(?:" + family + r")") for movement, family in (
-    ("squat", r"squat|thruster"), ("deadlift", r"deadlift|rdl"), ("press", r"press|thruster|push.?up"),
-    ("row", r"row|pull"), ("sprint", r"sprint|acceleration|first.step|dash"), ("jump", r"jump|hop|bound|plyo"),
-    ("swim(?:ming)?", r"swim|freestyle"), ("run(?:ning)?", r"run|jog|sprint|5k"), ("burpee", r"burpee"),
-    ("lunge", r"lunge|split squat"), ("push-up", r"push.?up"), ("pull-up", r"pull.?up"), ("swing", r"swing"),
-    ("throw", r"throw|slam|toss|ball"), ("punch", r"punch|bag|box|jab|cross|hook|combination|shadow|strike|pad|burst"),
-    ("carry", r"carry|farmer|walk"),
-))
-_EQUIPMENT_TOKENS = (r"barbell|training bar", r"dumbbells?|DB", r"kettlebells?|KB", r"bands?|banded", r"TRX|straps?",
-                     r"sled", r"(?:medicine|med) ball|wall ball", r"bike", r"pool|swim(?:ming)?", r"bench", r"box",
-                     r"trap bar|hex bar", r"landmine", r"sandbag", r"cable|pulley", r"(?:battle )?ropes?",
-                     r"pull ?up bar|chin ?up bar", r"rower|rowing machine|erg", r"treadmill", r"hurdles?",
-                     r"(?:swiss|stability|physio) ball", r"heavy bag|punch(?:ing)? bag", r"pads|mitts",
-                     r"slider", r"plyo box|jump box", r"weight vest|vest", r"tyre|tire", r"sledgehammer",
-                     r"rings", r"bosu", r"partner")
-
-
-def _words(text: str) -> str:
-    """Comparable equipment wording: "medicine_ball" and "Med-Ball" say med ball."""
-    return re.sub(r"[_\-]+", " ", str(text or ""))
-
-
-def _equipment_rejection(value: str, assignment: dict, athlete: dict) -> str | None:
-    evidence = " ".join(str(assignment.get(k) or "") for k in ("name", "equipment", "equipment_required"))
-    equipment = athlete.get("equipment_profile") or athlete.get("equipment") or []
-    if isinstance(equipment, str):
-        equipment = [equipment]
-    evidence = _words(evidence + " " + " ".join(str(e) for e in equipment))
-    value = _words(value)
-    for token in _EQUIPMENT_TOKENS:
-        if re.search(r"\b(?:" + token + r")\b", value, re.I) and not re.search(r"\b(?:" + token + r")\b", evidence, re.I):
-            return "unavailable_equipment"
-    return None
-
-
-def swap_rejection(text: str, assignment: dict, role: dict, athlete: dict, *,
-                   brief: dict | None = None, d_day: int | None = None) -> str | None:
-    """Accept a model-authored Swap that the athlete can actually do.
-
-    A Swap is an optional alternative shown beside the scheduled exercise; it
-    never replaces it. It must use only equipment the athlete has, respect
-    every clinical restriction, and run at the prescribed dose: no new numbers
-    and no added work. Fight week (D-7 onward) keeps the scheduled movement.
-    """
-    value = normalise_measures(text)
-    if not _MOVEMENT_WORD.search(value):
-        return "unactionable_swap"
-    if re.search(r"\b(?:ignore|disregard|override|push through|work through)\b", value, re.I):
-        return "stop_condition_override"
-    if isinstance(d_day, int) and d_day <= 7:
-        return "late_window_swap"
-    # Equipment named in the scheduled exercise is not evidence for a swap:
-    # only the athlete's own equipment list is.
-    if reason := _equipment_rejection(value, {}, athlete):
-        return reason
-    if re.search(r"\d", _NAME_NUMBER.sub("", value)):
-        return "unverifiable_swap_dose"
-    if _INCREASE.search(value):
-        return "increased_workload"
-    if _REDUCE.search(value):
-        return "changed_swap_dose"
-    return clinical_coaching_rejection(text, brief or {})
 
 
 def clinical_coaching_rejection(text: str, brief: dict) -> str | None:
