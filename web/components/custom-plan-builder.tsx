@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { trackProductEvent, productEventIdentity, deleteCustomPlan, getCommunityExercise, getCustomDoseSuggestion, getCustomPlan, getExerciseLibrary, publishCustomPlan, saveCustomPlan } from "@/lib/api";
+import { trackProductEvent, productEventIdentity, deleteCustomPlan, getCommunityExercise, getCustomDoseSuggestion, getCustomPlan, getExerciseLibrary, getTrainingLibraryEntry, publishCustomPlan, saveCustomPlan } from "@/lib/api";
 import type { MeResponse, StructuredBlock } from "@/lib/types";
 import { ExerciseRow } from "./structured-plan-renderer";
 import { DotsIcon } from "./exercise-customisation";
@@ -14,6 +14,7 @@ import type {
   CustomExercise,
   CustomSession,
   LibraryEntry,
+  LibraryPreview,
   ManualExercise,
 } from "@/lib/api-schema.generated";
 import { InjuryDetailSheet } from "./today/injury-detail-sheet";
@@ -21,10 +22,10 @@ import { DrillPreview, TrainingLibrary } from "./training-library";
 import { CustomDoseEditor } from "./custom-dose-editor";
 import { usePastExercises } from "./load-field";
 import { pastExercisesByKey } from "@/lib/exercise-library";
-import { withPastDose } from "@/lib/load-entry";
 import { CommunityContributionSheet, CommunityExercisePreview, communityDetailsChanged } from "./community-exercises";
 import { PrivateExerciseMediaProvider, PrivateExerciseVideo, PrivateExerciseVideoSheet } from "./private-exercise-video";
-import { blankDose, doseSummary, doseIncomplete } from "@/lib/custom-plan-dose";
+import { blankDose, doseSummary, doseIncomplete, libraryPrefill } from "@/lib/custom-plan-dose";
+import { CustomExercisePicker } from "./custom-exercise-picker";
 import styles from "./custom-plan-builder.module.css";
 import { useFadeNavigate } from "@/components/fade-through";
 type Exercise = (Omit<CustomExercise, "snapshot"> & { snapshot: LibraryEntry }) | ManualExercise;
@@ -42,6 +43,16 @@ function dayType(sessions: Session[]) {
 function firstScheduledDay(sessions: Session[]): Weekday {
   return weekdays.find(day => sessions.some(s => s.weekday === day)) ?? "Monday";
 }
+/** A new session starts on the day the athlete is looking at; its name follows its type until they rename it. */
+function newSession(weekday: Session["weekday"]): Session {
+  return { id: crypto.randomUUID(), name: sessionNames.mixed, weekday, session_type: "mixed", exercises: [] };
+}
+/** Types that are built from exercises, so adding one goes straight on to choosing them. */
+const EXERCISE_TYPES: Array<CustomSession["session_type"]> = ["mixed", "strength_power", "conditioning"];
+const SESSION_TYPES: Array<[CustomSession["session_type"], string]> = [
+  ["mixed", "Workout"], ["strength_power", "Strength / power"], ["conditioning", "Conditioning"],
+  ["skill", "Light technical / skill"], ["sparring", "Hard sparring"], ["recovery", "Recovery"], ["rest", "Off / Rest"],
+];
 function orderedDraft(draft: Draft): Draft {
   const day = (session: Session) => session.weekday ? weekdays.indexOf(session.weekday) : 7;
   return { ...draft, sessions: [...draft.sessions].sort((a, b) => day(a) - day(b)) };
@@ -109,11 +120,14 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
     [dirty, setDirty] = useState(false);
   const [opened, setOpened] = useState(!planId);
   const [chosenDay, setChosenDay] = useState<Weekday>();
-  const [adding, setAdding] = useState<string>();
+  // The add sheet remembers what it added this visit, so their doses can be set right there.
+  const [adding, setAdding] = useState<{ sessionId: string; added: string[]; query?: string }>();
+  // One added exercise is open at a time: the newest, so its dose can be set at once; the rest stay one line each.
+  const [openAdded, setOpenAdded] = useState<string>();
   const [openExercise, setOpenExercise] = useState<string | null>(null);
   const [error, setError] = useState<string>(),
     [message, setMessage] = useState<string>();
-  const [selecting, setSelecting] = useState<string>(),
+  const [selecting, setSelecting] = useState<{ sessionId: string; query: string }>(),
     [editing, setEditing] = useState<{
       sessionId: string;
       exercise: Exercise;
@@ -124,7 +138,8 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
     }>();
   const [sessionEdit, setSessionEdit] = useState<Session>(),
     // A new session joins the draft only when the sheet is confirmed, so closing it leaves nothing behind.
-    [sessionFresh, setSessionFresh] = useState(false),
+    // It holds the session as it opened, so an untouched new session is not an unsaved change.
+    [sessionFresh, setSessionFresh] = useState<Session>(),
     [preview, setPreview] = useState<LibraryEntry>();
   const [videoOpen, setVideoOpen] = useState(false), [communityOpen, setCommunityOpen] = useState(false), [communityPreview, setCommunityPreview] = useState<string>();
   const [linkedCommunity, setLinkedCommunity] = useState<{ id: string; entry?: CommunityEntry; error?: boolean }>();
@@ -143,6 +158,12 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
     [suggestionError, setSuggestionError] = useState<string>(),
     [suggesting, setSuggesting] = useState(false);
   const suggestionRequest = useRef(0);
+  // Where each added exercise's starting dose came from: undefined while loading, null when nothing had one.
+  const [prefills, setPrefills] = useState<Record<string, string | null>>({});
+  // Exercises the athlete has edited. A late prefill never lands on these.
+  const touched = useRef(new Set<string>());
+  const latest = useRef(draft);
+  useEffect(() => { latest.current = draft; });
   // Read only once an exercise is open, for last time's weight.
   const past = usePastExercises(editing ? accessToken : null);
   useEffect(() => {
@@ -163,7 +184,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
     ) ||
     Boolean(
       sessionEdit &&
-      JSON.stringify(sessionEdit) !== JSON.stringify(draft.sessions.find((s) => s.id === sessionEdit.id)),
+      JSON.stringify(sessionEdit) !== JSON.stringify(sessionFresh ?? draft.sessions.find((s) => s.id === sessionEdit.id)),
     );
   const unsaved = dirty || sheetDirty;
   const releaseGuard = useRef<() => Promise<void>>(async () => {});
@@ -185,8 +206,9 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
           if (day && repaired.sessions.length >= 28) setError("This plan already has the maximum 28 sessions.");
           else if (day) {
             setChosenDay(day);
-            setSessionFresh(true);
-            setSessionEdit({ id: crypto.randomUUID(), name: "Training", weekday: day, session_type: "mixed", exercises: [] });
+            const session = newSession(day);
+            setSessionFresh(session);
+            setSessionEdit(session);
           }
           setDirty(JSON.stringify(repaired.sessions) !== JSON.stringify(plan.sessions));
           window.scrollTo(0, 0);
@@ -205,15 +227,39 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   useEffect(() => {
     if (!loading && loaded.current) heading.current?.focus({ preventScroll: true });
   }, [loading]);
+  // Back inside the builder closes the open sheet or library screen; only Back from the plan itself leaves.
+  const layer = useRef<{ open: boolean; close: () => void }>({ open: false, close: () => {} });
+  useEffect(() => {
+    layer.current = {
+      open: Boolean(videoOpen || communityOpen || communityPreview || preview || editing || sessionEdit || adding || selecting),
+      close: () => {
+        if (videoOpen) setVideoOpen(false);
+        else if (communityOpen) setCommunityOpen(false);
+        else if (communityPreview) setCommunityPreview(undefined);
+        else if (preview) setPreview(undefined);
+        else if (editing) closeEditing();
+        else if (sessionEdit) closeSession();
+        // The full library covers the add sheet it was opened from, so it closes first.
+        else if (selecting) setSelecting(undefined);
+        else setAdding(undefined);
+      },
+    };
+  });
   useEffect(() => {
     if (!unsaved) return;
     const warn = (e: BeforeUnloadEvent) => {
       e.preventDefault();
     };
-    // Keep a same-URL entry while dirty so Back can confirm without losing edits.
+    // Keep one same-URL entry while dirty so Back can confirm without losing edits.
+    // Reuse it when it is already there: stacked entries made Back prompt again on the same page.
     const state = { ...window.history.state, customDraftGuard: true };
-    window.history.pushState(state, "", window.location.href);
+    if (!window.history.state?.customDraftGuard) window.history.pushState(state, "", window.location.href);
     const back = () => {
+      if (layer.current.open) {
+        window.history.pushState(state, "", window.location.href);
+        layer.current.close();
+        return;
+      }
       if (!window.confirm("Discard unsaved changes?")) {
         window.history.pushState(state, "", window.location.href);
         return;
@@ -252,16 +298,14 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
       releaseGuard.current = async () => {};
     };
   }, [unsaved, router]);
-  function change(next: Draft) {
-    setDraft(orderedDraft(next));
+  // Updates build on the latest draft, so a prefill landing between taps is never lost.
+  function change(next: (current: Draft) => Draft) {
+    setDraft(current => orderedDraft(next(current)));
     setDirty(true);
     setMessage(undefined);
   }
   function sessionChange(id: string, update: (s: Session) => Session) {
-    change({
-      ...draft,
-      sessions: draft.sessions.map((s) => (s.id === id ? update(s) : s)),
-    });
+    change(current => ({ ...current, sessions: current.sessions.map((s) => (s.id === id ? update(s) : s)) }));
   }
   function edit(sessionId: string, exercise: Exercise, fresh = false) {
     suggestionRequest.current++;
@@ -280,23 +324,102 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   }
 
   function addSessionOnDay(weekday: Session["weekday"]) {
-    setSessionFresh(true);
-    setSessionEdit({
-      id: crypto.randomUUID(),
-      name: "Training",
-      weekday,
-      session_type: "mixed",
-      exercises: [],
-    });
+    const session = newSession(weekday);
+    setSessionFresh(session);
+    setSessionEdit(session);
   }
   function openSession(session: Session) {
-    setSessionFresh(false);
+    setSessionFresh(undefined);
     setSessionEdit(session);
   }
   function removeSession(session: Session) {
     if (!window.confirm(`Remove ${session.name}${session.exercises.length ? " and its exercises" : ""}?`)) return false;
-    change({ ...draft, sessions: draft.sessions.filter((s) => s.id !== session.id) });
+    change(current => ({ ...current, sessions: current.sessions.filter((s) => s.id !== session.id) }));
     return true;
+  }
+  function closeSession() {
+    if (!sessionEdit) return;
+    const original = draft.sessions.find((s) => s.id === sessionEdit.id);
+    if (sessionFresh || JSON.stringify(original) === JSON.stringify(sessionEdit) || window.confirm("Discard session edits?")) {
+      if (sheetDirty && !dirty) void releaseGuard.current().then(() => setSessionEdit(undefined));
+      else setSessionEdit(undefined);
+    }
+  }
+  function closeEditing() {
+    if (!editing) return;
+    if (
+      (JSON.stringify(editing.original) === JSON.stringify(editing.exercise) &&
+        editing.originalPosition === editing.position) ||
+      window.confirm("Discard exercise edits?")
+    ) {
+      suggestionRequest.current++;
+      if (sheetDirty && !dirty) void releaseGuard.current().then(() => setEditing(undefined));
+      else setEditing(undefined);
+    }
+  }
+  /** Remembers an exercise added while the add sheet is open, so its dose shows there. */
+  function noteAdded(sessionId: string, exerciseId: string) {
+    setAdding(current => current?.sessionId === sessionId ? { ...current, added: [...current.added, exerciseId] } : current);
+    setOpenAdded(exerciseId);
+  }
+  function canAdd(sessionId: string): boolean {
+    const session = latest.current.sessions.find(s => s.id === sessionId);
+    return Boolean(session && session.exercises.length < 100);
+  }
+  function addLibrary(sessionId: string, entry: LibraryEntry | LibraryPreview): boolean {
+    if (entry.category !== "training" || !canAdd(sessionId)) return false;
+    const id = crypto.randomUUID();
+    const guidance = "guidance" in entry ? entry.guidance : null;
+    sessionChange(sessionId, s => s.exercises.length >= 100 ? s : {
+      ...s,
+      exercises: [...s.exercises, {
+        id, origin: "catalogue", catalogue_id: entry.catalogue_id, snapshot: entry, incomplete: true,
+        coaching_cues: guidance?.Cues ?? null, stop_rules: guidance?.Stop ?? null, dose: blankDose(),
+      }],
+    });
+    noteAdded(sessionId, id);
+    prefill(id, entry, Boolean(guidance));
+    return true;
+  }
+  /**
+   * The library's format first; the athlete's last session fills what it leaves open.
+   * Each exercise has its own request, and a result is dropped once the athlete has
+   * edited that exercise or it has left the plan.
+   */
+  function prefill(id: string, entry: LibraryEntry, hasGuidance: boolean) {
+    void Promise.all([
+      getCustomDoseSuggestion(accessToken, entry.catalogue_id).catch(() => null),
+      pastExercisesByKey(accessToken, getExerciseLibrary),
+      // Search results carry no coaching guidance; the preview already did.
+      hasGuidance ? null : getTrainingLibraryEntry(accessToken, entry.catalogue_id).then(detail => detail.guidance).catch(() => null),
+    ]).then(([suggestion, history, guidance]) => {
+      if (!mounted.current) return;
+      if (touched.current.has(id) || !latest.current.sessions.some(s => s.exercises.some(e => e.id === id))) return;
+      const found = libraryPrefill(suggestion, entry.exercise_key ? history.get(entry.exercise_key) : null);
+      setPrefills(current => ({ ...current, [id]: found?.source ?? null }));
+      const cues = guidance?.Cues ?? null, stop = guidance?.Stop ?? null;
+      const fill = <T extends Exercise>(exercise: T): T => ({
+        ...exercise,
+        ...(found && JSON.stringify(exercise.dose) === JSON.stringify(blankDose()) ? { dose: found.dose, incomplete: doseIncomplete(found.dose) } : {}),
+        ...((cues || stop) && exercise.coaching_cues == null && exercise.stop_rules == null ? { coaching_cues: cues, stop_rules: stop } : {}),
+      });
+      const exercise = latest.current.sessions.flatMap(s => s.exercises).find(e => e.id === id)!;
+      if (JSON.stringify(fill(exercise)) === JSON.stringify(exercise)) return;
+      change(current => ({ ...current, sessions: current.sessions.map(session => ({
+        ...session, exercises: session.exercises.map(exercise => exercise.id === id ? fill(exercise) : exercise),
+      })) }));
+      // An editor open on this exercise, still untouched, shows the same values instead of saving blanks over them.
+      setEditing(current => current && current.exercise.id === id && JSON.stringify(current.exercise) === JSON.stringify(current.original)
+        ? { ...current, exercise: fill(current.exercise), original: fill(current.original) } : current);
+    });
+  }
+  function markTouched(exerciseId: string) {
+    touched.current.add(exerciseId);
+    setPrefills(current => ({ ...current, [exerciseId]: "Your dose" }));
+  }
+  function setDose(sessionId: string, exerciseId: string, dose: CustomExercise["dose"]) {
+    markTouched(exerciseId);
+    sessionChange(sessionId, s => ({ ...s, exercises: s.exercises.map(e => e.id === exerciseId ? { ...e, dose } : e) }));
   }
 
   async function suggest() {
@@ -315,6 +438,8 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
     }
   }
   const issues = customScheduleIssues(draft.sessions);
+  const addingSession = adding ? draft.sessions.find(s => s.id === adding.sessionId) : undefined;
+  const addedHere = addingSession ? addingSession.exercises.filter(e => adding!.added.includes(e.id)) : [];
   const draftValid = Boolean(draft.name.trim()) && draft.sessions.every(s => s.name.trim() && s.exercises.every(e => nameOf(e).trim()));
   const publishable = draftValid && issues.length === 0;
   const selectedDay = chosenDay ?? firstScheduledDay(draft.sessions);
@@ -327,9 +452,9 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
     const exercise = session.exercises.find(e => doseIncomplete(e.dose));
     if (exercise) edit(session.id, exercise); else openSession(session);
   }
-  function createManual(sessionId: string) {
+  function createManual(sessionId: string, name = "") {
     edit(sessionId, {
-      id: crypto.randomUUID(), origin: "manual", name: "", equipment: null, notes: null, media_id: null,
+      id: crypto.randomUUID(), origin: "manual", name, equipment: null, notes: null, media_id: null,
       community_id: null, community_revision_id: null, dose: blankDose(), incomplete: true,
       coaching_cues: null, stop_rules: null,
     }, true);
@@ -376,7 +501,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
         {s.session_type === "recovery" && s.exercises.length ? <p className="muted">Optional recovery work. No completion required.</p> : null}
         {s.session_type !== "rest" ? (
           <button type="button" className={styles.addExercise} aria-label={`Add exercise to ${s.name}`}
-            disabled={s.exercises.length >= 100} onClick={() => setAdding(s.id)}>
+            disabled={s.exercises.length >= 100} onClick={() => setAdding({ sessionId: s.id, added: [] })}>
             <span aria-hidden="true">+</span> Add exercise
           </button>
         ) : null}
@@ -487,46 +612,20 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
     return (
       <TrainingLibrary
         accessToken={accessToken}
+        initialQuery={selecting.query}
+        canAdd={canAdd(selecting.sessionId)}
         onBack={() => setSelecting(undefined)}
         onSelectCommunity={(entry) => {
-          sessionChange(selecting, s => ({ ...s, exercises: [...s.exercises, { id: crypto.randomUUID(), origin: 'manual', name: entry.name,
+          if (!canAdd(selecting.sessionId)) return;
+          const id = crypto.randomUUID();
+          sessionChange(selecting.sessionId, s => s.exercises.length >= 100 ? s : ({ ...s, exercises: [...s.exercises, { id, origin: 'manual', name: entry.name,
             equipment: entry.equipment, notes: entry.notes, media_id: null, community_id: null, community_revision_id: entry.revision_id,
             incomplete: true, dose: blankDose(), coaching_cues: null, stop_rules: null }] }));
+          noteAdded(selecting.sessionId, id);
           setSelecting(undefined);
         }}
         onSelect={(entry) => {
-          if (entry.category !== "training") return;
-          const exerciseId = crypto.randomUUID();
-          sessionChange(selecting, (s) => ({
-            ...s,
-            exercises: [
-              ...s.exercises,
-              {
-                id: exerciseId,
-                origin: "catalogue",
-                catalogue_id: entry.catalogue_id,
-                snapshot: entry,
-                incomplete: true,
-                coaching_cues: entry.guidance.Cues ?? null, stop_rules: entry.guidance.Stop ?? null,
-                dose: blankDose(),
-              },
-            ],
-          }));
-          setSelecting(undefined);
-          // The library's format first; the athlete's last session fills what it leaves open.
-          void Promise.all([
-            getCustomDoseSuggestion(accessToken, entry.catalogue_id).catch(() => null),
-            pastExercisesByKey(accessToken, getExerciseLibrary),
-          ]).then(([result, history]) => {
-            const format = result?.dose?.mode !== "text" && result?.dose ? result.dose : result?.format_dose;
-            const suggested = withPastDose(format ?? blankDose(), entry.exercise_key ? history.get(entry.exercise_key) : null);
-            if (JSON.stringify(suggested) === JSON.stringify(blankDose())) return;
-            setDraft(current => ({ ...current, sessions: current.sessions.map(session => ({ ...session,
-              exercises: session.exercises.map(exercise => exercise.id === exerciseId && doseIncomplete(exercise.dose)
-                && JSON.stringify(exercise.dose) === JSON.stringify(blankDose())
-                ? { ...exercise, dose: suggested, incomplete: doseIncomplete(suggested) } : exercise),
-            })) }));
-          }).catch(() => undefined);
+          if (addLibrary(selecting.sessionId, entry)) setSelecting(undefined);
         }}
       />
     );
@@ -565,7 +664,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
               required
               maxLength={100}
               value={draft.name}
-              onChange={(e) => change({ ...draft, name: e.target.value })}
+              onChange={(e) => { const name = e.target.value; change(current => ({ ...current, name })); }}
             />
           </label>
           <div className={styles.calendar} role="group" aria-label="Weekly training calendar">
@@ -657,25 +756,31 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
         <InjuryDetailSheet
           title={sessionFresh ? "New session" : "Edit session"}
           panelClassName={styles.editorPanel}
-          onClose={() => {
-            const original = draft.sessions.find((s) => s.id === sessionEdit.id);
-            if (sessionFresh || JSON.stringify(original) === JSON.stringify(sessionEdit) || window.confirm("Discard session edits?")) {
-              if (sheetDirty && !dirty) void releaseGuard.current().then(() => setSessionEdit(undefined));
-              else setSessionEdit(undefined);
-            }
-          }}
+          onClose={closeSession}
         >
           <form
             className={`${styles.sheet} ${styles.sessionSheet}`}
             onSubmit={(e) => {
               e.preventDefault();
-              if (sessionFresh) change({ ...draft, sessions: [...draft.sessions, sessionEdit] });
+              if (sessionFresh) change(current => ({ ...current, sessions: [...current.sessions, sessionEdit] }));
               else sessionChange(sessionEdit.id, () => sessionEdit);
               // Follow the session to its day so it never disappears from view.
               if (sessionEdit.weekday) setChosenDay(sessionEdit.weekday);
               setSessionEdit(undefined);
+              // A new workout goes straight on to its exercises; closing the sheet still leaves it empty.
+              if (sessionFresh && EXERCISE_TYPES.includes(sessionEdit.session_type ?? "mixed")) setAdding({ sessionId: sessionEdit.id, added: [] });
             }}
           >
+            {/* The type comes first: one tap, and the name follows it until the athlete renames the session. */}
+            <div className={styles.typeField}>
+              <span id="custom-session-type">Session type</span>
+              <div className={styles.typeChips} role="group" aria-labelledby="custom-session-type">
+                {SESSION_TYPES.map(([type, label]) => <button key={type} type="button" aria-pressed={(sessionEdit.session_type ?? "mixed") === type}
+                  onClick={() => setSessionEdit(prepareCustomSession({ ...sessionEdit, session_type: type }, onboarding, sessionEdit.session_type ?? "mixed"))}>
+                  {label}
+                </button>)}
+              </div>
+            </div>
             <label>
               <span>Session name</span>
               <input
@@ -703,19 +808,6 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
                 ))}
               </select>
             </label>
-            <label>
-              <span>Session type</span>
-              <select aria-label="Session type" value={sessionEdit.session_type ?? "mixed"}
-                onChange={(e) => setSessionEdit(prepareCustomSession({ ...sessionEdit, session_type: e.target.value as CustomSession["session_type"] }, onboarding, sessionEdit.session_type ?? "mixed"))}>
-                <option value="mixed">Workout</option>
-                <option value="strength_power">Strength / power</option>
-                <option value="conditioning">Conditioning</option>
-                <option value="skill">Light technical / skill</option>
-                <option value="sparring">Hard sparring</option>
-                <option value="recovery">Recovery</option>
-                <option value="rest">Off / Rest</option>
-              </select>
-            </label>
             <button className="cta" disabled={!sessionEdit.weekday}>{sessionFresh ? "Add session" : "Done"}</button>
             {sessionFresh ? null : <button
               type="button"
@@ -730,19 +822,56 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
           </form>
         </InjuryDetailSheet>
       ) : null}
-      {adding ? (
-        <InjuryDetailSheet title="Add exercise" onClose={() => setAdding(undefined)}>
+      {addingSession && adding ? (
+        <InjuryDetailSheet title={`Add to ${addingSession.name}`} panelClassName={styles.addPanel} onClose={() => setAdding(undefined)}>
           <div className={styles.sheet}>
-            <button type="button" className={styles.addChoice} aria-label="Add from library" aria-describedby="add-choice-library"
-              onClick={() => { setSelecting(adding); setAdding(undefined); }}>
-              <strong>Add from library</strong>
-              <small id="add-choice-library">Search drills and exercises.</small>
-            </button>
-            <button type="button" className={styles.addChoice} aria-label="Create my exercise" aria-describedby="add-choice-manual"
-              onClick={() => { createManual(adding); setAdding(undefined); }}>
-              <strong>Create my exercise</strong>
-              <small id="add-choice-manual">Name it, set the dose, attach a video.</small>
-            </button>
+            <CustomExercisePicker accessToken={accessToken} full={addingSession.exercises.length >= 100} initialQuery={adding.query}
+              onAdd={entry => addLibrary(adding.sessionId, entry)}
+              onPreview={entry => setPreview(entry)}
+              onCreate={name => createManual(adding.sessionId, name)}
+              onBrowse={query => {
+                setAdding(current => current?.sessionId === adding.sessionId ? { ...current, query } : current);
+                setSelecting({ sessionId: adding.sessionId, query });
+              }} />
+            {addedHere.length ? <section className={styles.added} aria-labelledby="custom-added-heading">
+              <h3 id="custom-added-heading">Added · {addedHere.length}
+                {/* Collapsed rows still say which doses are missing, so none get lost. */}
+                {addedHere.some(e => doseIncomplete(e.dose)) ? <span className={styles.addedTodo}> · {addedHere.filter(e => doseIncomplete(e.dose)).length} to finish</span> : null}
+              </h3>
+              <ol>
+                {addedHere.map(exercise => {
+                  const open = openAdded === exercise.id;
+                  return <li key={exercise.id} className={styles.addedRow} role="group" aria-label={nameOf(exercise)}
+                    data-attention={doseIncomplete(exercise.dose) ? "true" : undefined}>
+                    <button type="button" className={styles.addedHead} aria-expanded={open}
+                      onClick={() => setOpenAdded(open ? undefined : exercise.id)}>
+                      <span className={styles.addedText}>
+                        <strong>{nameOf(exercise)}</strong>
+                        <small>{doseIncomplete(exercise.dose) ? "Prescription not set" : doseSummary(exercise.dose)}</small>
+                      </span>
+                      <span className={styles.chevron} aria-hidden="true" />
+                    </button>
+                    {open ? <div className={styles.addedBody}>
+                      <CustomDoseEditor essential dose={exercise.dose}
+                        movement={exercise.origin === "catalogue" ? exercise.snapshot : null}
+                        onChange={dose => setDose(adding.sessionId, exercise.id, dose)} />
+                      <div className={styles.addedFoot}>
+                        <small>{exercise.origin === "manual" ? "Your exercise"
+                          : prefills[exercise.id] === undefined ? "Checking the library and your history…"
+                          : prefills[exercise.id] ?? "No set format. Enter your own."}</small>
+                        <button type="button" className={styles.textButton} aria-label={`More options for ${nameOf(exercise)}`}
+                          onClick={() => edit(adding.sessionId, exercise)}>More</button>
+                        <button type="button" className={styles.textButton} aria-label={`Remove ${nameOf(exercise)}`}
+                          onClick={() => sessionChange(adding.sessionId, s => ({ ...s, exercises: s.exercises.filter(e => e.id !== exercise.id) }))}>
+                          Remove
+                        </button>
+                      </div>
+                    </div> : null}
+                  </li>;
+                })}
+              </ol>
+            </section> : null}
+            <button type="button" className="cta" onClick={() => setAdding(undefined)}>Done</button>
           </div>
         </InjuryDetailSheet>
       ) : null}
@@ -750,29 +879,24 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
         <InjuryDetailSheet
           title={editing.fresh ? "Create my exercise" : nameOf(editing.exercise)}
           panelClassName={`${styles.editorPanel} ${styles.exercisePanel}`}
-          onClose={() => {
-            if (
-              (JSON.stringify(editing.original) === JSON.stringify(editing.exercise) &&
-                editing.originalPosition === editing.position) ||
-              window.confirm("Discard exercise edits?")
-            ) {
-              suggestionRequest.current++;
-              if (sheetDirty && !dirty) void releaseGuard.current().then(() => setEditing(undefined));
-              else setEditing(undefined);
-            }
-          }}
+          onClose={closeEditing}
         >
           <form
             className={`${styles.sheet} ${styles.exerciseEditor}`}
+            // A folded field the browser rejects opens its fold, so validation is never hidden.
+            onInvalidCapture={(event) => (event.target as Element).closest("details")?.setAttribute("open", "")}
             onSubmit={(event) => {
               event.preventDefault();
-              const { sessionId, exercise, fresh, position } = editing;
+              const { sessionId, exercise, fresh, position, original } = editing;
+              if (fresh && !canAdd(sessionId)) return;
+              if (JSON.stringify(exercise) !== JSON.stringify(original)) markTouched(exercise.id);
               sessionChange(sessionId, (s) => {
-                if (fresh) return { ...s, exercises: [...s.exercises, exercise] };
+                if (fresh) return s.exercises.length >= 100 ? s : { ...s, exercises: [...s.exercises, exercise] };
                 const exercises = s.exercises.filter((e) => e.id !== exercise.id);
                 exercises.splice(position, 0, exercise);
                 return { ...s, exercises };
               });
+              if (fresh) noteAdded(sessionId, exercise.id);
               setEditing(undefined);
             }}
           >
@@ -792,12 +916,27 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
                     }}
                   />
                 </label>
+                {/* Video and sharing are optional extras: folded, with their state in the summary. */}
+                <details className={styles.advanced}>
+                  <summary><span>Video &amp; sharing</span>
+                    <small>{[editing.exercise.media_id ? "Video" : null, editing.exercise.community_revision_id ? "From community" : editing.exercise.community_id ? "Shared" : "Private"].filter(Boolean).join(" · ")}</small>
+                  </summary>
+                  <div className={styles.groupBody}>
                 {editing.exercise.community_revision_id ? <button type="button" className="ghost-button" onClick={() => setCommunityPreview(editing.exercise.origin === 'manual' ? editing.exercise.community_revision_id ?? undefined : undefined)}>View community exercise</button> :
                   <div className={styles.visibility}>
                     <p><strong>{editing.exercise.community_id ? 'Shared with community' : 'Only you can see this exercise'}</strong>
                       <span className="muted">{editing.exercise.community_id ? 'Public once an admin approves it.' : 'Sharing is optional and needs admin approval before it goes public.'}</span></p>
                     <button type="button" className="ghost-button" disabled={!editing.exercise.name.trim()} onClick={() => setCommunityOpen(true)}>{editing.exercise.community_id ? 'Manage community submission' : 'Share with community'}</button>
                   </div>}
+                {editing.exercise.media_id ? <PrivateExerciseVideo token={accessToken} id={editing.exercise.media_id} name={editing.exercise.name} /> : null}
+                <button type="button" className="ghost-button" onClick={() => setVideoOpen(true)}>
+                  {editing.exercise.media_id ? "Replace video" : "Add YouTube demo (optional)"}
+                </button>
+                {editing.exercise.media_id ? <button type="button" className="ghost-button" onClick={() => setEditing((current) =>
+                  current?.exercise.origin === "manual" ? { ...current, exercise: { ...current.exercise, media_id: null } } : current,
+                )}>Remove video</button> : null}
+                  </div>
+                </details>
                 {editing.exercise.community_id && linkedCommunity?.id === editing.exercise.community_id && linkedCommunity.entry &&
                   communityDetailsChanged(linkedCommunity.entry, editing.exercise) ? <div role="status" className={styles.communityNotice}>
                     {linkedCommunity.entry.media_id !== editing.exercise.media_id
@@ -806,13 +945,6 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
                   </div> : null}
                 {editing.exercise.community_id && linkedCommunity?.id === editing.exercise.community_id && linkedCommunity.error
                   ? <button type="button" className="ghost-button" onClick={() => setCommunityOpen(true)}>Check community submission</button> : null}
-                {editing.exercise.media_id ? <PrivateExerciseVideo token={accessToken} id={editing.exercise.media_id} name={editing.exercise.name} /> : null}
-                <button type="button" className="ghost-button" onClick={() => setVideoOpen(true)}>
-                  {editing.exercise.media_id ? "Replace video" : "Add YouTube demo (optional)"}
-                </button>
-                {editing.exercise.media_id ? <button type="button" className="ghost-button" onClick={() => setEditing((current) =>
-                  current?.exercise.origin === "manual" ? { ...current, exercise: { ...current.exercise, media_id: null } } : current,
-                )}>Remove video</button> : null}
               </>
             ) : (
               <>
@@ -896,6 +1028,14 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
                 })
               }
             />
+            <details className={styles.advanced}>
+              <summary><span>Cues &amp; stop rules</span>
+                <small>{(["coaching_cues", "stop_rules"] as const).map(field => {
+                  const count = (editing.exercise[field] ?? []).filter(line => line.trim()).length;
+                  return count ? `${count} ${field === "coaching_cues" ? count === 1 ? "cue" : "cues" : count === 1 ? "stop rule" : "stop rules"}` : null;
+                }).filter(Boolean).join(" · ")}</small>
+              </summary>
+              <div className={styles.groupBody}>
             {(["coaching_cues", "stop_rules"] as const).map(field => <label key={field}>
               <span>{field === "coaching_cues" ? "Cues" : "Stop rules"}</span>
               <textarea aria-label={field === "coaching_cues" ? "Cues" : "Stop rules"} rows={2} maxLength={2000}
@@ -904,6 +1044,8 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
                   ...editing.exercise, [field]: event.target.value.split("\n"),
                 } })} />
             </label>)}
+              </div>
+            </details>
             </section>
             <div className={styles.editorActions}>
             <button className="cta">{editing.fresh ? "Add exercise" : "Done"}</button>
@@ -945,7 +1087,9 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
         </InjuryDetailSheet>
       ) : null}
       {preview ? (
-        <DrillPreview entry={preview} token={accessToken} onClose={() => setPreview(undefined)} selfDirected />
+        <DrillPreview key={preview.catalogue_id} entry={preview} token={accessToken} onClose={() => setPreview(undefined)} selfDirected
+          // Previewed from the add sheet, it can add; from an exercise's own editor it only shows the drill.
+          onAdd={adding && !editing && canAdd(adding.sessionId) ? entry => { if (addLibrary(adding.sessionId, entry)) setPreview(undefined); } : undefined} />
       ) : null}
       {communityOpen && editing?.exercise.origin === 'manual' ? <CommunityContributionSheet key={accessToken} token={accessToken} exercise={editing.exercise} onClose={() => setCommunityOpen(false)}
         onIdentity={id => setEditing(current => current?.exercise.origin === 'manual' ? { ...current, exercise: { ...current.exercise, community_id: id } } : current)}

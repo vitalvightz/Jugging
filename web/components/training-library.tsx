@@ -94,10 +94,13 @@ export function DrillPreview({ entry, token, onClose, onAdd, selfDirected = fals
   </InjuryDetailSheet>;
 }
 
-export function TrainingLibrary({ accessToken, onSelect, onBack, onSelectCommunity }: {
+export function TrainingLibrary({ accessToken, onSelect, onBack, onSelectCommunity, initialQuery = "", canAdd = true }: {
   accessToken: string; onSelect?: (entry: LibraryPreview) => void; onBack?: () => void; onSelectCommunity?: (entry: CommunityEntry) => void;
+  /** A search the athlete already typed elsewhere carries over. */
+  initialQuery?: string;
+  canAdd?: boolean;
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [category, setCategory] = useState<Category>("training");
   const [filters, setFilters] = useState<Filters>({});
   const [selectedLabels, setSelectedLabels] = useState<Filters>({});
@@ -270,7 +273,7 @@ export function TrainingLibrary({ accessToken, onSelect, onBack, onSelectCommuni
       </div>}
       {result.next_offset !== null ? <button className={`secondary-button ${styles.more}`} disabled={paging} onClick={() => void more()}>{paging ? "Loading…" : "Load more"}</button> : null}
     </> : null}
-    {category === "training" && !count ? <CommunityDiscovery key={accessToken} token={accessToken} query={query} onAdd={onSelectCommunity} /> : null}
+    {category === "training" && !count ? <CommunityDiscovery key={accessToken} token={accessToken} query={query} onAdd={canAdd ? onSelectCommunity : undefined} /> : null}
     {filterOpen ? <InjuryDetailSheet title={picker ? filterLabels[picker] : "Filters"} onClose={closeFilters} closeLabel="Close filters">
       {/* Opening a filter slides its options in from the right; Back slides
           the filter list in from the left, and the sheet glides between sizes. */}
@@ -317,6 +320,6 @@ export function TrainingLibrary({ accessToken, onSelect, onBack, onSelectCommuni
       </div>
       </AutoHeight>
     </InjuryDetailSheet> : null}
-    {selected ? <DrillPreview key={selected.catalogue_id} entry={selected} token={accessToken} onClose={() => setSelected(null)} onAdd={onSelect} selfDirected={Boolean(onSelect)} /> : null}
+    {selected ? <DrillPreview key={selected.catalogue_id} entry={selected} token={accessToken} onClose={() => setSelected(null)} onAdd={canAdd ? onSelect : undefined} selfDirected={Boolean(onSelect)} /> : null}
   </section>;
 }
