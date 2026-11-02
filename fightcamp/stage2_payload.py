@@ -2202,7 +2202,7 @@ def _build_planning_brief(
         from .planner_context import get_planner_athlete_model
 
         for model in (athlete_model, get_planner_athlete_model()):
-            if isinstance(model, dict) and not model.get("primary_weak_area"):
+            if isinstance(model, dict):
                 model["primary_weak_area"] = _resolved_weak_area
     # Compute short-camp compression up front so downstream consumers (role
     # map, weekly stress map, planning brief output) see a real
