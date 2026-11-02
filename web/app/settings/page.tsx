@@ -1227,7 +1227,6 @@ export default function SettingsPage() {
                   <span className="appearance-mode-copy">
                     <span className="appearance-mode-title-row">
                       <span className="appearance-mode-title">{option.label}</span>
-                      {isSelected ? <span className="appearance-mode-state">Selected</span> : null}
                     </span>
                     <span className="appearance-mode-description">{option.description}</span>
                   </span>

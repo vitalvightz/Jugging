@@ -3712,6 +3712,18 @@ html[data-theme="light"]:root .overview-risk-more.overview-weigh-in:focus-visibl
   line-clamp: 2;
 }
 
+/* No fight weight: the event name sits right of the countdown instead. */
+.fight-countdown-count:has(+ .fight-countdown-event-side) {
+  flex: none;
+}
+
+.fight-countdown-event.fight-countdown-event-side {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: clamp(16px, 6.5cqi, 24px);
+  text-align: right;
+}
+
 /* Countdown on the left, target fight weight on the right behind a hairline,
    always on one row: type scales with the card's width (container units) so
    phone-width cards stay compact instead of wrapping. */
