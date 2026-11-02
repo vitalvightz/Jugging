@@ -368,13 +368,15 @@ def strength_adaptation_relevance(item: dict[str, Any], *, prescription_type: st
 # rotational power, a plank punch-reach resists rotation.
 TRUNK_FUNCTIONS = (
     "anti_extension", "anti_rotation", "anti_lateral_flexion", "loaded_carry",
-    "rotational_power", "rotation", "flexion", "extension", "trunk_stability",
+    "rotational_power", "rotational_braking", "lateral_flexion", "rotation", "flexion", "extension", "trunk_stability",
 )
 _TRUNK_FUNCTION_NAME_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("rotational_braking", re.compile(r"\brotational med.ball catch and stick\b", re.I)),
+    ("lateral_flexion", re.compile(r"\bside bends?\b", re.I)),
     ("loaded_carry", re.compile(r"\b(?:carry|carries|farmer|yoke walk)\b", re.I)),
     ("rotational_power", re.compile(r"\b(?:slam|throw|toss|scoop|woodchop\w*)\b", re.I)),
     ("anti_lateral_flexion", re.compile(
-        r"\b(?:side plank|copenhagen side|suitcase|side bend|windmill|lateral med-ball catch)\b", re.I)),
+        r"\b(?:side plank|copenhagen side|suitcase|windmill|lateral med-ball catch)\b", re.I)),
     ("anti_rotation", re.compile(
         r"\b(?:pallof|anti-rotation|chop holds?|staggered stance|shoulder taps?|bird[- ]?dog"
         r"|punch[- ]reach|plank row|split-line|punch-specific|get-up|renegade|dumbbell drag"
