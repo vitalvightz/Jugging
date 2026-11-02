@@ -82,8 +82,14 @@ def _unique(values):
     return result
 
 
+# The KS3 sentence cap from the finalizer prompt. A validated cue up to this
+# length is one complete instruction ("Keep your front foot planted and control
+# the lowering phase."); clipping it at word seven deleted half the technique.
+_CUE_WORD_CAP = 20
+
+
 def short_cue(text):
-    """Prefer a complete authored clause; never truncate a warning at word seven.
+    """Keep a complete authored cue; compact only over-long prose.
 
     If a safe short clause
     cannot be extracted, keep the longer cue rather than cut technical meaning.
@@ -93,7 +99,7 @@ def short_cue(text):
         return _COMPACT_COPY[text]
     if text in _COMPACT_VALUES:
         return text
-    if len(text.split()) <= 7:
+    if len(text.split()) <= _CUE_WORD_CAP:
         return text
     # Do not split a negated or conditional instruction into an unsafe fragment.
     if re.search(r"\b(?:if|when|unless|until|without|do not|don't|never)\b", text, re.I):

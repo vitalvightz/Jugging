@@ -256,7 +256,19 @@ def project_source_adjustments(plan: dict[str, Any], source: str) -> dict[str, A
                         block["progression_rule"] = expected["progression_rule"]
                     else:
                         block.pop("progression_rule", None)
-                    for key in ("sets", "reps", "rounds", "duration", "work", "rest", "distance", "effort", "load", "execution_instructions", "coaching_cues", "stop_rules"):
+                    # Swap is validated source coaching like Easier: the source
+                    # line wins, and a converter-invented swap is removed. It is
+                    # an optional alternative; the block keeps its exercise.
+                    if expected.get("substitutions") or block.get("substitutions"):
+                        block["substitutions"] = list(expected.get("substitutions") or [])
+                    # A labelled source Cue/Stop is the approved instruction; a
+                    # converter paraphrase or generic bank line never replaces it.
+                    segment = _source_block_segment("\n".join(block_lines), name)
+                    if expected.get("coaching_cues") and _SOURCE_CUE_RE.search(segment):
+                        block["coaching_cues"] = copy.deepcopy(expected["coaching_cues"])
+                    if expected.get("stop_rules") and re.search(r"^\s*Stop\s*:", segment, re.I | re.M):
+                        block["stop_rules"] = copy.deepcopy(expected["stop_rules"])
+                    for key in ("sets", "reps", "rounds", "duration", "work", "rest", "distance", "effort", "load", "execution_instructions", "coaching_cues", "stop_rules", "purpose"):
                         if expected.get(key) and not block.get(key):
                             block[key] = copy.deepcopy(expected[key])
                     # Cluster rows and qualitative rest are structure the

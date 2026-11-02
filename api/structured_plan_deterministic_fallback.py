@@ -573,6 +573,7 @@ def _source_block(
         "execution_instructions": _preserve_unrepresented_dose(parsed.activity_dose, parsed.execution_instructions, name),
         "coaching_cues": list(parsed.cues),
         "regression_options": list(parsed.regressions),
+        "substitutions": list(parsed.substitutions),
         "progression_rule": parsed.progression or None,
         "stop_rules": list(parsed.stop_rules),
     }
@@ -814,6 +815,7 @@ _STOP_LABELS = {"quality stop", "stop", "stop rule"}
 _REGRESSION_LABELS = {"easier", "regress", "regression"}
 _PROGRESSION_LABELS = {"progress", "progression"}
 _PURPOSE_LABELS = {"purpose"}
+_SUBSTITUTION_LABELS = {"swap", "swaps", "substitution"}
 _WHY_LABELS = {"why", "why today"}
 
 #: Detail labels Stage 2 may write INLINE after an exercise's dose instead of
@@ -822,7 +824,8 @@ _WHY_LABELS = {"why", "why today"}
 #: boundary, start a new detail line, so ordinary prose containing a colon is
 #: never split.
 _INLINE_DETAIL_LABELS = sorted(
-    {"cue", "how", *_STOP_LABELS, *_REGRESSION_LABELS, *_PROGRESSION_LABELS, *_PURPOSE_LABELS},
+    {"cue", "how", *_STOP_LABELS, *_REGRESSION_LABELS, *_PROGRESSION_LABELS, *_PURPOSE_LABELS,
+     *_SUBSTITUTION_LABELS},
     key=len,
     reverse=True,
 )
@@ -850,6 +853,7 @@ class _ParsedDisplayText:
     cues: list[str] = field(default_factory=list)
     stop_rules: list[str] = field(default_factory=list)
     regressions: list[str] = field(default_factory=list)
+    substitutions: list[str] = field(default_factory=list)
     progression: str = ""
 
 
@@ -894,6 +898,8 @@ def _parse_display_text(display_text: str) -> _ParsedDisplayText:
                 parsed.stop_rules.append(text)
             elif label in _REGRESSION_LABELS:
                 parsed.regressions.append(text)
+            elif label in _SUBSTITUTION_LABELS:
+                parsed.substitutions.append(text)
             elif label in _PROGRESSION_LABELS:
                 # "Progress: none this block" states that nothing advances.
                 if not parsed.progression and not is_null_progression(text):
@@ -943,7 +949,7 @@ def _parsed_block(
         "why_today": parsed.why or None,
         "coaching_cues": cues,
         "regression_options": list(parsed.regressions),
-        "substitutions": [],
+        "substitutions": list(parsed.substitutions),
         "progression_rule": parsed.progression or None,
         "stop_rules": list(parsed.stop_rules),
     }
