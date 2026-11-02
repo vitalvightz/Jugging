@@ -872,6 +872,19 @@ def trunk_alternate_records(records: list[dict[str, Any]]) -> list[dict[str, Any
     return alternates
 
 
+# Only dedicated core work fills or counts toward a Core Development Block: a
+# trunk-targeted SUPPORT-class item. An anchor-class lift or power movement with
+# a trunk tag (a landmine press, a rotational slam) stays ordinary main work;
+# the serialized Stage 1 option drops the authored category, so its tags alone
+# must not make it a core exercise.
+_DEDICATED_CORE_QUALITY = frozenset({"support_accessory", "support_isometric", "rehab_support"})
+_RESISTED_TIERS = frozenset({"loaded", "rotational_power"})
+
+
+def _dedicated_core(record: dict[str, Any]) -> bool:
+    return bool(record.get("trunk_targeted")) and record.get("quality_class") in _DEDICATED_CORE_QUALITY
+
+
 def _record_trunk_tier(record: dict[str, Any]) -> str:
     from .strength_session_quality import trunk_load_tier
 
@@ -907,6 +920,7 @@ def _trunk_block_additions(
     target: int = _TRUNK_BLOCK_TARGET,
     tier_limits: dict[str, int] | None = None,
     minimum: int = TRUNK_BLOCK_MINIMUM,
+    require_resisted: bool = True,
 ) -> list[dict[str, Any]] | None:
     """Complementary trunk members to add, or None when no real block fits.
 
@@ -918,7 +932,7 @@ def _trunk_block_additions(
     rehab-level drills last: development wants resistance, not the gentlest item.
     """
     limits = _TRUNK_BLOCK_MAX_TIER if tier_limits is None else tier_limits
-    held = [r for r in selected if r.get("trunk_targeted")]
+    held = [r for r in selected if _dedicated_core(r)]
     base_functions = {_record_trunk_function(r) for r in held} - {""}
     base_tiers: dict[str, int] = {}
     for record in held:
@@ -931,11 +945,16 @@ def _trunk_block_additions(
     # A slot's own selection first; an alternate only to add a missing function.
     candidates = sorted(
         [r for r in [*(r for r in records if r not in selected and r.get("trunk_targeted")), *alternates]
-         if r["name"] not in selected_names and _base_slot_id(r) not in used_slots
+         if _dedicated_core(r) and r["name"] not in selected_names and _base_slot_id(r) not in used_slots
          and _record_trunk_function(r) not in base_functions],
         key=lambda r: (bool(r.get("alternate_of")), r.get("quality_class") == "rehab_support", r["sort_key"]),
     )
     best: list[dict[str, Any]] = []
+    held_resisted = any(_record_trunk_tier(r) in _RESISTED_TIERS for r in held)
+
+    def _resisted(chosen: list[dict[str, Any]]) -> bool:
+        # Maintenance is low-fatigue control work: it does not need resistance.
+        return not require_resisted or held_resisted or any(_record_trunk_tier(r) in _RESISTED_TIERS for r in chosen)
 
     # Bounded depth-first search in preference order (a handful of candidates,
     # at most four picks): the first combination that reaches the target wins;
@@ -944,10 +963,13 @@ def _trunk_block_additions(
     def search(start: int, chosen: list[dict[str, Any]], functions: set[str], tiers: dict[str, int],
                counts: dict[str, int], slots: set[str]) -> bool:
         nonlocal best
-        if len(functions) > len(base_functions | {_record_trunk_function(r) for r in best}):
+        # A block must carry at least one resisted or explosive member: three
+        # bodyweight holds are not a development stimulus (see goal validation).
+        best_functions = base_functions | {_record_trunk_function(r) for r in best}
+        if _resisted(chosen) and (len(functions) > len(best_functions) or not _resisted(best)):
             best = list(chosen)
-        if len(functions) >= target or len(chosen) >= room:
-            return len(functions) >= target
+        if (len(functions) >= target and _resisted(chosen)) or len(chosen) >= room:
+            return len(functions) >= target and _resisted(chosen)
         for index in range(start, len(candidates)):
             record = candidates[index]
             function, keys = _record_trunk_function(record), _record_budget_keys(record)
@@ -969,7 +991,7 @@ def _trunk_block_additions(
 
     search(0, [], set(base_functions), base_tiers, dict(family_counts), set(used_slots))
     covered = base_functions | {_record_trunk_function(r) for r in best}
-    return best if len(covered) >= minimum else None
+    return best if len(covered) >= minimum and _resisted(best) else None
 
 
 def main_exercise_count(assignments: list[dict[str, Any]] | None) -> int:
@@ -987,11 +1009,14 @@ def trunk_block_members(selected: list[dict[str, Any]]) -> list[dict[str, Any]]:
     members: list[dict[str, Any]] = []
     functions: set[str] = set()
     for record in selected:
+        if not _dedicated_core(record):
+            continue  # main power/strength work with a trunk tag is not a core slot
         function = _record_trunk_function(record)
         if function and function not in functions and len(members) < _TRUNK_BLOCK_TARGET:
             members.append(record)
             functions.add(function)
-    return members if len(functions) >= TRUNK_BLOCK_MINIMUM else []
+    resisted = any(_record_trunk_tier(r) in _RESISTED_TIERS for r in members)
+    return members if len(functions) >= TRUNK_BLOCK_MINIMUM and resisted else []
 
 
 def _hard_sparring_day_offsets(week: dict[str, Any], role: dict[str, Any]) -> set[int]:
@@ -1154,7 +1179,8 @@ def late_core_maintenance_additions(
         for family in record["families"] - {"support"}:
             family_counts[family] = family_counts.get(family, 0) + 1
     return _trunk_block_additions(candidates, held, family_counts, family_limit=2, room=target, target=target,
-                                  tier_limits=limits, minimum=LATE_CORE_MAINTENANCE_MINIMUM)
+                                  tier_limits=limits, minimum=LATE_CORE_MAINTENANCE_MINIMUM,
+                                  require_resisted=False)
 
 
 def _trunk_block_outcome(

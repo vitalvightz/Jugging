@@ -40,6 +40,45 @@ def without_maintenance():
         return delivery._generate(_SCENARIO)["planning_brief"]
 
 
+_MEASURED = "Half-kneeling Pallof isometric"
+
+
+def _measured_load(mp):
+    """Author a known low load for the one late-approved dedicated core item the
+    bank leaves unmeasurable, so the delivery path can be exercised end to end.
+    Stage 1 selection is untouched; only that candidate's metadata changes."""
+    import fightcamp.stage2_payload as payload
+
+    build = payload._build_core_development_slots
+
+    def patched(*args, **kwargs):
+        slots = build(*args, **kwargs)
+        for slot in slots:
+            if slot["selected"].get("name") == _MEASURED:
+                slot["selected"]["selection_metadata"] = {**(slot["selected"].get("selection_metadata") or {}),
+                                                          "lactate_load": "low"}
+        return slots
+
+    mp.setattr(payload, "_build_core_development_slots", patched)
+
+
+@pytest.fixture(scope="module")
+def measured():
+    with pytest.MonkeyPatch.context() as mp:
+        _measured_load(mp)
+        return delivery._generate(_SCENARIO)
+
+
+@pytest.fixture(scope="module")
+def measured_without():
+    import fightcamp.stage2_payload as payload
+
+    with pytest.MonkeyPatch.context() as mp:
+        _measured_load(mp)
+        mp.setattr(payload, "_apply_late_core_maintenance", lambda *args, **kwargs: None)
+        return delivery._generate(_SCENARIO)["planning_brief"]
+
+
 def _reapply(brief, host_members):
     """Run maintenance alone on a copy of ``brief`` whose D-13 host holds ``host_members``."""
     import copy
@@ -86,7 +125,7 @@ def test_development_blocks_before_d14_are_unchanged():
               if core._block(role).get("status") == "delivered"}
     assert blocks == {
         22: ["Banded Pallof (Walking)", "Plank", "Seated Medicine Ball Rotation"],
-        19: ["Med-Ball Rotational Slam", "Seated Medicine Ball Rotation", "Slider Body Saw"],
+        19: ["Seated Medicine Ball Rotation", "Slider Body Saw", "Seated Pike Compression Lift-Off"],
     }
     assert not any("late_core_maintenance" in role for _, role in _roles(_brief(_SCENARIO))
                    if not role.get("late_fight_tail_owned"))
@@ -106,8 +145,44 @@ def test_development_never_draws_on_maintenance_candidates():
 # 2. D-13..D-7: one eligible tail session receives 2-3 complementary members
 # ---------------------------------------------------------------------------
 
-def test_week_three_keeps_complementary_low_fatigue_core_maintenance():
+def test_real_week_three_records_why_maintenance_is_withheld(without_maintenance):
+    """The real 28-day plan: Stage 1 now supplies two complementary dedicated
+    core candidates, but the bank authors no load for one of them, so the
+    session's load cannot be measured and nothing is forced."""
     brief = _brief(_SCENARIO)
+    host = next(r for w, r in _tail_strength(brief) if role_d_day(w, r) == 13)
+    assert _maintenance(host) == {"intent": "maintenance", "status": "constrained",
+                                  "reason_code": "session_stress_unknown"}
+    spp = {slot["selected"]["name"]: slot for slot in brief["candidate_pools"]["SPP"]["core_development_slots"]
+           if slot["role"] == "core_maintenance"}
+    assert {"Dead-bug breathing", _MEASURED} <= set(spp)
+    before = next(r for w, r in _tail_strength(without_maintenance) if role_d_day(w, r) == 13)
+    assert _members(host) == _members(before)
+
+
+def test_maintenance_candidates_are_dedicated_late_approved_core():
+    from fightcamp.session_composition import _candidate_records, _dedicated_core
+
+    for phase, pool in _brief(_SCENARIO)["candidate_pools"].items():
+        for slot in pool.get("core_development_slots") or []:
+            if slot["role"] == "core_maintenance":
+                assert _dedicated_core(_candidate_records([slot])[0]), slot["selected"]["name"]
+                name = slot["selected"]["name"]
+                assert late_window_allowed([_BANK[name]], offset=13) or late_window_allowed([_BANK[name]], offset=7)
+                assert phase in _BANK[name]["phases"]
+
+
+def test_whole_word_ban_only_for_the_maintenance_list():
+    from fightcamp.strength import is_banned_exercise
+
+    assert is_banned_exercise(_MEASURED, [], "boxing")  # ordinary selection: unchanged
+    assert not is_banned_exercise(_MEASURED, [], "boxing", whole_words=True)
+    assert is_banned_exercise("Knee Strike Drill", [], "boxing", whole_words=True)
+    assert is_banned_exercise("Jumping Knee Tuck", ["knee"], "boxing", whole_words=True)
+
+
+def test_measured_week_three_keeps_complementary_low_fatigue_core_maintenance(measured):
+    brief = measured["planning_brief"]
     week, role = _host(brief)
     d_day = role_d_day(week, role)
     assert 7 <= d_day <= 13 and role["role_key"] == "strength_touch_day"
@@ -146,7 +221,7 @@ def test_goal_preservation_is_unchanged_by_maintenance():
 
 
 def test_maintenance_selection_is_complementary_and_budgeted():
-    records = core._synthetic(["Plank", "Bird Dog Hold", "Dead-bug breathing", "Suitcase Carry Holds",
+    records = core._synthetic(["Bird Dog Hold", "Dead-bug breathing", "Suitcase Carry Holds",
                                "Kettlebell Suitcase Carry Hold", "Med-Ball Rotational Slam"])
     picks = late_core_maintenance_additions(records, loaded_allowed=True)
     names = [r["name"] for r in picks]
@@ -157,7 +232,7 @@ def test_maintenance_selection_is_complementary_and_budgeted():
     unloaded = late_core_maintenance_additions(records, loaded_allowed=False)
     assert unloaded is None or all(trunk_load_tier(_BANK[r["name"]]) == "stability" for r in unloaded)
     # One function is not maintenance of the trunk: nothing is forced.
-    assert late_core_maintenance_additions(core._synthetic(["Plank", "Dead-bug breathing"]),
+    assert late_core_maintenance_additions(core._synthetic(["Dead-bug breathing"]),
                                            loaded_allowed=True) is None
 
 
@@ -247,11 +322,11 @@ def test_pipeline_records_why_maintenance_was_withheld(key, source, monkeypatch)
 # 5. No duplicates, new sessions, cap breaches or extra stress
 # ---------------------------------------------------------------------------
 
-def test_maintenance_adds_members_only_inside_the_existing_session(without_maintenance):
+def test_maintenance_adds_members_only_inside_the_existing_session(measured, measured_without):
     """Same calendar with and without maintenance. The host keeps its lead and
     any meaningful work in order; only support-only primer complements may give
     way (recorded), and its realised stress is no higher."""
-    with_maintenance, without = _brief(_SCENARIO), without_maintenance
+    with_maintenance, without = measured["planning_brief"], measured_without
 
     def calendar(brief):
         return [(w.get("week_index"), role_d_day(w, r), r.get("role_key")) for w, r in _roles(brief)]
@@ -279,11 +354,12 @@ def test_maintenance_adds_members_only_inside_the_existing_session(without_maint
         assert host["calendar_stress"][axis] <= before["calendar_stress"][axis]
 
 
-@pytest.mark.parametrize("key", [_SCENARIO, "king_no_cut", "core_goal", "muaythai28_power_trunk"])
-def test_every_late_primer_session_respects_the_member_cap(key):
+@pytest.mark.parametrize("key", [_SCENARIO, "king_no_cut", "core_goal", "muaythai28_power_trunk", "measured"])
+def test_every_late_primer_session_respects_the_member_cap(key, request):
     from fightcamp.stage2_payload import LATE_PRIMER_MAX_MEMBERS, LATE_PRIMER_ROLE_KEYS
 
-    for _, role in _roles(_brief(key)):
+    brief = request.getfixturevalue("measured")["planning_brief"] if key == "measured" else _brief(key)
+    for _, role in _roles(brief):
         if role.get("late_fight_tail_owned") and role.get("role_key") in LATE_PRIMER_ROLE_KEYS:
             assert len(_members(role)) <= LATE_PRIMER_MAX_MEMBERS, (key, [m["name"] for m in _members(role)])
 
@@ -302,27 +378,6 @@ def test_maintenance_is_withheld_when_only_the_cap_could_make_room(without_maint
                                   "reason_code": "primer_member_cap"}
 
 
-def _trunk_assignment(brief, name):
-    from fightcamp.session_composition import assignment_from_slot
-
-    for phase, pool in brief["candidate_pools"].items():
-        for slot in [*(pool.get("strength_slots") or []), *(pool.get("core_development_slots") or [])]:
-            if slot["selected"]["name"] == name:
-                return {**assignment_from_slot(phase, "strength_slots", slot), "phase": phase}
-    raise AssertionError(name)
-
-
-def test_trunk_work_the_session_already_holds_spends_the_maintenance_budget(without_maintenance):
-    """A ballistic rotational trunk lead already exceeds the maintenance budget:
-    no core is added on top of it, and the reason names the load limit."""
-    original = next(r for w, r in _tail_strength(without_maintenance) if role_d_day(w, r) == 13)
-    members = [_trunk_assignment(without_maintenance, "Med-Ball Rotational Slam"), *_members(original)[:1]]
-    host = _reapply(without_maintenance, members)
-    assert [m["name"] for m in _members(host)] == [m["name"] for m in members]
-    assert _maintenance(host) == {"intent": "maintenance", "status": "constrained",
-                                  "reason_code": "trunk_load_limits"}
-
-
 def test_held_trunk_functions_are_not_repeated():
     held = core._synthetic(["Bird Dog Hold"])
     records = core._synthetic(["Plank", "Controlled Bird-Dog", "Dead-bug breathing", "Suitcase Carry Holds"])
@@ -333,17 +388,16 @@ def test_held_trunk_functions_are_not_repeated():
     loaded_held = core._synthetic(["Suitcase Carry Holds"])
     picks = late_core_maintenance_additions(records, loaded_allowed=True, held=loaded_held) or []
     assert all(trunk_load_tier(_BANK[r["name"]]) == "stability" for r in picks)
-    # Ballistic rotational work already in the session: nothing is added.
-    assert late_core_maintenance_additions(records, loaded_allowed=True,
-                                           held=core._synthetic(["Med-Ball Rotational Slam"])) is None
+    # Held resisted core on a no-load countdown day is already over budget.
+    assert late_core_maintenance_additions(records, loaded_allowed=False, held=loaded_held) is None
 
 
 # ---------------------------------------------------------------------------
 # 6. Stage 2 receives no grouping signal
 # ---------------------------------------------------------------------------
 
-def test_maintenance_members_carry_no_grouping():
-    _, role = _host(_brief(_SCENARIO))
+def test_maintenance_members_carry_no_grouping(measured):
+    _, role = _host(measured["planning_brief"])
     for member in _maintenance_members(role):
         assert not {"component_group", "trunk_function", "exercise_cap_exempt"} & set(member)
 
@@ -355,6 +409,7 @@ def test_stage2_requests_carry_no_maintenance_or_grouping_signal(monkeypatch):
 
     monkeypatch.setenv("UNLXCK_STAGE2_STRUCTURED_PLAN", "1")
     monkeypatch.setenv("UNLXCK_STAGE2_STRUCTURED_REPAIR", "1")
+    _measured_load(monkeypatch)
     stage1 = delivery._generate(_SCENARIO)
     brief = stage1["planning_brief"]
     _, host = _host(brief)
@@ -386,8 +441,8 @@ def test_stage2_requests_carry_no_maintenance_or_grouping_signal(monkeypatch):
 # 7. Identity, logging and rendering stay intact
 # ---------------------------------------------------------------------------
 
-def test_maintenance_members_keep_identity_and_render_as_ordinary_exercises():
-    brief = _brief(_SCENARIO)
+def test_maintenance_members_keep_identity_and_render_as_ordinary_exercises(measured):
+    brief = measured["planning_brief"]
     week, role = _host(brief)
     for member in _maintenance_members(role):
         assert member["exercise_key"] and member["slot_id"] and member["source_phase"]

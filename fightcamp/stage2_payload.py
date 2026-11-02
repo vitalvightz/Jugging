@@ -1886,6 +1886,11 @@ def _apply_late_core_maintenance(
                 trial = [*(match for index, match in enumerate(existing) if index not in dropped),
                          *((phase, "strength_slots", r["slot"]) for r in picks)]
                 stress = _late_primer_session_stress(role, trial, set())
+                if stress is None:
+                    # A member whose load cannot be measured is never evidence
+                    # that more work fits.
+                    outcome["reason_code"] = "session_stress_unknown"
+                    continue
                 if (not _late_primer_within_envelope(role, lead_stress, stress)
                         or _late_primer_neighbour_rank(role, stress, tail_roles)
                         > _late_primer_neighbour_rank(role, lead_stress, tail_roles)):

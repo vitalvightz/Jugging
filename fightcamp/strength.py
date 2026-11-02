@@ -1415,8 +1415,15 @@ def score_exercise(
 
     return round(score, 4), reasons
 
-def is_banned_exercise(name: str, tags: list[str], fight_format: str, details: str = "") -> bool:
-    """Return True if the exercise should be removed for the given sport."""
+def is_banned_exercise(
+    name: str, tags: list[str], fight_format: str, details: str = "", *, whole_words: bool = False,
+) -> bool:
+    """Return True if the exercise should be removed for the given sport.
+
+    ``whole_words`` matches each term as a word ("knee" bans a knee strike, not
+    a half-kneeling drill). Only the late-only core maintenance list uses it;
+    ordinary selection keeps its substring matching unchanged.
+    """
     name = name.lower()
     tags = normalize_tags(tags)
     details = details.lower()
@@ -1433,14 +1440,22 @@ def is_banned_exercise(name: str, tags: list[str], fight_format: str, details: s
         "sprawling",
     }
 
+    def hit(term: str) -> bool:
+        if term in tags:
+            return True
+        if whole_words:
+            pattern = rf"\b{re.escape(term)}\b"
+            return bool(re.search(pattern, name) or re.search(pattern, details))
+        return term in name or term in details
+
     if fight_format in {"boxing", "kickboxing"}:
         for term in grappling_terms:
-            if term in name or term in tags or term in details:
+            if hit(term):
                 return True
 
     if fight_format == "boxing":
         for term in ["kick", "knee", "clinch knee strike"]:
-            if term in name or term in tags or term in details:
+            if hit(term):
                 return True
 
     return False
@@ -2380,7 +2395,7 @@ def generate_strength_block(*, flags: dict, weaknesses=None):
                 ex.get("notes", ""),
             ]
         )
-        if is_banned_exercise(ex.get("name", ""), tags, fight_format, details):
+        if is_banned_exercise(ex.get("name", ""), tags, fight_format, details, whole_words=late_only):
             continue
         ex_equipment = _required_strength_equipment(ex)
         if legacy_taper_gate:
@@ -3609,10 +3624,14 @@ def generate_strength_block(*, flags: dict, weaknesses=None):
         # Late-fight core maintenance (D-13..D-7) may only use items the bank
         # opts into those countdown windows. Same filtered, scored list; kept
         # apart so the development block's candidates are unchanged.
+        # Only dedicated core items can serve (#3167), so others never take a
+        # per-function place from them.
         from .late_selector_windows import late_window_allowed
+        from .session_composition import _DEDICATED_CORE_QUALITY
         reservoir["__core_maintenance__"] = _core_development_candidates(
             sorted((entry for entry in [*late_core_weighted, *capped_weighted]
-                    if late_window_allowed([entry[0]], offset=13) or late_window_allowed([entry[0]], offset=7)),
+                    if (late_window_allowed([entry[0]], offset=13) or late_window_allowed([entry[0]], offset=7))
+                    and classify_strength_item(entry[0])["quality_class"] in _DEDICATED_CORE_QUALITY),
                    key=lambda entry: -entry[1]),
             is_safe=lambda ex: _cached_guarded_decision(ex).action != "exclude",
         )
