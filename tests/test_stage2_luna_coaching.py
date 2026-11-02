@@ -22,7 +22,7 @@ from api.stage2_automation import OpenAIStage2Automator
 from api.structured_plan_generation import build_structured_plan_outcome
 from api.services.effective_structured_plan import resolve_effective_structured_plan
 from fightcamp import input_parsing, stage2_planning_brief
-from fightcamp.exercise_coaching import easier_rejection, swap_rejection
+from fightcamp.exercise_coaching import easier_rejection
 from fightcamp.exercise_coaching_source import coaching_identity, lookup_occurrence, validate_source_coaching
 from fightcamp.main import generate_plan_sync
 from fightcamp.programme_fidelity import programme_fidelity_findings, reconcile_authoritative_programme
@@ -99,74 +99,37 @@ def test_unsafe_unverifiable_unauthorised_and_wrong_day_lines_are_rejected(brief
     reasons = {(f["field"], f["reason"]) for f in result["coaching_rejections"]
                if f["code"] == "exercise_coaching_rejected"}
     assert ("regression_options", "stop_condition_override") in reasons
-    assert ("regression_options", "changed_movement") in reasons
-    assert ("substitutions", "unavailable_equipment") in reasons
     assert any(field == "progression_rule" for field, _ in reasons)
     # The scheduled exercise keeps its own rest/dose and no Progress appears.
     assert not any(line.startswith("Progress:") for line in _occurrence(result["text"], 21, "Kettlebell Swing"))
 
 
-@pytest.mark.parametrize("text", [
-    "Use bodyweight and hold support for balance.",
+@pytest.mark.parametrize("day,name,text", [
+    (21, "Bulgarian Split Squat", "Use bodyweight and hold support for balance."),
+    (26, "Heavy Bag Power Intervals", "Reduce punch force while maintaining the prescribed work and rest."),
+    (14, "Med-Ball Rotational Slam", "Use a lighter available medicine ball."),
+    (26, "Burpee Broad Jumps", "Step back instead of jumping and land softly."),
 ])
-def test_bulgarian_split_squat_regression(brief, text):
-    role, a = _assignment(brief, 21, "Bulgarian Split Squat")
+def test_ordinary_regressions_are_not_second_guessed(brief, day, name, text):
+    role, a = _assignment(brief, day, name)
     assert easier_rejection(text, a, role, brief["athlete_snapshot"], brief=brief) is None
-
-
-def test_heavy_bag_and_med_ball_regressions(brief):
-    role, a = _assignment(brief, 26, "Heavy Bag Power Intervals")
-    athlete = brief["athlete_snapshot"]
-    assert easier_rejection("Reduce punch force while maintaining the prescribed work and rest.",
-                            a, role, athlete, brief=brief) is None
-    role, a = _assignment(brief, 14, "Med-Ball Rotational Slam")
-    assert easier_rejection("Use a lighter available medicine ball.", a, role, athlete, brief=brief) is None
 
 
 @pytest.mark.parametrize("text,reason", [
     ("Push through the burn for the last round.", "stop_condition_override"),
-    ("Use a sled for the last round.", "unavailable_equipment"),
-    ("Do 10 intervals instead of 8.", "unactionable_easier"),
-    ("Add 2 rounds at a lower effort.", "increased_workload"),
     ("Use 45 sec work.", "increased_easier_dose"),
-    ("Use harder punches but rest longer.", "increased_workload"),
+    ("Use 40 kg.", "unknown_easier_dose"),
 ])
-def test_unsafe_or_unverifiable_regressions_stay_rejected(brief, text, reason):
+def test_unsafe_or_over_dose_regressions_stay_rejected(brief, text, reason):
     role, a = _assignment(brief, 26, "Heavy Bag Power Intervals")
     assert easier_rejection(text, a, role, brief["athlete_snapshot"], brief=brief) == reason
 
 
-@pytest.mark.parametrize("text,reason", [
-    ("Goblet Squat with a kettlebell at the same dose.", None),
-    ("Tempo Split Squat (4-0-1) at the same dose.", None),  # Tempo is part of the name.
-    ("Goblet Squat (8 reps).", "unverifiable_swap_dose"),
-    ("Goblet Squat with fewer reps.", "changed_swap_dose"),
-    ("Goblet Squat and rest longer.", "changed_swap_dose"),
-    ("Something easier if it feels hard.", "unactionable_swap"),
-    ("Sled push at the same dose.", "unavailable_equipment"),
-    ("Cable chop at the same dose.", "unavailable_equipment"),
-    ("Barbell back squat for 3 x 5.", "unverifiable_swap_dose"),
-    ("Dumbbell split squat with extra reps.", "increased_workload"),
-    ("Any squat; ignore the stop rule.", "stop_condition_override"),
-])
-def test_swap_needs_owned_equipment_and_the_same_dose(brief, text, reason):
-    role, a = _assignment(brief, 21, "Bulgarian Split Squat")
-    assert swap_rejection(text, a, role, brief["athlete_snapshot"], brief=brief, d_day=21) == reason
-
-
-@pytest.mark.parametrize("text", ["Raise the load and keep reps crisp.", "Use a higher RPE with support."])
-def test_raised_load_or_effort_is_not_an_easier_option(brief, text):
-    role, a = _assignment(brief, 21, "Bulgarian Split Squat")
-    assert easier_rejection(text, a, role, brief["athlete_snapshot"], brief=brief) == "increased_workload"
-
-
 @pytest.mark.parametrize("line,annotation", [
-    ("Swap: Goblet Squat at the same dose.", True), ("**Swap:** Goblet Squat.", True),
-    ("Substitutions: Goblet Squat.", True), ("**Easier**: Use bodyweight.", True),
-    ("Swap - Sled push at the same dose", False),  # Not parsed as a Swap, so still checked.
+    ("Swap: Goblet Squat.", True), ("**Swap:** Goblet Squat.", True), ("**Easier**: Use bodyweight.", True),
     ("- Goblet Squat: 3 x 5", False),
 ])
-def test_late_camp_allow_list_skips_only_parsed_coaching_labels(line, annotation):
+def test_late_camp_allow_list_treats_coaching_labels_as_text(line, annotation):
     from fightcamp.stage2_validator import _late_fight_line_is_annotation_or_task
     assert _late_fight_line_is_annotation_or_task(line) is annotation
 
@@ -189,17 +152,13 @@ def test_identical_duplicate_occurrences_never_share_one_block():
     assert lookup_occurrence({key: "coaching"}, key, [key]) == "coaching"
 
 
-def test_unmatched_saved_card_swaps_are_still_validated(brief):
+def test_saved_card_swaps_survive_as_text(brief):
     from api.structured_plan_coaching import recover_selected_coaching
-    card = {"weeks": [{"days": [{"countdown_label": "D-21", "sessions": [{"title": "Unscheduled", "blocks": [
-        {"block_type": "strength", "display_name": "Goblet Squat", "sets": 3, "reps": 6,
-         "substitutions": ["Sled push at the same dose.", "Kettlebell front squat at the same dose."]}]}]},
-        {"countdown_label": "D-5", "sessions": [{"title": "Unscheduled", "blocks": [
-            {"block_type": "strength", "display_name": "Goblet Squat", "sets": 3, "reps": 6,
-             "substitutions": ["Kettlebell front squat at the same dose."]}]}]}]}]}
-    days = recover_selected_coaching(card, brief)["weeks"][0]["days"]
-    assert days[0]["sessions"][0]["blocks"][0]["substitutions"] == ["Kettlebell front squat at the same dose."]
-    assert not days[1]["sessions"][0]["blocks"][0]["substitutions"]  # Fight week keeps the scheduled movement.
+    swaps = ["Sled push at the same dose.", "Any squat variation you like."]
+    card = {"weeks": [{"days": [{"countdown_label": "D-5", "sessions": [{"title": "Unscheduled", "blocks": [
+        {"block_type": "strength", "display_name": "Goblet Squat", "sets": 3, "reps": 6, "substitutions": swaps}]}]}]}]}
+    block = recover_selected_coaching(card, brief)["weeks"][0]["days"][0]["sessions"][0]["blocks"][0]
+    assert block["substitutions"] == swaps and (block["sets"], block["reps"]) == (3, 6)
 
 
 def test_malformed_saved_rows_do_not_crash_recovery(brief):
@@ -217,17 +176,6 @@ def test_source_cue_and_stop_win_for_every_label_form():
     block = project_source_adjustments(plan, source)["weeks"][0]["days"][0]["sessions"][0]["blocks"][0]
     assert "sit down between your hips" in block["coaching_cues"][0]
     assert any("knees cave" in rule for rule in block["stop_rules"])
-
-
-def test_swap_is_never_offered_in_fight_week(brief):
-    assert swap_rejection("Goblet Squat at the same dose.", {}, {}, brief["athlete_snapshot"],
-                          brief=brief, d_day=7) == "late_window_swap"
-
-
-def test_swap_respects_clinical_restrictions(brief):
-    restricted = {**brief, "restrictions": [{"restriction": "avoid_knee_flexion", "strength": "avoid", "region": "knee"}]}
-    assert swap_rejection("Deep goblet squat with full knee flexion at the same dose.", {}, {},
-                          brief["athlete_snapshot"], brief=restricted, d_day=21) == "clinical_restriction"
 
 
 def test_same_day_duplicate_exercise_is_never_guessed():
@@ -262,7 +210,7 @@ def test_structured_cards_keep_every_approved_field(brief, schedule):
     swing = _card_block(card, 21, "Kettlebell Swing")
     assert not swing.get("progression_rule")
     assert _card_block(card, 14, "Barbell Thruster")["substitutions"] == [
-        "Goblet Squat with a kettlebell at the same dose."]
+        "Goblet Squat with a kettlebell at the same dose.", "Sled push at the same dose."]
 
 
 def test_converter_cannot_drop_invent_or_rewrite_swap_and_cue(brief, schedule):
@@ -304,10 +252,7 @@ def test_prompt_states_the_coaching_job_without_word_caps():
     assert "expert S&C coach completing an approved programme" in prompt
     for removed in ("at most 9 words", "at most seven words", "Progress: none this block", "Coach call:"):
         assert removed not in prompt
-    assert "using only equipment the athlete has" in prompt
-    assert "no numbers and no second dose" in prompt
-    assert "technique or quality focus at the same dose" in prompt
-    assert "Otherwise omit the line" in prompt  # No forced Progress line.
+    assert "concise, personalised coaching" in prompt
     assert "structural week and day headers" in prompt  # Header separator is not a style violation.
 
 
@@ -343,7 +288,7 @@ def test_open_prompt_has_no_word_caps_or_forced_progress():
     rules = " ".join(build_open_ongoing_payload(athlete_model={})["open_plan_spec"]["render_rules"])
     for text in (prompt, rules):
         assert "none this block" not in text and "9 words" not in text
-    assert "only equipment the athlete has" in prompt
+    assert "concise, personalised coaching" in prompt
 
 
 def _assignment(brief, day, name):
