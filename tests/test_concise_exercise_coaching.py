@@ -109,12 +109,18 @@ def test_complete_cues_within_the_ks3_cap_are_kept_whole(cue):
     assert concise_coaching({"coaching_cues": [cue]})["coaching_cues"] == [cue]
 
 
-def test_only_over_long_prose_is_compacted_to_one_clause():
+def test_long_validated_prose_is_never_clipped_to_a_fragment():
     prose = ("Set up in your fight stance with your weight centred over both feet, explode on the first "
              "beat and recover your guard straight away on every single rep.")
     assert len(prose.split()) > 20
-    compact = short_cue(prose)
-    assert compact != prose and compact.casefold() in prose.casefold().replace(",", "")
+    assert short_cue(prose) == prose
+    assert concise_coaching({"coaching_cues": [prose]})["coaching_cues"] == [prose]
+
+
+def test_known_bank_cues_still_use_their_authored_compact_wording():
+    from fightcamp.coaching_copy import _COMPACT_COPY
+    long_form, compact = next(iter(_COMPACT_COPY.items()))
+    assert short_cue(long_form) == compact
 
 
 def test_labelled_and_unlabelled_versions_of_one_cue_do_not_multiply():

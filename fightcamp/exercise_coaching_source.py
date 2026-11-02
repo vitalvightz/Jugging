@@ -21,12 +21,13 @@ _DAY = re.compile(r"^\s*(?:#{1,6}\s*)?(?:\*\*)?(?:D-(\d+)\s*\([^)]*\)|[^\n]*?\(D
                   r"\s*(?:[—–:|]|\s-\s|-)\s*(?:\*\*)?(.+?)(?:\*\*)?\s*$", re.I)
 _EXERCISE = re.compile(r"^\s*[-*•]\s+(.+?)\s*(?:\s[—–]\s|:\s)(.+)$")
 _LABEL = re.compile(r"^\s*(?:\*\*)?(How|Cue|Coaching cues|Easier|Regression|Progress|Progression|Stop|Stop rule|"
-                    r"Swap|Swaps|Substitution|Purpose)(?:\*\*)?\s*:\s*(?:\*\*)?\s*(.+)$", re.I)
+                    r"Swap|Swaps|Substitution|Substitutions|Purpose)(?:\*\*)?\s*:\s*(?:\*\*)?\s*(.+)$", re.I)
 _FIELDS = {"how": "execution_instructions", "cue": "coaching_cues", "coaching cues": "coaching_cues",
            "easier": "regression_options", "regression": "regression_options",
            "progress": "progression_rule", "progression": "progression_rule",
            "stop": "stop_rules", "stop rule": "stop_rules",
            "swap": "substitutions", "swaps": "substitutions", "substitution": "substitutions",
+           "substitutions": "substitutions",
            "purpose": "purpose"}
 _LISTS = {"coaching_cues", "regression_options", "stop_rules", "substitutions"}
 # Fields a model line may only carry after it passes a field-specific check.
@@ -47,7 +48,8 @@ def lookup_occurrence(index: dict, key: tuple, peers):
     two same-day sessions holding the same exercise.
     """
     if key in index:
-        return index[key]
+        # Two identical occurrences on the other side cannot both own one block.
+        return index[key] if sum(1 for peer in peers if peer == key) <= 1 else None
     day, _, name = key
     if day is None or not name:
         return None

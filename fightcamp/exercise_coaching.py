@@ -312,7 +312,25 @@ _INCREASE = re.compile(
     r"\b(?:increase|heavier|harder|faster|extra|deeper|shorten rest|shorter rest)\b|"
     r"\badd(?:ing)?\s+(?:\d+\s*|an?\s+|one\s+|more\s+)*(?:load|weight|kg|lb|plates?|reps?|sets?|rounds?|time|"
     r"volume|speed|intensity|jumps?|distance|resistance|effort|seconds?|minutes?)\b|"
-    r"\bmore\s+(?:load|weight|resistance|reps|sets|rounds|effort|speed|distance|duration|force|intensity)\b", re.I)
+    r"\bmore\s+(?:load|weight|resistance|reps|sets|rounds|effort|speed|distance|duration|force|intensity)\b|"
+    r"\b(?:raise|raising|higher|bigger|greater|up)\s+(?:the\s+|your\s+)?(?:load|weight|resistance|effort|"
+    r"intensity|speed|rpe|volume|reps|sets|rounds)\b", re.I)
+# A Swap runs at the prescribed dose; fewer reps or longer rest is Easier's job.
+_REDUCE = re.compile(
+    r"\b(?:fewer|less|lower|reduced?|shorter|half|smaller)\s+(?:the\s+|your\s+)?(?:reps?|sets?|rounds?|dose|volume|"
+    r"time|work|duration|distance|load|weight|effort|intensity)\b|\brest\s+longer\b|\blonger\s+rest\b|"
+    r"\bcut\s+(?:the\s+)?(?:reps?|sets?|rounds?|volume)\b", re.I)
+# A Swap must name a movement, not just say "something easier".
+_MOVEMENT_WORD = re.compile(
+    r"\b(?:squat|lunge|split|step|press|push|pull|row|chin|hinge|deadlift|rdl|swing|clean|snatch|carry|walk|"
+    r"march|jump|hop|bound|skip|throw|slam|toss|pass|punch|jab|cross|hook|bag|shadow\w*|pad|sprint|run|jog|"
+    r"bike|cycle|rope|plank|pallof|chop|lift|crunch|bridge|thrust|raise|curl|fly|dip|hold|bear|crawl|twist|"
+    r"rotation(?:al)?|burpee|thruster|drill|stance|shuffle|slip|roll|sled|drag|climb|reach|dead ?bug|bird ?dog|"
+    r"windmill|get.?up|extension|calf|glute|hamstring|nordic|copenhagen|swim|stroke|skater|lateral|"
+    r"isometric|iso|wall|ball|bell|bar|band)s?\b", re.I)
+# Exercise names may carry a tempo or angle ("Tempo Split Squat (4-0-1)");
+# that is part of the name, not a second dose. Anything else numeric is.
+_NAME_NUMBER = re.compile(r"\(\s*\d+(?:\s*[-–]\s*[\dX]+){2,3}\s*\)|\b\d+\s*°|\b\d+\s*-\s*degree\b", re.I)
 # Words an Easier line may use when the movement itself carries them: a bag
 # round is punching, a slam is a throw, a hop is a jump.
 _MOVEMENT_FAMILIES = tuple((movement, r"\b(?:" + family + r")") for movement, family in (
@@ -360,7 +378,7 @@ def swap_rejection(text: str, assignment: dict, role: dict, athlete: dict, *,
     and no added work. Fight week (D-7 onward) keeps the scheduled movement.
     """
     value = normalise_measures(text)
-    if not re.search(r"[A-Za-z]{3}", value):
+    if not _MOVEMENT_WORD.search(value):
         return "unactionable_swap"
     if re.search(r"\b(?:ignore|disregard|override|push through|work through)\b", value, re.I):
         return "stop_condition_override"
@@ -370,10 +388,12 @@ def swap_rejection(text: str, assignment: dict, role: dict, athlete: dict, *,
     # only the athlete's own equipment list is.
     if reason := _equipment_rejection(value, {}, athlete):
         return reason
-    if re.search(r"\d", re.sub(r"\(\s*\d[^)]*\)", "", value)):
+    if re.search(r"\d", _NAME_NUMBER.sub("", value)):
         return "unverifiable_swap_dose"
     if _INCREASE.search(value):
         return "increased_workload"
+    if _REDUCE.search(value):
+        return "changed_swap_dose"
     return clinical_coaching_rejection(text, brief or {})
 
 

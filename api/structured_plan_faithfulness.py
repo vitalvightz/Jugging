@@ -106,6 +106,9 @@ _SOURCE_DETAIL_LABEL_RE = re.compile(
     re.I,
 )
 _SOURCE_CUE_RE = re.compile(r"^\s*Cue\s*:\s*\S", re.I | re.M)
+# Every label form the source parsers read as a cue or a stop, bold included.
+_LABELLED_SOURCE_CUE_RE = re.compile(r"^\s*(?:\*\*)?(?:Cue|Coaching cues)(?:\*\*)?\s*:\s*(?:\*\*)?\s*\S", re.I | re.M)
+_LABELLED_SOURCE_STOP_RE = re.compile(r"^\s*(?:\*\*)?(?:Stop|Stop rule|Quality stop)(?:\*\*)?\s*:", re.I | re.M)
 
 
 def _source_block_segment(source: str, display_name: str) -> str:
@@ -266,9 +269,9 @@ def project_source_adjustments(plan: dict[str, Any], source: str) -> dict[str, A
                     # A labelled source Cue/Stop is the approved instruction; a
                     # converter paraphrase or generic bank line never replaces it.
                     segment = _source_block_segment("\n".join(block_lines), name)
-                    if expected.get("coaching_cues") and _SOURCE_CUE_RE.search(segment):
+                    if expected.get("coaching_cues") and _LABELLED_SOURCE_CUE_RE.search(segment):
                         block["coaching_cues"] = copy.deepcopy(expected["coaching_cues"])
-                    if expected.get("stop_rules") and re.search(r"^\s*Stop\s*:", segment, re.I | re.M):
+                    if expected.get("stop_rules") and _LABELLED_SOURCE_STOP_RE.search(segment):
                         block["stop_rules"] = copy.deepcopy(expected["stop_rules"])
                     for key in ("sets", "reps", "rounds", "duration", "work", "rest", "distance", "effort", "load", "execution_instructions", "coaching_cues", "stop_rules", "purpose"):
                         if expected.get(key) and not block.get(key):
