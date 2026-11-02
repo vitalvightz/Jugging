@@ -70,3 +70,24 @@ test("a long event name renders whole (the CSS clamps it, nothing is cut in mark
   );
   assert.match(html, new RegExp(`fight-countdown-event[^"]*">${name}<`));
 });
+
+test("while the calendar loads, the week line, bar and next line hold their space as shimmer", () => {
+  const html = renderToStaticMarkup(
+    <FightCountdown fightDate="2026-06-27" trainingDay="2026-06-10" phase="SPP" calendarPending />,
+  );
+  assert.match(html, /aria-busy="true"/);
+  assert.match(html, /fight-countdown-meta" aria-hidden="true"><span class="skeleton/);
+  assert.match(html, /fight-countdown-track" aria-hidden="true"/);
+  assert.match(html, /fight-countdown-next" aria-hidden="true"><span class="skeleton/);
+  assert.doesNotMatch(html, /role="progressbar"/);
+  // The countdown itself is real from the start.
+  assert.match(html, /fight-countdown-number"[^>]*>17</);
+});
+
+test("a calendar that was already loaded renders without the settle-in fade", () => {
+  const html = renderToStaticMarkup(
+    <FightCountdown fightDate="2026-06-27" trainingDay="2026-06-10" phase="SPP" plan={campPlan} />,
+  );
+  assert.doesNotMatch(html, /data-arrived|aria-busy/);
+  assert.match(html, /role="progressbar"/);
+});
