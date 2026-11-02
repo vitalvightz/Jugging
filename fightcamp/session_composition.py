@@ -1008,10 +1008,13 @@ def _trunk_block_outcome(
         return {"intent": "development", "status": "not_eligible", **ineligible}
     if not host:
         return {"intent": "development", "status": "hosted_elsewhere"}
-    available = {_record_trunk_function(r) for r in [*records, *trunk_alternate_records(records)]
-                 if r.get("trunk_targeted")}
-    reason = ("insufficient_complementary_candidates" if len(available) < TRUNK_BLOCK_MINIMUM
-              else "session_capacity")
+    alternates = trunk_alternate_records(records)
+    available = {_record_trunk_function(r) for r in [*records, *alternates] if r.get("trunk_targeted")}
+    # With unlimited room, could this session's own slots (one member each)
+    # form a block at all? If not, supply limits it; otherwise capacity does.
+    feasible = _trunk_block_additions(records, [], {}, family_limit=len(records) + 1,
+                                      room=len(records), alternates=alternates)
+    reason = "insufficient_complementary_candidates" if feasible is None else "session_capacity"
     return {"intent": "development", "status": "constrained", "reason_code": reason,
             "available_functions": sorted(available)}
 
@@ -1101,6 +1104,10 @@ def _trunk_strength_selected(athlete_model: dict[str, Any] | None) -> bool:
         *(model.get("goals") or []),
         *(model.get("weaknesses") or []),
         *(model.get("weak_areas") or []),
+        # The primary weak area / goal is a selection even when the athlete
+        # did not repeat it in the lists above.
+        model.get("primary_weak_area"),
+        model.get("primary_goal"),
     ]
     return any(
         re.sub(r"[^a-z0-9]+", "_", str(value).strip().lower()).strip("_")

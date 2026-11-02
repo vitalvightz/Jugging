@@ -492,6 +492,10 @@ def _strength_stimuli(role: dict, slots: list[dict], brief: dict) -> list[dict]:
         # involvement (a squat's bracing, a sled push's posture) is not.
         if "trunk_strength" in adaptations:
             intents.append("trunk_training")
+        if volume["unit"] == "m":
+            # A distance dose ("3 carries over 20 m") is loaded trunk work at
+            # most; metres never witness power, speed or strength.
+            intents = [intent for intent in intents if intent == "trunk_training"]
         if not intents:
             continue
         stimuli.append({"slot_id": slot.get("slot_id"), "name": selected.get("name"),
@@ -1524,6 +1528,14 @@ def _restore_goal_roles(brief: dict, entry: dict, *, enforce_session_budget: boo
                     audit.append({"week_index": week.get("week_index"), "d_day": d_day,
                                   "result": "calendar_forbidden", "reason_codes": [decision.reason_code] if decision else []})
                     continue
+                if repair_source.get("category") == "strength" and any(
+                        r is not live and role_d_day(week, r) == d_day and r.get("preferred_system") == "glycolytic"
+                        for r in roles):
+                    # Normal placement keeps strength off the glycolytic day;
+                    # repair may not undo that to satisfy a goal.
+                    audit.append({"week_index": week.get("week_index"), "d_day": d_day,
+                                  "result": "calendar_forbidden", "reason_codes": ["strength_glycolytic_same_day"]})
+                    continue
                 trial = deepcopy(brief)
                 trial_week = trial["weekly_role_map"]["weeks"][ordinal]
                 # Re-place an unresolved approved role instead of duplicating it.
@@ -1864,6 +1876,30 @@ def _constraint_key(reason: dict):
 
 
 
+def _refresh_downgrade_constraints(entry: dict, brief: dict, evidence: list[dict]) -> None:
+    """Re-cite a downgrade's causes from the final calendar.
+
+    A later goal's repair or a consolidation can move or retire a session that
+    a constraint cited. The downgrade stands only on causes the final calendar
+    still holds; if none remain, validation reports the unexplained downgrade.
+    """
+    if not (entry.get("constraints") and entry.get("initial_state") and entry.get("state") != entry["initial_state"]):
+        return
+    initial = {**entry, "state": entry["initial_state"]}
+    _, initial_missing = _coverage(initial, brief, evidence)
+    current = _deferral_constraints(initial, brief, initial_missing) if initial_missing else []
+    if current:
+        # Classification-level codes (priority, fatigue, cut, proximity) stay.
+        classified = {"fight_proximity", "high_fatigue", "weight_cut_pressure", _HARD_SPARRING_STRENGTH_LIMIT,
+                      *_PRIORITY_REASON_CODES.values()}
+        stale = ({c.get("reason_code") for c in entry["constraints"]}
+                 - {c["reason_code"] for c in current} - classified)
+        entry["constraints"] = current
+        entry["reason_codes"] = list(dict.fromkeys(
+            [*(code for code in entry.get("reason_codes") or [] if code not in stale),
+             *(c["reason_code"] for c in current)]))
+
+
 def refresh_goal_evidence_after_composition(brief: dict) -> dict:
     """Refresh recorded witnesses after a dose-preserving, post-repair consolidation.
 
@@ -1879,17 +1915,7 @@ def refresh_goal_evidence_after_composition(brief: dict) -> dict:
             {**entry, "state": entry.get("initial_state", entry.get("state"))}
             if entry.get("state") == "defer" else entry
         )
-        if entry.get("constraints") and entry.get("initial_state") and entry.get("state") != entry["initial_state"]:
-            # Consolidation can retire a session a constraint cited. The
-            # downgrade stands only on causes the final calendar still holds;
-            # if none remain, validation reports the unexplained downgrade.
-            initial = {**entry, "state": entry["initial_state"]}
-            _, initial_missing = _coverage(initial, brief, evidence)
-            current = _deferral_constraints(initial, brief, initial_missing) if initial_missing else []
-            if current:
-                entry["constraints"] = current
-                entry["reason_codes"] = list(dict.fromkeys(
-                    [*(entry.get("reason_codes") or []), *(c["reason_code"] for c in current)]))
+        _refresh_downgrade_constraints(entry, brief, evidence)
         matching, missing = _coverage(effective_entry, brief, evidence)
         entry.update(evidence=matching, missing_coverage=missing,
                      coverage_requirements=_requirements(effective_entry, brief),
@@ -1952,6 +1978,7 @@ def _reconcile_goal_preservation(brief: dict) -> dict:
     # Persist evidence from the final calendar, never its pre-repair day cache.
     final_evidence = collect_goal_evidence(brief)
     for entry in entries:
+        _refresh_downgrade_constraints(entry, brief, final_evidence)
         coverage_entry = {**entry, "state": entry["initial_state"]} if entry["state"] == "defer" else entry
         matching, missing = _coverage(coverage_entry, brief, final_evidence)
         entry.update(evidence=matching, missing_coverage=missing,

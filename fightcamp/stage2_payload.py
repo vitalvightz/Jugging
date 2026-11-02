@@ -2190,6 +2190,20 @@ def _build_planning_brief(
     ).primary_goal
     if _resolved_primary:
         athlete_model["primary_goal"] = _resolved_primary
+    # Same for the primary weak area: composition reads it from the athlete
+    # model while goal preservation reads the plan input's priority focus, and
+    # the two must name the same development target.
+    _resolved_weak_area = build_priority_profile(
+        plan_input if plan_input is not None else athlete_model
+    ).primary_weak_area
+    if _resolved_weak_area:
+        # This builder works on a copy, but composition reads the governed
+        # context model, so the resolved value must reach that model too.
+        from .planner_context import get_planner_athlete_model
+
+        for model in (athlete_model, get_planner_athlete_model()):
+            if isinstance(model, dict) and not model.get("primary_weak_area"):
+                model["primary_weak_area"] = _resolved_weak_area
     # Compute short-camp compression up front so downstream consumers (role
     # map, weekly stress map, planning brief output) see a real
     # ``compressed_priorities`` dict. The helper is otherwise dead code, which

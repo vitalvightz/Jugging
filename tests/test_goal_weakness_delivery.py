@@ -422,15 +422,15 @@ def test_every_conditioning_day_says_why_it_carries_no_trunk_support(key):
 
 def test_without_the_cut_king_builds_a_core_block_where_a_session_can_hold_one():
     """The GPP week gets a 3-function block; the SPP week's only strength session
-    is a capped power/strength transfer day, so development there is recorded as
-    session-capacity constrained instead of credited to one plank-punch-reach."""
+    is a capped power/strength transfer day owning one trunk slot, so development
+    there is recorded as constrained instead of credited to one plank-punch-reach."""
     brief = _brief("king_no_cut")
     blocks = {role_d_day(week, role): (role.get("strength_composition_policy") or {}).get("trunk_block") or {}
               for week, role in _roles(brief) if role.get("category") == "strength"}
     assert any(b.get("status") == "delivered" and len(set(b["functions"])) >= 3 for b in blocks.values())
     entry = _entry(brief, "trunk_strength")
     assert (entry["initial_state"], entry["state"], entry["satisfied"]) == ("build", "maintain", True)
-    assert {c["reason_code"] for c in entry["constraints"]} == {"session_capacity"}
+    assert {c["reason_code"] for c in entry["constraints"]} == {"insufficient_complementary_candidates"}
     assert not any(e["goal"] == "trunk_strength" for e in validate_goal_preservation(brief))
 
 
