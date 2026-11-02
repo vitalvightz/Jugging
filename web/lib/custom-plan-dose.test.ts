@@ -20,7 +20,7 @@ test("the library's source dose wins over its format", () => {
 test("a text source dose falls back to the verified format", () => {
   const format = { ...blankDose("reps"), sets: 3, reps: 8 };
   const result = libraryPrefill(suggestion({ dose: { ...blankDose("text"), prescription: "Work to a hard set" }, format_dose: format }), null);
-  assert.deepEqual(result?.dose, format);
+  assert.deepEqual(result, { dose: format, source: "Library format" });
 });
 
 test("last session fills only what the library leaves open, and says so", () => {
