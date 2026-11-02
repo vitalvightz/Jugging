@@ -929,6 +929,7 @@ function QuickBuildFormInner() {
                   ...current,
                   no_scheduled_fight: event.target.checked,
                   fight_date: event.target.checked ? "" : current.fight_date,
+                  event_name: event.target.checked ? "" : current.event_name,
                 }));
               }}
             />
@@ -948,6 +949,20 @@ function QuickBuildFormInner() {
               onChange={(event) => patch("fight_date", event.target.value)}
             />
             <FieldError message={visibleError("fight_date")} />
+          </div>
+        ) : null}
+        {!input.no_scheduled_fight ? (
+          <div className="field">
+            <label htmlFor="qb-event-name">Event name (optional)</label>
+            <input
+              id="qb-event-name"
+              type="text"
+              maxLength={80}
+              autoComplete="off"
+              placeholder="e.g. London Regionals"
+              value={input.event_name ?? ""}
+              onChange={(event) => patch("event_name", event.target.value)}
+            />
           </div>
         ) : null}
 
@@ -1041,7 +1056,7 @@ function QuickBuildFormInner() {
               className="secondary-button"
               onClick={() => {
                 setSubmitError(null);
-                setInput((current) => ({ ...current, no_scheduled_fight: true, fight_date: "" }));
+                setInput((current) => ({ ...current, no_scheduled_fight: true, fight_date: "", event_name: "" }));
                 setMessage("Open Plan selected. Continue with your available training schedule.");
               }}
             >

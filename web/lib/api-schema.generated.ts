@@ -1831,6 +1831,7 @@ export type PlanRenameRequest = {
 export type PlanRequest = {
   athlete: AthleteProfileInput;
   fight_date?: string;
+  event_name?: string;
   no_scheduled_fight?: boolean;
   open_camp_weeks?: number;
   rounds_format?: string;

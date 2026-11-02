@@ -205,6 +205,8 @@ export type NutritionWorkspaceUpdateRequest = Omit<NutritionWorkspaceState, "ath
 export type PlanRequest = {
   athlete: AthleteProfileInput;
   fight_date: string;
+  /** Optional event/competition name for the scheduled fight. */
+  event_name?: string;
   no_scheduled_fight?: boolean;
   open_camp_weeks?: number;
   rounds_format?: string;
@@ -1194,6 +1196,10 @@ export type TodayActivePlan = {
   phase?: string;
   fight_date?: string;
   camp_type?: string;
+  /** Event/competition name from the plan's intake, when the athlete gave one. */
+  event_name?: string;
+  /** Target fight weight (kg) from the plan's intake. Not current bodyweight. */
+  target_weight_kg?: number;
 };
 
 export type TodaySession = {
