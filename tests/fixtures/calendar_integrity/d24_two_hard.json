@@ -1,0 +1,46 @@
+{
+  "generator_mode": "deterministic_planner_plus_ai_finalizer",
+  "payload_variant": null,
+  "roles": [
+    [1, "GPP", "aerobic_coordination_day", "conditioning", "thursday", 22, false, false, false, "", ""],
+    [1, "GPP", "breathing_reset", "support_insert", "wednesday", 23, false, false, false, "support", "low"],
+    [1, "GPP", "converted_recovery_flush_day", "conditioning", "sunday", 19, false, false, false, "", ""],
+    [1, "GPP", "converted_recovery_flush_day", "conditioning", "wednesday", 23, false, false, false, "", ""],
+    [1, "GPP", "hard_sparring_day", "sparring", "friday", 21, false, false, false, "", ""],
+    [1, "GPP", "hard_sparring_day", "sparring", "tuesday", 17, false, false, false, "", ""],
+    [1, "GPP", "light_combat_day", "technical", "monday", 18, false, false, false, "support", "low"],
+    [1, "GPP", "primary_strength_day", "strength", "wednesday", 23, false, false, false, "", ""],
+    [2, "SPP", "alactic_speed_day", "conditioning", "friday", 14, false, false, false, "", ""],
+    [2, "SPP", "breathing_reset", "support_insert", "thursday", 15, true, false, false, "support", "low"],
+    [2, "SPP", "hard_sparring_day", "sparring", "friday", 14, false, false, false, "", ""],
+    [2, "SPP", "hard_sparring_day", "sparring", "tuesday", 10, true, false, false, "support", "low"],
+    [2, "SPP", "joint_prep", "support_insert", "thursday", 15, true, false, false, "support", "low"],
+    [2, "SPP", "light_combat_day", "technical", "monday", 11, true, false, false, "support", "low"],
+    [2, "SPP", "recovery_reset", "support_insert", "friday", 14, false, false, false, "support", "low"],
+    [2, "SPP", "strength_touch_day", "strength", "sunday", 12, true, false, true, "meaningful_stress", "medium"],
+    [3, "TAPER", "alactic_sharpness_day", "conditioning", "tuesday", 3, true, false, false, "meaningful_stress", "medium"],
+    [3, "TAPER", "fight_week_freshness_day", "recovery", "sunday", 5, true, false, false, "support", "low"],
+    [3, "TAPER", "hard_sparring_day", "sparring", "friday", 7, true, false, false, "support", "low"],
+    [3, "TAPER", "hard_sparring_day", "sparring", "tuesday", 3, true, false, false, "support", "low"],
+    [3, "TAPER", "light_combat_day", "technical", "monday", 4, true, false, false, "support", "low"],
+    [3, "TAPER", "neural_primer_day", "strength", "thursday", 1, true, false, true, "meaningful_stress", "medium"]
+  ],
+  "contacts": [
+    [1, "friday", "hard_as_planned", "hard"],
+    [1, "tuesday", "hard_as_planned", "hard"],
+    [2, "friday", "convert_to_technical_suggested", "technical"],
+    [2, "tuesday", "convert_to_technical_suggested", "technical"],
+    [3, "tuesday", "convert_to_technical_suggested", "technical"]
+  ],
+  "suppressed": [
+    [1, "recovery_reset_day", "recovery", "", ["two_hard_spar_days"]],
+    [1, "secondary_strength_day", "strength", "", ["two_hard_spar_days"]],
+    [2, "neural_plus_strength_day", "strength", "hard_sparring_day", []],
+    [2, "recovery_reset_day", "recovery", "", ["spar_first_cap"]],
+    [3, "fight_week_freshness_day", "recovery", "", ["spar_first_cap"]],
+    [3, "hard_sparring_day", "sparring", "fight_day_protocol", []],
+    [3, "hard_sparring_day", "sparring", "no_hard_sparring_day", []],
+    [3, "neural_primer_day", "strength", "", ["spar_first_cap"]]
+  ],
+  "tail_handoff": {"active": true, "normal_planner_through_d": 14, "late_fight_planner_from_d": 13, "source": "finished_existing_late_fight_path"}
+}

@@ -1,7 +1,47 @@
-"""Final-calendar integrity invariants over representative deterministic camps.
+"""Characterization gate for the final-calendar integrity refactor (Stage 3A).
 
-The frozen pre-Stage-3B calendar baselines were retired once Stage 3B shipped;
-the invariants below are the behaviour that must keep holding.
+Purpose
+-------
+This module is a *pre-Stage-3B behaviour characterization gate*. It proves that
+the current deterministic planner still produces the **known pre-governor
+semantic calendar** for a set of representative fixtures, by comparing the live
+projection against **explicit frozen baselines** captured from Main / PR #2396's
+base (the pre-Stage-3B planner).
+
+It deliberately does more than prove determinism. Comparing two runs of the same
+code (``first == second``) only shows the code is stable; it cannot catch Stage
+3B accidentally moving, restoring, or removing an *unrelated* session. Freezing
+an explicit expected baseline can:
+
+    actual = _semantic_projection(_run(...))
+    assert actual == EXPECTED_BASELINE   # loaded from tests/fixtures/...
+
+so any semantic drift Stage 3B introduces shows up as an exact diff against the
+committed baseline.
+
+What is frozen (semantic projection only)
+-----------------------------------------
+Only the semantic planner state Stage 3B must preserve unless a shared
+calendar-policy violation explicitly requires a change:
+
+* role rows      -> (week_index, phase, role_key, category, weekday, d_day,
+                     late_fight_tail_owned, late_camp_role_morph,
+                     late_camp_strength_morph, stress_class, cost_class)
+* contact rows   -> (week_index, weekday, status, effective_load)
+* suppression rows -> (week_index, role_key, category, replacement_role_key,
+                       compression_reason_codes)
+* generator_mode, payload_variant, and the D-14/D-13 tail handoff metadata
+
+What is intentionally *not* frozen: exercise names, athlete-facing copy, HTML,
+render formatting, LLM wording, or other presentation/irrelevant metadata.
+
+Scope
+-----
+Stage 3A is tests-only. This module does not import or exercise any production
+change and, importantly, does **not** mutate process-global state. It notably
+does NOT globally disable logging at import time — an earlier version did, which
+silenced every log-assertion test in the whole pytest process (for example
+``tests/test_logging_utils.py``) and made unrelated tests order-dependent.
 """
 
 from __future__ import annotations
@@ -22,6 +62,7 @@ from fightcamp.plan_pipeline_runtime import (
     build_runtime_context,
 )
 
+_FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "calendar_integrity"
 _LOGGER = logging.getLogger("calendar-integrity-characterization")
 
 FIGHT_DATE = dt.date(2026, 1, 30)  # Friday
@@ -195,6 +236,10 @@ def _normalize(projection: dict) -> dict:
     return result
 
 
+def _load_baseline(name: str) -> dict:
+    return _normalize(json.loads((_FIXTURE_DIR / f"{name}.json").read_text(encoding="utf-8")))
+
+
 # --------------------------------------------------------------------------- #
 # Representative scenarios. Each planner run is executed once (module scope)   #
 # and shared by the baseline tests and the architecture-invariant tests.      #
@@ -251,6 +296,67 @@ def _all_contact_entries(brief: dict):
 # 1. Exact baseline preservation                                              #
 #    assert _semantic_projection(...) == EXPECTED_BASELINE                     #
 # --------------------------------------------------------------------------- #
+
+def test_baseline_d24_no_contact(briefs):
+    """A. Clean D-24 normal camp: pre-governor role/day/D-day structure."""
+    actual = _normalize(_semantic_projection(briefs["d24_no_contact"]))
+    assert actual == _load_baseline("d24_no_contact")
+
+
+def test_baseline_d24_one_resolved_hard_contact(briefs):
+    """B. D-24, one resolved hard-contact day (Thursday)."""
+    actual = _normalize(_semantic_projection(briefs["d24_one_hard"]))
+    assert actual == _load_baseline("d24_one_hard")
+
+
+def test_baseline_d24_two_hard_contacts(briefs):
+    """C. D-24, two declared hard-contact days (Tuesday, Friday).
+
+    This fixture intentionally captures the pre-governor baseline for two
+    declared hard-contact days, defects included. It is NOT asserted to be
+    desirable behaviour: the current planner leaves week-1 Friday as effective
+    ``hard`` while converting the other declared days to ``technical``,
+    compresses week-1 strength away, and even splices a duplicate week-2 Friday
+    ``hard_sparring_day`` from the finished tail.
+
+    Stage 3B's calendar-integrity governor is expected to change ONLY the
+    policy-forbidden placements while preserving the rest of this semantic
+    projection. The baseline exists so that whatever Stage 3B changes shows up
+    as an exact, reviewable diff against this file — nothing more, nothing less.
+    """
+    actual = _normalize(_semantic_projection(briefs["d24_two_hard"]))
+    assert actual == _load_baseline("d24_two_hard")
+
+
+def test_baseline_d16_technical_conversion(briefs):
+    """D. D-16, declared contact converted away from effective hard load."""
+    actual = _normalize(_semantic_projection(briefs["d16_technical_conversion"]))
+    assert actual == _load_baseline("d16_technical_conversion")
+
+
+def test_baseline_d14_boundary(briefs):
+    """E. D-14 boundary: normal planner still owns the calendar at D-14."""
+    actual = _normalize(_semantic_projection(briefs["d14_boundary"]))
+    assert actual == _load_baseline("d14_boundary")
+
+
+def test_baseline_d13_direct(briefs):
+    """F. D-13 direct plan: still uses the finished late-fight path."""
+    actual = _normalize(_semantic_projection(briefs["d13_direct"]))
+    assert actual == _load_baseline("d13_direct")
+
+
+def test_baseline_d28_finished_tail(briefs):
+    """G. D-28 long camp: finished D-13 -> D-1 tail remains immutable state."""
+    actual = _normalize(_semantic_projection(briefs["d28_finished_tail"]))
+    assert actual == _load_baseline("d28_finished_tail")
+
+
+def test_baseline_d24_high_fatigue_suppression(briefs):
+    """H. High-fatigue compressed week: suppression semantics are frozen."""
+    actual = _normalize(_semantic_projection(briefs["d24_high_fatigue"]))
+    assert actual == _load_baseline("d24_high_fatigue")
+
 
 # --------------------------------------------------------------------------- #
 # 2. Architecture invariants                                                  #
