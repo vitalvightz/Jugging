@@ -71,7 +71,7 @@ for (const width of [320, 390, 1280, 1600]) {
     if (process.env.CUSTOM_QA_DIR) await page.screenshot({ path: `${process.env.CUSTOM_QA_DIR}/custom-dose-${width}.png` });
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Add exercise to Strength", exact: true }).click();
-    await page.getByRole("button", { name: /^Create my exercise/ }).click();
+    await page.getByRole("button", { name: "+ Create my exercise", exact: true }).click();
     await page.getByLabel("Exercise name", { exact: true }).fill("My bag rounds");
     await expect(page.getByLabel("equipment (optional)", { exact: true })).toHaveCount(0);
     await expect(page.getByLabel("notes (optional)", { exact: true })).toHaveCount(0);
@@ -190,7 +190,7 @@ for (const width of [320, 390, 1280, 1600]) {
     await page.goto("/plans/custom");
     await page.getByRole("button", { name: "Add session on Monday", exact: true }).click();
     await page.getByRole("button", { name: "Add session", exact: true }).click();
-    await page.getByRole("button", { name: /^Create my exercise/ }).click();
+    await page.getByRole("button", { name: "+ Create my exercise", exact: true }).click();
     await page.getByLabel("Exercise name", { exact: true }).fill("My defensive drill");
     // Video and sharing are optional, folded under the exercise details.
     await page.getByText("Video & sharing", { exact: true }).click();

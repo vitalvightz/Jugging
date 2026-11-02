@@ -10,12 +10,24 @@ function DurationField({
   value,
   label,
   onChange,
+  inline = false,
 }: {
   value: number | null;
   label: string;
   onChange: (value: number | null) => void;
+  /** Number and unit only, to sit inside a one-line dose. */
+  inline?: boolean;
 }) {
   const [unit, setUnit] = useState(value && value % 60 === 0 ? 60 : 1);
+  if (inline) return <>
+    <input aria-label={label} type="number" inputMode="decimal" min={1 / unit} max={36000 / unit} step="any"
+      value={value == null ? "" : value / unit}
+      onChange={(e) => onChange(e.target.value === "" ? null : Math.round(Number(e.target.value) * unit))} />
+    <select aria-label={`${label} unit`} value={unit} onChange={(e) => setUnit(Number(e.target.value))}>
+      <option value={1}>sec</option>
+      <option value={60}>min</option>
+    </select>
+  </>;
   return (
     <label>
       <span>{label}</span>
@@ -76,9 +88,30 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
       </label>
     );
   }
+  if (essential) {
+    // One line that reads like the dose itself: 3 × 5 reps, 5 × 5 min · rest 30s.
+    const box = (field: "sets" | "reps" | "rest_seconds" | "rounds" | "distance", label: string, min: number, max: number, step = 1) =>
+      <input aria-label={label} type="number" inputMode="decimal" min={min} max={max} step={step} value={dose[field] ?? ""}
+        onChange={(event) => onChange({ ...dose, [field]: event.target.value === "" ? null : Number(event.target.value) })} />;
+    return <div className={styles.inlineDose}>
+      {dose.mode === "reps" ? <>{box("sets", "Sets", 1, 100)}<span aria-hidden="true">×</span>{box("reps", "Reps", 1, 1000)}<span>{dose.per_side ? "reps / side" : "reps"}</span></>
+        : dose.mode === "intervals" ? <>{box("rounds", "Rounds", 1, 100)}<span aria-hidden="true">×</span>
+          <DurationField inline value={dose.work_seconds} label="Work duration" onChange={(value) => onChange({ ...dose, work_seconds: value })} />
+          <span>rest</span>{box("rest_seconds", "Rest between (sec)", 0, 3600)}<span>s</span></>
+        : dose.mode === "duration" ? <DurationField inline value={dose.duration_seconds} label="Duration" onChange={(value) => onChange({ ...dose, duration_seconds: value })} />
+        : dose.mode === "distance" ? <>{box("distance", "Distance", 0.001, 100000, 0.001)}
+          <select aria-label="Distance unit" value={dose.distance_unit ?? ""}
+            onChange={(e) => onChange({ ...dose, distance_unit: (e.target.value || null) as CustomDose["distance_unit"] })}>
+            <option value="">unit</option>
+            {["m", "km", "mi", "yd"].map((unit) => <option key={unit}>{unit}</option>)}
+          </select></>
+        : <input className={styles.inlineText} aria-label="Prescription" maxLength={500} placeholder="Prescription"
+          value={dose.prescription ?? ""} onChange={(e) => onChange({ ...dose, prescription: e.target.value })} />}
+    </div>;
+  }
   return (
     <div className={styles.dose}>
-      {essential ? null : <label>
+      <label>
         <span>Format</span>
         <select
           aria-label="Dose format"
@@ -91,12 +124,12 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
           <option value="distance">Distance / carries</option>
           <option value="text">Text prescription</option>
         </select>
-      </label>}
+      </label>
       {dose.mode === "reps" ? (
         <>
           {number("sets", "Sets", 1, 100)}
           {number("reps", "Reps", 1, 1000)}
-          {essential ? null : number("rest_seconds", "Rest (sec)", 0, 3600)}
+          {number("rest_seconds", "Rest (sec)", 0, 3600)}
         </>
       ) : dose.mode === "duration" || dose.mode === "distance" ? (
         <>
@@ -105,8 +138,7 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
             label="Duration"
             onChange={(value) => onChange({ ...dose, duration_seconds: value })}
           /> : null}
-          {essential ? null : number("sets", "Sets (optional)", 1, 100)}
-          {essential && dose.mode === "duration" ? null : <>
+          {number("sets", "Sets (optional)", 1, 100)}
           {number("distance", dose.mode === "distance" ? "Distance" : "Distance (optional)", 0.001, 100000, 0.001)}
           <label>
             <span>Distance unit</span>
@@ -126,8 +158,7 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
               ))}
             </select>
           </label>
-          </>}
-          {essential ? null : number("rest_seconds", "Rest (sec)", 0, 3600)}
+          {number("rest_seconds", "Rest (sec)", 0, 3600)}
         </>
       ) : dose.mode === "intervals" ? (
         <>
@@ -150,7 +181,6 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
           />
         </label>
       )}
-      {essential ? null : <>
       <LoadField
         // A new format starts the field over on its own default.
         key={dose.mode}
@@ -162,7 +192,7 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
       />
       {/* Per side changes how the reps read, so it stays with them, not behind the fold. */}
       {dose.mode === "reps" ? (
-        <label className={`${styles.row} ${styles.wide}`}>
+        <label className={`${styles.toggle} ${styles.wide}`}>
           <input
             type="checkbox"
             checked={dose.per_side ?? false}
@@ -190,7 +220,6 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
           ) : null}
         </div>
       </details>
-      </>}
     </div>
   );
 }

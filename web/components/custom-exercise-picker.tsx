@@ -75,15 +75,11 @@ export function CustomExercisePicker({ accessToken, full, onAdd, onPreview, onCr
       See all {results.total.toLocaleString()} in the library
     </button> : null}
     {full ? <p className={styles.pickerNotice}>This session has the maximum 100 exercises.</p> : null}
-    <div className={styles.pickerActions}>
-      <button type="button" className={styles.addChoice} disabled={full} onClick={() => onCreate(term)}>
-        <strong>{term ? `Create “${term}”` : "Create my exercise"}</strong>
-        <small>Your own exercise. Only you see it.</small>
+    <div className={styles.pickerLinks}>
+      <button type="button" className={styles.textButton} disabled={full} onClick={() => onCreate(term)}>
+        + {term ? `Create “${term}”` : "Create my exercise"}
       </button>
-      <button type="button" className={styles.addChoice} onClick={() => onBrowse(term)}>
-        <strong>Filters &amp; community</strong>
-        <small>Browse the full library.</small>
-      </button>
+      <button type="button" className={styles.textButton} onClick={() => onBrowse(term)}>Filters &amp; community</button>
     </div>
   </div>;
 }

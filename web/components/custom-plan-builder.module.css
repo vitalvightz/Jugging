@@ -300,22 +300,6 @@
 }
 .addExercise:hover:not(:disabled) { border-color: var(--border-strong); }
 .addExercise:disabled { opacity: 0.5; cursor: not-allowed; }
-.addChoice {
-  display: grid;
-  gap: 4px;
-  width: 100%;
-  min-height: 64px;
-  padding: 14px 16px;
-  text-align: left;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-btn);
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  font: inherit;
-  cursor: pointer;
-}
-.addChoice strong { font-size: 16px; }
-.addChoice small { font-size: 13px; color: var(--text-secondary); }
 .issues { flex: 1 1 100%; font-size: 12px; color: var(--text-secondary); }
 .issues summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
 .issues ul { margin: 4px 0 0; padding-left: 16px; max-height: min(25vh, 180px); overflow-y: auto; }
@@ -371,7 +355,7 @@
 .results[data-refreshing="true"] { opacity: 0.55; }
 .result { display: flex; align-items: center; gap: 8px; min-width: 0; border-bottom: 1px solid var(--border-subtle); }
 .resultMain { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; padding: 10px 0; border: 0; background: transparent; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
-.resultName { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.resultName { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .resultMeta { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .resultAdd, .removeAdded { flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--border-default); border-radius: 999px; background: transparent; color: var(--text-primary); font: inherit; font-size: 20px; line-height: 1; cursor: pointer; }
 .resultAdd svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
@@ -379,21 +363,25 @@
 .removeAdded { border-color: transparent; color: var(--text-muted); }
 .resultAdd:focus-visible, .removeAdded:focus-visible, .resultMain:focus-visible, .textButton:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
 .textButton { justify-self: start; width: auto; min-height: 44px; padding: 0 4px; border: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 14px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-.pickerActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.pickerActions .addChoice { min-height: 56px; padding: 10px 12px; }
-.pickerActions .addChoice strong { font-size: 14px; overflow-wrap: anywhere; }
-.pickerActions .addChoice small { font-size: 12px; }
-.addChoice:disabled { opacity: 0.5; cursor: not-allowed; }
+/* Secondary actions share one line; long text truncates instead of wrapping into a column. */
+.pickerLinks { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
+.pickerLinks .textButton { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pickerLinks .textButton:last-child { flex: 0 0 auto; }
+.textButton:disabled { opacity: 0.5; cursor: not-allowed; }
 .added { display: grid; gap: 8px; min-width: 0; padding-top: 4px; }
 .added h3 { margin: 0; font: 600 11px/1.4 var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
 .added ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .addedRow { display: grid; gap: 6px; padding: 10px 12px 12px; border: 1px solid var(--border-subtle); border-radius: 12px; min-width: 0; }
 .addedHead { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.addedHead strong { flex: 1 1 auto; min-width: 0; font-size: 15px; overflow-wrap: anywhere; }
+.addedHead strong { flex: 1 1 auto; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .addedSource { color: var(--text-muted); font-size: 12px; line-height: 1.4; }
-/* Compact fields: as many per row as fit, never squeezed below a usable width. */
-.addedRow .dose { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
-.addedRow .dose label { font-size: 12px; gap: 4px; }
+/* The quick dose reads as one line: [3] × [5] reps, [5] × [5][min] rest [30] s. */
+.inlineDose { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 14px; min-width: 0; }
+.sheet .inlineDose input[type="number"] { width: 56px; min-height: 40px; padding: 6px; text-align: center; }
+.sheet .inlineDose select { width: auto; min-height: 40px; padding: 6px 8px; }
+.sheet .inlineDose .inlineText { flex: 1 1 100%; min-height: 40px; }
+/* A checkbox reads with its label on one line. */
+.sheet label.toggle { display: flex; align-items: center; gap: 10px; color: var(--text-primary); }
 @media (min-width: 900px) {
   .addPanel:global(.injury-sheet) { width: min(100%, 640px); border-radius: 18px; }
 }

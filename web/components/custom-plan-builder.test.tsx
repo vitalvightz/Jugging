@@ -344,7 +344,7 @@ test("a personal exercise starts from the search text, with extras folded away",
     await addSession(ui.host, "Monday");
     await search("Bag rounds");
     assert.match(topSheet().textContent!, /No library match/);
-    await act(async () => button(topSheet(), "Create “Bag rounds”Your own exercise. Only you see it.").click());
+    await act(async () => button(topSheet(), "+ Create “Bag rounds”").click());
     const editor = topSheet();
     assert.equal(editor.querySelector("h2")!.textContent, "Create my exercise");
     assert.equal(field(editor, "Sets").closest("details"), null, "the dose itself is never folded");
@@ -401,7 +401,7 @@ test("Back closes the builder's own sheets first; only leaving the plan asks to 
     assert.match(topSheet().querySelector("h2")!.textContent!, /^Add to /);
 
     // Filters & community opens the full library over the add sheet; Back returns to the sheet.
-    await act(async () => button(topSheet(), "Filters & communityBrowse the full library.").click());
+    await act(async () => button(topSheet(), "Filters & community").click());
     assert.match(document.body.textContent!, /Find a Drill/);
     await act(async () => window.dispatchEvent(new window.PopStateEvent("popstate")));
     assert.doesNotMatch(document.body.textContent!, /Find a Drill/);
