@@ -754,7 +754,7 @@ function ExerciseGlyph({ block }: { block: StructuredBlock }) {
 const COMPONENT_GROUP_LABELS: Record<string, string> = { core_development: "Core Development" };
 
 function blockComponentGroup(block: StructuredBlock): string | null {
-  return (block.tags ?? []).find(tag => tag in COMPONENT_GROUP_LABELS) ?? null;
+  return (block.tags ?? []).find(tag => Object.prototype.hasOwnProperty.call(COMPONENT_GROUP_LABELS, tag)) ?? null;
 }
 
 export function groupBlockRows(
