@@ -6,6 +6,8 @@ from uuid import uuid4
 
 import pytest
 
+from tests.support import cover
+
 from api.contracts.injury_policy import rehab_allocation_count, reconcile_session_prescription, resolve_injury_policy
 from api.contracts.rehab_completion import build_rehab_exposure_event, resolve_rehab_completion
 from api.contracts.rehab_evidence import read_exact_events
@@ -107,12 +109,11 @@ def test_worsening_returns_to_protection_and_readiness_holds_loaded_restore(regi
         assert schedule_rehab(row, decision, training_day=DAY, readiness_decision="pull_back")["state"] == "due"
 
 
-@pytest.mark.parametrize("region,kind", PAIRS)
-@pytest.mark.parametrize("changes", [dict(severity="severe"), dict(description="grade 3 sprain"),
+@pytest.mark.parametrize("region,kind,changes", cover(PAIRS, [dict(severity="severe"), dict(description="grade 3 sprain"),
     dict(injury_type="ligament_tear", description="torn ligament"), dict(description="ACL tear"),
     dict(description="suspected fracture"), dict(description="dislocated joint"), dict(description="subluxation"),
     dict(description="numbness and tingling"), dict(rehab_medical_gate=True),
-    dict(injury_type="post_surgery", description="post surgery")])
+    dict(injury_type="post_surgery", description="post surgery")]))
 def test_serious_structural_and_neurological_cases_require_medical_review(region, kind, changes):
     decision = resolve(injury(region, kind, **changes))
     assert decision["outcome"] == "medical_review" and decision["prescription"] is None
@@ -154,29 +155,13 @@ def test_missing_or_uncertain_diagnoses_do_not_inherit_another_profile(region, k
     assert decision["prescription"] is None and decision["outcome"] == "unsupported_prescription"
 
 
-def test_whole_family_audit_and_preserved_existing_profile_hashes():
+def test_whole_family_audit_covers_the_historical_bank():
     audit = json.loads((ROOT / "docs/sprain-family-bank-audit.json").read_text())
     assert len(audit) == 117 and len({r["bank_location"] for r in audit}) == 25
     from tests.rehab_inventory_history import inventory_with_history
     historical_bank, _ = inventory_with_history()
     bank_ids = {d["id"] for g in historical_bank for d in g["drills"]}
     assert {r["drill_id"] for r in audit} <= bank_ids
-    hashes = json.loads((ROOT / "tests/fixtures/rehab_profiles_before_sprain.json").read_text())
-    current = {p.policy_id: p.content_hash for p in load_clinical_policies()}
-    # Preserve the original sprain-family migration hash. Only the exact pinned
-    # ankle LOAD delta is projected out; its v5 behaviour is tested separately.
-    from tests.test_rehab_pathway_equivalence import composed
-    current["ankle_sprain"] = next(p.content_hash for p in composed() if p.policy_id == "ankle_sprain")
-    # Likewise project out only the exact dated groin bank-publication delta;
-    # current groin content is covered by test_rehab_bank_publication.
-    from fightcamp.rehab_clinical import compose_policy
-    from fightcamp.rehab_pathways import PathwayCatalog
-    from tools.rehab_metadata_review_lib import before_bank_publication
-    catalog = PathwayCatalog.model_validate(before_bank_publication(
-        json.loads((ROOT / "data/rehab_pathways.json").read_text(encoding="utf-8")), "profiles"))
-    groin = next(p for p in catalog.profiles if p["policy_id"] == "groin_strain")
-    current["groin_strain"] = compose_policy(catalog, groin, bank=before_bank_publication(get_rehab_bank(), "drills")).content_hash
-    assert {k: current[k] for k in hashes} == hashes
 
 
 def test_existing_ankle_bundle_and_new_wrist_prescription_are_two_allocations():

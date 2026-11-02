@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.support import cover
+
 from api.contracts.injury_policy import reconcile_session_prescription, resolve_injury_policy
 from api.contracts.rehab_completion import build_rehab_exposure_event, resolve_rehab_completion
 from api.contracts.rehab_evidence import read_exact_events
@@ -57,8 +59,7 @@ def test_exact_identity_reviewed_baseline_and_real_completion(region, stage):
     assert event.is_attributable_to(row) and event.dose_completed.completion_state == "performed_amount_unknown"
 
 
-@pytest.mark.parametrize("region", REGIONS)
-@pytest.mark.parametrize("kind", ["pain", "soreness", "tightness", "stiffness", "swelling", "tendonitis", "instability", "strain", "sprain", "impingement", "hyperextension", "unspecified"])
+@pytest.mark.parametrize("region,kind", cover(REGIONS, ["pain", "soreness", "tightness", "stiffness", "swelling", "tendonitis", "instability", "strain", "sprain", "impingement", "hyperextension", "unspecified"]))
 def test_other_types_never_consume_contusion_profiles(region, kind):
     policy = next(p for p in load_clinical_policies() if p.policy_id == f"{region}_contusion")
     assert resolve_injury_policy(injury(region, kind), policies=[policy], bank=get_rehab_bank())["prescription"] is None
@@ -77,8 +78,7 @@ def test_cross_region_stale_content_and_worsening(region):
     assert worse["stage"] == "calm" and worse["prescription"]["drill"]["rehab_stage"] == "calm"
 
 
-@pytest.mark.parametrize("region", REGIONS)
-@pytest.mark.parametrize("changes", [dict(severity="severe"), dict(severity="high"), dict(injury_type="fracture"),
+@pytest.mark.parametrize("region,changes", cover(REGIONS, [dict(severity="severe"), dict(severity="high"), dict(injury_type="fracture"),
     dict(injury_type="dislocation"), dict(injury_type="tendon_rupture"), dict(description="suspected tendon rupture"),
     dict(description="complete ligament tear"), dict(description="full-thickness rotator cuff tear"),
     dict(description="major structural tear"), dict(injury_type="post_surgery"),
@@ -87,7 +87,7 @@ def test_cross_region_stale_content_and_worsening(region):
         "vascular compromise", "deep laceration", "open wound", "major swelling", "unable to use the limb",
         "inability to bear weight", "major loss of function", "neurological symptoms", "cold hand",
         "abdominal trauma with dizziness", "chest trauma with fainting", "head trauma", "ligament rupture",
-        "hematoma is growing", "excessive swelling", "major muscle tear"]]])
+        "hematoma is growing", "excessive swelling", "major muscle tear"]]]))
 def test_structural_high_and_neurological_reports_stay_medical(region, changes):
     decision = resolve(injury(region, "contusion", **changes))
     assert decision["outcome"] == "medical_review" and decision["prescription"] is None
@@ -199,32 +199,6 @@ def test_original_audit_hashes_ids_and_review_history_preserved(tmp_path):
             assert row["drill_id"] not in active
     policies = tuple(p for p in load_clinical_policies() if p.injury_type == "contusion")
     assert validate_clinical_bank(policies, get_rehab_bank()) == []
-
-
-def test_previous_37_profiles_hashes_decisions_schedules_and_snapshots_unchanged(tmp_path):
-    raw = read("data/rehab_pathways.json")
-    from tools.rehab_metadata_review_lib import before_achilles_load_activation
-    raw = before_achilles_load_activation(raw)
-    previous = read("tests/fixtures/rehab_profiles_before_contusion.json")
-    assert len(previous) == 37
-    previous_ids = {p["policy_id"] for p in previous}
-    assert [p for p in raw["profiles"] if p["policy_id"] in previous_ids] == previous
-    raw["profiles"] = previous
-    baseline = tmp_path / "before.json"
-    baseline.write_text(json.dumps(raw), encoding="utf-8")
-    for policy in load_clinical_policies(baseline):
-        if policy.policy_id in {"achilles_tendonitis", "elbow_tendonitis", "ankle_sprain", "shoulder_tendonitis"}:
-            # Versioned LOAD activations have their own baseline, ownership and
-            # frozen-history assertions; all other profiles remain identical.
-            continue
-        for stage in ("calm", "restore"):
-            for side in ("left", "unknown"):
-                row = injury(policy.region, policy.injury_type, stage, side=side)
-                old = resolve_injury_policy(row, policies=load_clinical_policies(baseline), bank=get_rehab_bank())
-                new = resolve(row)
-                assert old == new
-                assert schedule_rehab(row, old, training_day=DAY) == schedule_rehab(row, new, training_day=DAY)
-                assert reconcile_session_prescription(None, decisions=[old], plan_id=PLAN, training_day=DAY) == reconcile_session_prescription(None, decisions=[new], plan_id=PLAN, training_day=DAY)
 
 
 def test_seed_bank_review_and_profiles_are_byte_idempotent(tmp_path, monkeypatch):

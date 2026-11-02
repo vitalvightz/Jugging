@@ -126,7 +126,10 @@ jobs:
                          if p.match("test_*.py") or p.match("*_test.py"))
           selected = files[int(os.environ["PYTEST_SHARD"])::6]
           assert selected, "every full-suite shard must contain tests"
-          sys.exit(subprocess.call([sys.executable, "-m", "pytest", "-q", *map(str, selected)]))
+          # loadfile keeps each module on one worker so module-level plan
+          # caches are generated once rather than once per worker.
+          sys.exit(subprocess.call([sys.executable, "-m", "pytest", "-q", "-n", "auto",
+                                    "--dist", "loadfile", *map(str, selected)]))
           PY
 
   test-runtime-surfaces:

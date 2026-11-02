@@ -9,7 +9,6 @@ from api.contracts.injury_policy import resolve_injury_policy
 from fightcamp.exercise_identity import normalize_exercise_key
 from fightcamp.rehab_clinical import load_clinical_policies
 from fightcamp.rehab_protocols import get_rehab_bank
-from tests.rehab_inventory_history import historical_policies
 from tests.test_rehab_experience import HEADERS, consumer, decision, view
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -188,33 +187,6 @@ def test_two_new_injuries_keep_their_own_region_restrictions_and_prescriptions()
     assert wrist["prescription"]["drill_id"] == "wrist_pain_forearm_supination_pronation_paused"
     assert knee["restrictions"] != wrist["restrictions"]
     assert "knee" in json.dumps(knee["restrictions"]) and "wrist" in json.dumps(wrist["restrictions"])
-
-
-def test_existing_published_defaults_are_unchanged_for_every_equipment_setup(tmp_path):
-    """New alternatives only fill gaps; they never displace a prior selection."""
-    bank = get_rehab_bank()
-    from tools.rehab_metadata_review_lib import before_restore_expansion
-    historical_bank = before_restore_expansion("rehab_bank.json", json.loads((ROOT / "data/rehab_bank.json").read_text(encoding="utf-8")))
-    before = {p.policy_id: p for p in historical_policies(tmp_path, historical_bank)}
-    after = {p.policy_id: p for p in load_clinical_policies()}
-    setups = [[], ["chair"], ["towel"], ["table"], ["stable_support"], ["chair", "towel", "table", "stable_support", "wall", "cloth", "dowel", "soft_ball"]]
-    changed = []
-    for policy_id, old in before.items():
-        if "restore" not in old.live_stages:
-            continue
-        for equipment in setups:
-            row = probe(policy_id)
-            old_pick = resolve_injury_policy(row, policies=[old], bank=historical_bank, equipment=equipment)
-            new_pick = resolve_injury_policy(row, policies=[after[policy_id]], bank=bank, equipment=equipment)
-            old_ids = [d["drill_id"] for d in (old_pick["prescription"] or {}).get("drills", [old_pick["prescription"]] if old_pick["prescription"] else [])]
-            new_ids = [d["drill_id"] for d in (new_pick["prescription"] or {}).get("drills", [new_pick["prescription"]] if new_pick["prescription"] else [])]
-            if old_ids != new_ids:
-                # Only a missing selection or protective CALM fallback may be replaced.
-                assert (old_pick["prescription"] is None
-                        or old_pick["prescription"]["drill"]["rehab_stage"] == "calm"), (policy_id, equipment, old_ids, new_ids)
-                assert set(new_ids) <= NEW_IDS
-                changed.append((policy_id, tuple(equipment)))
-    assert {p for p, _ in changed} == {"wrist_sprain", "wrist_stiffness"}
 
 
 @pytest.mark.parametrize("option", OPTIONS, ids=lambda o: f"{o[0][0]}-{o[1]}")

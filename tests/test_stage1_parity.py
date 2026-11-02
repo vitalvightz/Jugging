@@ -17,6 +17,8 @@ Two invariants matter most:
 
 from __future__ import annotations
 
+import copy
+import json
 from datetime import date, datetime, time, timedelta
 
 import pytest
@@ -151,13 +153,21 @@ HOLD_ERROR_CODES = frozenset(
 )
 
 
+_STAGE1_RESULTS: dict[str, dict] = {}
+
+
 def _run_stage1(overrides: dict) -> dict:
-    result = generate_plan_sync(_build_request(overrides).to_payload())
-    assert result.get("status") != "invalid_input", result
-    assert isinstance(result.get("planning_brief"), dict) and result["planning_brief"], (
-        f"scenario produced no planning_brief: {result.get('status')!r}"
-    )
-    return result
+    # Every test runs under the same pinned clock, so one generation per
+    # scenario serves all four checks; each caller gets its own copy.
+    key = json.dumps(overrides, sort_keys=True, default=str)
+    if key not in _STAGE1_RESULTS:
+        result = generate_plan_sync(_build_request(overrides).to_payload())
+        assert result.get("status") != "invalid_input", result
+        assert isinstance(result.get("planning_brief"), dict) and result["planning_brief"], (
+            f"scenario produced no planning_brief: {result.get('status')!r}"
+        )
+        _STAGE1_RESULTS[key] = result
+    return copy.deepcopy(_STAGE1_RESULTS[key])
 
 
 @pytest.mark.parametrize("name,overrides", list(_scenarios().items()))

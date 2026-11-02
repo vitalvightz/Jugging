@@ -56,7 +56,7 @@ def api():
     return client, store, record, calls
 
 
-@pytest.mark.parametrize("path", ["", "/mine", "/review", "/history", "/revisions/" + str(uuid4())])
+@pytest.mark.parametrize("path", ["", "/mine", "/review", "/history", "/revisions/00000000-0000-0000-0000-00000000a03c"])
 def test_community_requires_authentication(api, path):
     client, _, _, calls = api
     assert client.get(BASE + path).status_code == 401
@@ -68,11 +68,11 @@ def test_community_requires_authentication(api, path):
     [
         ("get", "/review", None),
         ("get", "/history", None),
-        ("get", "/review/" + str(uuid4()), None),
-        ("put", "/review/" + str(uuid4()), {"name": "Edited"}),
+        ("get", "/review/00000000-0000-0000-0000-00000000a03d", None),
+        ("put", "/review/00000000-0000-0000-0000-00000000a03e", {"name": "Edited"}),
         (
             "post",
-            "/review/" + str(uuid4()),
+            "/review/00000000-0000-0000-0000-00000000a03f",
             {"action": "approve", "final_confirmation": True},
         ),
     ],

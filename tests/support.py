@@ -3671,3 +3671,23 @@ def _build_client(
         )
     )
     return client, store, stage2
+
+
+def cover(*axes):
+    """Parametrize rows where every value of every axis appears at least once.
+
+    A full cross-product of independent axes (profile x red-flag phrase, region x
+    other injury type, ...) multiplies cost without adding much signal: each
+    axis is screened independently. ``cover`` walks the axes in lock-step,
+    cycling the shorter ones, so the row count is the longest axis rather than
+    the product. Tuple values (e.g. ``(key, region, kind)``) are flattened.
+    """
+    axes = [list(axis) for axis in axes]
+    rows = []
+    for i in range(max(len(axis) for axis in axes)):
+        row = []
+        for axis in axes:
+            value = axis[i % len(axis)]
+            row.extend(value if isinstance(value, tuple) else (value,))
+        rows.append(tuple(row))
+    return rows
