@@ -1430,14 +1430,14 @@ export function TodaySessionPanel({
             {shownFocus ? (
               <p className="today-session-focus today-fade-in">
                 <span className="today-detail-label">
-                  {shownFocus.origin === "inferred" ? "Focus from your notes" : "Last training focus"}
+                  {shownFocus.origin === "inferred" ? "UNLXCK cue" : "Last training focus"}
                 </span>{" "}
                 {shownFocus.text}
                 {shownFocus.origin === "inferred" && shownFocus.id ? (
                   <button
                     type="button"
                     className="today-session-focus-dismiss"
-                    aria-label="Dismiss this focus"
+                    aria-label="Dismiss this UNLXCK cue"
                     onClick={() => dismissShownFocus(shownFocus.id!)}
                   >
                     Dismiss
