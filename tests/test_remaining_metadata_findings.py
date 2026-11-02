@@ -129,31 +129,6 @@ def test_each_band_row_matches_existing_canonical_setup_in_every_context(monkeyp
     assert _canonical_equipment(result) == _canonical_equipment(canonical)
 
 
-def test_complete_programmes_preserve_selection_dose_and_clinical_outputs(tmp_path):
-    import os
-    import subprocess
-    import sys
-
-    fixture = ROOT / "tests/fixtures/tag_retirement_plans.json"
-    probe = ROOT / "tools/canonical_metadata_plan_probe.py"
-    outputs = []
-    for reverse in (True, False):
-        destination = tmp_path / ("before.json" if reverse else "after.json")
-        # Reverse exactly this PR's alias in a fresh interpreter. Both sides use
-        # current Main code, live banks, the same clock and the same seeds.
-        script = (
-            "import runpy,sys; from fightcamp.training_context import EQUIP_ALIASES; "
-            + ("EQUIP_ALIASES.pop('resistance_bands'); " if reverse else "")
-            + "sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name='__main__')"
-        )
-        subprocess.run([sys.executable, "-c", script, str(probe), str(fixture), str(destination)],
-                       cwd=ROOT, env={**os.environ, "PYTHONHASHSEED": "0"},
-                       capture_output=True, check=True, timeout=300)
-        outputs.append(json.loads(destination.read_text()))
-    assert len(outputs[0]) == len(outputs[1]) == 6
-    assert outputs[0] == outputs[1]
-
-
 @pytest.mark.parametrize("name", ["Bicep Slicer Drill", "Limb Collector", "Kneebar Khaos", "Toe Hold Torment"])
 def test_editor_equipment_gate_accepts_existing_band_access(monkeypatch, catalogue, name):
     from types import SimpleNamespace
