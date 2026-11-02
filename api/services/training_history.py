@@ -5,6 +5,7 @@ import json
 
 from fastapi import HTTPException
 
+from api.contracts.completion import HistoryCompletionEdit
 from api.contracts.external_training import ExternalTrainingCreate, ExternalTrainingFields, ExternalTrainingTakeaway
 from api.contracts.training_day import resolve_training_day_str
 from api.contracts.training_disciplines import training_title
@@ -130,3 +131,48 @@ def delete_external_training(store, athlete_id: str, entry_id: str) -> None:
     # Keep a tombstone so a late retry of the initial POST cannot recreate it.
     if not store.delete_external_training_session(athlete_id, entry_id):
         raise HTTPException(404, "Training session not found.")
+
+
+def plan_completion_history_editable(row: dict) -> bool:
+    """A finished plan session History may edit or remove.
+
+    Day credit is not a performed session, legacy rows have no verified
+    identity, and rehab work is clinical evidence, so those stay as logged.
+    """
+    return bool(row.get("plan_id")) and row.get("status") in {"done", "modified"} \
+        and row.get("completion_origin") == "reported" \
+        and not row.get("rehab_response_contexts") and not row.get("rehab_performance")
+
+
+def _editable_plan_completion(store, athlete_id: str, completion_id: str) -> dict:
+    row = store.get_session_completion_by_id(athlete_id, completion_id)
+    if not row or row.get("status") not in {"done", "modified"}:
+        raise HTTPException(404, "Training session not found.")
+    if not plan_completion_history_editable(row):
+        raise HTTPException(409, "This session can't be changed from History.")
+    return row
+
+
+def edit_plan_completion(store, athlete_id: str, completion_id: str, body: HistoryCompletionEdit, *,
+                         health_consent_granted: bool) -> dict:
+    row = _editable_plan_completion(store, athlete_id, completion_id)
+    fields = body.model_dump()
+    if not health_consent_granted:
+        # Pain is health data: without consent the stored value is kept as is.
+        fields["pain_after"] = row.get("pain_after")
+    updated = store.update_session_completion_fields(athlete_id, completion_id, fields)
+    if updated is None:
+        raise HTTPException(404, "Training session not found.")
+    return updated
+
+
+def delete_plan_completion(store, athlete_id: str, completion_id: str) -> dict | None:
+    """Mark a finished plan session not done; None when it already was (a retried delete)."""
+    row = store.get_session_completion_by_id(athlete_id, completion_id)
+    if row and row.get("status") == "not_started":
+        return None
+    _editable_plan_completion(store, athlete_id, completion_id)
+    updated = store.reset_session_completion(athlete_id, completion_id)
+    if updated is None:
+        raise HTTPException(404, "Training session not found.")
+    return updated

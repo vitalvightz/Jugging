@@ -2003,6 +2003,23 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         return next((row.copy() for row in self.session_completions.get(athlete_id, [])
                      if row.get("athlete_id") == athlete_id and row.get("id") == completion_id), None)
 
+    def _update_completion(self, athlete_id: str, completion_id: str, fields: dict) -> dict | None:
+        for row in self.session_completions.get(athlete_id, []):
+            if row.get("athlete_id") == athlete_id and row.get("id") == completion_id:
+                row.update(fields)
+                row["updated_at"] = _now()
+                return dict(row)
+        return None
+
+    def update_session_completion_fields(self, athlete_id: str, completion_id: str, fields: dict) -> dict | None:
+        return self._update_completion(athlete_id, completion_id,
+                                       {key: fields.get(key) for key in ("session_rpe", "pain_after", "notes")})
+
+    def reset_session_completion(self, athlete_id: str, completion_id: str) -> dict | None:
+        return self._update_completion(athlete_id, completion_id, {
+            "status": "not_started", "started_at": None, "completed_at": None, "session_rpe": None,
+            "pain_after": None, "modification_reason": "", "notes": ""})
+
     def list_session_detail_exercise_logs(self, athlete_id: str, *, plan_id: str,
                                          training_day: str, session_ids: list[str]) -> list[dict]:
         return [row for row in self.list_exercise_logs_for_day(athlete_id, plan_id=plan_id, training_day=training_day)
@@ -2869,6 +2886,13 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         if request_id:
             self.sparring_log_requests[(athlete_id, request_id)] = row["id"]
         return {"log": dict(row), "review": review_of(row), "replayed": False}
+
+    def set_sparring_log_focus(self, athlete_id: str, log_id: str, focus: str) -> dict | None:
+        row = next((row for row in self.sparring_logs if row.get("athlete_id") == athlete_id and row.get("id") == log_id), None)
+        if row is None:
+            return None
+        row["focus"] = focus
+        return dict(row)
 
     def list_sparring_logs(self, athlete_id: str, *, limit: int = 60, from_day: str | None = None) -> list[dict]:
         rows = [

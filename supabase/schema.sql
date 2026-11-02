@@ -2825,6 +2825,18 @@ create table if not exists public.external_training_sessions (
         ('mma', '', 'other'), ('mma', 'striking', 'other'), ('mma', 'grappling', 'other'), ('mma', 'wrestling', 'other'), ('mma', 'integrated', 'other'), ('mma', 'sparring', 'sparring'),
         ('bjj', '', 'other'), ('bjj', 'drilling', 'other'), ('bjj', 'positional', 'other'), ('bjj', 'rolling', 'other'),
         ('wrestling', '', 'other'), ('wrestling', 'technical', 'other'), ('wrestling', 'live', 'other')))),
+  -- Optional run detail; see migrations/20261101120000_add_external_training_run_distance.sql.
+  distance_value numeric,
+  distance_unit text,
+  duration_seconds integer,
+  constraint external_training_sessions_run_distance check (
+    (distance_value is null and distance_unit is null)
+    or (activity = 'roadwork' and distance_value > 0 and (
+      (distance_unit = 'km' and distance_value <= 200)
+      or (distance_unit = 'miles' and distance_value <= 125)))),
+  constraint external_training_sessions_duration_seconds check (
+    duration_seconds is null
+    or (duration_seconds between 1 and 36000 and duration_minutes = ceil(duration_seconds / 60.0))),
   deleted_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

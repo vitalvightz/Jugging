@@ -1049,6 +1049,9 @@ export type ExternalTrainingCreate = {
   effort: "easy" | "hard" | "moderate";
   sport?: "bjj" | "boxing" | "kickboxing" | "mma" | "muay_thai" | "wrestling" | null;
   session_type?: "bag" | "clinch" | "drilling" | "grappling" | "integrated" | "live" | "pads" | "positional" | "rolling" | "shadowboxing" | "sparring" | "striking" | "technical" | "wrestling" | null;
+  distance_value?: number | null;
+  distance_unit?: "km" | "miles" | null;
+  duration_seconds?: number | null;
   client_request_id: string;
   training_day?: string | null;
 };
@@ -1059,6 +1062,9 @@ export type ExternalTrainingFields = {
   effort: "easy" | "hard" | "moderate";
   sport?: "bjj" | "boxing" | "kickboxing" | "mma" | "muay_thai" | "wrestling" | null;
   session_type?: "bag" | "clinch" | "drilling" | "grappling" | "integrated" | "live" | "pads" | "positional" | "rolling" | "shadowboxing" | "sparring" | "striking" | "technical" | "wrestling" | null;
+  distance_value?: number | null;
+  distance_unit?: "km" | "miles" | null;
+  duration_seconds?: number | null;
 };
 
 export type ExternalTrainingTakeaway = {
@@ -1156,6 +1162,17 @@ export type GuidedInjuryInputRequest = {
 
 export type HTTPValidationError = {
   detail: ValidationError[];
+};
+
+/**
+ * The few fields of a finished plan session that History may change.
+ *
+ * Status, reason, plan, day and exercise results stay as logged.
+ */
+export type HistoryCompletionEdit = {
+  session_rpe?: number | null;
+  pain_after?: number | null;
+  notes?: string;
 };
 
 export type InjuryEpisodeObservation = {
@@ -2437,6 +2454,7 @@ export type SparringLogRecord = {
   head_contact: "heavy" | "light" | "none";
   rocked: boolean;
   notes: string;
+  focus: string;
   created_at: string;
 };
 
@@ -2461,6 +2479,7 @@ export type SparringLogRequest = {
   head_contact: "heavy" | "light" | "none";
   rocked?: boolean;
   notes?: string;
+  focus?: string;
 };
 
 export type SparringLogResponse = {
@@ -2622,6 +2641,18 @@ export type TodayInjuryDeclaration = {
   friction_or_contact_problem?: "no" | "unknown" | "yes" | null;
 };
 
+/**
+ * The athlete's latest recorded sparring focus, for the next relevant session.
+ *
+ * ``focus`` is None when there is nothing recent to show. ``sport`` is the
+ * sport it was recorded for when known (a manual session's sport), else None.
+ */
+export type TrainingFocusResponse = {
+  focus: string | null;
+  training_day: string | null;
+  sport: string | null;
+};
+
 export type TrainingHabitDecision = {
   weekday: number;
   activity: "boxing" | "conditioning" | "other" | "roadwork" | "sparring" | "strength";
@@ -2668,6 +2699,9 @@ export type TrainingHistorySession = {
   sport: "bjj" | "boxing" | "kickboxing" | "mma" | "muay_thai" | "wrestling" | null;
   session_type: "bag" | "clinch" | "drilling" | "grappling" | "integrated" | "live" | "pads" | "positional" | "rolling" | "shadowboxing" | "sparring" | "striking" | "technical" | "wrestling" | null;
   duration_minutes: number | null;
+  distance_value: number | null;
+  distance_unit: "km" | "miles" | null;
+  duration_seconds: number | null;
   effort: "easy" | "hard" | "moderate" | null;
   plan_id: string | null;
   session_rpe: number | null;
@@ -2676,6 +2710,7 @@ export type TrainingHistorySession = {
   notes: string | null;
   takeaway: string;
   exercise_count: number | null;
+  history_editable: boolean;
 };
 
 export type UploadInput = {

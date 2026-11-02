@@ -326,6 +326,11 @@ class TodayStore(Protocol):
 
     def get_session_completion_by_id(self, athlete_id: str, completion_id: str) -> dict[str, Any] | None: ...
 
+    def update_session_completion_fields(self, athlete_id: str, completion_id: str,
+                                         fields: dict[str, Any]) -> dict[str, Any] | None: ...
+
+    def reset_session_completion(self, athlete_id: str, completion_id: str) -> dict[str, Any] | None: ...
+
     def list_session_detail_exercise_logs(self, athlete_id: str, *, plan_id: str,
                                          training_day: str, session_ids: list[str]) -> list[dict[str, Any]]: ...
 
@@ -616,6 +621,8 @@ class InjuryStore(Protocol):
     def record_sparring_log(
         self, athlete_id: str, fields: dict[str, Any], *, review_reason: str | None
     ) -> dict[str, Any]: ...
+
+    def set_sparring_log_focus(self, athlete_id: str, log_id: str, focus: str) -> dict[str, Any] | None: ...
 
     def list_sparring_logs(
         self, athlete_id: str, *, limit: int = 60, from_day: str | None = None

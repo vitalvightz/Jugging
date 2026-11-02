@@ -4586,6 +4586,22 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
         return self._select_first(self.client.table("session_completions").select("*")
             .eq("athlete_id", athlete_id).eq("id", completion_id))
 
+    def update_session_completion_fields(self, athlete_id: str, completion_id: str,
+                                         fields: dict[str, Any]) -> dict[str, Any] | None:
+        """History's limited edit: RPE, pain after and notes only."""
+        response = (self.client.table("session_completions")
+            .update({key: fields.get(key) for key in ("session_rpe", "pain_after", "notes")})
+            .eq("athlete_id", athlete_id).eq("id", completion_id).execute())
+        return (getattr(response, "data", None) or [None])[0]
+
+    def reset_session_completion(self, athlete_id: str, completion_id: str) -> dict[str, Any] | None:
+        """Remove a finished plan session from History: the row stays, marked not started."""
+        response = (self.client.table("session_completions")
+            .update({"status": "not_started", "started_at": None, "completed_at": None, "session_rpe": None,
+                     "pain_after": None, "modification_reason": "", "notes": ""})
+            .eq("athlete_id", athlete_id).eq("id", completion_id).execute())
+        return (getattr(response, "data", None) or [None])[0]
+
     def list_session_detail_exercise_logs(self, athlete_id: str, *, plan_id: str,
                                          training_day: str, session_ids: list[str]) -> list[dict[str, Any]]:
         response = (self.client.table("exercise_logs").select("*")
@@ -4696,7 +4712,8 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
 
     def update_external_training_session(self, athlete_id: str, entry_id: str, fields: dict[str, Any]) -> dict[str, Any] | None:
         response = (self.client.table("external_training_sessions")
-            .update({key: fields.get(key) for key in ("activity", "duration_minutes", "effort", "sport", "session_type")})
+            .update({key: fields.get(key) for key in ("activity", "duration_minutes", "effort", "sport", "session_type",
+                                                      "distance_value", "distance_unit", "duration_seconds")})
             .eq("athlete_id", athlete_id).eq("id", entry_id).is_("deleted_at", "null").execute())
         return (getattr(response, "data", None) or [None])[0]
 
@@ -5638,6 +5655,12 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
                 detail="Sparring log service temporarily unavailable",
             )
         return payload
+
+    def set_sparring_log_focus(self, athlete_id: str, log_id: str, focus: str) -> dict[str, Any] | None:
+        """Owner-scoped write of the optional focus only; never the safety fields."""
+        response = (self.client.table("sparring_logs").update({"focus": focus})
+            .eq("athlete_id", athlete_id).eq("id", log_id).execute())
+        return (getattr(response, "data", None) or [None])[0]
 
     def list_sparring_logs(
         self, athlete_id: str, *, limit: int = 60, from_day: str | None = None

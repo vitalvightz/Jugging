@@ -44,7 +44,7 @@ function useTakeawaySave(token: string, row: TrainingHistorySession, onSaved: (r
 }
 
 /** Opens `dialog` as a modal sheet while mounted and enabled; disabling hands the top layer back. */
-function useModalSheet(dialog: RefObject<HTMLDialogElement | null>, enabled = true) {
+export function useModalSheet(dialog: RefObject<HTMLDialogElement | null>, enabled = true) {
   useEffect(() => {
     const element = dialog.current;
     if (!enabled || !element) return;

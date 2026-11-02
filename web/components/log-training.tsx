@@ -12,8 +12,9 @@ import { PRIVACY_HREF } from "@/lib/legal-documents";
 import { formatAppDate } from "@/lib/date-format";
 import {
   TRAINING_EFFORTS, canRepeatTraining, latestRepeatableTraining,
-  type TrainingActivity, type TrainingEffort, type TrainingHistorySession,
+  type DistanceUnit, type TrainingActivity, type TrainingEffort, type TrainingHistorySession,
 } from "@/lib/training-history";
+import { DISTANCE_LIMITS, distanceUnitLabel, formatRunTime, parseRunTime } from "@/lib/run-time";
 import {
   athleteSport, fitsPicks, sportLabel, TRAINING_SPORTS, trainingLabel, trainingPicks, type TrainingPick, type TrainingSessionType, type TrainingSport,
 } from "@/lib/training-disciplines";
@@ -31,6 +32,8 @@ import type { SparringIntensity } from "@/lib/types";
 const SHEET_EXIT_MS = 200;
 
 const DURATION_PICKS = [30, 45, 60, 90];
+/** Common race distances for roadwork, in km. */
+const DISTANCE_PICKS = [{ label: "5k", km: 5 }, { label: "10k", km: 10 }, { label: "Half", km: 21.1 }];
 
 const label = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
@@ -101,6 +104,11 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
   // A per-session switch; the saved profile sport never changes here.
   const [sportMenu, setSportMenu] = useState(false);
   const [duration, setDuration] = useState("");
+  // Optional roadwork detail: distance and an exact time ("24:35").
+  const [distance, setDistance] = useState("");
+  const [distanceUnit, setDistanceUnit] = useState<DistanceUnit>("km");
+  const [customDistance, setCustomDistance] = useState(false);
+  const [runTime, setRunTime] = useState("");
   const [effort, setEffort] = useState<TrainingEffort | "">("");
   const [trainingDay, setTrainingDay] = useState("");
   const [busy, setBusy] = useState(false);
@@ -204,6 +212,12 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
     setSessionType(row?.sport ? row.session_type ?? null : null);
     setGridSport(row?.sport ?? (row?.activity && !fitsPicks(row, mySport) ? null : mySport));
     setDuration(row?.duration_minutes?.toString() ?? "");
+    const storedDistance = row?.distance_value != null && row.distance_unit ? row.distance_value : null;
+    setDistance(storedDistance != null ? String(storedDistance) : "");
+    setDistanceUnit(row?.distance_unit ?? "km");
+    setCustomDistance(storedDistance != null && !(row?.distance_unit === "km" && DISTANCE_PICKS.some(pick => pick.km === storedDistance)));
+    // A repeated run keeps its distance; the time is today's to enter.
+    setRunTime(!repeat && row?.duration_seconds ? formatRunTime(row.duration_seconds) : "");
     setEffort(repeat ? "" : row?.effort ?? "");
     setTrainingDay("");
     requestId.current = null;
@@ -228,7 +242,17 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
       dialog.current?.querySelector<HTMLButtonElement>(!activity ? '[data-activity]' : '[data-effort]')?.focus();
       return;
     }
-    const minutes = Number(duration);
+    const isRun = activity === "roadwork";
+    const runSeconds = isRun && runTime.trim() ? parseRunTime(runTime) : null;
+    if (isRun && runTime.trim() && runSeconds === null) {
+      setError("Enter the time as mm:ss or h:mm:ss, up to 10 hours."); return;
+    }
+    const distanceValue = isRun && distance.trim() ? Number(distance) : null;
+    if (distanceValue !== null && !(distanceValue > 0 && distanceValue <= DISTANCE_LIMITS[distanceUnit])) {
+      setError(`Enter a distance above 0 and up to ${DISTANCE_LIMITS[distanceUnit]} ${distanceUnitLabel(distanceUnit)}.`); return;
+    }
+    // An exact time sets the minutes, so workload always reads whole minutes.
+    const minutes = runSeconds !== null ? Math.ceil(runSeconds / 60) : Number(duration);
     if (!Number.isInteger(minutes) || minutes < 1 || minutes > 600) {
       setError("Enter a whole number from 1 to 600 minutes."); return;
     }
@@ -237,7 +261,9 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
     setBusy(true);
     setError(null);
     try {
-      const body = { activity, duration_minutes: minutes, effort, ...(sport ? { sport } : {}), ...(sport && sessionType ? { session_type: sessionType } : {}) };
+      const body = { activity, duration_minutes: minutes, effort, ...(sport ? { sport } : {}), ...(sport && sessionType ? { session_type: sessionType } : {}),
+        ...(distanceValue !== null ? { distance_value: distanceValue, distance_unit: distanceUnit } : {}),
+        ...(runSeconds !== null ? { duration_seconds: runSeconds } : {}) };
       const row = editing
         ? await editExternalTraining(token, editing, body)
         : await logExternalTraining(token, { ...body, ...(trainingDay ? { training_day: trainingDay } : {}), client_request_id: requestId.current ??= crypto.randomUUID() });
@@ -286,6 +312,30 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
           onClick={() => choose(pick)}>{pick.label}</button>)}
       </div>
     </fieldset>
+    {activity === "roadwork" ? <fieldset className={styles.fieldset} disabled={busy} aria-label="Run distance and time">
+      <legend>Distance <span className={styles.unit}>Optional</span></legend>
+      <div className={styles.durationGrid}>
+        {DISTANCE_PICKS.map(pick => <button key={pick.label} type="button" aria-pressed={!customDistance && distanceUnit === "km" && distance === String(pick.km)}
+          onClick={() => { setCustomDistance(false); setDistanceUnit("km"); setDistance(current => current === String(pick.km) && !customDistance ? "" : String(pick.km)); requestId.current = null; }}>{pick.label}</button>)}
+        <button type="button" aria-pressed={customDistance} aria-expanded={customDistance} aria-controls={`${fieldId}-distance`}
+          onClick={() => { setCustomDistance(true); requestId.current = null; }}>Custom</button>
+      </div>
+      {customDistance ? <div className={styles.runCustom}>
+        <label className={styles.customDuration}>Distance ({distanceUnitLabel(distanceUnit)})
+          <input id={`${fieldId}-distance`} type="number" inputMode="decimal" min={0.01} max={DISTANCE_LIMITS[distanceUnit]} step={0.01} value={distance}
+            onChange={event => { setDistance(event.target.value); requestId.current = null; }} />
+        </label>
+        <div className={styles.unitToggle} role="group" aria-label="Distance unit">
+          {(["km", "miles"] as const).map(unit => <button key={unit} type="button" aria-pressed={distanceUnit === unit}
+            onClick={() => { setDistanceUnit(unit); requestId.current = null; }}>{distanceUnitLabel(unit)}</button>)}
+        </div>
+      </div> : null}
+      <label className={styles.customDuration}>Time (mm:ss or h:mm:ss, optional)
+        <input type="text" inputMode="numeric" placeholder="24:35" autoComplete="off" value={runTime}
+          onChange={event => { setRunTime(event.target.value); requestId.current = null; }} />
+      </label>
+    </fieldset> : null}
+    {activity === "roadwork" && parseRunTime(runTime) !== null ? <p className={styles.runMinutes}>Duration: {Math.ceil(parseRunTime(runTime)! / 60)} min from your time</p> :
     <fieldset className={styles.fieldset} disabled={busy} aria-label="Duration">
       <legend>Duration <span className={styles.unit}>min</span></legend>
       <div className={styles.durationGrid}>
@@ -298,7 +348,7 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
         <input id={`${fieldId}-duration`} ref={durationInput} type="number" inputMode="numeric" required min={1} max={600} step={1} value={duration}
           onChange={event => { setDuration(event.target.value); requestId.current = null; }} />
       </label> : null}
-    </fieldset>
+    </fieldset>}
   </>;
   const dateChoice = !editing ? <details className={styles.dateChoice}>
     <summary>Training date · {formatAppDate(trainingDay || today)}</summary>

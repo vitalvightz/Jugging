@@ -385,6 +385,8 @@ REQUIRED_SPARRING_LOGS_COLUMNS: tuple[str, ...] = (
     "external_session_id",
     "detail_revision",
     "admin_review_id",
+    # "One thing to work on next time" (plain update after the RPC).
+    "focus",
 )
 
 REQUIRED_EXERCISE_LOGS_COLUMNS: tuple[str, ...] = (
@@ -406,7 +408,8 @@ REQUIRED_EXERCISE_LOGS_COLUMNS: tuple[str, ...] = (
 
 REQUIRED_EXTERNAL_TRAINING_COLUMNS: tuple[str, ...] = (
     "id", "athlete_id", "client_request_id", "request_fingerprint", "training_day",
-    "activity", "sport", "session_type", "duration_minutes", "effort", "takeaway", "deleted_at", "created_at", "updated_at",
+    "activity", "sport", "session_type", "duration_minutes", "effort", "takeaway", "distance_value", "distance_unit", "duration_seconds",
+    "deleted_at", "created_at", "updated_at",
 )
 
 REQUIRED_MANUAL_EXERCISE_ENTRIES_COLUMNS: tuple[str, ...] = (

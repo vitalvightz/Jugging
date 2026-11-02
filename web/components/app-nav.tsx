@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useRef, useState, type TransitionEvent } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type TransitionEvent } from "react";
 
 import { useAppSession } from "@/components/auth-provider";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { Skeleton } from "@/components/skeleton";
+import { HistoryHint } from "@/components/once-hint";
 import { shouldShowAdminPanelLink } from "@/lib/admin-nav-visibility";
 import { getShellSurface, isAuthSurfaceRoute, shouldShowBrandTopbar } from "@/lib/app-surface";
 import { isSafeAvatarImageUrl } from "@/lib/avatar-image-url";
@@ -544,17 +545,19 @@ export function AppNav() {
               <nav className="sidebar-nav">
                 <p className="sidebar-section-label">{t("workspace")}</p>
                 {signedInLinks.map((link) => (
-                  <Link
-                    key={link.href}
-                    className={isLinkActive(link.href) ? "sidebar-link sidebar-link-active" : "sidebar-link"}
-                    href={link.href}
-                    onClick={() => handleSidebarLinkSelect(link.href)}
-                  >
-                    <div className="sidebar-link-copy">
-                      <span className="sidebar-link-title">{link.label}</span>
-                      <span className="sidebar-link-meta">{link.meta}</span>
-                    </div>
-                  </Link>
+                  <Fragment key={link.href}>
+                    <Link
+                      className={isLinkActive(link.href) ? "sidebar-link sidebar-link-active" : "sidebar-link"}
+                      href={link.href}
+                      onClick={() => handleSidebarLinkSelect(link.href)}
+                    >
+                      <div className="sidebar-link-copy">
+                        <span className="sidebar-link-title">{link.label}</span>
+                        <span className="sidebar-link-meta">{link.meta}</span>
+                      </div>
+                    </Link>
+                    {link.href === "/history" ? <HistoryHint className="once-hint once-hint-below" /> : null}
+                  </Fragment>
                 ))}
                 {isAdminWorkspace ? (
                   <>
