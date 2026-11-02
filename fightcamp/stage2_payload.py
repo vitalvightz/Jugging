@@ -64,6 +64,7 @@ from .late_camp_role_morph import apply_late_camp_role_morph
 from .prescription_resolver import apply_effective_strength_prescriptions
 from .session_composition import (
     _conditioning_prescription,
+    _trunk_strength_selected,
     _refresh_stress_stamps,
     _prescription_total_reps,
     _stress_stamp,
@@ -1913,6 +1914,7 @@ def _open_block_session(role: dict[str, Any]) -> dict[str, Any] | None:
             "name": str(member.get("name") or ""),
             "prescription": doses.get(str(member.get("name") or ""))
             or str(member.get("effective_prescription") or member.get("base_prescription") or ""),
+            # Presentation grouping only; each exercise keeps its own dose.
         }
         for member in role.get("selected_exercise_assignments") or []
         if isinstance(member, dict) and member.get("name")
@@ -2183,6 +2185,20 @@ def _build_planning_brief(
     ).primary_goal
     if _resolved_primary:
         athlete_model["primary_goal"] = _resolved_primary
+    # Same for the primary weak area: composition reads it from the athlete
+    # model while goal preservation reads the plan input's priority focus, and
+    # the two must name the same development target.
+    _resolved_weak_area = build_priority_profile(
+        plan_input if plan_input is not None else athlete_model
+    ).primary_weak_area
+    if _resolved_weak_area:
+        # This builder works on a copy, but composition reads the governed
+        # context model, so the resolved value must reach that model too.
+        from .planner_context import get_planner_athlete_model
+
+        for model in (athlete_model, get_planner_athlete_model()):
+            if isinstance(model, dict):
+                model["primary_weak_area"] = _resolved_weak_area
     # Compute short-camp compression up front so downstream consumers (role
     # map, weekly stress map, planning brief output) see a real
     # ``compressed_priorities`` dict. The helper is otherwise dead code, which
@@ -2970,6 +2986,56 @@ def _build_strength_slots(
     return slots
 
 
+def _build_core_development_slots(strength_block: dict | None, phase: str, strength_slots: list[dict]) -> list[dict]:
+    """Stage 1's trunk candidates for a Core Development Block, as pool slots.
+
+    Kept apart from ``strength_slots`` so no session selector can pick them:
+    only the planner's block composition draws on them. Each keeps its own slot
+    identity so the dose resolver, goal evidence and exercise keys resolve it
+    like any other Stage 1 slot. Names already offered by a strength slot are
+    left out: that slot already owns the exercise.
+    """
+    if not strength_block:
+        return []
+    offered = {
+        str(option.get("name") or "")
+        for slot in strength_slots
+        for option in [slot.get("selected") or {}, *(slot.get("alternates") or [])]
+        if isinstance(option, dict)
+    }
+    slots = []
+    for index, candidate in enumerate((strength_block.get("candidate_reservoir") or {}).get("__core_development__") or [], 1):
+        exercise = candidate.get("exercise") or {}
+        name = exercise.get("name")
+        if not name or name in offered:
+            continue
+        quality_profile = classify_strength_item(exercise)
+        slots.append({
+            "slot_id": f"{phase.lower()}_strength_{1000 + index}_{slugify(name)}",
+            "role": "core_development",
+            "purpose": candidate.get("explanation", "balanced selection"),
+            "selected": _serialize_strength_option(
+                exercise, candidate.get("explanation", "balanced selection"),
+                candidate.get("score_evidence"), phase=phase,
+            ),
+            "alternates": [],
+            "replace_with_same_role": False,
+            # After every selected strength slot: Stage 1's ranking still leads.
+            "priority": 10_000 + index,
+            "session_index": 0,
+            "quality_class": quality_profile["quality_class"],
+            "anchor_capable": False,
+            "support_only": exercise.get("support_only") if isinstance(exercise.get("support_only"), bool) else quality_profile["support_only"],
+            "meaningful_stress": exercise.get("meaningful_stress"),
+            "fulfillment_authority": has_meaningful_fulfillment_authority(
+                exercise, source_kind="strength", source=str(exercise.get("_schema_source") or ""),
+                allow_legacy_unstamped=True,
+            ),
+            "base_categories": quality_profile["base_categories"],
+        })
+    return slots
+
+
 def _build_conditioning_slots(
     phase_block: dict | None,
     phase: str,
@@ -3240,6 +3306,10 @@ def build_stage2_payload(
             ),
             "rehab_slots": _build_rehab_slots(rehab_blocks.get(phase, ""), phase) if has_active_injury else [],
         }
+        if phase in {"GPP", "SPP"} and _trunk_strength_selected(athlete_model):
+            candidate_pools[phase]["core_development_slots"] = _build_core_development_slots(
+                strength_blocks.get(phase), phase, candidate_pools[phase]["strength_slots"],
+            )
 
     athlete_model["triage_summary"] = dict(training_context.triage_summary or {})
     injury_context = _build_injury_context(athlete_model=athlete_model)
@@ -3804,8 +3874,25 @@ Rules:
 - Never number the weeks inside a `Progress:` line. The athlete sees one week at a time, so "Progress: week 2 add 1 more burst, week 3 add 1 more burst, week 4 keep same low volume" prints other weeks' work on every card. Write the step alone ("Progress: add one more burst") and put the block's easy week on its own `Deload:` line ("Deload: keep the same low volume").
 """
 
+# Core Development Block metadata is planner/UI-only: Stage 2 renders block
+# members as ordinary closed exercises and must never see the grouping.
+PLANNER_ONLY_PROMPT_KEYS = frozenset({
+    "component_group", "trunk_function", "exercise_cap_exempt", "trunk_block",
+    "trunk_load_tier", "trunk_development", "trunk_block_functions",
+    "core_development_slots", "main_exercise_count", "core_block_count",
+})
+
+
+def scrub_planner_only_keys(value):
+    if isinstance(value, dict):
+        return {k: scrub_planner_only_keys(v) for k, v in value.items() if k not in PLANNER_ONLY_PROMPT_KEYS}
+    if isinstance(value, list):
+        return [scrub_planner_only_keys(v) for v in value]
+    return value
+
+
 def _json_block(value: dict | list) -> str:
-    return "```json\n" + json.dumps(value, separators=(",", ":"), ensure_ascii=False) + "\n```"
+    return "```json\n" + json.dumps(scrub_planner_only_keys(value), separators=(",", ":"), ensure_ascii=False) + "\n```"
 
 
 

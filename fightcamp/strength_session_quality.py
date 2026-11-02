@@ -361,6 +361,111 @@ def strength_adaptation_relevance(item: dict[str, Any], *, prescription_type: st
     return frozenset(adaptations)
 
 
+# The trunk function a trunk-targeted bank item mainly trains. The bank's tags
+# say the trunk is involved (``anti_rotation`` sits on a plain plank), not which
+# quality is developed, so the authored name decides first and tags only break a
+# tie. Ordered: a side plank row is anti-lateral-flexion, a med-ball slam is
+# rotational power, a plank punch-reach resists rotation.
+TRUNK_FUNCTIONS = (
+    "anti_extension", "anti_rotation", "anti_lateral_flexion", "loaded_carry",
+    "rotational_power", "rotational_braking", "lateral_flexion", "rotation", "flexion", "extension", "trunk_stability",
+)
+_TRUNK_FUNCTION_NAME_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("rotational_braking", re.compile(r"\brotational med.ball catch and stick\b", re.I)),
+    ("lateral_flexion", re.compile(r"\bside bends?\b", re.I)),
+    ("loaded_carry", re.compile(r"\b(?:carry|carries|farmer|yoke walk)\b", re.I)),
+    ("rotational_power", re.compile(r"\b(?:slam|throw|toss|scoop|woodchop\w*)\b", re.I)),
+    ("anti_lateral_flexion", re.compile(
+        r"\b(?:side plank|copenhagen side|suitcase|windmill|lateral med-ball catch)\b", re.I)),
+    ("anti_rotation", re.compile(
+        r"\b(?:pallof|anti-rotation|chop holds?|staggered stance|shoulder taps?|bird[- ]?dog"
+        r"|punch[- ]reach|plank row|split-line|punch-specific|get-up|renegade|dumbbell drag"
+        r"|perturbed|catch and stick)\b", re.I)),
+    ("anti_extension", re.compile(
+        r"\b(?:plank|rollout|ab wheel|dead[- ]?bug|hollow|stir the pot|body saw|swiss ball press"
+        r"|swiss-ball pike|pulldown brace|lower back hold)\b", re.I)),
+    ("extension", re.compile(r"\b(?:back extension|reverse hyper\w*)\b", re.I)),
+    ("rotation", re.compile(r"\b(?:twists?|rotations?|rotational|low-to-high|high-to-low)\b", re.I)),
+    ("flexion", re.compile(r"\b(?:leg raise|knee raise|crunch|sit-?ups?|v-?ups?|compression)\b", re.I)),
+)
+
+
+def trunk_function(item: dict[str, Any], *, trunk_targeted: bool | None = None) -> str:
+    """The primary trunk function of a bank item; ``""`` when not trunk-targeted.
+
+    A serialized Stage 1 option no longer carries its authored category, so a
+    caller holding Stage 1's own adaptation stamp passes ``trunk_targeted``.
+    """
+    if not isinstance(item, dict):
+        return ""
+    if trunk_targeted is None:
+        trunk_targeted = "trunk_strength" in strength_adaptation_relevance(item)
+    if not trunk_targeted:
+        return ""
+    name = str(item.get("name") or "")
+    for function, pattern in _TRUNK_FUNCTION_NAME_RULES:
+        if pattern.search(name):
+            return function
+    tags = _collect_tags(item)
+    if "anti_extension" in tags:
+        return "anti_extension"
+    if "mech_trunk_rotation" in tags and classify_strength_item(item)["quality_class"] == "anchor_power":
+        return "rotational_power"
+    if "anti_rotation" in tags:
+        return "anti_rotation"
+    if "mech_trunk_flexion" in tags:
+        return "flexion"
+    if "anti_lateral_flexion" in tags:
+        return "anti_lateral_flexion"
+    return "trunk_stability"
+
+
+# How hard a trunk item is to recover from, read from its authored costs, not
+# its name: a heavy sandbag carry or a med-ball slam is real training load even
+# though it is "core". ``stability``: low-cost bodyweight control.
+# ``loaded``: external resistance or authored meaningful/moderate-high cost.
+# ``rotational_power``: ballistic / explosive rotational work (neural cost).
+TRUNK_LOAD_TIERS = ("stability", "loaded", "rotational_power")
+# Support or apparatus that adds no external resistance (a hang is bodyweight).
+_UNLOADED_TRUNK_EQUIPMENT = frozenset({"", "bodyweight", "none", "stability_ball", "swiss_ball", "bench", "mat", "pullup_bar"})
+
+
+def trunk_load_tier(item: dict[str, Any], *, trunk_targeted: bool | None = None) -> str:
+    """``stability`` / ``loaded`` / ``rotational_power``; ``""`` if not trunk-targeted."""
+    function = trunk_function(item, trunk_targeted=trunk_targeted)
+    if not function:
+        return ""
+    metadata = item.get("selection_metadata") if isinstance(item.get("selection_metadata"), dict) else {}
+    mech = {str(t).lower() for t in [*(item.get("mechanical_risk_tags") or []),
+                                     *(metadata.get("mechanical_risk_tags") or [])]}
+    if function == "rotational_power" or "mech_ballistic" in mech or (
+            classify_strength_item(item)["quality_class"] == "anchor_power" and "mech_trunk_rotation" in mech):
+        return "rotational_power"
+    # Bank items author ``equipment``; serialized Stage 1 options carry it as
+    # ``required_equipment``. Either is the same authored requirement.
+    equipment: list[Any] = []
+    for value in (item.get("equipment"), item.get("required_equipment"), metadata.get("equipment")):
+        equipment += value if isinstance(value, list) else re.split(r"[,/]", str(value or ""))
+    costs = {str(item.get(field) or metadata.get(field) or "").lower()
+             for field in ("movement_cost", "cns_load", "soreness_risk")}
+    if (function == "loaded_carry" or item.get("meaningful_stress") is True
+            or costs & {"moderate", "high"}
+            or {str(e).strip().lower() for e in equipment} - _UNLOADED_TRUNK_EQUIPMENT):
+        return "loaded"
+    return "stability"
+
+
+def trunk_high_cost(item: dict[str, Any]) -> bool:
+    """Authored high recovery cost (a heavy carry, a long brutal hold, a get-up):
+    a high movement/CNS/soreness cost or a systemic-fatigue mechanical tag."""
+    metadata = item.get("selection_metadata") if isinstance(item.get("selection_metadata"), dict) else {}
+    mech = {str(t).lower() for t in [*(item.get("mechanical_risk_tags") or []),
+                                     *(metadata.get("mechanical_risk_tags") or [])]}
+    costs = {str(item.get(field) or metadata.get(field) or "").lower()
+             for field in ("movement_cost", "cns_load", "soreness_risk")}
+    return "high" in costs or "mech_systemic_fatigue" in mech
+
+
 def infer_strength_sessions(exercises: list[dict[str, Any]], num_sessions: int) -> list[dict[str, Any]]:
     session_count = max(1, int(num_sessions or 1))
     if not exercises:

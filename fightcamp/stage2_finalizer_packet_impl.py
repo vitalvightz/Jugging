@@ -231,6 +231,11 @@ _ASSIGNMENT_PROVENANCE_FIELDS = (
     # composed session's realised cross-day cost. No finalizer rule names it and
     # the model must not act on it, so it stays on the rich Stage 1 object.
     "mechanical_risk_tags",
+    # Core Development Block grouping is planner/UI metadata. Stage 2 renders
+    # block members as ordinary closed exercises and never sees the grouping.
+    "component_group",
+    "trunk_function",
+    "exercise_cap_exempt",
 )
 
 
@@ -785,6 +790,12 @@ def build_stage2_finalizer_packet(
         _entries = _goal_source.get("goal_preservation")
         if _entries:
             goal_preservation_entries = deepcopy(_entries)
+            # Core Development Block evidence detail is planner-only metadata.
+            for _entry in goal_preservation_entries:
+                for _item in (_entry.get("evidence") or []) if isinstance(_entry, dict) else []:
+                    if isinstance(_item, dict):
+                        for _key in ("trunk_function", "trunk_load_tier", "trunk_development", "trunk_block_functions"):
+                            _item.pop(_key, None)
             goal_preservation_version = (
                 _goal_source.get("goal_preservation_version") or _GOAL_PRESERVATION_VERSION
             )

@@ -742,6 +742,50 @@ function ExerciseGlyph({ block }: { block: StructuredBlock }) {
   return <ExerciseGlyphIcon name={exerciseGlyph(block)} />;
 }
 
+// A planner presentation group (the Core Development block) is a server-owned
+// block tag. Consecutive members render under one collapsible header; every
+// member stays its own ExerciseRow, so each is still swappable, editable,
+// completable and logged on its own.
+const COMPONENT_GROUP_LABELS: Record<string, string> = { core_development: "Core Development" };
+
+function blockComponentGroup(block: StructuredBlock): string | null {
+  return (block.tags ?? []).find(tag => Object.prototype.hasOwnProperty.call(COMPONENT_GROUP_LABELS, tag)) ?? null;
+}
+
+export function groupBlockRows(
+  blocks: StructuredBlock[],
+  renderRow: (block: StructuredBlock, index: number) => ReactNode,
+): ReactNode[] {
+  // Every member of a group renders inside one section placed at its first
+  // member, even when the written plan interleaved another exercise between
+  // them. Each member keeps its own row and original index (swap, edit, log).
+  const groups = new Map<string, number[]>();
+  blocks.forEach((block, index) => {
+    const group = blockComponentGroup(block);
+    if (group) groups.set(group, [...(groups.get(group) ?? []), index]);
+  });
+  const rows: ReactNode[] = [];
+  blocks.forEach((block, index) => {
+    const group = blockComponentGroup(block);
+    const members = group ? groups.get(group) ?? [] : [];
+    if (!group || members.length < 2) {
+      rows.push(renderRow(block, index));
+      return;
+    }
+    if (members[0] !== index) return;
+    rows.push(
+      <details key={`group-${group}-${index}`} className="ex-group" open>
+        <summary className="ex-group-head">
+          <span>{COMPONENT_GROUP_LABELS[group]}</span>
+          <span className="ex-group-count">{members.length} exercises</span>
+        </summary>
+        <div className="ex-group-rows">{members.map(member => renderRow(blocks[member], member))}</div>
+      </details>,
+    );
+  });
+  return rows;
+}
+
 /**
  * One exercise in a session: a compact row (name, headline stat, demo thumbnail)
  * that expands to the demo, what the exercise builds, why it is in today's
@@ -1413,7 +1457,7 @@ export function SessionCard({
         <ExerciseSessionScope date={occurrenceDate ?? day?.date} session={session}>
           {blocks.length > 0 ? (
             <div className="sp-blocks ex-rows">
-              {blocks.map((block, index) => (
+              {groupBlockRows(blocks, (block, index) => (
                 <ExerciseRow
                   key={cleanText(block.block_id) || `block-${index}`}
                   block={block}
@@ -1552,7 +1596,7 @@ export function SessionCard({
           {showDetails || planLayout ? (
             <ExerciseSessionScope date={occurrenceDate ?? day?.date} session={session}>
               <div id={detailsId} className="sp-blocks ex-rows">
-                {blocks.map((block, index) => (
+                {groupBlockRows(blocks, (block, index) => (
                   <ExerciseRow
                     key={cleanText(block.block_id) || `block-${index}`}
                     block={block}
