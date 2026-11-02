@@ -121,7 +121,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   const [opened, setOpened] = useState(!planId);
   const [chosenDay, setChosenDay] = useState<Weekday>();
   // The add sheet remembers what it added this visit, so their doses can be set right there.
-  const [adding, setAdding] = useState<{ sessionId: string; added: string[] }>();
+  const [adding, setAdding] = useState<{ sessionId: string; added: string[]; query?: string }>();
   // One added exercise is open at a time: the newest, so its dose can be set at once; the rest stay one line each.
   const [openAdded, setOpenAdded] = useState<string>();
   const [openExercise, setOpenExercise] = useState<string | null>(null);
@@ -362,8 +362,12 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
     setAdding(current => current?.sessionId === sessionId ? { ...current, added: [...current.added, exerciseId] } : current);
     setOpenAdded(exerciseId);
   }
-  function addLibrary(sessionId: string, entry: LibraryEntry | LibraryPreview) {
-    if (entry.category !== "training") return;
+  function canAdd(sessionId: string): boolean {
+    const session = latest.current.sessions.find(s => s.id === sessionId);
+    return Boolean(session && session.exercises.length < 100);
+  }
+  function addLibrary(sessionId: string, entry: LibraryEntry | LibraryPreview): boolean {
+    if (entry.category !== "training" || !canAdd(sessionId)) return false;
     const id = crypto.randomUUID();
     const guidance = "guidance" in entry ? entry.guidance : null;
     sessionChange(sessionId, s => s.exercises.length >= 100 ? s : {
@@ -375,6 +379,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
     });
     noteAdded(sessionId, id);
     prefill(id, entry, Boolean(guidance));
+    return true;
   }
   /**
    * The library's format first; the athlete's last session fills what it leaves open.
@@ -608,8 +613,10 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
       <TrainingLibrary
         accessToken={accessToken}
         initialQuery={selecting.query}
+        canAdd={canAdd(selecting.sessionId)}
         onBack={() => setSelecting(undefined)}
         onSelectCommunity={(entry) => {
+          if (!canAdd(selecting.sessionId)) return;
           const id = crypto.randomUUID();
           sessionChange(selecting.sessionId, s => s.exercises.length >= 100 ? s : ({ ...s, exercises: [...s.exercises, { id, origin: 'manual', name: entry.name,
             equipment: entry.equipment, notes: entry.notes, media_id: null, community_id: null, community_revision_id: entry.revision_id,
@@ -618,8 +625,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
           setSelecting(undefined);
         }}
         onSelect={(entry) => {
-          addLibrary(selecting.sessionId, entry);
-          setSelecting(undefined);
+          if (addLibrary(selecting.sessionId, entry)) setSelecting(undefined);
         }}
       />
     );
@@ -819,11 +825,14 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
       {addingSession && adding ? (
         <InjuryDetailSheet title={`Add to ${addingSession.name}`} panelClassName={styles.addPanel} onClose={() => setAdding(undefined)}>
           <div className={styles.sheet}>
-            <CustomExercisePicker accessToken={accessToken} full={addingSession.exercises.length >= 100}
+            <CustomExercisePicker accessToken={accessToken} full={addingSession.exercises.length >= 100} initialQuery={adding.query}
               onAdd={entry => addLibrary(adding.sessionId, entry)}
               onPreview={entry => setPreview(entry)}
               onCreate={name => createManual(adding.sessionId, name)}
-              onBrowse={query => setSelecting({ sessionId: adding.sessionId, query })} />
+              onBrowse={query => {
+                setAdding(current => current?.sessionId === adding.sessionId ? { ...current, query } : current);
+                setSelecting({ sessionId: adding.sessionId, query });
+              }} />
             {addedHere.length ? <section className={styles.added} aria-labelledby="custom-added-heading">
               <h3 id="custom-added-heading">Added · {addedHere.length}
                 {/* Collapsed rows still say which doses are missing, so none get lost. */}
@@ -879,6 +888,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
             onSubmit={(event) => {
               event.preventDefault();
               const { sessionId, exercise, fresh, position, original } = editing;
+              if (fresh && !canAdd(sessionId)) return;
               if (JSON.stringify(exercise) !== JSON.stringify(original)) markTouched(exercise.id);
               sessionChange(sessionId, (s) => {
                 if (fresh) return s.exercises.length >= 100 ? s : { ...s, exercises: [...s.exercises, exercise] };
@@ -1079,7 +1089,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
       {preview ? (
         <DrillPreview key={preview.catalogue_id} entry={preview} token={accessToken} onClose={() => setPreview(undefined)} selfDirected
           // Previewed from the add sheet, it can add; from an exercise's own editor it only shows the drill.
-          onAdd={adding && !editing ? entry => { addLibrary(adding.sessionId, entry); setPreview(undefined); } : undefined} />
+          onAdd={adding && !editing && canAdd(adding.sessionId) ? entry => { if (addLibrary(adding.sessionId, entry)) setPreview(undefined); } : undefined} />
       ) : null}
       {communityOpen && editing?.exercise.origin === 'manual' ? <CommunityContributionSheet key={accessToken} token={accessToken} exercise={editing.exercise} onClose={() => setCommunityOpen(false)}
         onIdentity={id => setEditing(current => current?.exercise.origin === 'manual' ? { ...current, exercise: { ...current.exercise, community_id: id } } : current)}
