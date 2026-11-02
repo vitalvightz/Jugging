@@ -10472,48 +10472,6 @@
     "meaningful_stress": true
   },
   {
-    "name": "Staggered Stance Hold",
-    "category": "full_body",
-    "phases": [
-      "GPP"
-    ],
-    "method": "strength",
-    "movement": "isometric",
-    "type": "unilateral",
-    "tags": [
-      "anti_rotation",
-      "balance",
-      "core",
-      "stability",
-      "coordination",
-      "mech_trunk_stability"
-    ],
-    "equipment": "bodyweight",
-    "movement_cost": "low",
-    "impact_cost": "low",
-    "eccentric_cost": "low",
-    "landing_cost": "none",
-    "cns_load": "low",
-    "soreness_risk": "low",
-    "mechanical_risk_tags": [
-      "mech_trunk_stability"
-    ],
-    "low_impact": true,
-    "low_eccentric": true,
-    "cns_freshness": true,
-    "cut_buckets_allowed": [
-      "none",
-      "low",
-      "moderate",
-      "high",
-      "critical"
-    ],
-    "stress_class": "support",
-    "cost_class": "low",
-    "support_only": true,
-    "meaningful_stress": false
-  },
-  {
     "name": "Farmer Carry (Heavy)",
     "category": "full_body",
     "phases": [
@@ -16421,5 +16379,702 @@
     "support_only": false,
     "meaningful_stress": true,
     "notes": "Equipment-free unilateral leg strength. Long split stance, lower for 3 seconds until the back knee hovers just above the floor, pause 1 second, drive up through the front foot. Finish all reps on one leg, then change legs. Progress by elevating the rear foot on a step; regress by shortening the range."
+  },
+  {
+    "name": "Bear Plank Dumbbell Drag",
+    "category": "core",
+    "phases": [
+      "GPP",
+      "SPP"
+    ],
+    "method": "strength",
+    "movement": "core",
+    "type": "unilateral",
+    "tags": [
+      "core",
+      "anti_rotation",
+      "stability",
+      "unilateral",
+      "shoulders",
+      "coordination",
+      "mech_trunk_stability",
+      "mech_trunk_rotation"
+    ],
+    "equipment": "dumbbells",
+    "movement_cost": "low",
+    "impact_cost": "low",
+    "eccentric_cost": "low",
+    "landing_cost": "none",
+    "cns_load": "low",
+    "soreness_risk": "low",
+    "mechanical_risk_tags": [
+      "mech_trunk_stability",
+      "mech_trunk_rotation"
+    ],
+    "low_impact": true,
+    "low_eccentric": true,
+    "cns_freshness": true,
+    "cut_buckets_allowed": [
+      "none",
+      "low",
+      "moderate",
+      "high",
+      "critical"
+    ],
+    "stress_class": "support",
+    "cost_class": "low",
+    "support_only": true,
+    "meaningful_stress": false,
+    "prescription": "3 x 6-8 per side @ RPE 6-8; rest 60s.",
+    "notes": "Bear plank, knees an inch off the floor; drag the dumbbell under the body to the other side without the hips twisting."
+  },
+  {
+    "name": "Renegade Row",
+    "category": "core",
+    "phases": [
+      "GPP",
+      "SPP"
+    ],
+    "method": "strength",
+    "movement": "core",
+    "type": "unilateral",
+    "tags": [
+      "core",
+      "anti_rotation",
+      "stability",
+      "unilateral",
+      "pull",
+      "compound",
+      "grip",
+      "shoulders",
+      "mech_trunk_stability",
+      "mech_trunk_rotation",
+      "mech_upper_pull",
+      "mech_grip_support"
+    ],
+    "equipment": "dumbbells",
+    "movement_cost": "moderate",
+    "impact_cost": "low",
+    "eccentric_cost": "low",
+    "landing_cost": "none",
+    "cns_load": "low",
+    "soreness_risk": "low",
+    "mechanical_risk_tags": [
+      "mech_trunk_stability",
+      "mech_trunk_rotation",
+      "mech_upper_pull",
+      "mech_grip_support"
+    ],
+    "low_impact": true,
+    "low_eccentric": true,
+    "cns_freshness": true,
+    "cut_buckets_allowed": [
+      "none",
+      "low",
+      "moderate",
+      "high"
+    ],
+    "stress_class": "support",
+    "cost_class": "low",
+    "support_only": true,
+    "meaningful_stress": false,
+    "prescription": "3 x 6-8 per side @ RPE 6-8; rest 75s.",
+    "notes": "High plank on dumbbells, feet wide; row one side while the hips stay square to the floor."
+  },
+  {
+    "name": "Partner-Perturbed Guard Hold",
+    "category": "core",
+    "phases": [
+      "GPP",
+      "SPP"
+    ],
+    "method": "strength",
+    "movement": "isometric",
+    "type": "bilateral",
+    "tags": [
+      "core",
+      "anti_rotation",
+      "stability",
+      "reactive",
+      "balance",
+      "isometric",
+      "coordination",
+      "mech_trunk_stability"
+    ],
+    "equipment": "bands,partner",
+    "movement_cost": "low",
+    "impact_cost": "low",
+    "eccentric_cost": "low",
+    "landing_cost": "none",
+    "cns_load": "low",
+    "soreness_risk": "low",
+    "mechanical_risk_tags": [
+      "mech_trunk_stability"
+    ],
+    "low_impact": true,
+    "low_eccentric": true,
+    "cns_freshness": true,
+    "cut_buckets_allowed": [
+      "none",
+      "low",
+      "moderate",
+      "high",
+      "critical"
+    ],
+    "stress_class": "support",
+    "cost_class": "low",
+    "support_only": true,
+    "meaningful_stress": false,
+    "prescription": "3 x 15-20s holds @ RPE 6-7; rest 60s.",
+    "notes": "Fighting stance, hands in guard; a partner applies unpredictable light band tension from different angles while the fighter keeps stance and posture."
+  },
+  {
+    "name": "Standing Cable Side Bend",
+    "category": "core",
+    "phases": [
+      "GPP",
+      "SPP"
+    ],
+    "method": "strength",
+    "movement": "core",
+    "type": "unilateral",
+    "tags": [
+      "core",
+      "anti_lateral_flexion",
+      "stability",
+      "unilateral",
+      "mech_trunk_stability"
+    ],
+    "equipment": "cable",
+    "movement_cost": "low",
+    "impact_cost": "low",
+    "eccentric_cost": "low",
+    "landing_cost": "none",
+    "cns_load": "low",
+    "soreness_risk": "low",
+    "mechanical_risk_tags": [
+      "mech_trunk_stability"
+    ],
+    "low_impact": true,
+    "low_eccentric": true,
+    "cns_freshness": true,
+    "cut_buckets_allowed": [
+      "none",
+      "low",
+      "moderate",
+      "high",
+      "critical"
+    ],
+    "stress_class": "support",
+    "cost_class": "low",
+    "support_only": true,
+    "meaningful_stress": false,
+    "prescription": "3 x 8-12 per side @ RPE 6-8; rest 60s.",
+    "notes": "Dynamic lateral trunk strength: bend away from and back toward the cable through a controlled range, ribs stacked over the pelvis."
+  },
+  {
+    "name": "Kettlebell Windmill",
+    "category": "core",
+    "phases": [
+      "GPP",
+      "SPP"
+    ],
+    "method": "strength",
+    "movement": "core",
+    "type": "unilateral",
+    "tags": [
+      "core",
+      "anti_lateral_flexion",
+      "stability",
+      "unilateral",
+      "balance",
+      "mobility",
+      "shoulders",
+      "coordination",
+      "mech_trunk_stability",
+      "mech_trunk_rotation",
+      "mech_shoulder_overhead"
+    ],
+    "equipment": "kettlebell",
+    "movement_cost": "moderate",
+    "impact_cost": "low",
+    "eccentric_cost": "low",
+    "landing_cost": "none",
+    "cns_load": "low",
+    "soreness_risk": "low",
+    "mechanical_risk_tags": [
+      "mech_trunk_stability",
+      "mech_trunk_rotation",
+      "mech_shoulder_overhead"
+    ],
+    "low_impact": true,
+    "low_eccentric": true,
+    "cns_freshness": true,
+    "cut_buckets_allowed": [
+      "none",
+      "low",
+      "moderate",
+      "high"
+    ],
+    "stress_class": "support",
+    "cost_class": "low",
+    "support_only": true,
+    "meaningful_stress": false,
+    "prescription": "3 x 5-6 per side @ RPE 6-7; rest 75s.",
+    "notes": "Bell locked out overhead, eyes on the bell; hinge and side-bend down the front leg, then stand back up under control."
+  },
+  {
+    "name": "Lateral Med-Ball Catch and Stick",
+    "category": "core",
+    "phases": [
+      "GPP",
+      "SPP"
+    ],
+    "method": "strength",
+    "movement": "core",
+    "type": "unilateral",
+    "tags": [
+      "core",
+      "anti_lateral_flexion",
+      "stability",
+      "reactive",
+      "balance",
+      "eccentric",
+      "coordination",
+      "mech_trunk_stability"
+    ],
+    "equipment": "medicine_ball",
+    "movement_cost": "low",
+    "impact_cost": "low",
+    "eccentric_cost": "moderate",
+    "landing_cost": "none",
+    "cns_load": "low",
+    "soreness_risk": "low",
+    "mechanical_risk_tags": [
+      "mech_trunk_stability"
+    ],
+    "low_impact": true,
+    "low_eccentric": false,
+    "cns_freshness": true,
+    "cut_buckets_allowed": [
+      "none",
+      "low",
+      "moderate",
+      "high"
+    ],
+    "stress_class": "support",
+    "cost_class": "low",
+    "support_only": true,
+    "meaningful_stress": false,
+    "prescription": "3 x 4-6 per side; stick each catch for 2s; rest 60s.",
+    "notes": "Catch a medicine ball tossed to the side (partner or wall rebound) and stop it dead without the trunk collapsing sideways."
+  },
+  {
+    "name": "Slider Body Saw",
+    "category": "core",
+    "phases": [
+      "GPP",
+      "SPP"
+    ],
+    "method": "strength",
+    "movement": "core",
+    "type": "bilateral",
+    "tags": [
+      "core",
+      "anti_extension",
+      "stability",
+      "shoulders",
+      "mech_trunk_stability"
+    ],
+    "equipment": "bodyweight",
+    "movement_cost": "low",
+    "impact_cost": "low",
+    "eccentric_cost": "low",
+    "landing_cost": "none",
+    "cns_load": "low",
+    "soreness_risk": "low",
+    "mechanical_risk_tags": [
+      "mech_trunk_stability"
+    ],
+    "low_impact": true,
+    "low_eccentric": true,
+    "cns_freshness": true,
+    "cut_buckets_allowed": [
+      "none",
+      "low",
+      "moderate",
+      "high",
+      "critical"
+    ],
+    "stress_class": "support",
+    "cost_class": "low",
+    "support_only": true,
+    "meaningful_stress": false,
+    "prescription": "3 x 6-10 @ RPE 6-8; rest 60s.",
+    "notes": "Forearm plank with feet on sliders (or a towel on a smooth floor); slide back from the shoulders while keeping the ribs down."
+  },
+  {
+    "name": "Swiss-Ball Pike",
+    "category": "core",
+    "phases": [
+      "GPP",
+      "SPP"
+    ],
+    "method": "strength",
+    "movement": "core",
+    "type": "bilateral",
+    "tags": [
+      "core",
+      "anti_extension",
+      "stability",
+      "shoulders",
+      "coordination",
+      "mech_trunk_stability",
+      "mech_trunk_flexion"
+    ],
+    "equipment": "swiss_ball",
+    "movement_cost": "low",
+    "impact_cost": "low",
+    "eccentric_cost": "low",
+    "landing_cost": "none",
+    "cns_load": "low",
+    "soreness_risk": "low",
+    "mechanical_risk_tags": [
+      "mech_trunk_stability",
+      "mech_trunk_flexion"
+    ],
+    "low_impact": true,
+    "low_eccentric": true,
+    "cns_freshness": true,
+    "cut_buckets_allowed": [
+      "none",
+      "low",
+      "moderate",
+      "high",
+      "critical"
+    ],
+    "stress_class": "support",
+    "cost_class": "low",
+    "support_only": true,
+    "meaningful_stress": false,
+    "prescription": "3 x 6-10 @ RPE 6-8; rest 60s.",
+    "notes": "High plank with shins on the ball; pike the hips up under control without the low back sagging on the way down."
+  },
+  {
+    "name": "Tall-Kneeling Cable Pulldown Brace",
+    "category": "core",
+    "phases": [
+      "GPP",
+      "SPP"
+    ],
+    "method": "strength",
+    "movement": "core",
+    "type": "bilateral",
+    "tags": [
+      "core",
+      "anti_extension",
+      "stability",
+      "pull",
+      "mech_trunk_stability",
+      "mech_upper_pull"
+    ],
+    "equipment": "cable",
+    "movement_cost": "low",
+    "impact_cost": "low",
+    "eccentric_cost": "low",
+    "landing_cost": "none",
+    "cns_load": "low",
+    "soreness_risk": "low",
+    "mechanical_risk_tags": [
+      "mech_trunk_stability",
+      "mech_upper_pull"
+    ],
+    "low_impact": true,
+    "low_eccentric": true,
+    "cns_freshness": true,
+    "cut_buckets_allowed": [
+      "none",
+      "low",
+      "moderate",
+      "high",
+      "critical"
+    ],
+    "stress_class": "support",
+    "cost_class": "low",
+    "support_only": true,
+    "meaningful_stress": false,
+    "prescription": "3 x 8-10 @ RPE 6-8; rest 60s.",
+    "notes": "Tall kneeling; pull the cable toward the chest while resisting lumbar extension, ribs down and glutes on."
+  },
+  {
+    "name": "Reverse Crunch with Pelvic Lift",
+    "category": "core",
+    "phases": [
+      "GPP",
+      "SPP"
+    ],
+    "method": "strength",
+    "movement": "core",
+    "type": "bilateral",
+    "tags": [
+      "core",
+      "stability",
+      "movement_quality",
+      "mech_trunk_flexion",
+      "mech_trunk_stability"
+    ],
+    "equipment": "bodyweight",
+    "movement_cost": "low",
+    "impact_cost": "low",
+    "eccentric_cost": "low",
+    "landing_cost": "none",
+    "cns_load": "low",
+    "soreness_risk": "low",
+    "mechanical_risk_tags": [
+      "mech_trunk_flexion",
+      "mech_trunk_stability"
+    ],
+    "low_impact": true,
+    "low_eccentric": true,
+    "cns_freshness": true,
+    "cut_buckets_allowed": [
+      "none",
+      "low",
+      "moderate",
+      "high",
+      "critical"
+    ],
+    "stress_class": "support",
+    "cost_class": "low",
+    "support_only": true,
+    "meaningful_stress": false,
+    "prescription": "3 x 10-15 @ RPE 6-8; rest 45s.",
+    "notes": "Curl the pelvis into a posterior tilt and lift the hips off the floor; lower slowly without swinging the legs."
+  },
+  {
+    "name": "Seated Pike Compression Lift-Off",
+    "category": "core",
+    "phases": [
+      "GPP",
+      "SPP"
+    ],
+    "method": "strength",
+    "movement": "core",
+    "type": "bilateral",
+    "tags": [
+      "core",
+      "mobility",
+      "movement_quality",
+      "mech_trunk_flexion",
+      "mech_trunk_stability"
+    ],
+    "equipment": "bodyweight",
+    "movement_cost": "low",
+    "impact_cost": "low",
+    "eccentric_cost": "low",
+    "landing_cost": "none",
+    "cns_load": "low",
+    "soreness_risk": "low",
+    "mechanical_risk_tags": [
+      "mech_trunk_flexion",
+      "mech_trunk_stability"
+    ],
+    "low_impact": true,
+    "low_eccentric": true,
+    "cns_freshness": true,
+    "cut_buckets_allowed": [
+      "none",
+      "low",
+      "moderate",
+      "high",
+      "critical"
+    ],
+    "stress_class": "support",
+    "cost_class": "low",
+    "support_only": true,
+    "meaningful_stress": false,
+    "prescription": "3 x 8-12 @ RPE 6-8; rest 45s.",
+    "notes": "Seated tall with legs straight; lift the heels off the floor by compressing the hip flexors, spine neutral."
+  },
+  {
+    "name": "Kneeling Cable Crunch",
+    "category": "core",
+    "phases": [
+      "GPP",
+      "SPP"
+    ],
+    "method": "strength",
+    "movement": "core",
+    "type": "bilateral",
+    "tags": [
+      "core",
+      "mech_trunk_flexion",
+      "mech_trunk_stability"
+    ],
+    "equipment": "cable",
+    "movement_cost": "low",
+    "impact_cost": "low",
+    "eccentric_cost": "low",
+    "landing_cost": "none",
+    "cns_load": "low",
+    "soreness_risk": "low",
+    "mechanical_risk_tags": [
+      "mech_trunk_flexion",
+      "mech_trunk_stability"
+    ],
+    "low_impact": true,
+    "low_eccentric": true,
+    "cns_freshness": true,
+    "cut_buckets_allowed": [
+      "none",
+      "low",
+      "moderate",
+      "high",
+      "critical"
+    ],
+    "stress_class": "support",
+    "cost_class": "low",
+    "support_only": true,
+    "meaningful_stress": false,
+    "prescription": "3 x 8-12 @ RPE 7-8; rest 60s.",
+    "notes": "Loaded trunk flexion: crunch the ribs toward the pelvis against the cable; hips stay still."
+  },
+  {
+    "name": "Weighted 45° Back Extension",
+    "category": "core",
+    "phases": [
+      "GPP",
+      "SPP"
+    ],
+    "method": "strength",
+    "movement": "core",
+    "type": "bilateral",
+    "tags": [
+      "core",
+      "posterior_chain",
+      "hip_dominant",
+      "spine_extension_loaded",
+      "mech_lower_hip_hinge",
+      "mech_trunk_stability"
+    ],
+    "equipment": "back_extension_bench,plate",
+    "movement_cost": "moderate",
+    "impact_cost": "low",
+    "eccentric_cost": "moderate",
+    "landing_cost": "none",
+    "cns_load": "low",
+    "soreness_risk": "moderate",
+    "mechanical_risk_tags": [
+      "mech_lower_hip_hinge",
+      "mech_trunk_stability"
+    ],
+    "low_impact": true,
+    "low_eccentric": false,
+    "cns_freshness": true,
+    "cut_buckets_allowed": [
+      "none",
+      "low",
+      "moderate",
+      "high"
+    ],
+    "stress_class": "support",
+    "cost_class": "moderate",
+    "support_only": true,
+    "meaningful_stress": false,
+    "prescription": "3 x 8-12 @ RPE 7; rest 75s.",
+    "notes": "On a 45-degree back-extension bench, plate held at the chest; extend from the hips to a neutral spine, never hyperextending."
+  },
+  {
+    "name": "Low-to-High Cable Lift",
+    "category": "core",
+    "phases": [
+      "GPP",
+      "SPP"
+    ],
+    "method": "strength",
+    "movement": "core",
+    "type": "unilateral",
+    "tags": [
+      "core",
+      "rotational",
+      "anti_rotation",
+      "coordination",
+      "mech_trunk_rotation",
+      "mech_trunk_stability"
+    ],
+    "equipment": "cable",
+    "movement_cost": "low",
+    "impact_cost": "low",
+    "eccentric_cost": "low",
+    "landing_cost": "none",
+    "cns_load": "low",
+    "soreness_risk": "low",
+    "mechanical_risk_tags": [
+      "mech_trunk_rotation",
+      "mech_trunk_stability"
+    ],
+    "low_impact": true,
+    "low_eccentric": true,
+    "cns_freshness": true,
+    "cut_buckets_allowed": [
+      "none",
+      "low",
+      "moderate",
+      "high",
+      "critical"
+    ],
+    "stress_class": "support",
+    "cost_class": "low",
+    "support_only": true,
+    "meaningful_stress": false,
+    "prescription": "3 x 6-10 per side @ RPE 6-8; rest 60s.",
+    "notes": "Diagonal lift from low hip to high opposite shoulder; drive through the hips with control, no yanking."
+  },
+  {
+    "name": "Rotational Med-Ball Catch and Stick",
+    "category": "core",
+    "phases": [
+      "GPP",
+      "SPP"
+    ],
+    "method": "strength",
+    "movement": "core",
+    "type": "unilateral",
+    "tags": [
+      "core",
+      "anti_rotation",
+      "rotational",
+      "reactive",
+      "eccentric",
+      "coordination",
+      "mech_trunk_rotation",
+      "mech_trunk_stability"
+    ],
+    "equipment": "medicine_ball",
+    "movement_cost": "low",
+    "impact_cost": "low",
+    "eccentric_cost": "moderate",
+    "landing_cost": "none",
+    "cns_load": "low",
+    "soreness_risk": "low",
+    "mechanical_risk_tags": [
+      "mech_trunk_rotation",
+      "mech_trunk_stability"
+    ],
+    "low_impact": true,
+    "low_eccentric": false,
+    "cns_freshness": true,
+    "cut_buckets_allowed": [
+      "none",
+      "low",
+      "moderate",
+      "high"
+    ],
+    "stress_class": "support",
+    "cost_class": "low",
+    "support_only": true,
+    "meaningful_stress": false,
+    "prescription": "3 x 4-6 per side; stick each catch for 2s; rest 60s.",
+    "notes": "Eccentric rotational braking: catch the ball across the body and stop it before returning it."
   }
 ]

@@ -30,6 +30,7 @@ from .priority_profile import (
     normalize_priority_values,
 )
 from .role_labels import athlete_facing_label_for, stamp_role_label
+from .strength_session_quality import trunk_function, trunk_load_tier
 from .tagging import normalize_tag
 
 
@@ -369,6 +370,11 @@ def dose_volume(text: str) -> dict:
         kind = next((key for key, value in (unit.groupdict() if unit else {}).items() if value), "reps")
         amount = int(match[2]) * (1000 if kind == "km" else 1)
         return {"sets": int(match[1]), "amount": amount, "unit": "m" if kind == "km" else kind}
+    # A carry is dosed as trips over a distance: "3 carries over 20 m".
+    match = re.search(r"(\d+)(?:\s*[-–]\s*\d+)?\s*(?:carries|carry|walks?|trips?)\s+(?:over|of)\s+"
+                      r"(\d+)(?:\s*[-–]\s*\d+)?\s*m\b", text, re.I)
+    if match is not None:
+        return {"sets": int(match[1]), "amount": int(match[2]), "unit": "m"}
     # A contrast complex is dosed in rounds: "3-4 rounds: heavy movement
     # 2-3 reps @ 85-92% 1RM -> ...". Each round is one working set.
     match = re.search(r"(\d+)(?:\s*[-–]\s*\d+)?\s*rounds?\b[:;]?[^;]*?\b(\d+)(?:\s*[-–]\s*\d+)?\s*reps?\b", text, re.I)
@@ -486,10 +492,17 @@ def _strength_stimuli(role: dict, slots: list[dict], brief: dict) -> list[dict]:
         # involvement (a squat's bracing, a sled push's posture) is not.
         if "trunk_strength" in adaptations:
             intents.append("trunk_training")
+        if volume["unit"] == "m":
+            # A distance dose ("3 carries over 20 m") is loaded trunk work at
+            # most; metres never witness power, speed or strength.
+            intents = [intent for intent in intents if intent == "trunk_training"]
         if not intents:
             continue
         stimuli.append({"slot_id": slot.get("slot_id"), "name": selected.get("name"),
                         "intents": intents, "quality_class": quality,
+                        **({"trunk_function": trunk_function(selected, trunk_targeted=True),
+                            "trunk_load_tier": trunk_load_tier(selected, trunk_targeted=True)}
+                           if "trunk_training" in intents else {}),
                         "effective_prescription": dose["effective_prescription"],
                         "dose_authority": dose["dose_authority"],
                         **_witness_volume(volume),
@@ -637,7 +650,8 @@ def _member_slot(member: dict, pools: dict, fallback_phase: str, slot_group: str
         return None
     phase = str(member.get("source_phase") or member.get("phase") or fallback_phase or "").strip().upper()
     pool = pools.get(phase) if isinstance(pools.get(phase), dict) else {}
-    slots = [*(pool.get(slot_group) or []), *((pool.get("late_tail_candidates") or []) if slot_group == "conditioning_slots" else [])]
+    slots = [*(pool.get(slot_group) or []), *((pool.get("late_tail_candidates") or []) if slot_group == "conditioning_slots" else []),
+             *((pool.get("core_development_slots") or []) if slot_group == "strength_slots" else [])]
     base_id, _, alternate = slot_id.partition(":alternate:")
     for slot in slots:
         if not isinstance(slot, dict) or str(slot.get("slot_id") or "") != base_id:
@@ -838,6 +852,55 @@ def _embedded_trunk_stimuli(role: dict, pools: dict, phase: str) -> list[dict]:
     return stimuli
 
 
+# A trunk development week is a Core Development Block: at least three
+# trunk-targeted members in ONE session, each training a different trunk
+# function at a DEVELOPMENT dose, and at least one of them resisted (loaded) or
+# explosive (rotational power). Three floor-dosed bodyweight holds, one plank,
+# incidental bracing or a 15-second hold is trunk exposure, never development.
+TRUNK_DEVELOPMENT_MIN_FUNCTIONS = 3
+# Total working volume per member, in the dose's own unit. Explosive work is
+# low-rep by design, so power is judged on its own (smaller) rep total.
+_TRUNK_MIN_TOTAL = {"reps": 16, "sec": 40, "m": 60, "min": 1}
+_TRUNK_MIN_POWER_REPS = 8
+_TRUNK_MIN_HOLD_SEC = 15
+
+
+def trunk_dose_adequate(stimulus: dict) -> bool:
+    """Two or more working sets with development-level total work."""
+    sets = int(stimulus.get("sets") or 0)
+    unit = stimulus.get("volume_unit") or "reps"
+    amount = stimulus.get("volume_amount") if unit != "reps" else stimulus.get("reps")
+    amount = _number(amount)
+    if sets < 2 or amount <= 0:
+        return False
+    if unit == "sec" and amount < _TRUNK_MIN_HOLD_SEC:
+        return False
+    if unit == "reps" and (stimulus.get("trunk_load_tier") == "rotational_power"
+                           or stimulus.get("trunk_function") == "rotational_braking"):
+        return sets * amount >= _TRUNK_MIN_POWER_REPS
+    return sets * amount >= _TRUNK_MIN_TOTAL.get(unit, 1)
+
+
+def _mark_trunk_development(stimuli: list[dict]) -> None:
+    """Stamp each trunk stimulus with whether its session delivers a block."""
+    trunk = [s for s in stimuli if "trunk_training" in s.get("intents", ())]
+    adequate = [s for s in trunk if s.get("trunk_function") and trunk_dose_adequate(s)]
+    functions = sorted({s["trunk_function"] for s in adequate})
+    resisted = any(s.get("trunk_load_tier") in {"loaded", "rotational_power"} for s in adequate)
+    block = len(functions) >= TRUNK_DEVELOPMENT_MIN_FUNCTIONS and resisted
+    for stimulus in trunk:
+        stimulus["trunk_development"] = block and stimulus in adequate
+        if block:
+            stimulus["trunk_block_functions"] = functions
+
+
+def _develops(intent: str, evidence: dict) -> bool:
+    """Development-quality evidence for this intent (trunk needs a real block)."""
+    if not evidence.get("development_quality"):
+        return False
+    return intent != "trunk_training" or evidence.get("trunk_development") is True
+
+
 def collect_goal_evidence(brief: dict) -> list[dict]:
     """Recompute from live schedule and effective prescriptions, ignoring caches."""
     role_map = _effective_map(brief)
@@ -859,6 +922,7 @@ def collect_goal_evidence(brief: dict) -> list[dict]:
                 continue
             phase = scheduled_phase_for_role(role, athlete_model=_athlete(brief), spec_phase=week.get("phase")) or week.get("phase")
             stimuli = _strength_stimuli(role, strength.get(id(role), []), brief)
+            _mark_trunk_development(stimuli)
             stimuli += _other_stimuli(role, pools, phase, brief)
             stimuli += _microdose_stimuli(role)
             for stimulus in stimuli:
@@ -984,7 +1048,7 @@ def _plannable_horizon(brief: dict, days: int) -> int | None:
 
 def _coverage(entry: dict, brief: dict, evidence: list[dict]) -> tuple[list[dict], list[dict]]:
     matching = [e for e in evidence if entry["required_intent"] in e["intents"]
-                and (entry["state"] != "build" or e.get("development_quality"))]
+                and (entry["state"] != "build" or _develops(entry["required_intent"], e))]
     missing, witnesses = [], []
     for window in _requirements(entry, brief):
         witness = next((e for e in matching if window["min_d_day"] is None or
@@ -1089,7 +1153,7 @@ def _attach_goal_microdose(brief: dict, ordinal: int, entry: dict) -> dict | Non
     covered = any(
         e.get("d_day") in week_days
         and entry["required_intent"] in e["intents"]
-        and e.get("development_quality")
+        and _develops(entry["required_intent"], e)
         for e in collect_goal_evidence(brief)
     )
     if covered:
@@ -1117,7 +1181,8 @@ def _attach_goal_microdose(brief: dict, ordinal: int, entry: dict) -> dict | Non
             # A truly unused / rest / recovery day stays protected.
             continue
         cap = (host.get("strength_composition_policy") or {}).get("effective_exercise_cap")
-        if isinstance(cap, int) and len(_strength_members(host)) >= cap:
+        from .session_composition import main_exercise_count
+        if isinstance(cap, int) and main_exercise_count(_strength_members(host)) >= cap:
             # The composition owner already sized this session for the
             # athlete's readiness; the floor does not overrule it.
             refusals.append("host_at_composed_exercise_cap")
@@ -1475,6 +1540,15 @@ def _restore_goal_roles(brief: dict, entry: dict, *, enforce_session_budget: boo
                     audit.append({"week_index": week.get("week_index"), "d_day": d_day,
                                   "result": "calendar_forbidden", "reason_codes": [decision.reason_code] if decision else []})
                     continue
+                if entry["goal"] == "trunk_strength" and repair_source.get("category") == "strength" and any(
+                        r is not live and role_d_day(week, r) == d_day and r.get("preferred_system") == "glycolytic"
+                        for r in roles):
+                    # Normal placement keeps strength off the glycolytic day; a
+                    # trunk repair (a support target) may not undo that. Other
+                    # goals keep their existing repair search unchanged.
+                    audit.append({"week_index": week.get("week_index"), "d_day": d_day,
+                                  "result": "calendar_forbidden", "reason_codes": ["strength_glycolytic_same_day"]})
+                    continue
                 trial = deepcopy(brief)
                 trial_week = trial["weekly_role_map"]["weeks"][ordinal]
                 # Re-place an unresolved approved role instead of duplicating it.
@@ -1692,6 +1766,48 @@ def _trunk_capacity_reasons(weeks: list[dict], window: dict) -> list[dict]:
             for week, day, role, outcome in sessions for code in outcome.get("pressure_sources") or []]
 
 
+def _trunk_block_reasons(weeks: list[dict], window: dict) -> list[dict]:
+    """Why no Core Development Block was delivered in this window.
+
+    Every strength session in the window must carry composition's own block
+    outcome. A session that was eligible and simply not the week's host defers
+    to that host; a session that DID deliver a block but left no development
+    evidence (its resolved doses were too small) explains nothing, and neither
+    does a session with no outcome at all, so the gap stays unmet.
+    """
+    reasons: list[dict] = []
+    explained = False
+    for week in weeks:
+        for role in week.get("session_roles") or []:
+            day = role_d_day(week, role)
+            if role.get("category") != "strength" or not isinstance(day, int):
+                continue
+            if window["min_d_day"] is not None and not window["min_d_day"] <= day <= window["max_d_day"]:
+                continue
+            # A suppressed or empty session trains nothing and is removed from
+            # the final calendar; it can neither host nor excuse a block.
+            if (role.get("governance") or {}).get("hard_suppression_reasons") or not role.get("selected_exercise_assignments"):
+                continue
+            outcome = (role.get("strength_composition_policy") or {}).get("trunk_block") or {}
+            status = outcome.get("status")
+            if status == "hosted_elsewhere":
+                continue
+            if status == "delivered" and outcome.get("dose_held_by"):
+                # Delivered, but held to maintenance doses by readiness authority.
+                codes = [outcome["dose_held_by"]]
+            elif status not in {"constrained", "not_eligible"}:
+                return []
+            else:
+                codes = (outcome.get("pressure_sources") if outcome.get("reason_code") == "readiness_capacity"
+                         else None) or [outcome.get("reason_code") or "trunk_load_limits"]
+            explained = True
+            reasons.extend({"reason_code": code, "authority": "session_composition.trunk_block",
+                            "source_reason_code": outcome.get("reason_code"),
+                            "week_index": week.get("week_index"), "role_key": role.get("role_key"),
+                            "d_day": day, "coverage_window": window} for code in codes)
+    return reasons if explained else []
+
+
 def _deferral_constraints(entry: dict, brief: dict, missing: list[dict]) -> list[dict]:
     """Every uncovered window needs a live, causal higher-authority reason."""
     if not missing:
@@ -1751,6 +1867,8 @@ def _deferral_constraints(entry: dict, brief: dict, missing: list[dict]) -> list
                                     "week_index": week.get("week_index"), "role_key": role.get("role_key"), "coverage_window": window})
         if entry["goal"] == "trunk_strength":
             window_reasons.extend(_trunk_capacity_reasons(_effective_map(brief).get("weeks") or [], window))
+            if entry["state"] == "build":
+                window_reasons.extend(_trunk_block_reasons(_effective_map(brief).get("weeks") or [], window))
         if (not window_reasons and entry["state"] != "build" and window["max_d_day"] is not None
                 and window["max_d_day"] <= _LATE_TAIL_MAX_D_DAY):
             # Maintenance owed wholly inside D-13..D-1, with no more specific
@@ -1775,6 +1893,30 @@ def _constraint_key(reason: dict):
 
 
 
+def _refresh_downgrade_constraints(entry: dict, brief: dict, evidence: list[dict]) -> None:
+    """Re-cite a downgrade's causes from the final calendar.
+
+    A later goal's repair or a consolidation can move or retire a session that
+    a constraint cited. The downgrade stands only on causes the final calendar
+    still holds; if none remain, validation reports the unexplained downgrade.
+    """
+    if not (entry.get("constraints") and entry.get("initial_state") and entry.get("state") != entry["initial_state"]):
+        return
+    initial = {**entry, "state": entry["initial_state"]}
+    _, initial_missing = _coverage(initial, brief, evidence)
+    current = _deferral_constraints(initial, brief, initial_missing) if initial_missing else []
+    if current:
+        # Classification-level codes (priority, fatigue, cut, proximity) stay.
+        classified = {"fight_proximity", "high_fatigue", "weight_cut_pressure", _HARD_SPARRING_STRENGTH_LIMIT,
+                      *_PRIORITY_REASON_CODES.values()}
+        stale = ({c.get("reason_code") for c in entry["constraints"]}
+                 - {c["reason_code"] for c in current} - classified)
+        entry["constraints"] = current
+        entry["reason_codes"] = list(dict.fromkeys(
+            [*(code for code in entry.get("reason_codes") or [] if code not in stale),
+             *(c["reason_code"] for c in current)]))
+
+
 def refresh_goal_evidence_after_composition(brief: dict) -> dict:
     """Refresh recorded witnesses after a dose-preserving, post-repair consolidation.
 
@@ -1790,6 +1932,7 @@ def refresh_goal_evidence_after_composition(brief: dict) -> dict:
             {**entry, "state": entry.get("initial_state", entry.get("state"))}
             if entry.get("state") == "defer" else entry
         )
+        _refresh_downgrade_constraints(entry, brief, evidence)
         matching, missing = _coverage(effective_entry, brief, evidence)
         entry.update(evidence=matching, missing_coverage=missing,
                      coverage_requirements=_requirements(effective_entry, brief),
@@ -1852,6 +1995,7 @@ def _reconcile_goal_preservation(brief: dict) -> dict:
     # Persist evidence from the final calendar, never its pre-repair day cache.
     final_evidence = collect_goal_evidence(brief)
     for entry in entries:
+        _refresh_downgrade_constraints(entry, brief, final_evidence)
         coverage_entry = {**entry, "state": entry["initial_state"]} if entry["state"] == "defer" else entry
         matching, missing = _coverage(coverage_entry, brief, final_evidence)
         entry.update(evidence=matching, missing_coverage=missing,

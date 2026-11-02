@@ -19715,6 +19715,46 @@ html[data-theme="light"] .loading-operational-item {
 .ex-rows {
   gap: 8px;
 }
+/* A planner group (Core Development): one quiet collapsible header over its
+   member rows. Members keep their own row, controls and logging. */
+.ex-group {
+  display: grid;
+  gap: 8px;
+}
+.ex-group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 2px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  cursor: pointer;
+  list-style: none;
+}
+.ex-group-head::-webkit-details-marker {
+  display: none;
+}
+.ex-group-head::after {
+  content: "⌄";
+  font-size: 1rem;
+  transition: transform 0.2s ease;
+}
+.ex-group[open] > .ex-group-head::after {
+  transform: rotate(180deg);
+}
+.ex-group-count {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.ex-group-rows {
+  display: grid;
+  gap: 8px;
+}
 .ex-row {
   background: var(--bg-stat);
   border: 1px solid var(--border-subtle);
