@@ -5,6 +5,7 @@
 // function tolerates null/partial payloads and never throws.
 import trainingCalendar from "../../shared/training-calendar.json";
 import { athleteFacingSessionTitle, formatPlanLabel } from "./plan-labels.ts";
+import { MAX_PER_ROUND_SEC, measuredSeconds } from "./session-timer/plan.ts";
 import {
   cleanText,
   classifySessionlessDay,
@@ -19,9 +20,11 @@ import {
   getPlanNotes,
   getSessions,
   getWeeks,
+  finitePositiveNumber,
   planNoteLabel,
 } from "./structured-plan.ts";
 import type {
+  StructuredBlock,
   StructuredDay,
   StructuredPlan,
   StructuredSession,
@@ -874,36 +877,228 @@ function isLowLoadSupportSession(session: StructuredSession | null | undefined):
   return blocks.length === 0 && SUPPORT_SESSION_TITLE_RE.test(title);
 }
 
+// Words that describe what a session *is*: contact and sustained-stress
+// work stays high whatever the dose. Intensity words (power, speed, max) only
+// say how hard each rep is, not how much fatigue the session leaves, so they
+// decide the score only when the plan carries no dosage to read.
+const CONTACT_LOAD_RE = /(?:^|[^a-z])spar(?:ring)?\b|\bfight_or_match\b/;
+const HARD_TEXT_RE = /\b(hard|spar|sprint|speed|power|max|explosive|hiit|anaerobic)\b/;
+const MODERATE_TEXT_RE = /\b(strength|conditioning|tempo|moderate|repeat)\b/;
+const LIGHT_TEXT_RE = /\b(rehab|prehab|mobility|recovery|easy|low)\b/;
+
+function loadText(values: unknown[]): string {
+  return values
+    .map((value) => cleanText(value)?.toLowerCase())
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** Keyword-only estimate, used when the plan gives no dosage to read. */
+function keywordLoadPoints(text: string, hasBlocks: boolean): number {
+  if (HARD_TEXT_RE.test(text)) {
+    return 3;
+  }
+  if (MODERATE_TEXT_RE.test(text)) {
+    return 2;
+  }
+  if (!hasBlocks && LIGHT_TEXT_RE.test(text)) {
+    return 1;
+  }
+  return 1.5;
+}
+
+function firstNumber(value: unknown): number | null {
+  if (finitePositiveNumber(value)) {
+    return value;
+  }
+  const match = typeof value === "string" ? value.match(/\d+(?:\.\d+)?/) : null;
+  return match ? Number(match[0]) : null;
+}
+
+/** Prescribed effort on an RPE-like 1-10 scale, or null when unstated. */
+function blockEffortRpe(block: StructuredBlock): number | null {
+  const method = cleanText(block.effort?.method)?.toLowerCase() ?? "";
+  const value = firstNumber(block.effort?.value);
+  if (value !== null && !/%|percent|1rm/.test(method)) {
+    if (/\brir\b/.test(method)) {
+      return Math.max(1, 10 - value);
+    }
+    if (value <= 10) {
+      return value;
+    }
+  }
+  const intensity = loadText([block.intensity, block.effort?.value]);
+  if (/\b(max|maximal|all_?out|hard|high|very hard)\b/.test(intensity)) {
+    return 8.5;
+  }
+  if (/\b(moderate|medium|steady|threshold)\b/.test(intensity)) {
+    return 6.5;
+  }
+  if (/\b(easy|low|light|recovery|conversational)\b/.test(intensity)) {
+    return 4;
+  }
+  return null;
+}
+
+function repsAsSeconds(reps: unknown): number | null {
+  const match =
+    typeof reps === "string"
+      ? reps.trim().toLowerCase().match(/^(\d+(?:\.\d+)?)\s*(s|sec|secs|seconds|min|mins|minutes)$/)
+      : null;
+  if (!match) {
+    return null;
+  }
+  return Number(match[1]) * (match[2].startsWith("m") ? 60 : 1);
+}
+
+/**
+ * Fatigue estimate for one block from its prescribed dose (sets/rounds, work
+ * time, rest and effort), or null when the block carries no dose to read.
+ *
+ * Deliberately coarse and conservative: a prescription never captures every
+ * factor, so unknown effort is read as moderately hard rather than easy, and
+ * only clearly short, well-rested bursts are pulled down.
+ */
+function blockDoseLoadPoints(block: StructuredBlock): number | null {
+  const blockType = normalizedLoadToken(block.block_type);
+  if (blockType && LOW_LOAD_BLOCK_TYPES.has(blockType)) {
+    return 1;
+  }
+  if (blockType === "sparring" || block.contact_level === "full") {
+    return 3;
+  }
+
+  const rounds = finitePositiveNumber(block.rounds) ? block.rounds : null;
+  const sets = finitePositiveNumber(block.sets) ? block.sets : null;
+  const bouts = rounds ?? sets;
+  const work = measuredSeconds(block.work) ?? repsAsSeconds(block.reps);
+  const duration = measuredSeconds(block.duration);
+  const reps = repsAsSeconds(block.reps) === null ? firstNumber(block.reps) : null;
+  const rest = measuredSeconds(block.rest);
+  const generousRestNote = /\b(full|complete|generous)\b/i.test(cleanText(block.rest_note) ?? "");
+  const rpe = blockEffortRpe(block);
+
+  // Same reading as the session timer: with bouts, a duration over
+  // MAX_PER_ROUND_SEC describes the whole block, so it is split across the
+  // bouts rather than multiplied by them.
+  const durationPerBout =
+    bouts !== null && duration !== null
+      ? duration > MAX_PER_ROUND_SEC
+        ? duration / bouts
+        : duration
+      : null;
+  const perBout = work ?? durationPerBout;
+  if (perBout !== null) {
+    const count = bouts ?? 1;
+    const totalWork = perBout * count;
+    const restRatio = rest !== null ? rest / perBout : null;
+    // Only stated recovery counts as generous; unknown rest is not assumed to
+    // be enough.
+    const generousRest = generousRestNote || (restRatio !== null && restRatio >= 3);
+    const effort = rpe ?? 7;
+
+    // Short explosive bursts (alactic): high intent, little accumulated fatigue
+    // when the plan gives generous recovery between efforts.
+    if (perBout <= 15) {
+      if (generousRest) {
+        return totalWork > 120 ? 2 : 1.5;
+      }
+      return effort >= 8 && count >= 8 ? 2.5 : 2;
+    }
+
+    // Sustained hard work is what builds fatigue: rounds of a minute or more
+    // at RPE 8+, or plenty of mid-length intervals on short rest.
+    if (effort >= 8) {
+      if (perBout >= 60) {
+        return totalWork >= 360 ? 3 : 2.5;
+      }
+      if (totalWork >= 240 && !generousRest) {
+        return 3;
+      }
+      return generousRest ? 2 : 2.5;
+    }
+    if (effort >= 6) {
+      return totalWork >= 1200 ? 2.5 : 2;
+    }
+    return totalWork >= 2700 ? 2 : 1.5;
+  }
+
+  // One continuous piece (an easy 30-minute bike, a tempo run).
+  if (duration !== null) {
+    const effort = rpe ?? 6;
+    if (effort >= 8) {
+      return duration >= 600 ? 3 : 2.5;
+    }
+    if (effort >= 6) {
+      return duration >= 1200 ? 2.5 : 2;
+    }
+    return duration >= 2700 ? 2 : 1.5;
+  }
+
+  // Counted sets x reps (lifts, jumps, throws).
+  if (bouts !== null || reps !== null) {
+    const totalReps = (bouts ?? 1) * (reps ?? 1);
+    if (rpe !== null && rpe >= 9 && (bouts ?? 1) >= 3) {
+      return 2.5;
+    }
+    if ((rpe !== null && rpe >= 7) || totalReps >= 30) {
+      return 2;
+    }
+    return 1.5;
+  }
+
+  return null;
+}
+
+/**
+ * Session fatigue points. Prefers the prescribed dose of each block over
+ * keywords, so a "power" session of 7 x 5 s bag bursts on full rest no longer
+ * reads like 4 x 3 min of RPE 8 conditioning. Contact (sparring/fight) stays
+ * high, and sessions with no dosage fall back to the keyword estimate.
+ */
 function sessionLoadPoints(session: StructuredSession | null | undefined): number {
   if (isLowLoadSupportSession(session)) {
     return 1;
   }
 
-  const text = [
+  const text = loadText([
     session?.session_type,
     session?.title,
     session?.objective,
     session?.primary_stressor,
     session?.cns_demand,
     session?.impact_level,
-  ]
-    .map((value) => cleanText(value)?.toLowerCase())
-    .filter(Boolean)
-    .join(" ");
+  ]);
+  const blocks = getBlocks(session);
+  const contactFloor = CONTACT_LOAD_RE.test(text) ? 3 : 0;
 
-  if (/\b(hard|spar|sprint|speed|power|max|explosive|hiit|anaerobic)\b/.test(text)) {
-    return 3;
+  const doseScores = blocks.map(blockDoseLoadPoints);
+  if (doseScores.every((score) => score === null)) {
+    return Math.max(contactFloor, keywordLoadPoints(text, blocks.length > 0));
   }
 
-  if (/\b(strength|conditioning|tempo|moderate|repeat)\b/.test(text)) {
-    return 2;
-  }
+  // A block the plan left undosed keeps its own keyword estimate, so missing
+  // data never makes a session look easier than its words say.
+  const blockScores = blocks.map((block, index) => {
+    const dose = doseScores[index];
+    if (dose !== null && dose !== undefined) {
+      return dose;
+    }
+    const blockType = normalizedLoadToken(block.block_type);
+    if (blockType && LOW_LOAD_BLOCK_TYPES.has(blockType)) {
+      return 1;
+    }
+    return keywordLoadPoints(
+      loadText([block.block_type, block.display_name, block.intensity, block.energy_system]),
+      true,
+    );
+  });
+  const peak = Math.max(...blockScores);
+  // Several demanding blocks in one session add some volume on top of the peak.
+  const demandingBlocks = blockScores.filter((score) => score >= 2).length;
+  const volume = Math.max(0, demandingBlocks - 1) * 0.25;
 
-  if (getBlocks(session).length === 0 && /\b(rehab|prehab|mobility|recovery|easy|low)\b/.test(text)) {
-    return 1;
-  }
-
-  return 1.5;
+  return Math.max(contactFloor, Math.min(3, peak + volume));
 }
 
 function appDayLoadPoints(day: StructuredDay): number {
@@ -917,12 +1112,13 @@ function appDayLoadPoints(day: StructuredDay): number {
   const loadBearingSessions = sessionScores.filter((score) => score > 1).length;
 
   // Extra load-bearing sessions add volume. Fillers and mobility-only inserts do
-  // not raise the day score or inherit an incorrectly high day_type badge.
+  // not raise the day score. The day_type badge describes intensity, not
+  // fatigue, so it is not a floor here: a "high" day of short explosive work
+  // scores on what the sessions actually prescribe.
   const extraSessionVolume = Math.max(0, loadBearingSessions - 1) * 0.75;
-  const dayTypeFloor = loadBearingSessions > 0 ? dayTypeLoadPoints(day) : 0;
   const coachLedFloor = coachLedDayLoadPoints(day);
 
-  return Math.min(4, Math.max(dayTypeFloor, coachLedFloor, sessionMax, 1) + extraSessionVolume);
+  return Math.min(4, Math.max(coachLedFloor, sessionMax, 1) + extraSessionVolume);
 }
 
 function coachLedDayLoadPoints(day: StructuredDay): number {
