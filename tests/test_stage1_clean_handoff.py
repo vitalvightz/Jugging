@@ -19,7 +19,7 @@ import pytest
 from api.models import PlanRequest
 from fightcamp.goal_preservation import _effective_map
 from fightcamp.main import generate_plan_sync
-from fightcamp.session_workload import UNSAFE_STACKING_CODE, substantial_endurance
+from fightcamp.session_workload import substantial_endurance
 from fightcamp.stage1_handoff_integrity import HANDOFF_STACKING_REMOVAL, enforce_handoff_integrity
 from planner_clock import pin_planner_clock
 
@@ -138,16 +138,17 @@ def test_guard_removes_embedded_support_from_an_endurance_day():
     assert role["handoff_integrity"][0]["code"] == HANDOFF_STACKING_REMOVAL
 
 
-def test_guard_never_deletes_programmed_strength_it_reports_it():
+def test_guard_keeps_programmed_strength_and_trims_the_endurance():
     bike_day = {"role_key": "aerobic_base_day", "scheduled_countdown_label": "D-26",
                 "selected_exercise_assignments": [_bike()]}
     strength_day = {"role_key": "primary_strength_day", "scheduled_countdown_label": "D-26",
                     "selected_exercise_assignments": [_windmill()]}
     role_map = _map(bike_day, strength_day)
-    findings = enforce_handoff_integrity(role_map)
+    assert enforce_handoff_integrity(role_map) == []
     assert strength_day["selected_exercise_assignments"][0]["name"] == "Kettlebell Windmill"
-    assert findings and findings[0]["code"] == UNSAFE_STACKING_CODE
-    assert role_map["handoff_integrity_findings"] == findings
+    bike = bike_day["selected_exercise_assignments"][0]
+    assert bike["effective_prescription"].startswith("25min") and not substantial_endurance(bike)
+    assert not role_map.get("handoff_integrity_findings")
 
 
 def test_guard_leaves_short_or_interval_conditioning_alone():

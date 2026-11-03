@@ -203,8 +203,8 @@ def test_structured_calls_use_their_own_deadline(monkeypatch):
 def test_default_deadlines_leave_room_inside_the_job_budget(monkeypatch):
     monkeypatch.delenv("UNLXCK_STAGE2_CALL_DEADLINE_SECONDS", raising=False)
     monkeypatch.delenv("UNLXCK_STAGE2_STRUCTURED_CALL_DEADLINE_SECONDS", raising=False)
-    assert stage2_module._stage2_call_deadline_seconds("first_pass") == 150.0
-    assert stage2_module._stage2_call_deadline_seconds("structured_first") == 300.0
+    assert stage2_module._stage2_call_deadline_seconds("first_pass") == 180.0
+    assert stage2_module._stage2_call_deadline_seconds("structured_first") == 360.0
 
 
 def test_hung_first_pass_is_retried_once_and_the_retry_is_released(monkeypatch):

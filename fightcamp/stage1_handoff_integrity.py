@@ -8,9 +8,10 @@ the handoff clean by construction.
 
 It only ever removes OPTIONAL embedded support (``embedded_support: True``,
 e.g. the low-load trunk drill composition tucks into a conditioning session).
-Programmed work is never deleted here; a conflict that removing optional
-support cannot resolve is recorded as a finding and logged, so it is visible
-instead of surfacing later as a blocked card.
+Programmed strength is never deleted. If optional support was not the cause,
+the day's continuous endurance is trimmed below the audit's 30-minute
+threshold (or a distance-only bout is dropped); only a day that still cannot
+be made legal is recorded as a finding.
 """
 from __future__ import annotations
 
@@ -23,6 +24,8 @@ from .session_workload import UNSAFE_STACKING_CODE, substantial_endurance
 logger = logging.getLogger(__name__)
 
 HANDOFF_STACKING_REMOVAL = "handoff_removed_embedded_support_on_endurance_day"
+HANDOFF_ENDURANCE_RESOLUTION = "handoff_resolved_endurance_on_strength_day"
+_TRIMMED_DOSE = "25min continuous; easy aerobic, conversational pace"
 
 
 def _day_key(week_index: int, week: dict[str, Any], role: dict[str, Any]) -> tuple:
@@ -90,6 +93,32 @@ def enforce_handoff_integrity(weekly_role_map: dict[str, Any]) -> list[dict[str,
                     )
             remaining = [m.get("name") for r in roles for m in _members(r) if _is_strength_member(m)]
             if remaining:
+                # Programmed strength stays. Resolve the day by bringing the
+                # continuous endurance under the audit's 30-minute threshold
+                # (or dropping a distance-only bout), so no rejectable day
+                # reaches Stage 2.
+                for role in roles:
+                    kept = []
+                    for member in _members(role):
+                        if not _has_substantial_endurance(member):
+                            kept.append(member)
+                            continue
+                        trimmed = {**member, "effective_prescription": _TRIMMED_DOSE,
+                                   "duration_min": 25, "total_minutes": 25}
+                        trimmed.pop("distance_m", None)
+                        action = "trimmed_to_25_min"
+                        if _has_substantial_endurance(trimmed):
+                            action = "removed"
+                        else:
+                            kept.append(trimmed)
+                        role.setdefault("handoff_integrity", []).append({
+                            "code": HANDOFF_ENDURANCE_RESOLUTION, "action": action,
+                            "endurance": member.get("name"), "strength": remaining,
+                        })
+                        logger.info("[handoff] %s %s on strength day %s", action, member.get("name"), key[2])
+                    role["selected_exercise_assignments"] = kept
+                if not any(_has_substantial_endurance(m) for r in roles for m in _members(r)):
+                    continue
                 finding = {
                     "code": UNSAFE_STACKING_CODE,
                     "week_index": week_index,
