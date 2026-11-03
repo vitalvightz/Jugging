@@ -83,7 +83,10 @@ export function WeightTrendChart({ trend, rangeStart, today, targetKg, selectedI
   const withYear = firstDay.slice(0, 4) !== today.slice(0, 4);
   const spanDays = Math.round((end - start) / 86_400_000);
   const middleDay = spanDays >= 3 ? shiftDate(firstDay, Math.floor(spanDays / 2)) : null;
-  const radius = trend.length > 40 ? 2 : 3;
+  // Markers shrink as weigh-ins crowd together (1.5-3px). Touch targets don't
+  // shrink with them: the whole plot is the control and snaps to the nearest
+  // weigh-in, so any tap or drag selects one.
+  const radius = Math.max(1.5, Math.min(3, (width - LEFT - RIGHT) / trend.length / 4));
 
   return <>
     <div ref={plot} className={`${progress.linePlot} ${styles.plot}`} role="slider" tabIndex={0} aria-label="Inspect logged weight"
@@ -112,8 +115,8 @@ export function WeightTrendChart({ trend, rangeStart, today, targetKg, selectedI
         {active ? <line x1={selectedX} x2={selectedX} y1={0} y2={height} className={styles.guide} /> : null}
         {trend.length >= 2 ? <path d={path} className={styles.line} /> : null}
         {points.map(([cx, cy], index) => <circle key={trend[index].sourceIndex} cx={cx} cy={cy}
-          r={index === latestIndex ? 5.5 : index === selectedIndex ? 4.5 : radius}
-          className={index === latestIndex ? styles.latestPoint : index === selectedIndex ? styles.selectedPoint : styles.point} />)}
+          r={index === selectedIndex ? 5.5 : index === latestIndex ? Math.max(radius, 3.5) : radius}
+          className={index === selectedIndex ? styles.selectedPoint : index === latestIndex ? styles.latestPoint : styles.point} />)}
       </svg>
       {ticks.map(value => <span key={value} className={styles.yTick} style={{ top: y(value) }} aria-hidden="true">{value.toFixed(1)}</span>)}
       {targetInView ? <span className={styles.targetLabel} style={{ top: y(targetKg) }} aria-hidden="true">Target</span> : null}
@@ -132,7 +135,7 @@ export function WeightTrendChart({ trend, rangeStart, today, targetKg, selectedI
       <span style={{ right: RIGHT }}>{shortDate(today, withYear)}</span>
     </div>
     {targetKg != null && !targetInView ? (
-      <p className={styles.targetOutside}>Target {kg(targetKg)} {targetKg < floor ? "↓" : "↑"}</p>
+      <p className={styles.targetOutside}><i aria-hidden="true" />Target {kg(targetKg)} · {targetKg < floor ? "below" : "above"} chart</p>
     ) : null}
   </>;
 }

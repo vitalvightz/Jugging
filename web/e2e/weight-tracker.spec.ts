@@ -134,7 +134,7 @@ for (const [width, height] of [[390, 844], [1280, 800]] as const) {
     await expect(slider.locator("circle")).toHaveCount(3);
     await expect(slider.locator("path")).toHaveCount(1);
     // The 70 kg target sits below the weights: named, not plotted.
-    await expect(trend.getByText("Target 70.0 kg ↓")).toBeVisible();
+    await expect(trend.getByText("Target 70.0 kg · below chart")).toBeVisible();
     expect((await slider.boundingBox())!.height).toBeLessThanOrEqual(170);
     // 30 days is a calendar window ending today: six days of weigh-ins use a fifth of it.
     await trend.getByRole("button", { name: "30 days" }).click();
