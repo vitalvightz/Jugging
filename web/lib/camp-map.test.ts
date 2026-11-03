@@ -454,6 +454,66 @@ test("weekLoadProxy reads a long block duration as the whole block, not per roun
   assert.equal(weekLoadProxy(week), "Moderate");
 });
 
+test("weekLoadProxy reads RIR 0 as maximal effort", () => {
+  const roundsAtRir = (id: string, rir: number) => ({
+    session_id: id,
+    session_type: "conditioning",
+    title: "Bag rounds",
+    blocks: [
+      {
+        block_type: "conditioning",
+        display_name: "Bag rounds",
+        rounds: 4,
+        work: { value: 90, unit: "seconds" },
+        rest: { value: 60, unit: "seconds" },
+        effort: { method: "RIR", value: rir },
+      },
+    ],
+  });
+  const week = (rir: number) => ({
+    phase_label: "SPP",
+    days: [
+      { day_type: "high", sessions: [roundsAtRir("rir-1", rir)] },
+      { day_type: "high", sessions: [roundsAtRir("rir-2", rir)] },
+    ],
+  });
+
+  // 6 minutes of work per day: at RIR 0 (RPE 10) both days are high-fatigue,
+  // at RIR 4 (RPE 6) they are moderate. RIR 0 must not read as "unstated".
+  assert.equal(weekLoadProxy(week(0)), "High");
+  assert.equal(weekLoadProxy(week(4)), "Moderate");
+});
+
+test("weekLoadProxy does not read pace or heart-rate numbers as RPE", () => {
+  const paceRounds = (id: string) => ({
+    session_id: id,
+    session_type: "conditioning",
+    title: "Run intervals",
+    blocks: [
+      {
+        block_type: "conditioning",
+        display_name: "Threshold-plus run intervals",
+        rounds: 4,
+        work: { value: 3, unit: "minutes" },
+        rest: { value: 1, unit: "minutes" },
+        effort: { method: "pace", value: 4 },
+        intensity: "hard",
+      },
+    ],
+  });
+  const week = {
+    phase_label: "SPP",
+    days: [
+      { day_type: "high", sessions: [paceRounds("pace-1")] },
+      { day_type: "high", sessions: [paceRounds("pace-2")] },
+    ],
+  };
+
+  // A 4 min/km pace is not RPE 4: the "hard" intensity decides the effort,
+  // so 4 x 3 min reads as hard conditioning.
+  assert.equal(weekLoadProxy(week), "High");
+});
+
 test("weekLoadProxy no longer uses a high day_type as a fatigue floor", () => {
   const week = {
     phase_label: "SPP",

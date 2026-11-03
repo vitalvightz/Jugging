@@ -918,13 +918,23 @@ function firstNumber(value: unknown): number | null {
 /** Prescribed effort on an RPE-like 1-10 scale, or null when unstated. */
 function blockEffortRpe(block: StructuredBlock): number | null {
   const method = cleanText(block.effort?.method)?.toLowerCase() ?? "";
-  const value = firstNumber(block.effort?.value);
-  if (value !== null && !/%|percent|1rm/.test(method)) {
-    if (/\brir\b/.test(method)) {
-      return Math.max(1, 10 - value);
+  const rawValue = block.effort?.value;
+  // Only RPE and RIR numbers are effort on this scale. Heart-rate zones, pace,
+  // velocity and %1RM numbers fall through to the intensity words below.
+  if (/\brir\b/.test(method)) {
+    // RIR 0 is a maximal set, so zero is a real value here.
+    const rir =
+      typeof rawValue === "number" && Number.isFinite(rawValue) && rawValue >= 0
+        ? rawValue
+        : firstNumber(rawValue);
+    if (rir !== null) {
+      return Math.max(1, 10 - rir);
     }
-    if (value <= 10) {
-      return value;
+  }
+  if (/\brpe\b/.test(method)) {
+    const rpe = firstNumber(rawValue);
+    if (rpe !== null && rpe <= 10) {
+      return rpe;
     }
   }
   const intensity = loadText([block.intensity, block.effort?.value]);
