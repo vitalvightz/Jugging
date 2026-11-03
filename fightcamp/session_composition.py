@@ -2056,7 +2056,18 @@ def compose_normal_strength_assignments(
                     # The conditioning selector already chose and filtered this
                     # physical movement drill. Use its own dose within this
                     # session's cap rather than substituting stance/prep cues.
-                    for record in _candidate_records([slot]):
+                    # Its ranked same-role alternates are offered too, so the
+                    # block can rotate movement patterns (see the per-week
+                    # footwork ordering in the final selection loop).
+                    footwork_slots = [slot]
+                    if slot.get("slot_id"):
+                        footwork_slots.extend(
+                            {**slot, "slot_id": f"{slot['slot_id']}:alternate:{index}",
+                             "selected": alternate, "alternates": []}
+                            for index, alternate in enumerate(slot.get("alternates") or [])
+                            if isinstance(alternate, dict)
+                        )
+                    for record in _candidate_records(footwork_slots):
                         record.update(adaptations=frozenset({"footwork"}), slot_group="conditioning_slots")
                         records.append(record)
             if primary_adaptation and not any(primary_adaptation in r["adaptations"] for r in records):
@@ -2189,7 +2200,52 @@ def compose_normal_strength_assignments(
                 # Nobody can hold it: the first-choice session reports why.
                 hosts.add(id(ordered[0]["role"]))
 
+    # Footwork as the primary weakness: vary the movement pattern within a
+    # week. Each session prefers a footwork drill not yet placed that week;
+    # ties keep Stage 1's ranking, so the same pattern recurs in the same
+    # session each week and can progress across the block. Only the order
+    # changes; caps, doses and every legality gate are unchanged.
+    footwork_week_use: dict[int, set[str]] = {}
+    for entry in composed_roles:
+        if entry.get("context_only"):
+            for record in entry.get("selected_records") or []:
+                if "footwork" in record.get("adaptations", ()):
+                    footwork_week_use.setdefault(id(entry["week"]), set()).add(record["name"])
+
+    def _rotate_footwork(ctx: dict[str, Any]) -> None:
+        records = ctx["records"]
+        positions = [i for i, r in enumerate(records) if "footwork" in r.get("adaptations", ())]
+        if len(positions) < 2:
+            return
+        unique: dict[str, dict[str, Any]] = {}
+        for i in positions:
+            record = records[i]
+            held = unique.get(record["name"])
+            # A drill's own selected slot beats the same drill offered as
+            # another slot's alternate: an alternate is one substitution for
+            # its original slot, so it cannot sit beside that slot's pick.
+            if held is None or (":alternate:" in str(held["slot"].get("slot_id") or "")
+                                and ":alternate:" not in str(record["slot"].get("slot_id") or "")):
+                unique[record["name"]] = record
+        drills = list(unique.values())
+        week_used = footwork_week_use.get(id(ctx["week"]), set())
+        # The weakness guarantee takes the FIRST footwork record; the capacity
+        # fill then ranks by (support_only, Stage 1 priority). Force the best
+        # drill not yet placed this week that the fill would not add anyway,
+        # so one session can carry two different patterns. Same count as
+        # before; only which drill is guaranteed changes.
+        fill_pick = min(drills, key=lambda r: (1 if r["support_only"] else 0, r["sort_key"]))
+        unused = [r for r in drills if r["name"] not in week_used]
+        forced = next((r for r in unused if r is not fill_pick), None) or (unused or drills)[0]
+        ordered = [forced, *(r for r in drills if r is not forced)]
+        others = [r for i, r in enumerate(records) if i not in set(positions)]
+        # Footwork keeps its place after the session's own strength records;
+        # duplicates of the same drill are dropped.
+        ctx["records"] = [*others[:positions[0]], *ordered, *others[positions[0]:]]
+
     for ctx in pending:
+        if primary_weakness == "footwork":
+            _rotate_footwork(ctx)
         week, role, phase, records = ctx["week"], ctx["role"], ctx["phase"], ctx["records"]
         role_key, pressure_state = ctx["role_key"], ctx["pressure_state"]
         base_cap, effective_cap = ctx["base_cap"], ctx["effective_cap"]
@@ -2197,6 +2253,9 @@ def compose_normal_strength_assignments(
         host = id(role) in hosts
         block_target = trunk_block_size if host else 0
         selected_records, dropped = _select(ctx, block_target)
+        for record in selected_records:
+            if "footwork" in record.get("adaptations", ()):
+                footwork_week_use.setdefault(id(week), set()).add(record["name"])
         main_records = _select(ctx, 0)[0] if block_target else selected_records
         additions = [r for r in selected_records if r not in main_records]
 

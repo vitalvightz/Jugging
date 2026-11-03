@@ -145,6 +145,50 @@ work rather than footwork; guard-manipulation shuffle is hand-fighting.
 Demonstration clips are not attached yet: they still go through the normal
 media review before any URL is added.
 
+### 6. Weekly pattern variety when footwork is the primary weakness — DONE
+
+Production showed a boxing distance striker (footwork primary weakness, no
+status/record) whose open 4-week block placed Step-Back Pivot Reset on Monday
+and again on Saturday every week. Two causes, both downstream of ranking:
+
+- **Supply.** The single-insert guarantee put one drill per phase into the
+  pool, and footwork slots carried no alternates (the reservoir held only the
+  inserted drill). For footwork-focused athletes the conditioning reservoir
+  step now carries the selector's other ranked drills as same-role alternates
+  (`_TECHNICAL_FOOTWORK_RESERVOIR_LIMIT`), each passing the insert path's
+  equipment, restriction, injury and late-window gates.
+- **Allocation.** Strength composition offers every footwork record when
+  footwork is the primary weakness, and each session independently forced the
+  first one. `_rotate_footwork` now forces the best drill not yet placed that
+  week, avoiding the one the capacity fill would add anyway, and prefers a
+  drill's own slot over the same drill offered as another slot's alternate.
+
+Footwork exposure count per session is unchanged, and the week-to-week pattern
+is stable so each drill can progress across the block. On the production
+intake the block now carries Lateral Exit + Foot Feint (Monday) and Step-Back
+Pivot (Saturday) instead of Step-Back twice. Advanced drills are still gated by
+maturity.
+
+### 7. Primary footwork survives high-fatigue capacity — DONE
+
+The footwork insert runs last and only fills a leftover place under
+`visible_drill_cap`, and `trim_extras` cuts from the end. High fatigue removes
+the speed-dose slot (cap 19 → 18 in GPP, 16 → 15 in SPP) and the energy-system
+drills fill it, so the same intake with `fatigue_level: high` got no technical
+footwork at all.
+
+When footwork is the athlete's **primary** weakness or goal and the cap is
+full, the insert now swaps one drill out instead of skipping
+(`_displaceable_drill_index`): conditioning-support first, then an energy
+system above quota, then one from a system that keeps at least one other drill.
+Never a system's last drill, never another `*_guarantee` insert; lowest score
+first, most demanding on a tie. The count is unchanged, a displaced drill is
+restored if no footwork drill clears its gates, and a full cap with nothing
+displaceable logs `technical_footwork_no_capacity`. A secondary footwork
+focus stays best-effort. On the production intake at high fatigue this
+displaces Sandbag Clean & Press (GPP) and 5K Steady Run (SPP), and the open
+block carries Step-Back Pivot + Lateral Exit every week.
+
 ## Note on the late-camp golden snapshot
 
 `tests/golden_snapshots/late_camp_selector_audit/after.json` was already stale
