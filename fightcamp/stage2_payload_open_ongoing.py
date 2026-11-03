@@ -166,7 +166,11 @@ def build_open_ongoing_payload(*, athlete_model: dict[str, Any]) -> dict[str, An
                 "Render a renewable open training system, not a fight camp.",
                 "Use the exact section order from open_plan_spec.structure.",
                 "Render one Weekly Rhythm section only.",
-                "Render app-owned days as session cards using Objective/Main work/Fallback/Rehab / mobility/Coach note/Stop rule.",
+                # One card contract shared with RULE 6A. The old
+                # Objective/Main work/Fallback/Coach note/Stop rule sections
+                # contradicted RULE 6A (no separate coach call) and the shared
+                # "do not repeat Fallback labels" rule.
+                "Render each app-owned day as one session card: a one-line Why, then each programmed exercise on its own line with its working dose, followed by the RULE 6A coaching lines (How, Cue, Easier, Stop, optional Swap and Purpose, Progress only when authorised). Rehab or mobility work is listed as exercises in the same format. Do not add separate Main work, Fallback, Coach note or Stop rule sections.",
                 "Name one exercise per main-work line. A choice such as \"A or B\" is never the exercise name: pick one and put the alternative on that line's Easier/Swap line. Only a deliberate superset or contrast pair may pair two movements, written as \"A + B\" with the dose for the pair.",
                 "Give each programmed exercise that advances in the block a Progress: line in its own units, stepped from its own dose, using the variable that suits the work. Omit the line where the work should not advance, and never cite a load the plan has not prescribed.",
                 "Never number the weeks inside a Progress: line. The athlete sees one week at a time, so write the single step (\"Progress: add one more burst\") and put the block's easy week on its own Deload: line.",
