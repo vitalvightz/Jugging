@@ -2212,6 +2212,10 @@ def compose_normal_strength_assignments(
                 if "footwork" in record.get("adaptations", ()):
                     footwork_week_use.setdefault(id(entry["week"]), set()).add(record["name"])
 
+    def _origin_slot(record: dict[str, Any]) -> str:
+        slot_id = str(record["slot"].get("slot_id") or "")
+        return slot_id.partition(":alternate:")[0] or f"name:{record['name']}"
+
     def _rotate_footwork(ctx: dict[str, Any]) -> None:
         records = ctx["records"]
         positions = [i for i, r in enumerate(records) if "footwork" in r.get("adaptations", ())]
@@ -2236,11 +2240,22 @@ def compose_normal_strength_assignments(
         # before; only which drill is guaranteed changes.
         fill_pick = min(drills, key=lambda r: (1 if r["support_only"] else 0, r["sort_key"]))
         unused = [r for r in drills if r["name"] not in week_used]
-        forced = next((r for r in unused if r is not fill_pick), None) or (unused or drills)[0]
-        ordered = [forced, *(r for r in drills if r is not forced)]
+        forced = next((r for r in unused if _origin_slot(r) != _origin_slot(fill_pick)), None) \
+            or next((r for r in unused if r is not fill_pick), None) or (unused or drills)[0]
+        # One candidate per ORIGINAL slot in this session: an alternate replaces
+        # its original, it never sits beside it (or beside a sibling alternate).
+        # The guaranteed pick claims its slot first, then the fill's pick, then
+        # the rest in Stage 1 order; other sessions may still use the others.
+        ordered: list[dict[str, Any]] = []
+        claimed: set[str] = set()
+        for record in [forced, fill_pick, *drills]:
+            origin = _origin_slot(record)
+            if record in ordered or origin in claimed:
+                continue
+            claimed.add(origin)
+            ordered.append(record)
         others = [r for i, r in enumerate(records) if i not in set(positions)]
-        # Footwork keeps its place after the session's own strength records;
-        # duplicates of the same drill are dropped.
+        # Footwork keeps its place after the session's own strength records.
         ctx["records"] = [*others[:positions[0]], *ordered, *others[positions[0]:]]
 
     for ctx in pending:
