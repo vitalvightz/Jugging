@@ -4944,10 +4944,82 @@ def generate_conditioning_block(flags):
     # dose; when it appears it carries the ``technical_footwork_guarantee``
     # reason code. In taper the conditioning pool is heavily restricted, so this
     # is where familiar low-fatigue footwork most often fills the gap.
+    def _technical_footwork_is_primary() -> bool:
+        primaries = [priority_profile.primary_weak_area, priority_profile.primary_goal]
+        return bool(_footwork_focus_tokens([p for p in primaries if p]) & TECHNICAL_FOOTWORK_FOCUS_TOKENS)
+
+    def _displaceable_drill_index() -> int | None:
+        """The surplus drill a primary-footwork insert may replace, or None.
+
+        Conditioning-support drills first, then a drill in an energy system
+        holding more than its quota, then one from a system that still keeps at
+        least one other drill (quota is candidate depth; a system is only
+        missing at zero). Never a system's last drill, never another guaranteed
+        insert. Within a tier the lowest score goes first; on a tie, the most
+        demanding (RPE, then lactate load), which suits a fatigued athlete.
+        """
+        lactate_rank = {"low": 0, "moderate": 1, "high": 2}
+        candidates = []
+        for index, (group, drills) in enumerate(final_drills):
+            drill = drills[0] if drills else {}
+            name = drill.get("name")
+            reasons = reason_lookup.get(name) or {}
+            if any(str(code).endswith("_guarantee") for code in reasons.get("reason_codes") or []):
+                continue
+            if group == "conditioning_support":
+                tier = 0
+            elif group in selected_counts and selected_counts[group] > system_quota.get(group, 0):
+                tier = 1
+            elif group in selected_counts and selected_counts[group] >= 2:
+                # The quota sizes a system's candidate depth; a system is only
+                # missing when it has none, so it keeps at least one drill.
+                tier = 2
+            else:
+                continue
+            try:
+                rpe = float(drill.get("rpe") or drill.get("rpe_max") or 0)
+            except (TypeError, ValueError):
+                rpe = 0.0
+            candidates.append((
+                tier,
+                float(reasons.get("final_score") or 0),
+                -rpe,
+                -lactate_rank.get(str(drill.get("lactate_load") or "").lower(), 0),
+                -index,
+                index,
+            ))
+        return min(candidates)[-1] if candidates else None
+
     def _insert_technical_footwork_drill() -> None:
-        if not technical_footwork_focus or len(selected_drill_names) >= visible_drill_cap:
+        if not technical_footwork_focus:
             return
+        displaced = None
+        if len(selected_drill_names) >= visible_drill_cap:
+            # Best-effort for a secondary footwork focus. When footwork is the
+            # PRIMARY weakness or goal, swap it in for one surplus drill instead
+            # of losing it to capacity (high fatigue removes the speed-dose
+            # slot, so the energy-system drills fill the cap). Count unchanged.
+            if not _technical_footwork_is_primary():
+                return
+            index = _displaceable_drill_index()
+            if index is None:
+                log_fail_safe_degrade(
+                    module="conditioning",
+                    phase=phase,
+                    reason="technical_footwork_no_capacity",
+                    target=1,
+                    actual=0,
+                )
+                return
+            displaced = (index, final_drills.pop(index))
+            group, drills = displaced[1]
+            name = drills[0].get("name")
+            selected_drill_names.remove(name)
+            if group in selected_counts:
+                selected_counts[group] -= 1
         existing_names = {d.get("name") for _, drills in final_drills for d in drills}
+        if displaced is not None:
+            existing_names.add(displaced[1][1][0].get("name"))
         # Consume the full ranked candidate list, not a single pick: the
         # highest-ranked drill can be blocked by its own late_windows
         # (taper/D-day) inside _try_append_conditioning_drill while a lower-ranked
@@ -4970,7 +5042,19 @@ def generate_conditioning_block(flags):
                 source="technical_footwork",
                 group_key=TECHNICAL_FOOTWORK_GROUP,
             ):
+                if displaced is not None:
+                    logger.info(
+                        "[conditioning] technical_footwork_displaced phase=%s displaced=%s",
+                        phase, displaced[1][1][0].get("name"),
+                    )
                 return
+        if displaced is not None:
+            # No footwork drill cleared its gates: put the displaced drill back.
+            index, (group, drills) = displaced
+            final_drills.insert(index, (group, drills))
+            selected_drill_names.append(drills[0].get("name"))
+            if group in selected_counts:
+                selected_counts[group] += 1
         log_fail_safe_degrade(
             module="conditioning",
             phase=phase,

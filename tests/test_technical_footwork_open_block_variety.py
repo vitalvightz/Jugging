@@ -98,3 +98,51 @@ def test_variety_does_not_reduce_footwork_exposures(brief):
 def test_pattern_is_stable_across_the_block_so_it_can_progress(brief):
     weeks = [sorted(week) for week in _weekly_footwork(brief)]
     assert all(week == weeks[0] for week in weeks)
+
+
+# High fatigue removes the speed-dose slot, so the energy-system drills fill the
+# conditioning cap and the best-effort footwork insert used to be skipped.
+def _plan(**over) -> dict:
+    intake = copy.deepcopy(_INTAKE)
+    intake.update(over)
+    payload = PlanRequest(**intake).to_payload()
+    payload["random_seed"] = 814959391
+    mp = pytest.MonkeyPatch()
+    pin_planner_clock(mp, dt.datetime(2026, 11, 3, 14, 22))
+    try:
+        return generate_plan_sync(payload)["planning_brief"]
+    finally:
+        mp.undo()
+
+
+@pytest.fixture(scope="module")
+def high_fatigue_brief() -> dict:
+    return _plan(fatigue_level="high")
+
+
+def _footwork_slots(brief: dict) -> list[dict]:
+    return [slot for slot in brief["candidate_pools"]["GPP"]["conditioning_slots"]
+            if slot.get("role") == "technical_footwork"]
+
+
+def test_primary_footwork_survives_high_fatigue_capacity(high_fatigue_brief):
+    assert _footwork_slots(high_fatigue_brief)
+    weeks = _weekly_footwork(high_fatigue_brief)
+    assert all(weeks), "footwork primary weakness keeps a footwork exposure every week"
+    for week in weeks:
+        assert len(week) == len(set(week))
+
+
+def test_footwork_swap_replaces_a_surplus_drill_and_keeps_every_system(caplog):
+    with caplog.at_level("INFO", logger="fightcamp.conditioning"):
+        brief = _plan(fatigue_level="high")
+    displaced = [r.getMessage() for r in caplog.records if "technical_footwork_displaced" in r.getMessage()]
+    # One swap per source phase: footwork replaced a drill, it did not add one.
+    assert {m.split("phase=")[1].split()[0] for m in displaced} == {"GPP", "SPP"}
+    systems = {slot.get("role") for slot in brief["candidate_pools"]["GPP"]["conditioning_slots"]}
+    assert {"aerobic", "glycolytic", "alactic"} <= systems
+
+
+def test_secondary_footwork_stays_best_effort_under_high_fatigue():
+    brief = _plan(fatigue_level="high", weak_areas=["speed", "footwork"], primary_weak_area="speed")
+    assert not _footwork_slots(brief)
