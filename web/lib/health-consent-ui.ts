@@ -26,5 +26,5 @@ export function withoutIntakeHealthData(input: PlanRequest): PlanRequest {
 }
 
 export function withoutQuickBuildHealthData(input: QuickBuildInput): QuickBuildInput {
-  return { ...input, injuries: "", injury_impact: "", guided_injuries: [] };
+  return { ...input, injuries: "", injury_impact: "", guided_injuries: [], target_weight_kg: null };
 }

@@ -473,3 +473,14 @@ test("event name rides with the fight date and is dropped for an open camp", () 
   const open = quickBuildToPlanRequest({ ...input, fight_date: "", no_scheduled_fight: true });
   assert.equal(open.event_name, "");
 });
+
+test("target weight rides with the fight date and is dropped for an open camp", () => {
+  const input = { ...emptyQuickBuildInput("Ari"), fight_date: "2099-01-10", target_weight_kg: 90.7 };
+  const plan = quickBuildToPlanRequest(input);
+  assert.equal(plan.athlete.target_weight_kg, 90.7);
+  assert.equal(planRequestToQuickBuildInput(plan).target_weight_kg, 90.7);
+  assert.equal(quickBuildToPlanRequest({ ...input, fight_date: "", no_scheduled_fight: true }).athlete.target_weight_kg, null);
+  assert.equal(quickBuildToPlanRequest({ ...input, target_weight_kg: null }).athlete.target_weight_kg, null);
+  assert.equal(validateQuickBuildInput(input).target_weight_kg, undefined);
+  assert.equal(validateQuickBuildInput({ ...input, target_weight_kg: 0 }).target_weight_kg, "Enter your target weight in kg.");
+});

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { type ReactNode, useEffect, useId, useRef, useState, useTransition } from "react";
 
 import { formatAppDate } from "@/lib/date-format";
@@ -180,9 +179,8 @@ const WEIGH_IN_TYPES: Array<{ value: WeighInType; label: string }> = [
 ];
 
 /**
- * Adds the target weight and weigh-in when Camp Setup left them empty. A target
- * that came from Camp Setup is shown read-only: the API keeps it, so it is
- * changed there.
+ * Sets the target weight and weigh-in. The newest target saved wins, including
+ * over one Camp Setup started with, so an existing target is prefilled to edit.
  */
 export function TargetSheet({ existingTargetKg, campWeightKg, fightDate, weighInType, weighInTime, onClose, onSave }: {
   existingTargetKg: number | null;
@@ -194,14 +192,14 @@ export function TargetSheet({ existingTargetKg, campWeightKg, fightDate, weighIn
   onSave: (values: TargetAndWeighIn) => Promise<void>;
 }) {
   const fieldId = useId();
-  const [target, setTarget] = useState("");
+  const [target, setTarget] = useState(existingTargetKg != null ? existingTargetKg.toFixed(1) : "");
   const [type, setType] = useState<WeighInType | null>(weighInType);
   const [time, setTime] = useState(weighInTime ?? "");
   const { error, setError, isPending, run } = useSaving();
   const moment = weighInMoment(fightDate, type, time);
 
   function save() {
-    const targetKg = existingTargetKg ?? toNumber(target);
+    const targetKg = toNumber(target);
     if (targetKg == null || targetKg <= 0) {
       setError("Enter your target weight in kg.");
       document.getElementById(`${fieldId}-target`)?.focus();
@@ -211,17 +209,10 @@ export function TargetSheet({ existingTargetKg, campWeightKg, fightDate, weighIn
   }
 
   return (
-    <Sheet title={existingTargetKg == null ? "Add target weight" : "Add weigh-in"}
+    <Sheet title={existingTargetKg == null ? "Add target weight" : "Target and weigh-in"}
       quiet="Your gap to target and cut status use this." busy={isPending} onClose={onClose}>
       <form className={`${sheet.body} ${styles.form}`} noValidate onSubmit={event => { event.preventDefault(); save(); }}>
-        {existingTargetKg == null ? (
-          <KgField id={`${fieldId}-target`} label="Target weight" value={target} base={campWeightKg} onChange={value => { setTarget(value); setError(null); }} />
-        ) : (
-          <div>
-            <p className={styles.fieldLabel}>Target weight</p>
-            <div className={styles.readOnly}><span>From <Link href="/onboarding" className="auth-text-link">Camp Setup</Link></span><strong>{existingTargetKg.toFixed(1)} kg</strong></div>
-          </div>
-        )}
+        <KgField id={`${fieldId}-target`} label="Target weight" value={target} base={campWeightKg} onChange={value => { setTarget(value); setError(null); }} />
 
         <div>
           <p className={styles.fieldLabel} id={`${fieldId}-type`}>Weigh-in</p>

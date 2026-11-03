@@ -33,6 +33,8 @@ export type QuickBuildInput = {
   tactical_style: string[];
   fight_date: string;
   event_name?: string;
+  /** Target fight weight in kg; only with a fight date, never for under-18s. */
+  target_weight_kg?: number | null;
   no_scheduled_fight: boolean;
   rounds_format: string;
   weekly_training_frequency: number;
@@ -89,6 +91,7 @@ export function planRequestToQuickBuildInput(plan: PlanRequest): QuickBuildInput
     ).slice(0, 1),
     fight_date: plan.no_scheduled_fight ? "" : (plan.fight_date ?? ""),
     event_name: plan.no_scheduled_fight ? "" : (plan.event_name ?? ""),
+    target_weight_kg: plan.no_scheduled_fight ? null : (plan.athlete?.target_weight_kg ?? null),
     no_scheduled_fight: Boolean(plan.no_scheduled_fight),
     rounds_format: plan.rounds_format || "3 x 3",
     weekly_training_frequency: weeklyFrequency,
@@ -162,6 +165,9 @@ export function validateQuickBuildInput(
   }
   if (input.tactical_style.length > 1) {
     errors.tactical_style = "Pick only one tactical style.";
+  }
+  if (!input.no_scheduled_fight && input.target_weight_kg != null && !(input.target_weight_kg > 0)) {
+    errors.target_weight_kg = "Enter your target weight in kg.";
   }
   if (input.no_scheduled_fight) {
     if (input.fight_date) {
@@ -251,6 +257,7 @@ export function quickBuildToPlanRequest(
       tactical_style: retainKnownOptionValues(input.tactical_style, TACTICAL_STYLE_OPTIONS),
       // A saved profile timezone always wins; the device zone only seeds a first-time setup.
       athlete_timezone: options?.savedTimeZone?.trim() || base.athlete.athlete_timezone || detectDeviceTimeZone(),
+      target_weight_kg: input.no_scheduled_fight ? null : (input.target_weight_kg ?? null),
     },
     fight_date: input.no_scheduled_fight ? "" : input.fight_date,
     event_name: input.no_scheduled_fight ? "" : (input.event_name ?? "").trim(),

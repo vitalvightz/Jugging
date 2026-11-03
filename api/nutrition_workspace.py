@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
@@ -668,30 +669,41 @@ def _weight_cut_status(
     return "on_track", to_target, None
 
 
+def _workspace_payload(
+    onboarding_draft: Any,
+    latest_intake_row: dict[str, Any] | None,
+) -> tuple[str, str | None, dict[str, Any]]:
+    """(source, intake id, raw payload) the workspace reads: an active
+    onboarding draft first, else the latest intake."""
+    draft_payload = onboarding_draft if isinstance(onboarding_draft, dict) else None
+    if _has_active_workspace_data(draft_payload):
+        return "draft", None, draft_payload or {}
+    if isinstance(latest_intake_row, dict) and isinstance(latest_intake_row.get("intake"), dict):
+        return "intake", str(latest_intake_row.get("id") or "") or None, latest_intake_row["intake"]
+    return "default", None, {}
+
+
+def current_target_weight_kg(
+    *,
+    onboarding_draft: Any,
+    latest_intake_row: dict[str, Any] | None,
+) -> float | None:
+    """The athlete's current target weight: the one the weight tracker shows,
+    from the same payload and precedence as :func:`build_nutrition_workspace`.
+    No age check here: callers gate it for under-18s."""
+    _, _, raw_payload = _workspace_payload(onboarding_draft, latest_intake_row)
+    target = _coerce_optional_float(_coerce_dict(raw_payload.get("athlete")).get("target_weight_kg"))
+    if target is None:
+        target = _coerce_optional_float(_coerce_dict(raw_payload.get("shared_camp_context")).get("target_weight_kg"))
+    return target if target is not None and math.isfinite(target) and target > 0 else None
+
+
 def build_nutrition_workspace(
     *,
     profile: ProfileRecord | AdminAthleteRecord,
     latest_intake_row: dict[str, Any] | None = None,
 ) -> NutritionWorkspaceState:
-    draft_payload = profile.onboarding_draft if isinstance(profile.onboarding_draft, dict) else None
-    latest_intake_payload = (
-        latest_intake_row.get("intake")
-        if isinstance(latest_intake_row, dict) and isinstance(latest_intake_row.get("intake"), dict)
-        else None
-    )
-
-    if _has_active_workspace_data(draft_payload):
-        source = "draft"
-        intake_id = None
-        raw_payload = draft_payload or {}
-    elif latest_intake_payload is not None:
-        source = "intake"
-        intake_id = str(latest_intake_row.get("id") or "") or None
-        raw_payload = latest_intake_payload
-    else:
-        source = "default"
-        intake_id = None
-        raw_payload = {}
+    source, intake_id, raw_payload = _workspace_payload(profile.onboarding_draft, latest_intake_row)
 
     monitoring = _build_monitoring(raw_payload)
     shared_camp_context = _build_shared_camp_context(raw_payload, monitoring)
@@ -847,7 +859,9 @@ def merge_workspace_into_payload(
             if weight_from_log and shared.current_weight_kg is not None
             else athlete_weight_kg if athlete_weight_kg is not None else shared.current_weight_kg
         ),
-        "target_weight_kg": athlete_target_weight_kg if athlete_target_weight_kg is not None else shared.target_weight_kg,
+        # The newest target wins: a target saved from the workspace (weight
+        # tracker, Camp Setup) replaces the one the intake started with.
+        "target_weight_kg": shared.target_weight_kg if shared.target_weight_kg is not None else athlete_target_weight_kg,
         "height_cm": athlete_height_cm if athlete_height_cm is not None else workspace.nutrition_profile.height_cm,
         "technical_style": raw_athlete.get("technical_style") or list(profile.technical_style),
         "tactical_style": raw_athlete.get("tactical_style") or list(profile.tactical_style),

@@ -1,5 +1,6 @@
 """Home fight countdown card fields read from the plan's intake."""
-from api.services.today_service import _athlete_is_adult, _fight_card_fields_from_intake
+from api.nutrition_workspace import current_target_weight_kg
+from api.services.today_service import _athlete_is_adult, _current_target_weight, _fight_card_fields_from_intake
 
 
 class _Store:
@@ -32,3 +33,22 @@ def test_target_weight_is_only_for_confirmed_adults():
     # A missing profile or failed read fails closed.
     assert _athlete_is_adult(_Store(None), "a") is False
     assert _athlete_is_adult(_Store(fail=True), "a") is False
+
+
+def test_current_target_follows_the_workspace_the_tracker_shows():
+    intake_row = {"id": "i1", "intake": {"athlete": {"target_weight_kg": 90.7}}}
+    assert current_target_weight_kg(onboarding_draft=None, latest_intake_row=intake_row) == 90.7
+    # An active onboarding draft is what the tracker edits, so its target wins.
+    draft = {"athlete": {"target_weight_kg": 88.5}}
+    assert current_target_weight_kg(onboarding_draft=draft, latest_intake_row=intake_row) == 88.5
+    shared_only = {"shared_camp_context": {"target_weight_kg": 87}}
+    assert current_target_weight_kg(onboarding_draft=shared_only, latest_intake_row=None) == 87.0
+    assert current_target_weight_kg(onboarding_draft=None, latest_intake_row=None) is None
+
+
+def test_current_target_read_failure_falls_back_to_the_plan_intake():
+    class _Broken:
+        def get_profile(self, athlete_id):
+            raise RuntimeError("read failed")
+
+    assert _current_target_weight(_Broken(), "a") is None

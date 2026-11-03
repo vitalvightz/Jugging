@@ -16,6 +16,8 @@ type Options = {
   target?: number | null;
   derived?: Record<string, unknown>;
   afterSave?: Record<string, unknown>;
+  /** Extra active-plan fields /api/today sends, e.g. the target fight weight. */
+  todayPlan?: Record<string, unknown>;
 };
 
 function addDays(iso: string, days: number) {
@@ -86,7 +88,7 @@ async function setup(page: Page, baseURL: string, options: Options = {}) {
       terms_accepted: true, health_consent_granted: true, private_trial_ack_at: "2026-01-01T00:00:00Z",
     }, plan_count: 1, latest_plan: { plan_id: "plan-1", status: "ready", fight_date: fightDate }, latest_intake: null, username_rate_limit: {} });
     if (path === "/api/today") return json({
-      active_plan: { id: "plan-1", name: "Autumn camp", phase: "SPP", status: "ready", fight_date: fightDate },
+      active_plan: { id: "plan-1", name: "Autumn camp", phase: "SPP", status: "ready", fight_date: fightDate, ...options.todayPlan },
       today: { training_day: TODAY, recommendation_state: "not_checked_in", decision_tier: "not_checked_in", warnings: [],
         next_session: {}, completion_status: "not_started", session_scope: "none", session_label: "No session" },
       open_injuries: [], risk_watch: [], week_summary: {}, quick_actions: [],
@@ -194,6 +196,40 @@ test("Home's purple shortcut shows weight-to-target only in the final weeks", as
   await page.goto("/");
   await expect(page.getByRole("link", { name: "Weight tracker: log today's weight" })).toBeVisible();
   expect(far.nutritionReads).toEqual([]);
+});
+
+test("Home shows the fight weight on the countdown, and on its own with no fight scheduled", async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setup(page, baseURL!, { todayPlan: { target_weight_kg: 90.7 } });
+  await page.goto("/");
+  const countdown = page.getByRole("region", { name: /Fight countdown/ });
+  await expect(countdown.getByText("Fight weight", { exact: true })).toBeVisible();
+  await expect(countdown.getByText("90.7 kg", { exact: true })).toBeVisible();
+
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await setup(page, baseURL!, { fightDate: "", todayPlan: { target_weight_kg: 90.7 } });
+  await page.goto("/");
+  const card = page.getByRole("region", { name: "Fight weight 90.7 kg" });
+  await expect(card).toBeVisible();
+  await expect(card.getByRole("link", { name: "Weight tracker" })).toHaveAttribute("href", "/nutrition");
+  await expect(page.getByRole("region", { name: /Fight countdown/ })).toHaveCount(0);
+  await card.scrollIntoViewIfNeeded();
+  await capture(page, "home-fight-weight-open-plan");
+});
+
+test("the tracker replaces an existing target with the newest one", async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { puts } = await setup(page, baseURL!);
+  await page.goto("/nutrition");
+  const summary = page.getByRole("region", { name: "Weight summary" });
+  await summary.getByRole("button", { name: "Change" }).click();
+  const sheet = page.getByRole("dialog", { name: "Target and weigh-in" });
+  await expect(sheet.getByLabel("Target weight")).toHaveValue("71.0");
+  await sheet.getByLabel("Target weight").fill("69.5");
+  await sheet.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(puts[0].shared_camp_context).toMatchObject({ target_weight_kg: 69.5 });
+  await expect(summary).toContainText("Target 69.5 kg");
 });
 
 test("the tracker adds a missing target weight and weigh-in", async ({ page, baseURL }) => {

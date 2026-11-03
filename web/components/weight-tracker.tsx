@@ -208,13 +208,16 @@ export function WeightTracker() {
               {!isMinorAthlete ? (
                 targetKg == null || !weighIn ? (
                   <div className={styles.targetRow}>
-                    <p>{targetKg == null ? "No target weight yet." : "No weigh-in set yet."}{weighIn ? ` Weigh-in ${weighIn}.` : ""}</p>
+                    <p>{targetKg == null ? "No target weight yet." : `Target ${formatWeight(targetKg)}. No weigh-in set yet.`}{weighIn ? ` Weigh-in ${weighIn}.` : ""}</p>
                     <button type="button" className="secondary-button" aria-haspopup="dialog" onClick={() => setTargetOpen(true)}>
                       {targetKg == null ? "Add target weight" : "Add weigh-in"}
                     </button>
                   </div>
                 ) : (
-                  <p className={progress.note}>Target {formatWeight(targetKg)} · Weigh-in {weighIn}</p>
+                  <div className={styles.targetRow}>
+                    <p className={progress.note}>Target {formatWeight(targetKg)} · Weigh-in {weighIn}</p>
+                    <button type="button" className={progress.textButton} aria-haspopup="dialog" onClick={() => setTargetOpen(true)}>Change</button>
+                  </div>
                 )
               ) : null}
               <button type="button" className={`cta ${styles.logButton}`} onClick={() => setEditing({ mode: "new" })}>
@@ -336,7 +339,7 @@ export function WeightTracker() {
             onSave={async (values) => {
               await saveTarget(values);
               setTargetOpen(false);
-              showToast(targetKg == null ? "Target weight saved." : "Weigh-in saved.", { tone: "success" });
+              showToast(targetKg == null ? "Target weight saved." : "Target and weigh-in saved.", { tone: "success" });
             }}
           />
         ) : null}

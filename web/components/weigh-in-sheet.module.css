@@ -15,7 +15,5 @@
 .formError { margin: 0; font-size: 0.85rem; color: var(--danger-ink); }
 .actions { display: grid; gap: 10px; }
 .actions > button { width: 100%; }
-.readOnly { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 14px 16px; border: 1px solid var(--border-subtle); border-radius: 14px; background: var(--bg-stat); font-size: 0.88rem; color: var(--text-secondary); }
-.readOnly strong { color: var(--progress-gold); font-size: 1.25rem; font-variant-numeric: tabular-nums; }
 .weighInType button { min-height: 40px; padding: 0 16px; }
 .hint { margin: 8px 0 0; font-size: 0.8rem; line-height: 1.5; color: var(--text-muted); }
