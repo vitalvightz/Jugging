@@ -328,6 +328,136 @@ test("weekLoadProxy still counts coach-led hard contact when a filler shares the
   assert.equal(weekLoadProxy(week), "High");
 });
 
+// Fixtures for dose-aware fatigue: intensity labels stay "high", but fatigue
+// follows the prescription (bouts, work time, rest, effort).
+const bagBurstSession = (id: string) => ({
+  session_id: id,
+  session_type: "strength_power",
+  title: "Max-intent power bursts",
+  blocks: [
+    {
+      block_type: "power",
+      display_name: "Heavy bag bursts",
+      sets: 7,
+      work: { value: 5, unit: "seconds" },
+      rest: { value: 60, unit: "seconds" },
+      effort: { method: "RPE", value: 9 },
+      intensity: "max",
+    },
+  ],
+});
+
+const conditioningRoundsSession = (id: string) => ({
+  session_id: id,
+  session_type: "conditioning",
+  title: "Hard conditioning rounds",
+  blocks: [
+    {
+      block_type: "conditioning",
+      display_name: "Bag conditioning rounds",
+      rounds: 4,
+      work: { value: 3, unit: "minutes" },
+      rest: { value: 1, unit: "minutes" },
+      effort: { method: "RPE", value: 8 },
+    },
+  ],
+});
+
+const hardSparringSession = (id: string) => ({
+  session_id: id,
+  session_type: "sparring",
+  title: "Hard sparring",
+  blocks: [
+    { block_type: "sparring", display_name: "Sparring", rounds: 6, work: { value: 3, unit: "min" }, intensity: "hard" },
+  ],
+});
+
+const easyBikeSession = (id: string) => ({
+  session_id: id,
+  session_type: "conditioning",
+  title: "Aerobic bike",
+  blocks: [
+    {
+      block_type: "conditioning",
+      display_name: "Easy bike",
+      duration: { value: 30, unit: "minutes" },
+      effort: { method: "RPE", value: 4 },
+    },
+  ],
+});
+
+test("weekLoadProxy does not treat short explosive bursts like prolonged conditioning", () => {
+  const burstWeek = {
+    phase_label: "SPP",
+    days: [
+      { day_type: "high", sessions: [bagBurstSession("burst-1")] },
+      { day_type: "high", sessions: [bagBurstSession("burst-2")] },
+    ],
+  };
+  const conditioningWeek = {
+    phase_label: "SPP",
+    days: [
+      { day_type: "high", sessions: [conditioningRoundsSession("cond-1")] },
+      { day_type: "high", sessions: [conditioningRoundsSession("cond-2")] },
+    ],
+  };
+
+  // Same "high" labels and same number of days; only the dose differs.
+  assert.equal(weekLoadProxy(burstWeek), "Low");
+  assert.equal(weekLoadProxy(conditioningWeek), "High");
+});
+
+test("weekLoadProxy no longer uses a high day_type as a fatigue floor", () => {
+  const week = {
+    phase_label: "SPP",
+    days: [
+      { day_type: "high", sessions: [easyBikeSession("bike-1")] },
+      { day_type: "high", sessions: [easyBikeSession("bike-2")] },
+    ],
+  };
+
+  assert.equal(weekLoadProxy(week), "Low");
+});
+
+test("weekLoadProxy keeps hard sparring high even next to short explosive work", () => {
+  const week = {
+    phase_label: "SPP",
+    days: [
+      { day_type: "high", sessions: [hardSparringSession("spar-1")] },
+      { day_type: "high", sessions: [bagBurstSession("burst-1")] },
+      { day_type: "high", sessions: [hardSparringSession("spar-2")] },
+    ],
+  };
+
+  assert.equal(weekLoadProxy(week), "High");
+});
+
+test("weekLoadProxy keeps a genuinely demanding mixed week High", () => {
+  const week = {
+    phase_label: "SPP",
+    days: [
+      { day_type: "high", sessions: [conditioningRoundsSession("cond-1")] },
+      { day_type: "moderate", sessions: [easyBikeSession("bike-1")] },
+      { day_type: "high", sessions: [hardSparringSession("spar-1")] },
+      { day_type: "high", sessions: [bagBurstSession("burst-1")] },
+    ],
+  };
+
+  assert.equal(weekLoadProxy(week), "High");
+});
+
+test("weekLoadProxy still reads undosed sessions conservatively from their words", () => {
+  const week = {
+    phase_label: "SPP",
+    days: [
+      { day_type: "high", sessions: [{ session_type: "strength_power", title: "Power and sprint session", blocks: [] }] },
+      { day_type: "high", sessions: [{ session_type: "strength_power", title: "Max speed work", blocks: [] }] },
+    ],
+  };
+
+  assert.equal(weekLoadProxy(week), "High");
+});
+
 test("weekLoadProxy handles low, rest and empty weeks", () => {
   const plan = campPlan();
 
