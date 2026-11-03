@@ -146,3 +146,24 @@ def test_footwork_swap_replaces_a_surplus_drill_and_keeps_every_system(caplog):
 def test_secondary_footwork_stays_best_effort_under_high_fatigue():
     brief = _plan(fatigue_level="high", weak_areas=["speed", "footwork"], primary_weak_area="speed")
     assert not _footwork_slots(brief)
+
+
+# An alternate replaces its original slot; it is never an extra exercise beside
+# it. Dated camps keep slot identity on every member, so check it directly.
+@pytest.mark.parametrize("fatigue", ["", "high"])
+@pytest.mark.parametrize("weeks_out", [6, 12])
+def test_one_footwork_member_per_original_slot_in_each_session(fatigue, weeks_out):
+    brief = _plan(
+        fatigue_level=fatigue, no_scheduled_fight=False,
+        fight_date=(dt.date(2026, 11, 3) + dt.timedelta(weeks=weeks_out)).isoformat(),
+    )
+    placed = 0
+    for week in brief["weekly_role_map"]["weeks"]:
+        for role in week["session_roles"]:
+            members = [a for a in role.get("selected_exercise_assignments") or [] if a.get("name") in _FOOTWORK]
+            placed += len(members)
+            origins = Counter(str(a.get("slot_id") or "").partition(":alternate:")[0] for a in members)
+            assert all(count == 1 for count in origins.values()), (
+                week.get("week_index"), role.get("role_key"), [(a["name"], a["slot_id"]) for a in members])
+            assert len({a["name"] for a in members}) == len(members)
+    assert placed, "footwork primary weakness still places technical footwork"
