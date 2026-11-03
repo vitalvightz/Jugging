@@ -13,7 +13,12 @@ from fightcamp.mindset_module import classify_mental_block
 from fightcamp.sports import planning_format
 from fightcamp.stage2_payload import _derive_readiness_flags, _is_high_pressure_weight_cut
 from fightcamp.stage2_payload_late_fight import _fight_week_override_band
-from fightcamp.weight_cut import compute_weight_cut_pct, weight_cut_risk_band, weight_cut_supervision_required
+from fightcamp.weight_cut import (
+    compute_weight_cut_pct,
+    escalation_cut_pct,
+    weight_cut_risk_band,
+    weight_cut_supervision_required,
+)
 
 from .models import (
     AdminAthleteRecord,
@@ -636,6 +641,33 @@ def _foundation_status(
     return "sufficient"
 
 
+def _weight_cut_status(
+    *,
+    current_weight_kg: float | None,
+    target_weight_kg: float | None,
+    days_until_fight: int | None,
+    risk_band: str,
+) -> tuple[str, float | None, float | None]:
+    """(status, kg to target, kg behind) for an adult's dated camp.
+
+    Reads the canonical risk band, recomputed from today's camp weight and
+    days-out, so a lighter weigh-in moves the status back. "behind" says how
+    much lighter the camp weight would need to be for the remaining cut to sit
+    at :func:`fightcamp.weight_cut.escalation_cut_pct`. Never a prescription.
+    """
+    if current_weight_kg is None or target_weight_kg is None or days_until_fight is None or days_until_fight < 0:
+        return "none", None, None
+    to_target = round(max(0.0, current_weight_kg - target_weight_kg), 1)
+    if current_weight_kg <= target_weight_kg:
+        return "on_target", 0.0, None
+    if risk_band == "severe":
+        return "too_aggressive", to_target, None
+    if risk_band == "high":
+        on_pace_weight = target_weight_kg / (1 - escalation_cut_pct(days_until_fight) / 100)
+        return "behind", to_target, max(0.1, round(current_weight_kg - on_pace_weight, 1))
+    return "on_track", to_target, None
+
+
 def build_nutrition_workspace(
     *,
     profile: ProfileRecord | AdminAthleteRecord,
@@ -676,6 +708,17 @@ def build_nutrition_workspace(
     weight_cut_pct = compute_weight_cut_pct(shared_camp_context.current_weight_kg or 0.0, shared_camp_context.target_weight_kg or 0.0)
     weight_cut_risk = weight_cut_pct >= 3.0
     is_minor = bool(getattr(profile, "is_minor", False))
+    risk_band = "none" if is_minor else weight_cut_risk_band(weight_cut_risk, weight_cut_pct, days_until_fight)
+    cut_status, kg_to_target, behind_kg = (
+        ("none", None, None)
+        if is_minor
+        else _weight_cut_status(
+            current_weight_kg=shared_camp_context.current_weight_kg,
+            target_weight_kg=shared_camp_context.target_weight_kg,
+            days_until_fight=days_until_fight,
+            risk_band=risk_band,
+        )
+    )
     reference_day = athlete_today(profile)
     # Same future-date rule as camp weight: a day that has begun nowhere is ignored.
     readings = [reading for reading in daily_readings(monitoring.daily_bodyweight_log) if reading[0] <= latest_calendar_day()]
@@ -730,10 +773,13 @@ def build_nutrition_workspace(
         readiness_flags=readiness_flags,
         fight_week_override_band=_fight_week_override_band(days_until_fight),
         current_phase_effective=effective_phase,
-        weight_cut_risk_band="none" if is_minor else weight_cut_risk_band(weight_cut_risk, weight_cut_pct, days_until_fight),
+        weight_cut_risk_band=risk_band,
         weight_cut_supervision_required=(
             False if is_minor else weight_cut_supervision_required(weight_cut_risk, weight_cut_pct, days_until_fight)
         ),
+        weight_cut_status=cut_status,
+        kg_to_target=kg_to_target,
+        weight_cut_behind_kg=behind_kg,
         rolling_7_day_average_weight=average_weight,
         rolling_7_day_weigh_in_days=average_days,
         weekly_pace_kg=weekly_pace(readings, reference_day),

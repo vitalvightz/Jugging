@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type CSSProperties, useEffect, useId, useRef, useState, useTransition } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 
 import { RequireAuth } from "@/components/auth-guard";
 import { useAppSession } from "@/components/auth-provider";
@@ -9,6 +9,7 @@ import { useOnReconnect } from "@/components/connection-status-banner";
 import { SafetyNote } from "@/components/safety-note";
 import { Skeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast-provider";
+import { TargetSheet, WeighInSheet } from "@/components/weigh-in-sheet";
 import { WeightTrendChart } from "@/components/weight-trend-chart";
 import { getNutritionCurrent, trackProductEvent, updateNutritionCurrent } from "@/lib/api";
 import { formatAppDate } from "@/lib/date-format";
@@ -24,15 +25,13 @@ import {
   getTargetGap,
   getTrendChange,
 } from "@/lib/nutrition-bodyweight";
-import { localDateValue, localTimeValue, toNumber, toUpdateRequest } from "@/lib/nutrition-workspace";
-import { lockOverlayScroll } from "@/lib/overlay-scroll-lock";
+import { localDateValue, type TargetAndWeighIn, withBodyweightLog, withTargetAndWeighIn } from "@/lib/nutrition-workspace";
 import { WEIGHT_CUT_SAFETY } from "@/lib/safety-copy";
 import type { NutritionBodyweightLogEntry, NutritionDerivedState, NutritionWorkspaceState } from "@/lib/types";
-import sheet from "./session-details.module.css";
+import { weighInMoment } from "@/lib/weight-cut-status";
 import progress from "./training-progress.module.css";
 import summary from "./training-summary.module.css";
 import styles from "./weight-tracker.module.css";
-import { useSheetExit } from "@/lib/use-sheet-exit";
 
 const RANGES: Array<{ value: BodyweightRange; label: string }> = [
   { value: "7D", label: "7 days" },
@@ -81,6 +80,7 @@ export function WeightTracker() {
   const [range, setRange] = useState<BodyweightRange>("30D");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
+  const [targetOpen, setTargetOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const loadFailed = !workspace && Boolean(error);
   const retryLoad = () => {
@@ -100,7 +100,7 @@ export function WeightTracker() {
       })
       .catch((loadError) => {
         if (!active) return;
-        setError(loadError instanceof Error ? loadError.message : "Unable to load your weigh-ins.");
+        setError(loadError instanceof Error ? loadError.message : "Unable to load your logged weights.");
       });
     return () => {
       active = false;
@@ -109,9 +109,12 @@ export function WeightTracker() {
 
   async function saveEntries(nextEntries: NutritionBodyweightLogEntry[]) {
     if (!session?.access_token || !workspace) throw new Error("Your session has expired. Sign in again.");
-    const payload = toUpdateRequest(workspace);
-    payload.nutrition_monitoring = { ...payload.nutrition_monitoring, daily_bodyweight_log: nextEntries };
-    setWorkspace(await updateNutritionCurrent(session.access_token, payload));
+    setWorkspace(await updateNutritionCurrent(session.access_token, withBodyweightLog(workspace, nextEntries)));
+  }
+
+  async function saveTarget(values: TargetAndWeighIn) {
+    if (!session?.access_token || !workspace) throw new Error("Your session has expired. Sign in again.");
+    setWorkspace(await updateNutritionCurrent(session.access_token, withTargetAndWeighIn(workspace, values)));
   }
 
   const entries = workspace?.nutrition_monitoring.daily_bodyweight_log ?? [];
@@ -152,6 +155,8 @@ export function WeightTracker() {
     ...(daysOut != null && daysOut >= 0 ? [{ value: describeDaysOut(daysOut), label: daysOut === 0 ? "Fight day" : daysOut === 1 ? "Day to fight" : "Days to fight" }] : []),
   ];
   const editingEntry = editing?.mode === "edit" ? entries[editing.sourceIndex] ?? null : null;
+  const shared = workspace?.shared_camp_context ?? null;
+  const weighIn = shared ? weighInMoment(shared.fight_date, shared.weigh_in_type, shared.weigh_in_time) : null;
 
   return (
     <RequireAuth>
@@ -159,7 +164,7 @@ export function WeightTracker() {
         <header className="form-section-header">
           <p className="kicker">Nutrition</p>
           <h1 className="form-section-title">Weight tracker</h1>
-          <p className="muted">Your weigh-ins and your trend toward fight weight.</p>
+          <p className="muted">Your logged weights and your trend toward fight weight.</p>
         </header>
 
         {!workspace ? (
@@ -169,7 +174,7 @@ export function WeightTracker() {
               <button type="button" className="error-banner-retry" onClick={retryLoad}>Retry</button>
             </div>
           ) : (
-            <div className={styles.loading} aria-busy="true" aria-label="Loading weigh-ins">
+            <div className={styles.loading} aria-busy="true" aria-label="Loading logged weights">
               <Skeleton height={220} style={{ borderRadius: 14 }} />
               <Skeleton height={300} style={{ borderRadius: 14 }} />
             </div>
@@ -178,14 +183,14 @@ export function WeightTracker() {
           <>
             <section className={`history-summary ${styles.card}`} aria-label="Weight summary">
               <div className={summary.head}>
-                <p className="history-summary-label">Latest weigh-in</p>
+                <p className="history-summary-label">Latest weight</p>
                 {latest ? <span className={styles.lastLogged}>Last logged {formatAppDate(latest.date)}</span> : null}
               </div>
               {latest ? (
                 <>
                   <div className={styles.headline}>
                     <strong>{latest.weight_kg.toFixed(1)}</strong>
-                    <span>kg<br />{latest.is_fasted == null ? "Latest weigh-in" : `${formatFastedState(latest.is_fasted)} weigh-in`}</span>
+                    <span>kg<br />{latest.is_fasted == null ? "Latest weight" : `${formatFastedState(latest.is_fasted)} weight`}</span>
                   </div>
                   <dl className={`history-summary-stats ${summary.stats}`} style={{ "--stat-count": tiles.length > 3 ? 2 : tiles.length } as CSSProperties}>
                     {tiles.map(tile => <div key={tile.label}><dt>{tile.label}</dt><dd data-tone={"tone" in tile ? tile.tone : undefined}>{tile.value}</dd></div>)}
@@ -193,21 +198,31 @@ export function WeightTracker() {
                   {campWeightDiffers ? (
                     <p className={progress.note}>
                       Your camp weight is <strong>{formatWeight(campWeight)}</strong>, set in <Link href="/onboarding" className="auth-text-link">Camp Setup</Link>.
-                      {" "}Your plan{gap != null ? ", gap to target" : ""} and cut warnings use it until you log a newer weigh-in.
+                      {" "}Your plan{gap != null ? ", gap to target" : ""} and cut warnings use it until you log a newer weight.
                     </p>
-                  ) : null}
-                  {!isMinorAthlete && targetKg == null ? (
-                    <p className={progress.note}>No target weight yet. <Link href="/onboarding" className="auth-text-link">Set it in Camp Setup</Link> to see your gap.</p>
                   ) : null}
                 </>
               ) : (
                 <div className={styles.empty}>
-                  <h2>No weigh-ins yet</h2>
-                  <p className="muted">Weigh in at the same time daily, ideally mornings after the toilet, so readings compare fairly.</p>
+                  <h2>No weights logged yet</h2>
+                  <p className="muted">Log your weight at the same time daily, ideally mornings after the toilet, so readings compare fairly.</p>
                 </div>
               )}
+              {/* Under-18s have no weight-cut feature: no target, no weigh-in for one. */}
+              {!isMinorAthlete ? (
+                targetKg == null || !weighIn ? (
+                  <div className={styles.targetRow}>
+                    <p>{targetKg == null ? "No target weight yet." : "No weigh-in set yet."}{weighIn ? ` Weigh-in ${weighIn}.` : ""}</p>
+                    <button type="button" className="secondary-button" aria-haspopup="dialog" onClick={() => setTargetOpen(true)}>
+                      {targetKg == null ? "Add target weight" : "Add weigh-in"}
+                    </button>
+                  </div>
+                ) : (
+                  <p className={progress.note}>Target {formatWeight(targetKg)} · Weigh-in {weighIn}</p>
+                )
+              ) : null}
               <button type="button" className={`cta ${styles.logButton}`} onClick={() => setEditing({ mode: "new" })}>
-                Log weigh-in
+                Log today&apos;s weight
               </button>
             </section>
 
@@ -226,35 +241,35 @@ export function WeightTracker() {
                   </div>
                 </div>
                 {selected ? (
-                  <div className={progress.selectedRecord} aria-live="polite" aria-label="Selected weigh-in">
+                  <div className={progress.selectedRecord} aria-live="polite" aria-label="Selected weight">
                     <p><strong data-weight="">{formatWeight(selected.weight_kg)}</strong>
                       {selectedPrevious ? <span className={styles.change}>{formatWeightDelta(Math.round((selected.weight_kg - selectedPrevious.weight_kg) * 10) / 10)} vs previous</span> : null}</p>
                     <p className={progress.note}>{[formatAppDate(selected.date), selected.time, selected.is_fasted == null ? null : formatFastedState(selected.is_fasted), selectedTrend ? `Trend ${formatWeight(selectedTrend.trend_weight_kg)}` : null].filter(Boolean).join(" · ")}</p>
-                    <button type="button" className={progress.textButton} onClick={() => setEditing({ mode: "edit", sourceIndex: selected.sourceIndex })}>Edit weigh-in <span aria-hidden="true">→</span></button>
+                    <button type="button" className={progress.textButton} onClick={() => setEditing({ mode: "edit", sourceIndex: selected.sourceIndex })}>Edit weight <span aria-hidden="true">→</span></button>
                   </div>
                 ) : null}
                 <p className={progress.note}>
-                  {plural(trend.length, "weigh-in")}
+                  {trend.length} {trend.length === 1 ? "entry" : "entries"}
                   {trendChange != null ? ` · ${trendChange === 0 ? "No change" : `${trendChange < 0 ? "Down" : "Up"} ${Math.abs(trendChange).toFixed(1)} kg`} since ${formatAppDate(trend[0].date)}` : ""}
                 </p>
                 {trend.length >= 2 ? (
                   <WeightTrendChart trend={trend} trendLine={trendLine} targetKg={targetKg} selectedIndex={selectedKey ? selectedIndex : trend.length - 1}
                     onSelect={index => setSelectedKey(keyOf(trend[index]))} />
                 ) : (
-                  <p className={progress.note}>Log one more weigh-in to see your trend line.</p>
+                  <p className={progress.note}>Log one more weight to see your trend line.</p>
                 )}
                 <details className={progress.about}>
                   <summary>About these numbers</summary>
                   <p>Weight is your logged scale reading. It swings daily with water, food and training; the trend line smooths that into where you’re heading. Not an official weigh-in.</p>
-                  <p>The trend, 7-day average and weekly pace use one reading per day: your earliest fasted weigh-in, or your earliest weigh-in if none was fasted.</p>
-                  <p>Weekly pace needs six weigh-in days over two weeks, including one in the last week.</p>
+                  <p>The trend, 7-day average and weekly pace use one reading per day: your earliest fasted reading, or your earliest reading if none was fasted.</p>
+                  <p>Weekly pace needs six days of entries over two weeks, including one in the last week.</p>
                 </details>
               </section>
             ) : null}
 
             {newestFirst.length ? (
-              <section className={styles.listSection} aria-label="Weigh-ins">
-                <h2 className="history-section-title">Weigh-ins</h2>
+              <section className={styles.listSection} aria-label="Logged weights">
+                <h2 className="history-section-title">Logged weights</h2>
                 <ul className="history-list">
                   {listed.map(entry => {
                     const previous = previousOf(entry);
@@ -264,7 +279,7 @@ export function WeightTracker() {
                           <span className={styles.rowMain}>
                             <span className="history-row-date">{formatAppDate(entry.date)}</span>
                             <span className="history-row-meta">
-                              {[entry.time, entry.is_fasted == null ? null : formatFastedState(entry.is_fasted)].filter(Boolean).join(" · ") || "Weigh-in"}
+                              {[entry.time, entry.is_fasted == null ? null : formatFastedState(entry.is_fasted)].filter(Boolean).join(" · ") || "Weight"}
                             </span>
                             {entry.notes ? <span className={styles.rowNote}>{entry.notes}</span> : null}
                           </span>
@@ -279,7 +294,7 @@ export function WeightTracker() {
                 </ul>
                 {newestFirst.length > LIST_PAGE ? (
                   <button type="button" className="secondary-button" onClick={() => setShowAll(value => !value)}>
-                    {showAll ? "Show fewer" : `Show all ${newestFirst.length} weigh-ins`}
+                    {showAll ? "Show fewer" : `Show all ${newestFirst.length} entries`}
                   </button>
                 ) : null}
               </section>
@@ -302,155 +317,32 @@ export function WeightTracker() {
               await saveEntries(next);
               setSelectedKey(null);
               setEditing(null);
-              showToast(editing.mode === "edit" ? "Weigh-in updated." : "Weigh-in saved.", { tone: "success" });
+              showToast(editing.mode === "edit" ? "Weight updated." : "Weight saved.", { tone: "success" });
             }}
             onDelete={editing.mode === "edit" ? async () => {
               await saveEntries(entries.filter((_, index) => index !== editing.sourceIndex));
               setSelectedKey(null);
               setEditing(null);
-              showToast("Weigh-in deleted.", { tone: "success" });
+              showToast("Weight deleted.", { tone: "success" });
             } : undefined}
+          />
+        ) : null}
+        {targetOpen && workspace && shared ? (
+          <TargetSheet
+            existingTargetKg={targetKg}
+            campWeightKg={campWeight}
+            fightDate={shared.fight_date || null}
+            weighInType={shared.weigh_in_type ?? null}
+            weighInTime={shared.weigh_in_time ?? null}
+            onClose={() => setTargetOpen(false)}
+            onSave={async (values) => {
+              await saveTarget(values);
+              setTargetOpen(false);
+              showToast(targetKg == null ? "Target weight saved." : "Weigh-in saved.", { tone: "success" });
+            }}
           />
         ) : null}
       </section>
     </RequireAuth>
-  );
-}
-
-type Draft = { weight: string; date: string; time: string; fasted: boolean | null; notes: string };
-
-function WeighInSheet({ entry, lastWeight, onClose, onSave, onDelete }: {
-  entry: NutritionBodyweightLogEntry | null;
-  lastWeight: number | null;
-  onClose: () => void;
-  onSave: (entry: NutritionBodyweightLogEntry) => Promise<void>;
-  onDelete?: () => Promise<void>;
-}) {
-  // Slides away before the parent removes it.
-  const { closing, close: dismiss } = useSheetExit(onClose);
-  const dialog = useRef<HTMLDialogElement>(null);
-  const weightInput = useRef<HTMLInputElement>(null);
-  const heading = useId();
-  const fieldId = useId();
-  const [draft, setDraft] = useState<Draft>(() => entry ? {
-    weight: String(entry.weight_kg), date: entry.date, time: entry.time ?? "", fasted: entry.is_fasted ?? null, notes: entry.notes ?? "",
-  } : { weight: "", date: localDateValue(), time: localTimeValue(), fasted: null, notes: "" });
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-
-  useEffect(() => {
-    const element = dialog.current!;
-    element.showModal();
-    const release = lockOverlayScroll();
-    weightInput.current?.focus({ preventScroll: true });
-    return () => { element.close(); release(); };
-  }, []);
-
-  function step(by: number) {
-    const base = toNumber(draft.weight) ?? lastWeight ?? 0;
-    setDraft(current => ({ ...current, weight: Math.max(0, Math.round((base + by) * 10) / 10).toFixed(1) }));
-  }
-
-  function run(action: () => Promise<void>) {
-    setError(null);
-    startTransition(async () => {
-      try {
-        await action();
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Couldn't save. Try again.");
-      }
-    });
-  }
-
-  function save() {
-    const weight = toNumber(draft.weight);
-    if (weight == null || weight <= 0) {
-      setError("Enter your weight in kg.");
-      weightInput.current?.focus();
-      return;
-    }
-    if (!draft.date.trim()) {
-      setError("Choose the date of this weigh-in.");
-      return;
-    }
-    if (draft.date.trim() > localDateValue()) {
-      setError("A weigh-in can't be dated in the future.");
-      return;
-    }
-    run(() => onSave({
-      date: draft.date.trim(),
-      weight_kg: weight,
-      time: draft.time.trim() || null,
-      is_fasted: draft.fasted,
-      notes: draft.notes.trim() || null,
-    }));
-  }
-
-  return (
-    <dialog ref={dialog} className={sheet.dialog} aria-labelledby={heading} data-closing={closing || undefined} onCancel={event => { event.preventDefault(); if (!isPending) dismiss(); }}>
-      <header className={sheet.header}>
-        <div>
-          <p className={sheet.eyebrow}>Weight tracker</p>
-          <h2 id={heading}>{entry ? "Edit weigh-in" : "Log weigh-in"}</h2>
-          <p className={sheet.quiet}>{entry ? formatAppDate(entry.date) : "Same time each day keeps your trend honest."}</p>
-        </div>
-        <button type="button" className={sheet.close} aria-label="Close" onClick={() => dismiss()} disabled={isPending}>×</button>
-      </header>
-      <form className={`${sheet.body} ${styles.form}`} noValidate onSubmit={event => { event.preventDefault(); save(); }}>
-        <div>
-          <label htmlFor={`${fieldId}-weight`} className={styles.fieldLabel}>Weight</label>
-          <div className={styles.weightField}>
-            <button type="button" aria-label="Decrease by 0.1 kg" onClick={() => step(-0.1)}>−</button>
-            <span className={styles.weightValue}>
-              <input ref={weightInput} id={`${fieldId}-weight`} type="number" inputMode="decimal" step="0.1" min="0"
-                placeholder={lastWeight != null ? lastWeight.toFixed(1) : "0.0"} value={draft.weight}
-                onChange={event => setDraft(current => ({ ...current, weight: event.target.value }))} />
-              <span aria-hidden="true">kg</span>
-            </span>
-            <button type="button" aria-label="Increase by 0.1 kg" onClick={() => step(0.1)}>+</button>
-          </div>
-        </div>
-
-        <div>
-          <p className={styles.fieldLabel} id={`${fieldId}-fasted`}>Before or after food?</p>
-          <div className={`${summary.toggle} ${styles.fasted}`} role="group" aria-labelledby={`${fieldId}-fasted`}>
-            {([[true, "Fasted"], [false, "Fed"]] as const).map(([value, label]) => (
-              <button key={label} type="button" aria-pressed={draft.fasted === value}
-                onClick={() => setDraft(current => ({ ...current, fasted: current.fasted === value ? null : value }))}>
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className={styles.when}>
-          <div className="field">
-            <label htmlFor={`${fieldId}-date`}>Date</label>
-            <input id={`${fieldId}-date`} type="date" max={localDateValue()} value={draft.date} onChange={event => setDraft(current => ({ ...current, date: event.target.value }))} />
-          </div>
-          <div className="field">
-            <label htmlFor={`${fieldId}-time`}>Time</label>
-            <input id={`${fieldId}-time`} type="time" value={draft.time} onChange={event => setDraft(current => ({ ...current, time: event.target.value }))} />
-          </div>
-        </div>
-
-        <div className="field">
-          <label htmlFor={`${fieldId}-notes`}>Notes <span className="muted">(optional)</span></label>
-          <textarea id={`${fieldId}-notes`} rows={2} value={draft.notes} onChange={event => setDraft(current => ({ ...current, notes: event.target.value }))} />
-        </div>
-
-        {error ? <p className={styles.formError} role="alert">{error}</p> : null}
-
-        <div className={styles.actions}>
-          <button type="submit" className="cta" disabled={isPending}>{isPending ? "Saving…" : entry ? "Save changes" : "Save weigh-in"}</button>
-          {onDelete ? (
-            <button type="button" className="ghost-button danger-button" disabled={isPending}
-              onClick={() => { if (window.confirm("Delete this weigh-in?")) run(onDelete); }}>
-              Delete weigh-in
-            </button>
-          ) : null}
-        </div>
-      </form>
-    </dialog>
   );
 }

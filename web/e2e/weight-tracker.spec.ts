@@ -118,13 +118,13 @@ for (const [width, height] of [[390, 844], [1280, 800]] as const) {
 
     // The trend selects the latest weigh-in; arrow keys step back through it.
     const trend = page.getByRole("region", { name: "Weight trend" });
-    const selected = trend.getByLabel("Selected weigh-in");
+    const selected = trend.getByLabel("Selected weight");
     await expect(selected).toContainText("73.4 kg");
     await expect(selected).toContainText("−0.2 kg vs previous");
     await expect(trend.getByText("Down 0.7 kg since Wed 21 Oct 2026")).toBeVisible();
     await expect(selected).toContainText("Trend 73.7 kg");
     await expect(trend.getByText("Trend (estimate)")).toBeVisible();
-    await trend.getByRole("slider", { name: "Inspect weigh-in" }).focus();
+    await trend.getByRole("slider", { name: "Inspect logged weight" }).focus();
     await page.keyboard.press("ArrowLeft");
     await expect(selected).toContainText("73.6 kg");
     await shot("weight-tracker", true);
@@ -132,20 +132,20 @@ for (const [width, height] of [[390, 844], [1280, 800]] as const) {
     await shot("weight-trend");
 
     // Rows open the same sheet in edit mode.
-    await page.getByRole("region", { name: "Weigh-ins" }).getByRole("button", { name: /Fri 23 Oct 2026/ }).click();
-    await expect(page.getByRole("dialog", { name: "Edit weigh-in" })).toBeVisible();
+    await page.getByRole("region", { name: "Logged weights" }).getByRole("button", { name: /Fri 23 Oct 2026/ }).click();
+    await expect(page.getByRole("dialog", { name: "Edit weight" })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
 
-    await summary.getByRole("button", { name: "Log weigh-in" }).click();
-    const dialog = page.getByRole("dialog", { name: "Log weigh-in" });
+    await summary.getByRole("button", { name: "Log today's weight" }).click();
+    const dialog = page.getByRole("dialog", { name: "Log today's weight" });
     await expect(dialog.getByLabel("Weight")).toBeFocused();
     await dialog.getByRole("button", { name: "Decrease by 0.1 kg" }).click();
     await expect(dialog.getByLabel("Weight")).toHaveValue("73.3");
     await dialog.getByRole("button", { name: "Fasted" }).click();
     await expect(dialog.getByRole("button", { name: "Fasted" })).toHaveAttribute("aria-pressed", "true");
     await shot("weight-tracker-sheet");
-    await dialog.getByRole("button", { name: "Save weigh-in" }).click();
+    await dialog.getByRole("button", { name: "Save weight" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     expect(saves).toHaveLength(1);
     await expect(summary.getByText("73.3", { exact: true })).toBeVisible();
@@ -177,18 +177,18 @@ test("an older API without trend fields still renders the tracker", async ({ pag
   await expect(summary.getByText("Per week")).toHaveCount(0);
   await expect(page.getByText(/weight cut:/i)).toHaveCount(0);
   const trend = page.getByRole("region", { name: "Weight trend" });
-  await expect(trend.getByRole("slider", { name: "Inspect weigh-in" })).toBeVisible();
+  await expect(trend.getByRole("slider", { name: "Inspect logged weight" })).toBeVisible();
   await expect(trend.getByText("Trend (estimate)")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
-test("a first weigh-in starts from an empty state", async ({ page, baseURL }) => {
+test("a first weight starts from an empty state", async ({ page, baseURL }) => {
   await signInAthlete(page, baseURL!, { isMinor: false, empty: true });
   await page.goto("/nutrition");
-  await expect(page.getByRole("heading", { name: "No weigh-ins yet" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No weights logged yet" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Weight trend" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Log weigh-in" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Save weigh-in" }).click();
+  await page.getByRole("button", { name: "Log today's weight" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Save weight" }).click();
   await expect(page.getByRole("dialog").getByRole("alert")).toHaveText("Enter your weight in kg.");
 });
 
@@ -203,11 +203,11 @@ test("camp weight set later in Camp Setup drives the gap, and the tracker says s
   await expect(summary.getByText(/Your camp weight is 72\.9 kg, set in Camp Setup\./)).toBeVisible();
 });
 
-test("a weigh-in can't be dated in the future", async ({ page, baseURL }) => {
+test("a weight can't be dated in the future", async ({ page, baseURL }) => {
   const saves = await signInAthlete(page, baseURL!, { isMinor: false });
   await page.goto("/nutrition");
-  await page.getByRole("region", { name: "Weight summary" }).getByRole("button", { name: "Log weigh-in" }).click();
-  const dialog = page.getByRole("dialog", { name: "Log weigh-in" });
+  await page.getByRole("region", { name: "Weight summary" }).getByRole("button", { name: "Log today's weight" }).click();
+  const dialog = page.getByRole("dialog", { name: "Log today's weight" });
   const date = dialog.getByLabel("Date");
   const today = await page.evaluate(() => {
     const now = new Date();
@@ -218,7 +218,7 @@ test("a weigh-in can't be dated in the future", async ({ page, baseURL }) => {
   future.setDate(future.getDate() + 3);
   await date.fill(future.toISOString().slice(0, 10));
   await dialog.getByLabel("Weight").fill("72.0");
-  await dialog.getByRole("button", { name: "Save weigh-in" }).click();
-  await expect(dialog.getByRole("alert")).toHaveText("A weigh-in can't be dated in the future.");
+  await dialog.getByRole("button", { name: "Save weight" }).click();
+  await expect(dialog.getByRole("alert")).toHaveText("A weight can't be dated in the future.");
   expect(saves).toHaveLength(0);
 });

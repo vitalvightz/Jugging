@@ -811,6 +811,7 @@ class NutritionBodyweightTrendPoint(BaseModel):
 
 
 WeightCutRiskBand = Literal["none", "moderate", "high", "severe"]
+WeightCutStatus = Literal["none", "on_target", "on_track", "behind", "too_aggressive"]
 
 
 class NutritionDerivedState(BaseModel):
@@ -821,6 +822,12 @@ class NutritionDerivedState(BaseModel):
     # the same reading the plan's nutrition block uses. Always none/False for a minor.
     weight_cut_risk_band: WeightCutRiskBand = "none"
     weight_cut_supervision_required: bool = False
+    # The same band read against the fight: how far the camp weight is from target
+    # and whether the cut is on track. "behind" carries how much lighter the camp
+    # weight would need to be today for the rest of the cut not to escalate.
+    kg_to_target: float | None = None
+    weight_cut_status: WeightCutStatus = "none"
+    weight_cut_behind_kg: float | None = None
     aggressive_weight_cut: bool = False
     high_pressure_weight_cut: bool = False
     short_notice: bool = False

@@ -368,7 +368,7 @@ def test_a_future_dated_weigh_in_is_rejected():
     )
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "A weigh-in can't be dated in the future."
+    assert response.json()["detail"] == "A weight can't be dated in the future."
     assert _intake_weight(store) == 72.5
 
 
@@ -405,3 +405,59 @@ def test_legacy_session_frequency_does_not_break_nutrition_reads_or_change_sourc
     assert shared.weekly_training_frequency is None
     assert shared.training_availability == ["Monday", "Wednesday"]
     assert saved["weekly_training_frequency"] == 10
+
+
+def test_workspace_reports_weight_to_target_status_for_the_fight():
+    client, store, _ = _build_client()
+    client.get("/api/me", headers={"Authorization": "Bearer athlete-token"})
+    store.create_intake(
+        "athlete-1",
+        _build_request({
+            "fight_date": _days_from_today(7),
+            "athlete": {**_build_request({}).athlete.model_dump(mode="json"), "weight_kg": 73.3, "target_weight_kg": 70.0},
+        }),
+    )
+
+    derived = _get_current_workspace(client)["derived"]
+    assert derived["weight_cut_status"] == "behind"
+    assert derived["kg_to_target"] == 3.3
+    assert derived["weight_cut_behind_kg"] > 0
+
+    # A lighter weigh-in becomes the camp weight and the status recovers.
+    workspace = _put_bodyweight_log(
+        client, _get_current_workspace(client),
+        [{"date": _days_from_today(0), "weight_kg": 72.6, "time": "07:00", "is_fasted": True, "notes": None}],
+    )
+    assert workspace["derived"]["weight_cut_status"] == "on_track"
+    assert workspace["derived"]["kg_to_target"] == 2.6
+    assert workspace["derived"]["weight_cut_behind_kg"] is None
+
+
+def test_target_and_weigh_in_can_be_added_from_the_tracker_but_not_overwrite_camp_setup():
+    client, store, _ = _build_client()
+    client.get("/api/me", headers={"Authorization": "Bearer athlete-token"})
+    athlete = {**_build_request({}).athlete.model_dump(mode="json"), "target_weight_kg": None}
+    store.create_intake("athlete-1", _build_request({"athlete": athlete}))
+    workspace = _get_current_workspace(client)
+    assert workspace["shared_camp_context"]["target_weight_kg"] is None
+
+    def put_target(workspace, target):
+        response = client.put(
+            "/api/nutrition/current",
+            headers={"Authorization": "Bearer athlete-token"},
+            json={**workspace, "shared_camp_context": {
+                **workspace["shared_camp_context"],
+                "target_weight_kg": target, "weigh_in_type": "day_before", "weigh_in_time": "18:00",
+            }},
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    workspace = put_target(workspace, 70.0)
+    shared = workspace["shared_camp_context"]
+    assert (shared["target_weight_kg"], shared["weigh_in_type"], shared["weigh_in_time"]) == (70.0, "day_before", "18:00")
+    assert store.get_latest_intake("athlete-1")["intake"]["athlete"]["target_weight_kg"] == 70.0
+
+    # Once Camp Setup holds a target, the tracker cannot replace it.
+    workspace = put_target(workspace, 66.0)
+    assert workspace["shared_camp_context"]["target_weight_kg"] == 70.0

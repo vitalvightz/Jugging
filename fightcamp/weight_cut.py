@@ -94,6 +94,12 @@ def compute_weight_cut_pct(current_weight: object, target_weight: object) -> flo
     return round(max(0.0, (current - target) / current * 100.0), 1)
 
 
+# Strain score at which a cut escalates to "high" (supervision, alarm copy).
+HEALTH_ESCALATION_SCORE = 35.0
+# A cut this large is severe at any days-out.
+CUT_MAGNITUDE_FLOOR_PCT = 6.0
+
+
 def compute_cut_severity_score(weight_cut_pct: object, days_until_fight: object) -> float:
     """
     Deterministic active-cut severity score (0-100):
@@ -140,7 +146,7 @@ def cut_health_bucket(score: object) -> str:
         return "none"
     if value < 15.0:
         return "low"
-    if value < 35.0:
+    if value < HEALTH_ESCALATION_SCORE:
         return "moderate"
     if value < 55.0:
         return "high"
@@ -247,7 +253,7 @@ def weight_cut_risk_band(
         days = int(float(days_until_fight)) if days_until_fight is not None else None
     except (TypeError, ValueError):
         days = None
-    if pct >= 6.0:
+    if pct >= CUT_MAGNITUDE_FLOOR_PCT:
         return "severe"
     rank = cut_severity_rank(
         cut_health_bucket(compute_cut_severity_score(pct, days))
@@ -280,11 +286,27 @@ def weight_cut_supervision_required(
         days = int(float(days_until_fight)) if days_until_fight is not None else None
     except (TypeError, ValueError):
         days = None
-    if pct >= 6.0:
+    if pct >= CUT_MAGNITUDE_FLOOR_PCT:
         return True
     return cut_warnings_escalate(
         cut_health_bucket(compute_cut_severity_score(pct, days))
     )
+
+
+def escalation_cut_pct(days_until_fight: object) -> float:
+    """The largest cut % that stays below strain escalation at this days-out.
+
+    The closed-form inverse of :func:`compute_cut_severity_score` at
+    ``HEALTH_ESCALATION_SCORE``, capped at the magnitude floor, so it reads the
+    same scale as :func:`weight_cut_risk_band` rather than adding a threshold.
+    A cut at or under this percentage is not escalated.
+    """
+    try:
+        days_out = max(0, int(days_until_fight))
+    except (TypeError, ValueError):
+        days_out = 35
+    pressure = 3.2 * (1.0 + 1.8 * math.exp(-days_out / 15.0))
+    return min(CUT_MAGNITUDE_FLOOR_PCT, (HEALTH_ESCALATION_SCORE / pressure) ** (1 / 1.15))
 
 
 def is_high_pressure_weight_cut(flags: dict) -> bool:

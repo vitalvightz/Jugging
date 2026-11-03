@@ -63,7 +63,7 @@ export function WeightTrendChart({ trend, trendLine, targetKg, selectedIndex, on
   };
 
   return <>
-    <div ref={plot} className={progress.linePlot} role="slider" tabIndex={0} aria-label="Inspect weigh-in"
+    <div ref={plot} className={progress.linePlot} role="slider" tabIndex={0} aria-label="Inspect logged weight"
       aria-valuemin={1} aria-valuemax={trend.length} aria-valuenow={selectedIndex + 1}
       aria-valuetext={selected ? `${formatAppDate(selected.date)}: ${kg(selected.weight_kg)}` : undefined}
       onKeyDown={event => {
@@ -92,7 +92,7 @@ export function WeightTrendChart({ trend, trendLine, targetKg, selectedIndex, on
     </div>
     <div className={progress.dateAxis}><span>{formatAppDate(trend[0].date)}</span><span>{formatAppDate(trend[trend.length - 1].date)}</span></div>
     {trendLine.length >= 2 ? <p className={styles.legend} aria-hidden="true">
-      <span><i className={styles.legendDot} />Weigh-ins</span><span><i className={styles.legendLine} />Trend (estimate)</span>
+      <span><i className={styles.legendDot} />Logged weights</span><span><i className={styles.legendLine} />Trend (estimate)</span>
     </p> : null}
     {targetKg != null && target == null ? <p className={progress.note}>Target {kg(targetKg)} is {targetKg < low ? "below" : "above"} this range.</p> : null}
   </>;
