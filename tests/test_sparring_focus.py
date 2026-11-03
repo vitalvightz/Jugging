@@ -1,4 +1,4 @@
-"""The optional sparring focus and the "Last training focus" read."""
+"""The optional sparring focus and the "Your focus" read."""
 from datetime import date, timedelta
 from uuid import uuid4
 

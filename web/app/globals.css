@@ -23164,17 +23164,51 @@ a, button, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
   .once-hint { animation: none; }
 }
 
-/* "Last training focus": one quiet line under the session title, before relevant work. */
+/* "Your focus" (the fighter's own words) and a technique UNLXCK cue, under
+   the session title before relevant work. The fighter's focus reads first. */
 .today-session-focus {
-  margin: 8px 0 0;
-  color: var(--text-secondary);
-  font-size: 14px;
-  line-height: 1.45;
+  margin: 10px 0 0;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .today-session-focus .today-detail-label {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-bottom: 2px;
+}
+
+.today-session-focus .today-tool-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--brand-red);
+}
+
+.today-session-cue {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 400;
+}
+
+/* An UNLXCK cue under the exercise it is about: one muted line, no card. */
+.ex-row-cue {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.ex-row-cue .sp-stat-label {
+  margin-inline-end: 6px;
+}
+
+/* Above the row toggle's overlay, so Dismiss is its own tap. */
+.ex-row-cue .today-session-focus-dismiss {
+  z-index: 1;
 }
 
 .today-session-focus-dismiss {

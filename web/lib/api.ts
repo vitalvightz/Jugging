@@ -1548,7 +1548,7 @@ export function listSessionCompletionHistory(
   );
 }
 
-/** The last sparring focus, for "Last training focus" before relevant sessions. */
+/** The last sparring focus, shown as "Your focus" before relevant sessions. */
 export function getTrainingFocus(token: string, signal?: AbortSignal): Promise<TrainingFocus> {
   return readJson<TrainingFocus>("/api/today/training-focus", { token, signal });
 }
