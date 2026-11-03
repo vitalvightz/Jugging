@@ -407,6 +407,53 @@ test("weekLoadProxy does not treat short explosive bursts like prolonged conditi
   assert.equal(weekLoadProxy(conditioningWeek), "High");
 });
 
+test("weekLoadProxy does not assume unstated rest is generous recovery", () => {
+  const burstsWithoutRest = (id: string) => {
+    const session = bagBurstSession(id);
+    const { rest: _rest, ...block } = session.blocks[0]!;
+    return { ...session, blocks: [block] };
+  };
+  const week = {
+    phase_label: "SPP",
+    days: [
+      { day_type: "high", sessions: [burstsWithoutRest("burst-1")] },
+      { day_type: "high", sessions: [burstsWithoutRest("burst-2")] },
+    ],
+  };
+
+  // With 60 s rest stated this week is Low; unknown rest scores each day
+  // moderate instead of low.
+  assert.equal(weekLoadProxy(week), "Moderate");
+});
+
+test("weekLoadProxy reads a long block duration as the whole block, not per round", () => {
+  const roundsOverBlockDuration = (id: string) => ({
+    session_id: id,
+    session_type: "conditioning",
+    title: "Bag rounds",
+    blocks: [
+      {
+        block_type: "conditioning",
+        display_name: "Bag rounds",
+        rounds: 3,
+        duration: { value: 330, unit: "seconds" },
+        effort: { method: "RPE", value: 8 },
+      },
+    ],
+  });
+  const week = {
+    phase_label: "SPP",
+    days: [
+      { day_type: "moderate", sessions: [roundsOverBlockDuration("rounds-1")] },
+      { day_type: "moderate", sessions: [roundsOverBlockDuration("rounds-2")] },
+    ],
+  };
+
+  // 5.5 minutes of RPE 8 work in total, not 3 x 5.5 = 16.5 minutes. Read per
+  // round it would score both days high and the week High.
+  assert.equal(weekLoadProxy(week), "Moderate");
+});
+
 test("weekLoadProxy no longer uses a high day_type as a fatigue floor", () => {
   const week = {
     phase_label: "SPP",

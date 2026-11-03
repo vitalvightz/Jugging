@@ -5,7 +5,7 @@
 // function tolerates null/partial payloads and never throws.
 import trainingCalendar from "../../shared/training-calendar.json";
 import { athleteFacingSessionTitle, formatPlanLabel } from "./plan-labels.ts";
-import { measuredSeconds } from "./session-timer/plan.ts";
+import { MAX_PER_ROUND_SEC, measuredSeconds } from "./session-timer/plan.ts";
 import {
   cleanText,
   classifySessionlessDay,
@@ -978,18 +978,29 @@ function blockDoseLoadPoints(block: StructuredBlock): number | null {
   const generousRestNote = /\b(full|complete|generous)\b/i.test(cleanText(block.rest_note) ?? "");
   const rpe = blockEffortRpe(block);
 
-  const perBout = work ?? (bouts !== null ? duration : null);
+  // Same reading as the session timer: with bouts, a duration over
+  // MAX_PER_ROUND_SEC describes the whole block, so it is split across the
+  // bouts rather than multiplied by them.
+  const durationPerBout =
+    bouts !== null && duration !== null
+      ? duration > MAX_PER_ROUND_SEC
+        ? duration / bouts
+        : duration
+      : null;
+  const perBout = work ?? durationPerBout;
   if (perBout !== null) {
     const count = bouts ?? 1;
     const totalWork = perBout * count;
     const restRatio = rest !== null ? rest / perBout : null;
+    // Only stated recovery counts as generous; unknown rest is not assumed to
+    // be enough.
     const generousRest = generousRestNote || (restRatio !== null && restRatio >= 3);
     const effort = rpe ?? 7;
 
     // Short explosive bursts (alactic): high intent, little accumulated fatigue
-    // as long as recovery between efforts is generous.
+    // when the plan gives generous recovery between efforts.
     if (perBout <= 15) {
-      if (generousRest || restRatio === null) {
+      if (generousRest) {
         return totalWork > 120 ? 2 : 1.5;
       }
       return effort >= 8 && count >= 8 ? 2.5 : 2;

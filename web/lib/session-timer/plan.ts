@@ -102,7 +102,8 @@ const UNTIMED_BLOCK_TYPES = new Set(["nutrition", "mindset"]);
 const ROUND_BLOCK_TYPES = new Set(["sparring", "conditioning", "skill"]);
 
 /** A round length above this is read as a whole-block total, not per round. */
-const MAX_PER_ROUND_SEC = 300;
+/** A block duration above this, with rounds, is the whole block, not one round. */
+export const MAX_PER_ROUND_SEC = 300;
 
 const DEFAULT_ROUND_SEC = 180;
 const DEFAULT_ROUND_REST_SEC = 60;
