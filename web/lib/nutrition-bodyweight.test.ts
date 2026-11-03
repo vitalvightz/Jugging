@@ -5,6 +5,7 @@ import {
   formatWeightDelta,
   getBodyweightEntriesWithIndex,
   getBodyweightTrend,
+  getDefaultBodyweightRange,
   getCampWeight,
   getTargetGap,
   getTrendChange,
@@ -25,28 +26,42 @@ test("lists weigh-ins newest first and keeps each saved-log index", () => {
   );
 });
 
-test("trend is oldest first and ranges count back from the latest weigh-in", () => {
-  assert.deepStrictEqual(getBodyweightTrend(entries, "7D").map((entry) => entry.date), ["2026-04-03", "2026-04-06", "2026-04-08"]);
-  assert.deepStrictEqual(getBodyweightTrend(entries, "30D").map((entry) => entry.date), ["2026-04-01", "2026-04-03", "2026-04-06", "2026-04-08"]);
-  assert.deepStrictEqual(getBodyweightTrend([], "All"), []);
+const TODAY = "2026-04-08";
+
+test("trend is oldest first and ranges count back from today", () => {
+  assert.deepStrictEqual(getBodyweightTrend(entries, "7D", TODAY).map((entry) => entry.date), ["2026-04-03", "2026-04-06", "2026-04-08"]);
+  assert.deepStrictEqual(getBodyweightTrend(entries, "30D", TODAY).map((entry) => entry.date), ["2026-04-01", "2026-04-03", "2026-04-06", "2026-04-08"]);
+  assert.deepStrictEqual(getBodyweightTrend([], "All", TODAY), []);
+  // A week without weigh-ins is an empty 7-day range, not the last logged week.
+  assert.deepStrictEqual(getBodyweightTrend(entries, "7D", "2026-04-20"), []);
+  // Future-dated entries are never plotted.
+  const future = [...entries, { date: "2026-04-09", time: "07:00", weight_kg: 73, is_fasted: true, notes: "" }];
+  assert.equal(getBodyweightTrend(future, "All", TODAY).length, 4);
+});
+
+test("opens on 7 days only when the last 30 days all fall in the last week", () => {
+  assert.equal(getDefaultBodyweightRange(entries.slice(1, 2), TODAY), "7D");
+  assert.equal(getDefaultBodyweightRange(entries, TODAY), "30D");
+  assert.equal(getDefaultBodyweightRange(entries, "2026-04-20"), "30D");
+  assert.equal(getDefaultBodyweightRange([], TODAY), "30D");
 });
 
 test("ranges are whole calendar days, whatever the time of day", () => {
   // 7 days ending Wed 08 Apr starts Thu 02 Apr, even before the latest weigh-in's time.
   const early = [...entries, { date: "2026-04-02", time: "06:00", weight_kg: 74.3, is_fasted: true, notes: "" }];
-  assert.deepStrictEqual(getBodyweightTrend(early, "7D").map((entry) => entry.date), ["2026-04-02", "2026-04-03", "2026-04-06", "2026-04-08"]);
+  assert.deepStrictEqual(getBodyweightTrend(early, "7D", TODAY).map((entry) => entry.date), ["2026-04-02", "2026-04-03", "2026-04-06", "2026-04-08"]);
   assert.equal(shiftDate("2026-03-01", -1), "2026-02-28");
   assert.equal(shiftDate("2026-10-25", 1), "2026-10-26");
 });
 
 test("trend skips entries that cannot be plotted", () => {
   const broken = [...entries, { date: "", time: null, weight_kg: 80, is_fasted: null, notes: null }];
-  assert.equal(getBodyweightTrend(broken, "All").length, 4);
+  assert.equal(getBodyweightTrend(broken, "All", TODAY).length, 4);
 });
 
 test("trend change runs from the first to the last weigh-in in range", () => {
-  assert.equal(getTrendChange(getBodyweightTrend(entries, "All")), -1.2);
-  assert.equal(getTrendChange(getBodyweightTrend(entries, "7D")), -0.7);
+  assert.equal(getTrendChange(getBodyweightTrend(entries, "All", TODAY)), -1.2);
+  assert.equal(getTrendChange(getBodyweightTrend(entries, "7D", TODAY)), -0.7);
   assert.equal(getTrendChange(entries.slice(0, 1)), null);
 });
 

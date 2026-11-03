@@ -10,7 +10,7 @@ import { SafetyNote } from "@/components/safety-note";
 import { Skeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast-provider";
 import { TargetSheet, WeighInSheet } from "@/components/weigh-in-sheet";
-import { WeightTrendChart } from "@/components/weight-trend-chart";
+import { WeightTrendChart, shortDate } from "@/components/weight-trend-chart";
 import { getNutritionCurrent, trackProductEvent, updateNutritionCurrent } from "@/lib/api";
 import { formatAppDate } from "@/lib/date-format";
 import {
@@ -22,9 +22,10 @@ import {
   getBodyweightEntriesWithIndex,
   getBodyweightTrend,
   getCampWeight,
+  getDefaultBodyweightRange,
+  getRangeStart,
   getTargetGap,
   getTrendChange,
-  RANGE_DAY_WINDOW,
 } from "@/lib/nutrition-bodyweight";
 import { localDateValue, type TargetAndWeighIn, withBodyweightLog, withTargetAndWeighIn } from "@/lib/nutrition-workspace";
 import { WEIGHT_CUT_SAFETY } from "@/lib/safety-copy";
@@ -78,7 +79,8 @@ export function WeightTracker() {
   const [workspace, setWorkspace] = useState<NutritionWorkspaceState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [range, setRange] = useState<BodyweightRange>("30D");
+  // Null until the athlete picks one: the default follows the data.
+  const [range, setRange] = useState<BodyweightRange | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [targetOpen, setTargetOpen] = useState(false);
@@ -135,14 +137,17 @@ export function WeightTracker() {
   const pace = derived?.weekly_pace_kg ?? null;
   const daysOut = derived?.days_until_fight ?? null;
   const warning = derived && !isMinorAthlete ? cutWarning(derived) : null;
-  const trend = getBodyweightTrend(entries, range);
+  const activeRange = range ?? getDefaultBodyweightRange(entries, today);
+  const trend = getBodyweightTrend(entries, activeRange, today);
   const trendChange = getTrendChange(trend);
   const keyOf = (entry: (typeof newestFirst)[number]) => createBodyweightEntryKey(entry, entry.sourceIndex);
-  const selectedIndex = Math.max(0, trend.findIndex(entry => keyOf(entry) === selectedKey));
-  const selected = trend.length ? trend[selectedKey ? selectedIndex : trend.length - 1] : null;
+  // The chart's selection defaults to the latest weigh-in; the headline always is it.
+  const pickedIndex = trend.findIndex(entry => keyOf(entry) === selectedKey);
+  const selectedIndex = pickedIndex >= 0 ? pickedIndex : trend.length - 1;
+  const selected = trend[selectedIndex] ?? latest;
   // Change from the weigh-in before each one, across the whole log.
   const previousOf = (entry: (typeof newestFirst)[number]) => newestFirst[newestFirst.findIndex(item => item.sourceIndex === entry.sourceIndex) + 1] ?? null;
-  const selectedPrevious = selected ? previousOf(selected) : null;
+  const latestPrevious = latest ? previousOf(latest) : null;
   const listed = showAll ? newestFirst : newestFirst.slice(0, LIST_PAGE);
   const tiles = [
     ...(gap != null ? [describeGap(gap)] : []),
@@ -227,44 +232,47 @@ export function WeightTracker() {
 
             {warning ? <SafetyNote tone="warning">{warning}</SafetyNote> : null}
 
-            {trend.length ? (
+            {latest ? (
               <section className={`history-summary ${styles.card} ${styles.trendCard}`} aria-label="Weight trend">
-                <div className={summary.head}>
+                <div className={styles.trendHead}>
                   <h2 className={styles.sectionTitle}>Weight trend</h2>
-                  <div className={summary.toggle} role="group" aria-label="Trend range">
+                  <div className={`${summary.toggle} ${styles.rangeToggle}`} role="group" aria-label="Trend range">
                     {RANGES.map(item => (
-                      <button key={item.value} type="button" aria-pressed={range === item.value} onClick={() => { setRange(item.value); setSelectedKey(null); }}>
+                      <button key={item.value} type="button" aria-pressed={activeRange === item.value} onClick={() => { setRange(item.value); setSelectedKey(null); }}>
                         {item.label}
                       </button>
                     ))}
                   </div>
                 </div>
-                {selected ? (
-                  <div className={styles.readout} aria-live="polite" aria-label="Selected weight">
-                    <p><strong data-weight="">{formatWeight(selected.weight_kg)}</strong>
-                      {selectedPrevious ? <span className={styles.change}>{formatWeightDelta(Math.round((selected.weight_kg - selectedPrevious.weight_kg) * 10) / 10)} vs previous</span> : null}</p>
-                    <p className={styles.meta}>{[formatAppDate(selected.date), selected.time, selected.is_fasted == null ? null : formatFastedState(selected.is_fasted)].filter(Boolean).join(" · ")}</p>
-                    <p className={styles.meta}>
-                      {trend.length} {trend.length === 1 ? "entry" : "entries"}
-                      {trendChange != null ? ` · ${trendChange === 0 ? "No change" : `${trendChange < 0 ? "Down" : "Up"} ${Math.abs(trendChange).toFixed(1)} kg`}` : ""}
-                    </p>
+                <div className={styles.readout} aria-label="Latest weight">
+                  <p><strong data-weight="">{formatWeight(latest.weight_kg)}</strong>
+                    {latestPrevious ? <span className={styles.change}>{formatWeightDelta(Math.round((latest.weight_kg - latestPrevious.weight_kg) * 10) / 10)} vs previous</span> : null}</p>
+                  <p className={styles.meta}>{[formatAppDate(latest.date), latest.time, latest.is_fasted == null ? null : formatFastedState(latest.is_fasted)].filter(Boolean).join(" · ")}</p>
+                  <p className={styles.meta}>
+                    {trend.length} {trend.length === 1 ? "entry" : "entries"}
+                    {trendChange != null ? ` · ${trendChange === 0 ? "No change" : `${trendChange < 0 ? "Down" : "Up"} ${Math.abs(trendChange).toFixed(1)} kg`}` : ""}
+                  </p>
+                </div>
+                {trend.length ? (
+                  <div>
+                    <WeightTrendChart trend={trend} rangeStart={getRangeStart(activeRange, today)} today={today} targetKg={targetKg}
+                      selectedIndex={selectedIndex} onSelect={index => setSelectedKey(keyOf(trend[index]))} />
                   </div>
-                ) : null}
-                <WeightTrendChart trend={trend} days={range === "All" ? null : RANGE_DAY_WINDOW[range]} targetKg={targetKg}
-                  selectedIndex={selectedKey ? selectedIndex : trend.length - 1} inspecting={selectedKey != null}
-                  onSelect={index => setSelectedKey(keyOf(trend[index]))} />
+                ) : (
+                  <p className={progress.note}>No weights in the last {activeRange === "7D" ? "7" : "30"} days.</p>
+                )}
                 {trend.length === 1 ? <p className={progress.note}>Log another weight to see how it changes.</p> : null}
-                {selected ? (
+                <div className={styles.trendFooter}>
                   <button type="button" className={`${progress.textButton} ${styles.edit}`} onClick={() => setEditing({ mode: "edit", sourceIndex: selected.sourceIndex })}>
-                    Edit weight <span aria-hidden="true">→</span>
+                    {selected.sourceIndex === latest.sourceIndex ? "Edit weight" : `Edit ${shortDate(selected.date)} weight`} <span aria-hidden="true">→</span>
                   </button>
-                ) : null}
                 <details className={progress.about}>
                   <summary>About these numbers</summary>
                   <p>The chart shows each logged scale reading, joined in order; days without one are left as gaps, never filled in. Weight swings daily with water, food and training, so read the direction over weeks. Not an official weigh-in.</p>
                   <p>The 7-day average and weekly pace use one reading per day: your earliest fasted reading, or your earliest reading if none was fasted.</p>
                   <p>Weekly pace needs six days of entries over two weeks, including one in the last week.</p>
                 </details>
+                </div>
               </section>
             ) : null}
 
