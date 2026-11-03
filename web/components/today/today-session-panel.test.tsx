@@ -1695,3 +1695,52 @@ test("UNLXCK CUE rows render only where Today provides cues", () => {
     /class="ex-row-cue"><span class="sp-stat-label">UNLXCK CUE<\/span>Keep your foot planted and control the descent.<\/p>/);
   assert.doesNotMatch(renderToStaticMarkup(<TodaySessionBlocks current={current} />), /ex-row-cue|UNLXCK CUE/);
 });
+
+test("UNLXCK CUE reaches Today's exercises when no next_session is reported, and leaves once logged", async () => {
+  // The panel resolves the athlete's training day (03:00 rollover), so the plan is dated to it.
+  const day = toISODate(resolveTrainingDay(new Date()));
+  const plan = { weeks: [{ week_index: 1, days: [{ date: day, sessions: [{ session_id: "str", title: "Strength",
+    session_type: "strength_power", blocks: [
+      { block_id: "pistol", block_type: "strength", display_name: "Assisted Pistol Squat", sets: 3, reps: "8" },
+      { block_id: "bench", block_type: "strength", display_name: "Bench Press", sets: 3, reps: "5" },
+    ] }] }] }] } as StructuredPlan;
+  const stateFor = (completion_status: TodayCommandView["today"]["completion_status"]): TodayCommandView => ({
+    active_plan: { id: "plan-1", name: "Fight camp", phase: "GPP", fight_date: "2026-11-05" },
+    today: { training_day: day, recommendation_state: "train_as_planned", decision_tier: "green", warnings: [],
+      next_session: {}, session_scope: "today", session_label: "Today's session", completion_status },
+    risk_watch: [], open_injuries: [], week_summary: {}, quick_actions: [],
+  } as TodayCommandView);
+  const focus = { focus: null, training_day: null, sport: null, items: [{ id: "pistol-cue", origin: "inferred",
+    focus: "Keep your foot planted and control the descent.", training_day: "2026-10-08", sport: null,
+    scope: "specific_exercise", category: "strength", exercise_targets: ["pistol squat"], movement_patterns: [] }] };
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify(focus), { status: 200 })) as typeof fetch;
+  const container = domWindow.document.createElement("div");
+  domWindow.document.body.append(container);
+  const root = createRoot(container);
+  const render = async (state: TodayCommandView) => {
+    await act(async () => {
+      root.render(<AuthProvider><ToastProvider>
+        <TodaySessionPanel state={state} structuredPlan={plan} token="token" painReasonAllowed onRefresh={async () => {}} />
+      </ToastProvider></AuthProvider>);
+    });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  };
+  const cueOf = (name: string) => [...container.querySelectorAll(".ex-row")]
+    .find((row) => row.querySelector(".ex-row-title")?.textContent === name)?.querySelector(".ex-row-cue")?.textContent ?? null;
+  try {
+    await render(stateFor("not_started"));
+    // The no-session branch: the date headline, the day's exercises, no session focus line.
+    assert.equal(container.querySelector(".today-session-head"), null);
+    assert.ok(container.querySelector(".ex-row"), "today's exercises are listed");
+    assert.equal(cueOf("Assisted Pistol Squat"), "UNLXCK CUEKeep your foot planted and control the descent.Dismiss");
+    assert.equal(cueOf("Bench Press"), null);
+    assert.equal(container.querySelector(".today-session-focus"), null);
+    await render(stateFor("done"));
+    assert.equal(container.querySelectorAll(".ex-row-cue").length, 0);
+  } finally {
+    globalThis.fetch = original;
+    act(() => root.unmount());
+    container.remove();
+  }
+});

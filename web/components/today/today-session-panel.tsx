@@ -1256,6 +1256,23 @@ export function TodaySessionPanel({
     );
   }
 
+  const visibleFocus = trainingFocus?.items
+    ? { ...trainingFocus, items: trainingFocus.items.filter((item) => !dismissedFocusIds.includes(item.id)) }
+    : trainingFocus;
+  const dismissShownFocus = (id: string) => {
+    setDismissedFocusIds((ids) => [...ids, id]);
+    // Hidden at once; the server keeps it hidden. A failed write shows it again.
+    void dismissTrainingFocus(token, id)
+      .catch(() => setDismissedFocusIds((ids) => ids.filter((dismissedId) => dismissedId !== id)))
+      .finally(announceTrainingFocusChanged);
+  };
+  // Exercise cues stay with their exercise while it is trained, gone once logged.
+  // With no reported session the tier reads "preview", but the rows are today's.
+  const shownExerciseCues: ExerciseCues | null = !safeSession
+    && ((hasSession && isSessionPreview) || status === "not_started" || status === "started")
+    ? { cues: exerciseCues(visibleFocus, current.sessions.flatMap((item) => item.blocks ?? [])), onDismiss: dismissShownFocus }
+    : null;
+
   if (!hasSession) {
     return (
       <section
@@ -1287,6 +1304,7 @@ export function TodaySessionPanel({
             exerciseLogging={exerciseLogging}
             accessToken={token}
             exerciseCustomisation={exerciseCustomisation}
+            exerciseCues={shownExerciseCues}
           />
         ) : (
           <p className="muted">No plan session today. Use View plan to find the next one.</p>
@@ -1393,9 +1411,6 @@ export function TodaySessionPanel({
     liveBlocks: !isSessionPreview && livePrescription ? livePrescription.session.blocks ?? [] : undefined,
     plannedSessionCount: storedCurrent.sessions.length,
   });
-  const visibleFocus = trainingFocus?.items
-    ? { ...trainingFocus, items: trainingFocus.items.filter((item) => !dismissedFocusIds.includes(item.id)) }
-    : trainingFocus;
   const focusTarget = {
     session: focusSession,
     contactLeads: contactLeads || Boolean(previewContactTarget),
@@ -1407,17 +1422,6 @@ export function TodaySessionPanel({
     : null;
   const sessionCue = focusBeforeWork
     ? relevantFocusItem(visibleFocus, focusTarget, (item) => item.origin === "inferred" && item.scope === "sport_technique")
-    : null;
-  const dismissShownFocus = (id: string) => {
-    setDismissedFocusIds((ids) => [...ids, id]);
-    // Hidden at once; the server keeps it hidden. A failed write shows it again.
-    void dismissTrainingFocus(token, id)
-      .catch(() => setDismissedFocusIds((ids) => ids.filter((dismissedId) => dismissedId !== id)))
-      .finally(announceTrainingFocusChanged);
-  };
-  // Exercise cues stay with their exercise while it is trained, gone once logged.
-  const shownExerciseCues: ExerciseCues | null = !safeSession && (isSessionPreview || status === "not_started" || status === "started")
-    ? { cues: exerciseCues(visibleFocus, current.sessions.flatMap((item) => item.blocks ?? [])), onDismiss: dismissShownFocus }
     : null;
 
   return (
