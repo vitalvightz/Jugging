@@ -7,7 +7,8 @@ export type IndexedBodyweightEntry = NutritionBodyweightLogEntry & {
   sourceIndex: number;
 };
 
-const RANGE_DAY_WINDOW: Record<Exclude<BodyweightRange, "All">, number> = {
+/** Calendar days each range covers, ending on the latest weigh-in's day. */
+export const RANGE_DAY_WINDOW: Record<Exclude<BodyweightRange, "All">, number> = {
   "7D": 7,
   "30D": 30,
 };
@@ -36,9 +37,17 @@ export function getBodyweightEntriesWithIndex(entries: NutritionBodyweightLogEnt
     .sort((left, right) => getBodyweightTimestamp(right) - getBodyweightTimestamp(left));
 }
 
+/** A `YYYY-MM-DD` date shifted by whole local calendar days. */
+export function shiftDate(date: string, days: number): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const shifted = new Date(year, month - 1, day + days);
+  return `${shifted.getFullYear()}-${String(shifted.getMonth() + 1).padStart(2, "0")}-${String(shifted.getDate()).padStart(2, "0")}`;
+}
+
 /**
  * Weigh-ins that can be plotted for the range, oldest first. Ranges count back
- * from the latest weigh-in, so a gap in logging never leaves an empty chart.
+ * whole calendar days from the latest weigh-in's day, so a gap in logging
+ * never leaves an empty chart.
  */
 export function getBodyweightTrend(entries: NutritionBodyweightLogEntry[], range: BodyweightRange): IndexedBodyweightEntry[] {
   const plottable = getBodyweightEntriesWithIndex(entries)
@@ -46,8 +55,8 @@ export function getBodyweightTrend(entries: NutritionBodyweightLogEntry[], range
     .reverse();
   const latest = plottable.at(-1);
   if (range === "All" || !latest) return plottable;
-  const cutoff = getBodyweightTimestamp(latest) - (RANGE_DAY_WINDOW[range] - 1) * 24 * 60 * 60 * 1000;
-  return plottable.filter((entry) => getBodyweightTimestamp(entry) >= cutoff);
+  const firstDay = shiftDate(latest.date, 1 - RANGE_DAY_WINDOW[range]);
+  return plottable.filter((entry) => entry.date >= firstDay);
 }
 
 /** Change from the first to the last weigh-in in a trend, or null with fewer than two. */

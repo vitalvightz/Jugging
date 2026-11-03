@@ -121,12 +121,22 @@ for (const [width, height] of [[390, 844], [1280, 800]] as const) {
     const selected = trend.getByLabel("Selected weight");
     await expect(selected).toContainText("73.4 kg");
     await expect(selected).toContainText("−0.2 kg vs previous");
-    await expect(trend.getByText("Down 0.7 kg since Wed 21 Oct 2026")).toBeVisible();
-    await expect(selected).toContainText("Trend 73.7 kg");
-    await expect(trend.getByText("Trend (estimate)")).toBeVisible();
-    await trend.getByRole("slider", { name: "Inspect logged weight" }).focus();
+    await expect(selected).toContainText("3 entries · Down 0.7 kg");
+    // Only logged weights are drawn: no smoothed estimate, no shaded area.
+    await expect(trend.getByText("Trend (estimate)")).toHaveCount(0);
+    await expect(selected).not.toContainText("Trend");
+    const slider = trend.getByRole("slider", { name: "Inspect logged weight" });
+    await expect(slider.locator("circle")).toHaveCount(3);
+    await expect(slider.locator("path")).toHaveCount(1);
+    // 30 days is a calendar window: three weigh-ins over six days use a fifth of it.
+    const [first, last] = await slider.locator("circle").evaluateAll(circles => [circles[0], circles[2]].map(c => Number(c.getAttribute("cx"))));
+    const plotWidth = await slider.evaluate(element => element.getBoundingClientRect().width);
+    expect((last - first) / plotWidth).toBeLessThan(0.25);
+    expect((await slider.boundingBox())!.height).toBeLessThanOrEqual(180);
+    await slider.focus();
     await page.keyboard.press("ArrowLeft");
     await expect(selected).toContainText("73.6 kg");
+    await expect(slider).toContainText("73.6 kg");
     await shot("weight-tracker", true);
     await trend.scrollIntoViewIfNeeded();
     await shot("weight-trend");

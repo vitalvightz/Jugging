@@ -24,6 +24,7 @@ import {
   getCampWeight,
   getTargetGap,
   getTrendChange,
+  RANGE_DAY_WINDOW,
 } from "@/lib/nutrition-bodyweight";
 import { localDateValue, type TargetAndWeighIn, withBodyweightLog, withTargetAndWeighIn } from "@/lib/nutrition-workspace";
 import { WEIGHT_CUT_SAFETY } from "@/lib/safety-copy";
@@ -142,11 +143,6 @@ export function WeightTracker() {
   // Change from the weigh-in before each one, across the whole log.
   const previousOf = (entry: (typeof newestFirst)[number]) => newestFirst[newestFirst.findIndex(item => item.sourceIndex === entry.sourceIndex) + 1] ?? null;
   const selectedPrevious = selected ? previousOf(selected) : null;
-  // The smoothed trend for the days in range; absent from an older API.
-  const trendLine = trend.length
-    ? (derived?.bodyweight_trend ?? []).filter(point => point.date >= trend[0].date && point.date <= trend[trend.length - 1].date)
-    : [];
-  const selectedTrend = selected ? trendLine.find(point => point.date === selected.date) ?? null : null;
   const listed = showAll ? newestFirst : newestFirst.slice(0, LIST_PAGE);
   const tiles = [
     ...(gap != null ? [describeGap(gap)] : []),
@@ -229,7 +225,7 @@ export function WeightTracker() {
             {warning ? <SafetyNote tone="warning">{warning}</SafetyNote> : null}
 
             {trend.length ? (
-              <section className={`history-summary ${styles.card}`} aria-label="Weight trend">
+              <section className={`history-summary ${styles.card} ${styles.trendCard}`} aria-label="Weight trend">
                 <div className={summary.head}>
                   <h2 className={styles.sectionTitle}>Weight trend</h2>
                   <div className={summary.toggle} role="group" aria-label="Trend range">
@@ -241,27 +237,29 @@ export function WeightTracker() {
                   </div>
                 </div>
                 {selected ? (
-                  <div className={progress.selectedRecord} aria-live="polite" aria-label="Selected weight">
+                  <div className={styles.readout} aria-live="polite" aria-label="Selected weight">
                     <p><strong data-weight="">{formatWeight(selected.weight_kg)}</strong>
                       {selectedPrevious ? <span className={styles.change}>{formatWeightDelta(Math.round((selected.weight_kg - selectedPrevious.weight_kg) * 10) / 10)} vs previous</span> : null}</p>
-                    <p className={progress.note}>{[formatAppDate(selected.date), selected.time, selected.is_fasted == null ? null : formatFastedState(selected.is_fasted), selectedTrend ? `Trend ${formatWeight(selectedTrend.trend_weight_kg)}` : null].filter(Boolean).join(" · ")}</p>
-                    <button type="button" className={progress.textButton} onClick={() => setEditing({ mode: "edit", sourceIndex: selected.sourceIndex })}>Edit weight <span aria-hidden="true">→</span></button>
+                    <p className={styles.meta}>{[formatAppDate(selected.date), selected.time, selected.is_fasted == null ? null : formatFastedState(selected.is_fasted)].filter(Boolean).join(" · ")}</p>
+                    <p className={styles.meta}>
+                      {trend.length} {trend.length === 1 ? "entry" : "entries"}
+                      {trendChange != null ? ` · ${trendChange === 0 ? "No change" : `${trendChange < 0 ? "Down" : "Up"} ${Math.abs(trendChange).toFixed(1)} kg`}` : ""}
+                    </p>
                   </div>
                 ) : null}
-                <p className={progress.note}>
-                  {trend.length} {trend.length === 1 ? "entry" : "entries"}
-                  {trendChange != null ? ` · ${trendChange === 0 ? "No change" : `${trendChange < 0 ? "Down" : "Up"} ${Math.abs(trendChange).toFixed(1)} kg`} since ${formatAppDate(trend[0].date)}` : ""}
-                </p>
-                {trend.length >= 2 ? (
-                  <WeightTrendChart trend={trend} trendLine={trendLine} targetKg={targetKg} selectedIndex={selectedKey ? selectedIndex : trend.length - 1}
-                    onSelect={index => setSelectedKey(keyOf(trend[index]))} />
-                ) : (
-                  <p className={progress.note}>Log one more weight to see your trend line.</p>
-                )}
+                <WeightTrendChart trend={trend} days={range === "All" ? null : RANGE_DAY_WINDOW[range]} targetKg={targetKg}
+                  selectedIndex={selectedKey ? selectedIndex : trend.length - 1} inspecting={selectedKey != null}
+                  onSelect={index => setSelectedKey(keyOf(trend[index]))} />
+                {trend.length === 1 ? <p className={progress.note}>Log another weight to see how it changes.</p> : null}
+                {selected ? (
+                  <button type="button" className={`${progress.textButton} ${styles.edit}`} onClick={() => setEditing({ mode: "edit", sourceIndex: selected.sourceIndex })}>
+                    Edit weight <span aria-hidden="true">→</span>
+                  </button>
+                ) : null}
                 <details className={progress.about}>
                   <summary>About these numbers</summary>
-                  <p>Weight is your logged scale reading. It swings daily with water, food and training; the trend line smooths that into where you’re heading. Not an official weigh-in.</p>
-                  <p>The trend, 7-day average and weekly pace use one reading per day: your earliest fasted reading, or your earliest reading if none was fasted.</p>
+                  <p>The chart shows each logged scale reading, joined in order; days without one are left as gaps, never filled in. Weight swings daily with water, food and training, so read the direction over weeks. Not an official weigh-in.</p>
+                  <p>The 7-day average and weekly pace use one reading per day: your earliest fasted reading, or your earliest reading if none was fasted.</p>
                   <p>Weekly pace needs six days of entries over two weeks, including one in the last week.</p>
                 </details>
               </section>

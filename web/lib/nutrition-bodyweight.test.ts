@@ -8,6 +8,7 @@ import {
   getCampWeight,
   getTargetGap,
   getTrendChange,
+  shiftDate,
 } from "./nutrition-bodyweight.ts";
 
 const entries = [
@@ -28,6 +29,14 @@ test("trend is oldest first and ranges count back from the latest weigh-in", () 
   assert.deepStrictEqual(getBodyweightTrend(entries, "7D").map((entry) => entry.date), ["2026-04-03", "2026-04-06", "2026-04-08"]);
   assert.deepStrictEqual(getBodyweightTrend(entries, "30D").map((entry) => entry.date), ["2026-04-01", "2026-04-03", "2026-04-06", "2026-04-08"]);
   assert.deepStrictEqual(getBodyweightTrend([], "All"), []);
+});
+
+test("ranges are whole calendar days, whatever the time of day", () => {
+  // 7 days ending Wed 08 Apr starts Thu 02 Apr, even before the latest weigh-in's time.
+  const early = [...entries, { date: "2026-04-02", time: "06:00", weight_kg: 74.3, is_fasted: true, notes: "" }];
+  assert.deepStrictEqual(getBodyweightTrend(early, "7D").map((entry) => entry.date), ["2026-04-02", "2026-04-03", "2026-04-06", "2026-04-08"]);
+  assert.equal(shiftDate("2026-03-01", -1), "2026-02-28");
+  assert.equal(shiftDate("2026-10-25", 1), "2026-10-26");
 });
 
 test("trend skips entries that cannot be plotted", () => {

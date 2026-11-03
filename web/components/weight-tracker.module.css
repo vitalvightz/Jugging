@@ -14,12 +14,25 @@
 .change { display: inline-block; margin-left: 10px; font-size: 0.85rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .card [role="slider"]:focus-visible { outline: 2px solid var(--brand-red); outline-offset: 3px; }
 .targetLine { stroke: var(--progress-gold); stroke-width: 1.2; stroke-dasharray: 5 5; vector-effect: non-scaling-stroke; opacity: .85; }
-.trendLine { fill: none; stroke: var(--text-primary); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; opacity: .85; }
-.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0 0; font-size: 12px; color: var(--text-muted); }
-.legend span { display: inline-flex; align-items: center; gap: 7px; }
-.legendDot { width: 8px; height: 8px; border: 1.5px solid var(--text-secondary); border-radius: 50%; background: var(--bg-panel); }
-.legendLine { width: 16px; height: 2px; border-radius: 2px; background: var(--text-primary); opacity: .85; }
 .targetLabel { position: absolute; right: 0; transform: translateY(-120%); font-size: 11px; font-weight: 600; color: var(--progress-gold); font-variant-numeric: tabular-nums; pointer-events: none; }
+/* Weight trend: a flat readout over a short, transparent time-axis chart. */
+.trendCard { gap: 12px; }
+.readout p { margin: 0; }
+.readout strong { font-size: 2rem; font-weight: 700; letter-spacing: -.035em; line-height: 1.1; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.readout .meta { margin-top: 4px; font-size: 12px; line-height: 1.5; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+/* Beats the shared .linePlot height, including its phone override. */
+.trendCard .plot { height: 168px; margin: 4px 0 0; background: transparent; }
+.yTick { position: absolute; left: 0; transform: translateY(-50%); font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; pointer-events: none; }
+.line { fill: none; stroke: var(--text-secondary); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.point { fill: var(--bg-panel); stroke: var(--text-secondary); stroke-width: 1.5; }
+.selectedPoint { fill: var(--text-primary); stroke: var(--bg-panel); stroke-width: 1.5; }
+.latestPoint { fill: var(--brand-red); stroke: var(--bg-panel); stroke-width: 1.5; }
+.tooltip { position: absolute; transform: translate(-50%, calc(-100% - 10px)); padding: 4px 8px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-surface); color: var(--text-secondary); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none; }
+.tooltip[data-below] { transform: translate(-50%, 10px); }
+.tooltip strong { color: var(--text-primary); }
+.dateAxis { position: relative; height: 16px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.dateAxis span { position: absolute; top: 0; white-space: nowrap; }
+.edit { justify-self: start; min-height: 36px; padding: 0; }
 .listSection { display: grid; gap: 12px; }
 .listSection > :global(.secondary-button) { justify-self: start; }
 .row { padding: 0; }
