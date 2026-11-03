@@ -101,6 +101,50 @@ it under its own **"Technical Footwork"** label (via
 support" / energy-system session. It therefore surfaces for footwork-focused
 athletes without ever reading as a conditioning dose.
 
+### 4. Experience-aware and cross-phase ranking — DONE
+
+The selector previously ranked only on tactical function, style and sport, so
+`technical_complexity` mattered only as a taper exclusion and the same top drill
+won every phase. Two ranking nudges now apply inside the relevance-ranked list
+(`_technical_footwork_rank_adjustments`); neither changes eligibility or dose:
+
+- **Competitive maturity.** The pipeline derives it from intake status + record
+  with the Stage 2 `_derive_competitive_maturity` and passes
+  `competitive_maturity` in the conditioning flags (gap-fill reads it from the
+  athlete model). `experienced_amateur` / `developing_pro` / `established_pro`
+  get high +0.5, low −0.5; `novice_amateur` gets high −0.5, low +0.3.
+  Unknown maturity and `early_pro` are unadjusted. The values sit below the
+  typical gap between tactical-function matches, so an irrelevant drill never
+  overtakes a relevant one just for being harder or easier.
+- **Camp history.** Footwork placed in an earlier phase is passed forward as
+  `prior_technical_footwork`. In GPP/SPP a repeat is down-ranked by 0.75 (still
+  a fallback); in the taper it gets +0.5, so the taper rehearses a grooved drill
+  instead of introducing a new one.
+
+Both add reason codes (`technical_footwork_complexity_fit:<band>:<complexity>`,
+`technical_footwork_repeat_deprioritised`, `technical_footwork_taper_familiar`).
+### 5. Advanced boxing drills
+
+Three boxing drills were added after checking each against the existing bank
+for overlap:
+
+| Drill | Complexity | Phases | Fills |
+|---|---|---|---|
+| Double Pivot Chain | high | GPP, SPP | Advanced progression of Step-Back Pivot / Check-Hook Pivot: chain rear- and lead-foot pivots to take a new attacking angle (counter / distance strikers). |
+| Shift-Step Angle Creation | high | GPP, SPP | Boxing shift: no drill previously changed stance and lane mid-attack (pressure fighters / brawlers; `side_rule: alternate_stances`). |
+| Foot Feint and Reposition | moderate | GPP, SPP, TAPER | Foot feints to draw a reaction before repositioning (counter / distance strikers). |
+
+Their tactical functions are set so that athletes with unknown or novice
+maturity keep their existing default picks; established pros reach Double Pivot
+Chain (counter striker) and Shift-Step (pressure fighter) through the maturity
+nudge. Foot Feint is a lower-ranked relevant candidate (fallback / gap-fill),
+not a default. Outside-foot front shuffle, back shuffle + jam, and the slip-line
+180° pivot were left out as overlapping existing drills or being head-movement
+work rather than footwork; guard-manipulation shuffle is hand-fighting.
+
+Demonstration clips are not attached yet: they still go through the normal
+media review before any URL is added.
+
 ## Note on the late-camp golden snapshot
 
 `tests/golden_snapshots/late_camp_selector_audit/after.json` was already stale

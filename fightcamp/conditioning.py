@@ -2153,6 +2153,31 @@ _TECHNICAL_FOOTWORK_FUNCTION_PREFERENCES = {
     },
 }
 
+# Competitive maturity (``athlete_model._derive_competitive_maturity``: status +
+# record) shifts the within-relevance rank toward drills of a fitting technical
+# complexity. These are ranking nudges only, sized below the typical gap between
+# tactical-function matches, so a style-relevant drill is never displaced by an
+# irrelevant one just for being harder or easier. Eligibility (phase, taper
+# complexity, reactive level, cue source, injury) is unchanged, and the drill's
+# dose is untouched: complexity is a skill demand, not a workload change.
+# Unknown maturity and ``early_pro`` get no adjustment (current behaviour).
+_TECHNICAL_FOOTWORK_EXPERIENCED_MATURITY = {
+    "experienced_amateur",
+    "developing_pro",
+    "established_pro",
+}
+_TECHNICAL_FOOTWORK_NOVICE_MATURITY = {"novice_amateur"}
+_TECHNICAL_FOOTWORK_COMPLEXITY_ADJUSTMENT = {
+    "experienced": {"high": 0.5, "moderate": 0.0, "low": -0.5},
+    "novice": {"high": -0.5, "moderate": 0.0, "low": 0.3},
+}
+# Each phase is generated as its own conditioning block. A drill already used in
+# an earlier phase is de-prioritised in GPP/SPP so the camp exposes the athlete
+# to more than one relevant pattern, and preferred in the taper, which should
+# rehearse already-grooved movement rather than introduce a new drill.
+_TECHNICAL_FOOTWORK_REPEAT_PENALTY = 0.75
+_TECHNICAL_FOOTWORK_TAPER_FAMILIARITY_BONUS = 0.5
+
 _TECHNICAL_FOOTWORK_REACTIVE_LEVELS = {"closed", "semi_reactive", "reactive"}
 _TECHNICAL_FOOTWORK_CUE_SOURCES = {"self", "coach", "partner", "visual"}
 _TECHNICAL_FOOTWORK_SIDE_RULES = {
@@ -2321,6 +2346,44 @@ def _technical_footwork_match_evidence(
     return score, matched_functions
 
 
+def _technical_footwork_maturity_band(flags: dict) -> str:
+    maturity = str(flags.get("competitive_maturity") or "").strip().lower()
+    if maturity in _TECHNICAL_FOOTWORK_EXPERIENCED_MATURITY:
+        return "experienced"
+    if maturity in _TECHNICAL_FOOTWORK_NOVICE_MATURITY:
+        return "novice"
+    return ""
+
+
+def _technical_footwork_prior_names(flags: dict) -> set[str]:
+    return {
+        str(name).strip()
+        for name in flags.get("prior_technical_footwork", []) or []
+        if str(name).strip()
+    }
+
+
+def _technical_footwork_rank_adjustments(flags: dict, drill: dict) -> tuple[float, list[str]]:
+    """Experience- and camp-history ranking nudges, with their reason codes."""
+    adjustment = 0.0
+    reason_codes: list[str] = []
+    band = _technical_footwork_maturity_band(flags)
+    if band:
+        complexity = str(drill.get("technical_complexity", "moderate")).strip().lower()
+        delta = _TECHNICAL_FOOTWORK_COMPLEXITY_ADJUSTMENT[band].get(complexity, 0.0)
+        if delta:
+            adjustment += delta
+            reason_codes.append(f"technical_footwork_complexity_fit:{band}:{complexity}")
+    if drill.get("name") in _technical_footwork_prior_names(flags):
+        if str(flags.get("phase", "")).upper() == "TAPER":
+            adjustment += _TECHNICAL_FOOTWORK_TAPER_FAMILIARITY_BONUS
+            reason_codes.append("technical_footwork_taper_familiar")
+        else:
+            adjustment -= _TECHNICAL_FOOTWORK_REPEAT_PENALTY
+            reason_codes.append("technical_footwork_repeat_deprioritised")
+    return adjustment, reason_codes
+
+
 def _technical_footwork_selection_reasons(flags: dict, drill: dict) -> dict:
     canonical_sport = normalize_sport(flags.get("sport") or flags.get("fight_format") or "")
     # ``styles`` are the athlete's own styles that feed the tactical-function
@@ -2338,6 +2401,8 @@ def _technical_footwork_selection_reasons(flags: dict, drill: dict) -> dict:
         style_tokens=set(preference_styles),
         function_preferences=function_preferences,
     )
+    rank_adjustment, rank_reason_codes = _technical_footwork_rank_adjustments(flags, drill)
+    score += rank_adjustment
     drill_tags = set(normalize_tags(drill.get("tags", [])))
     matched_styles = sorted(set(preference_styles) & drill_tags)
     reason_codes = ["technical_footwork_guarantee"]
@@ -2347,6 +2412,7 @@ def _technical_footwork_selection_reasons(flags: dict, drill: dict) -> dict:
         f"technical_footwork_function_match:{function}"
         for function in matched_functions
     )
+    reason_codes.extend(rank_reason_codes)
     return {
         "goal_hits": 1,
         "weakness_hits": 0,
@@ -2488,7 +2554,8 @@ def select_technical_footwork_candidates(
             style_tokens=style_token_set,
             function_preferences=function_preferences,
         )
-        return score
+        adjustment, _codes = _technical_footwork_rank_adjustments(flags, drill)
+        return score + adjustment
 
     candidates.sort(key=lambda d: (-_match_score(d), d.get("name") or ""))
     safe: list[dict] = []
