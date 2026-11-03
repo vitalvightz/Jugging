@@ -160,3 +160,107 @@ def test_incomplete_stage2_plan_is_released_flagged_not_replaced_by_stage1(monke
         for error in result["stage2_validator_report"]["errors"]
     )
     assert result["stage2_validator_report"]["release_decision"] == "publish_with_flags"
+
+
+# Per-call deadline: the SDK timeout only bounds gaps between streamed events,
+# so a call whose stream never finishes must still end on its own deadline
+# instead of holding the job until the whole-finalize cap.
+class _HangingStream(_Stream):
+    async def get_final_response(self):
+        await asyncio.Event().wait()
+
+
+def test_model_call_past_its_total_deadline_fails_with_deadline_error(monkeypatch, caplog):
+    from api.stage2_automation import Stage2CallDeadlineError
+
+    monkeypatch.setenv("UNLXCK_STAGE2_CALL_DEADLINE_SECONDS", "0.05")
+    client = _Client(None)
+    client.responses.stream = lambda **kwargs: _HangingStream(None)
+    automator = OpenAIStage2Automator(client=client, model="test-model")
+
+    with caplog.at_level("INFO"), pytest.raises(Stage2CallDeadlineError) as raised:
+        asyncio.run(automator._generate_text(
+            "private athlete prompt", attempt_label="first_pass", source="self_serve",
+            log_context={"job_id": "job-deadline"},
+        ))
+    assert "model_request_deadline_exceeded job_id=job-deadline attempt=first_pass" in caplog.text
+    assert "private athlete prompt" not in caplog.text
+    # A failed call still leaves an auditable cost row.
+    assert raised.value.stage2_cost["stage2_elapsed_seconds"] >= 0.05
+
+
+def test_structured_calls_use_their_own_deadline(monkeypatch):
+    monkeypatch.setenv("UNLXCK_STAGE2_CALL_DEADLINE_SECONDS", "111")
+    monkeypatch.setenv("UNLXCK_STAGE2_STRUCTURED_CALL_DEADLINE_SECONDS", "222")
+    assert stage2_module._stage2_call_deadline_seconds("first_pass") == 111.0
+    assert stage2_module._stage2_call_deadline_seconds("first_pass_retry") == 111.0
+    assert stage2_module._stage2_call_deadline_seconds("structured_first") == 222.0
+    assert stage2_module._stage2_call_deadline_seconds("structured_repair") == 222.0
+    monkeypatch.setenv("UNLXCK_STAGE2_CALL_DEADLINE_SECONDS", "0")
+    assert stage2_module._stage2_call_deadline_seconds("first_pass") is None
+
+
+def test_default_deadlines_leave_room_inside_the_job_budget(monkeypatch):
+    monkeypatch.delenv("UNLXCK_STAGE2_CALL_DEADLINE_SECONDS", raising=False)
+    monkeypatch.delenv("UNLXCK_STAGE2_STRUCTURED_CALL_DEADLINE_SECONDS", raising=False)
+    assert stage2_module._stage2_call_deadline_seconds("first_pass") == 360.0
+    assert stage2_module._stage2_call_deadline_seconds("structured_first") == 420.0
+
+
+def test_hung_first_pass_is_retried_once_and_the_retry_is_released(monkeypatch):
+    monkeypatch.setenv("UNLXCK_STAGE2_CALL_DEADLINE_SECONDS", "0.05")
+    good = SimpleNamespace(
+        id="resp_retry", status="completed", output_text="# Stage 2 plan from the retry",
+        usage={"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
+    )
+    streams = [_HangingStream(None), _Stream(good)]
+    client = _Client(good)
+    labels: list[str] = []
+    client.responses.stream = lambda **kwargs: streams.pop(0)
+    automator = OpenAIStage2Automator(client=client, model="test-model")
+    original = automator._generate_text
+
+    async def recording(prompt, **kwargs):
+        labels.append(kwargs["attempt_label"])
+        return await original(prompt, **kwargs)
+
+    monkeypatch.setattr(automator, "_generate_text", recording)
+    monkeypatch.setattr(
+        stage2_module, "build_stage2_package",
+        lambda **_: {"draft_plan_text": "# draft", "handoff_text": "handoff", "planning_brief": {}},
+    )
+    monkeypatch.setattr(
+        stage2_module, "review_stage2_output",
+        lambda **_: {"status": "PASS", "needs_retry": False, "validator_report": {
+            "errors": [], "warnings": [], "blocking_warnings": [], "review_flags": []}},
+    )
+    monkeypatch.setattr(stage2_module, "athlete_release_with_flags_findings", lambda _report: [])
+    monkeypatch.setattr(stage2_module, "admin_review_blocking_findings", lambda _report: [])
+    monkeypatch.setattr(stage2_module, "_structured_plan_enabled", lambda: False)
+
+    result = asyncio.run(automator.finalize(stage1_result={"status": "ready", "plan_text": "# draft"}))
+
+    assert labels == ["first_pass", "first_pass_retry"]
+    assert result["plan_text"].startswith("# Stage 2 plan from the retry")
+
+
+def test_second_first_pass_hang_fails_cleanly_without_a_third_call(monkeypatch):
+    from api.stage2_automation import Stage2CallDeadlineError
+
+    monkeypatch.setenv("UNLXCK_STAGE2_CALL_DEADLINE_SECONDS", "0.05")
+    calls: list[int] = []
+    client = _Client(None)
+
+    def hanging(**kwargs):
+        calls.append(1)
+        return _HangingStream(None)
+
+    client.responses.stream = hanging
+    automator = OpenAIStage2Automator(client=client, model="test-model")
+    monkeypatch.setattr(
+        stage2_module, "build_stage2_package",
+        lambda **_: {"draft_plan_text": "# draft", "handoff_text": "handoff", "planning_brief": {}},
+    )
+    with pytest.raises(Stage2CallDeadlineError):
+        asyncio.run(automator.finalize(stage1_result={"status": "ready", "plan_text": "# draft"}))
+    assert len(calls) == 2

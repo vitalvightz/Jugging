@@ -292,6 +292,17 @@ def test_open_prompt_has_no_word_caps_or_forced_progress():
     assert "concise, personalised coaching" in prompt
 
 
+def test_open_plan_card_format_matches_rule_6a():
+    from fightcamp.stage2_payload_open_ongoing import build_open_ongoing_payload
+    rules = " ".join(build_open_ongoing_payload(athlete_model={})["open_plan_spec"]["render_rules"])
+    # One card contract: no competing section scaffold that RULE 6A and the
+    # shared "do not repeat Fallback labels" rule forbid.
+    assert "Objective/Main work/Fallback" not in rules
+    assert "RULE 6A coaching lines (How, Cue, Easier, Stop" in rules
+    assert "Do not add separate Main work, Fallback, Coach note or Stop rule sections." in rules
+    assert "RULE 6A" in STAGE2_FINALIZER_PROMPT
+
+
 def _assignment(brief, day, name):
     for week in brief["weekly_role_map"]["weeks"]:
         for role in week["session_roles"]:
