@@ -62,7 +62,9 @@ export function WeightTrendChart({ trend, rangeStart, today, targetKg, selectedI
   const low = Math.min(...weights), high = Math.max(...weights);
   const base = (step: number) => Math.round(((low + high) / 2 - 1.5 * step) / step) * step;
   const fits = (s: number) => base(s) - PAD * s <= low + 1e-9 && base(s) + (3 + PAD) * s >= high - 1e-9;
-  const step = STEPS.find(fits) ?? STEPS[STEPS.length - 1];
+  // Past the largest round step (implausible data), widen it until every reading fits.
+  const largest = STEPS[STEPS.length - 1];
+  const step = STEPS.find(fits) ?? Math.ceil((high - low) / ((3 + 2 * PAD) * largest) + 1) * largest;
   const ticks = [3, 2, 1, 0].map(n => base(step) + n * step);
   const floor = ticks[3] - PAD * step, ceiling = ticks[0] + PAD * step;
   const y = (value: number) => TOP + (ceiling - value) / (ceiling - floor) * (height - TOP - BOTTOM);
@@ -125,7 +127,7 @@ export function WeightTrendChart({ trend, rangeStart, today, targetKg, selectedI
         // so it stays inside the plot at either edge.
         <span className={styles.tooltip} aria-hidden="true" data-edge={selectedY < height / 2 ? "bottom" : "top"}
           style={{ left: selectedX, transform: `translateX(-${(selectedX / width * 100).toFixed(1)}%)` }}>
-          <strong>{kg(selected.weight_kg)}</strong> {shortDate(selected.date)}{selected.time ? ` · ${selected.time}` : ""}
+          <strong>{kg(selected.weight_kg)}</strong> {shortDate(selected.date, withYear)}{selected.time ? ` · ${selected.time}` : ""}
         </span>
       ) : null}
     </div>

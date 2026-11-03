@@ -166,7 +166,7 @@ export function validateQuickBuildInput(
   if (input.tactical_style.length > 1) {
     errors.tactical_style = "Pick only one tactical style.";
   }
-  if (!input.no_scheduled_fight && input.target_weight_kg != null && !(input.target_weight_kg > 0)) {
+  if (!input.no_scheduled_fight && input.target_weight_kg != null && !(Number.isFinite(input.target_weight_kg) && input.target_weight_kg > 0)) {
     errors.target_weight_kg = "Enter your target weight in kg.";
   }
   if (input.no_scheduled_fight) {

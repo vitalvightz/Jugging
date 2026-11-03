@@ -192,7 +192,7 @@ export function TargetSheet({ existingTargetKg, campWeightKg, fightDate, weighIn
   onSave: (values: TargetAndWeighIn) => Promise<void>;
 }) {
   const fieldId = useId();
-  const [target, setTarget] = useState(existingTargetKg != null ? existingTargetKg.toFixed(1) : "");
+  const [target, setTarget] = useState(existingTargetKg != null ? String(existingTargetKg) : "");
   const [type, setType] = useState<WeighInType | null>(weighInType);
   const [time, setTime] = useState(weighInTime ?? "");
   const { error, setError, isPending, run } = useSaving();

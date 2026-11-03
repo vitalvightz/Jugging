@@ -44,9 +44,10 @@ def test_current_target_follows_the_workspace_the_tracker_shows():
     shared_only = {"shared_camp_context": {"target_weight_kg": 87}}
     assert current_target_weight_kg(onboarding_draft=shared_only, latest_intake_row=None) == 87.0
     assert current_target_weight_kg(onboarding_draft=None, latest_intake_row=None) is None
+    assert current_target_weight_kg(onboarding_draft={"athlete": {"target_weight_kg": True}}, latest_intake_row=None) is None
 
 
-def test_current_target_read_failure_falls_back_to_the_plan_intake():
+def test_current_target_read_failure_returns_none():
     class _Broken:
         def get_profile(self, athlete_id):
             raise RuntimeError("read failed")

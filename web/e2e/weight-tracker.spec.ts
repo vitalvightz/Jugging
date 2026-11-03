@@ -5,6 +5,8 @@ import { isolateFromNetwork } from "./support";
 // plumbing and the "Coming soon" gate are gone. Set WEIGHT_TRACKER_SCREENSHOTS
 // to a directory to capture the page and logging sheet at phone and desktop widths.
 const shots = process.env.WEIGHT_TRACKER_SCREENSHOTS;
+// The pinned clock below means 27 Oct only in a browser on UTC.
+test.use({ timezoneId: "UTC" });
 
 // What the API derives from the log: a calendar 7-day average, the weekly pace,
 // the smoothed trend and the plan's own weight-cut band. `legacy` drops the

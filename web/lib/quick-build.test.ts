@@ -483,4 +483,5 @@ test("target weight rides with the fight date and is dropped for an open camp", 
   assert.equal(quickBuildToPlanRequest({ ...input, target_weight_kg: null }).athlete.target_weight_kg, null);
   assert.equal(validateQuickBuildInput(input).target_weight_kg, undefined);
   assert.equal(validateQuickBuildInput({ ...input, target_weight_kg: 0 }).target_weight_kg, "Enter your target weight in kg.");
+  assert.equal(validateQuickBuildInput({ ...input, target_weight_kg: Number("1e309") }).target_weight_kg, "Enter your target weight in kg.");
 });

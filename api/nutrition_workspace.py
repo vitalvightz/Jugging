@@ -692,9 +692,15 @@ def current_target_weight_kg(
     from the same payload and precedence as :func:`build_nutrition_workspace`.
     No age check here: callers gate it for under-18s."""
     _, _, raw_payload = _workspace_payload(onboarding_draft, latest_intake_row)
-    target = _coerce_optional_float(_coerce_dict(raw_payload.get("athlete")).get("target_weight_kg"))
+
+    def _read(section: str) -> float | None:
+        raw = _coerce_dict(raw_payload.get(section)).get("target_weight_kg")
+        # A boolean is not a weight (float(True) would read as 1 kg).
+        return None if isinstance(raw, bool) else _coerce_optional_float(raw)
+
+    target = _read("athlete")
     if target is None:
-        target = _coerce_optional_float(_coerce_dict(raw_payload.get("shared_camp_context")).get("target_weight_kg"))
+        target = _read("shared_camp_context")
     return target if target is not None and math.isfinite(target) and target > 0 else None
 
 

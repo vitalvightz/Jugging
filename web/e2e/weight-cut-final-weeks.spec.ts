@@ -224,7 +224,7 @@ test("the tracker replaces an existing target with the newest one", async ({ pag
   const summary = page.getByRole("region", { name: "Weight summary" });
   await summary.getByRole("button", { name: "Change" }).click();
   const sheet = page.getByRole("dialog", { name: "Target and weigh-in" });
-  await expect(sheet.getByLabel("Target weight")).toHaveValue("71.0");
+  await expect(sheet.getByLabel("Target weight")).toHaveValue("71");
   await sheet.getByLabel("Target weight").fill("69.5");
   await sheet.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
