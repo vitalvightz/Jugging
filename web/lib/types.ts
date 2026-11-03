@@ -163,6 +163,7 @@ export type NutritionBodyweightTrendPoint = {
 };
 
 export type WeightCutRiskBand = "none" | "moderate" | "high" | "severe";
+export type WeightCutStatus = "none" | "on_target" | "on_track" | "behind" | "too_aggressive";
 
 // Fields added after first release are optional: the web app can deploy ahead
 // of the API, and the tracker must read an older response without them.
@@ -172,6 +173,9 @@ export type NutritionDerivedState = {
   weight_cut_risk: boolean;
   weight_cut_risk_band?: WeightCutRiskBand;
   weight_cut_supervision_required?: boolean;
+  kg_to_target?: number | null;
+  weight_cut_status?: WeightCutStatus;
+  weight_cut_behind_kg?: number | null;
   aggressive_weight_cut: boolean;
   high_pressure_weight_cut: boolean;
   short_notice: boolean;

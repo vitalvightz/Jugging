@@ -27,7 +27,7 @@ export const SIDE_NAV_ITEMS: readonly NavItem[] = [
   { href: "/plans", label: "Plan", meta: "Active and saved plans" },
   { href: "/history", label: "History", meta: "Sessions, check-ins, injuries" },
   { href: "/timer", label: "Round timer", meta: "Rounds and rest, any time" },
-  { href: "/nutrition", label: "Weight tracker", meta: "Weigh-ins and trend to target" },
+  { href: "/nutrition", label: "Weight tracker", meta: "Daily weights and trend to target" },
   { href: "/onboarding", label: "Camp Setup", meta: "Start or edit your camp" },
   { href: "/settings", label: "Settings", meta: "Account & preferences" },
 ] as const;

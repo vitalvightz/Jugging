@@ -3337,9 +3337,10 @@ html[data-theme="light"] .today-safe-list[data-kind="blocked"] li::before {
   color: var(--text-primary);
 }
 
-/* Weight tracker shortcut wears the plan's optional mental-support styling
-   (Tactical Watch): the same purple surface, lavender text and slow sweep. */
-html:root .overview-risk-more.overview-weigh-in {
+/* Weight surfaces (Home's tracker shortcut, Today's weigh-in card) wear the plan's
+   optional mental-support styling (Tactical Watch): the same purple surface,
+   lavender text and slow sweep. */
+html:root .weigh-in-surface {
   position: relative;
   overflow: hidden;
   border-color: #393244;
@@ -3347,7 +3348,7 @@ html:root .overview-risk-more.overview-weigh-in {
   color: #c8b7ef;
 }
 
-html:root .overview-risk-more.overview-weigh-in::after {
+html:root .weigh-in-surface::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -3357,30 +3358,30 @@ html:root .overview-risk-more.overview-weigh-in::after {
   animation: sp-optional-sweep 10s ease-in-out infinite;
 }
 
-html:root .overview-risk-more.overview-weigh-in:hover,
-html:root .overview-risk-more.overview-weigh-in:focus-visible {
+html:root a.weigh-in-surface:hover,
+html:root a.weigh-in-surface:focus-visible {
   border-color: #4a3f5c;
   background: #221f30;
   color: #ddd0f7;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html:root .overview-risk-more.overview-weigh-in::after { animation: none; }
+  html:root .weigh-in-surface::after { animation: none; }
 }
 
 /* Light theme: the brand red instead of purple, same sweep. */
-html[data-theme="light"]:root .overview-risk-more.overview-weigh-in {
+html[data-theme="light"]:root .weigh-in-surface {
   border-color: rgba(189, 16, 32, 0.22);
   background: rgba(189, 16, 32, 0.06);
   color: var(--brand-red, #bd1020);
 }
 
-html[data-theme="light"]:root .overview-risk-more.overview-weigh-in::after {
+html[data-theme="light"]:root .weigh-in-surface::after {
   background: linear-gradient(105deg, transparent 35%, rgba(189, 16, 32, 0.1) 50%, transparent 65%);
 }
 
-html[data-theme="light"]:root .overview-risk-more.overview-weigh-in:hover,
-html[data-theme="light"]:root .overview-risk-more.overview-weigh-in:focus-visible {
+html[data-theme="light"]:root a.weigh-in-surface:hover,
+html[data-theme="light"]:root a.weigh-in-surface:focus-visible {
   border-color: rgba(189, 16, 32, 0.36);
   background: rgba(189, 16, 32, 0.1);
   color: var(--brand-red, #bd1020);

@@ -18,6 +18,8 @@ import { LandingPreviewCard } from "@/components/landing-preview-card";
 import { UnlockGlitchText } from "@/components/unlock-glitch-text";
 import { PlansFeaturedSkeleton, Skeleton } from "@/components/skeleton";
 import { XpProgressCard, XpProgressCardSkeleton } from "@/components/xp-progress-card";
+import { WeighInShortcut } from "@/components/weigh-in-shortcut";
+import { inFinalWeeks } from "@/lib/weight-cut-status";
 import { TrainingSummaryCard } from "@/components/training-summary-card";
 import { useXp } from "@/components/xp-provider";
 import { getPlan, getToday, getTrainingHistory } from "@/lib/api";
@@ -788,7 +790,10 @@ export default function HomePage() {
               {showCountdown ? <XpProgressCard /> : null}
             </>
           )}
-          <Link href="/nutrition" className="overview-risk-more overview-weigh-in">Weight tracker: log a weigh-in</Link>
+          {/* In a dated camp's final weeks, the same gate as Today's weigh-in card. */}
+          <WeighInShortcut token={session?.access_token ?? null}
+            showStatus={!tracking && hasActivePlan && !openOngoing && inFinalWeeks(activePlan.fight_date, trainingDay)
+              && !me.profile.is_minor && hasHealthDataConsent(me)} />
           <OverviewRiskWatch risks={risks} />
         </section>
       </>

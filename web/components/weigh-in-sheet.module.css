@@ -1,0 +1,21 @@
+.form { display: grid; gap: 20px; }
+.fieldLabel { display: block; margin: 0 0 8px; font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); }
+.weightField { display: grid; grid-template-columns: 56px minmax(0, 1fr) 56px; align-items: center; gap: 10px; }
+.weightField > button { height: 56px; border: 1px solid var(--border-default); border-radius: 14px; background: var(--bg-stat); color: var(--text-primary); font: inherit; font-size: 24px; cursor: pointer; }
+.weightField > button:hover { border-color: var(--border-strong); }
+.weightValue { display: flex; align-items: baseline; justify-content: center; gap: 6px; min-height: 72px; padding: 6px 12px; border: 1px solid var(--border-default); border-radius: 14px; background: var(--bg-stat); }
+.weightValue:focus-within { border-color: var(--brand-red); }
+.weightValue input { width: 100%; min-width: 0; max-width: 5.5ch; border: 0; padding: 0; background: transparent; color: var(--progress-gold); font: inherit; font-size: 44px; font-weight: 700; letter-spacing: -.04em; text-align: right; font-variant-numeric: tabular-nums; -moz-appearance: textfield; appearance: textfield; }
+.weightValue input::placeholder { color: var(--text-muted); opacity: .6; }
+.weightValue input::-webkit-outer-spin-button, .weightValue input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.weightValue input:focus { outline: none; }
+.weightValue > span { font-size: 16px; color: var(--text-secondary); }
+.fasted button { min-height: 40px; padding: 0 20px; }
+.when { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.formError { margin: 0; font-size: 0.85rem; color: var(--danger-ink); }
+.actions { display: grid; gap: 10px; }
+.actions > button { width: 100%; }
+.readOnly { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 14px 16px; border: 1px solid var(--border-subtle); border-radius: 14px; background: var(--bg-stat); font-size: 0.88rem; color: var(--text-secondary); }
+.readOnly strong { color: var(--progress-gold); font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+.weighInType button { min-height: 40px; padding: 0 16px; }
+.hint { margin: 8px 0 0; font-size: 0.8rem; line-height: 1.5; color: var(--text-muted); }

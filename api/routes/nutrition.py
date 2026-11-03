@@ -17,11 +17,11 @@ from api.store import AppStore
 
 
 def _sync_weight_from_log(*, update, previous_log, today):
-    """Reject new future-dated weigh-ins, then let the newest weigh-in set camp weight."""
+    """Reject new future-dated weights, then let the newest logged weight set camp weight."""
     if future_weigh_ins(update=update, previous_log=previous_log, today=today):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="A weigh-in can't be dated in the future.",
+            detail="A weight can't be dated in the future.",
         )
     return sync_current_weight_with_log(update=update, previous_log=previous_log, today=today)
 

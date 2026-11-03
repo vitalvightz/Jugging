@@ -788,8 +788,10 @@ export function saveOnboardingDraft(
   });
 }
 
+/** Shared while in flight, so Home, Today and the tracker opening together read once. */
 export function getNutritionCurrent(token: string): Promise<NutritionWorkspaceState> {
-  return readJson<NutritionWorkspaceState>("/api/nutrition/current", { token });
+  return sharedRead(token, "/api/nutrition/current", signal =>
+    readJson<NutritionWorkspaceState>("/api/nutrition/current", { token, signal }));
 }
 
 export function updateNutritionCurrent(

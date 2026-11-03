@@ -1,7 +1,9 @@
 import type {
+  NutritionBodyweightLogEntry,
   NutritionProfileInput,
   NutritionWorkspaceState,
   NutritionWorkspaceUpdateRequest,
+  WeighInType,
 } from "@/lib/types";
 
 export function toNumber(value: string): number | null {
@@ -113,4 +115,38 @@ export function toUpdateRequest(workspace: NutritionWorkspaceState): NutritionWo
     nutrition_monitoring: workspace.nutrition_monitoring,
     nutrition_coach_controls: workspace.nutrition_coach_controls,
   };
+}
+
+/** The update that saves a new weigh-in log and leaves everything else as read. */
+export function withBodyweightLog(
+  workspace: NutritionWorkspaceState,
+  entries: NutritionBodyweightLogEntry[],
+): NutritionWorkspaceUpdateRequest {
+  const payload = toUpdateRequest(workspace);
+  payload.nutrition_monitoring = { ...payload.nutrition_monitoring, daily_bodyweight_log: entries };
+  return payload;
+}
+
+export type TargetAndWeighIn = {
+  target_weight_kg: number | null;
+  weigh_in_type: WeighInType | null;
+  weigh_in_time: string | null;
+};
+
+/**
+ * The update that adds a target weight and weigh-in from the tracker. The API
+ * keeps a target already set in Camp Setup, so this only fills one that is missing.
+ */
+export function withTargetAndWeighIn(
+  workspace: NutritionWorkspaceState,
+  values: TargetAndWeighIn,
+): NutritionWorkspaceUpdateRequest {
+  const payload = toUpdateRequest(workspace);
+  payload.shared_camp_context = {
+    ...payload.shared_camp_context,
+    target_weight_kg: values.target_weight_kg ?? payload.shared_camp_context.target_weight_kg ?? null,
+    weigh_in_type: values.weigh_in_type,
+    weigh_in_time: values.weigh_in_time ?? "",
+  };
+  return payload;
 }

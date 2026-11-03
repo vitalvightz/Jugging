@@ -60,7 +60,7 @@ test("the phone bar shows across the signed-in workspace but not on gates or adm
 test("side menu links Nutrition as the weight tracker", () => {
   assert.deepEqual(
     SIDE_NAV_ITEMS.filter((item) => isStandaloneNutritionPath(item.href)),
-    [{ href: "/nutrition", label: "Weight tracker", meta: "Weigh-ins and trend to target" }],
+    [{ href: "/nutrition", label: "Weight tracker", meta: "Daily weights and trend to target" }],
   );
 });
 

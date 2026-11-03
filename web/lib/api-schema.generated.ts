@@ -1526,6 +1526,9 @@ export type NutritionDerivedState = {
   weight_cut_risk: boolean;
   weight_cut_risk_band: "high" | "moderate" | "none" | "severe";
   weight_cut_supervision_required: boolean;
+  kg_to_target: number | null;
+  weight_cut_status: "behind" | "none" | "on_target" | "on_track" | "too_aggressive";
+  weight_cut_behind_kg: number | null;
   aggressive_weight_cut: boolean;
   high_pressure_weight_cut: boolean;
   short_notice: boolean;
