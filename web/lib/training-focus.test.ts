@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 
 import type { TrainingFocusItem } from "./api-schema.generated.ts";
 import {
-  focusFitsSession, focusFitsSport, focusSessionFor, movementPattern, relevantFocus, relevantFocusItem, upcomingSport,
+  exerciseCues, focusFitsSession, focusFitsSport, focusSessionFor, movementPattern, relevantFocus, relevantFocusItem, upcomingSport,
   type FocusSession,
 } from "./training-focus.ts";
 
@@ -196,4 +196,39 @@ test("prehab and rehab-labelled blocks are never where a cue applies", () => {
     { block_type: "rehabilitation", display_name: "Split Squat Hold" },
   ] };
   assert.equal(relevantFocus(splitSquat, card(session)), null);
+});
+
+// -- YOUR FOCUS and UNLXCK CUE never compete for one slot -----------------------
+
+const athleteOnly = (item: TrainingFocusItem) => item.origin === "athlete";
+
+test("the fighter's own focus is never replaced by a newer fitting cue", () => {
+  const explicit: TrainingFocusItem = { ...inferred({}), id: "log-1", origin: "athlete", focus: "Need to get in pockets",
+    scope: null, category: null, exercise_targets: [] };
+  const jab = inferred({ id: "jab", focus: "Bring the jab straight back to guard.", scope: "sport_technique", sport: "boxing" });
+  const target = card(generatedSparring, { sport: "boxing" });
+  assert.equal(relevantFocusItem(withItems(jab, explicit), target)?.id, "jab");
+  assert.equal(relevantFocusItem(withItems(jab, explicit), target, athleteOnly)?.text, "Need to get in pockets");
+  assert.equal(relevantFocusItem(withItems(jab), target, athleteOnly), null);
+});
+
+test("exercise cues sit under the exercise each is about, once", () => {
+  const block = (block_id: string, display_name: string, block_type = "strength") => ({ block_id, block_type, display_name });
+  const pistol = inferred({ id: "pistol", focus: "Keep your foot planted and control the descent.", exercise_targets: ["pistol squat"] });
+  const bracing = inferred({ id: "brace", focus: "Brace before every loaded rep.", scope: "movement_pattern",
+    exercise_targets: [], movement_patterns: ["squat"] });
+  const jab = inferred({ id: "jab", scope: "sport_technique", sport: "boxing", exercise_targets: [] });
+  const explicit: TrainingFocusItem = { ...inferred({}), id: "log-1", origin: "athlete", focus: "Split squat depth" };
+  const blocks = [block("w", "Goblet Squat", "warmup"), block("a", "Assisted Pistol Squat"), block("b", "Goblet Squat"),
+    block("c", "Back Squat"), block("d", "Bench Press"), { display_name: "Front Squat", block_type: "strength" }];
+  assert.deepEqual(exerciseCues(withItems(explicit, jab, pistol, bracing), blocks), {
+    a: { id: "pistol", text: "Keep your foot planted and control the descent.", origin: "inferred" },
+    // The pattern cue shows under the first squat it fits, not again under Back Squat.
+    b: { id: "brace", text: "Brace before every loaded rep.", origin: "inferred" },
+  });
+  // No fitting cue, or no focus at all: nothing is shown.
+  assert.deepEqual(exerciseCues(withItems(pistol), [block("d", "Bench Press")]), {});
+  assert.deepEqual(exerciseCues(null, blocks), {});
+  // Athlete-built rows match the same way.
+  assert.deepEqual(Object.keys(exerciseCues(splitSquat, [{ ...block("x", "Split Squat"), prescription_source: "athlete" as const }])), ["x"]);
 });

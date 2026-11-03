@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
+import type { ShownFocus } from "@/lib/training-focus";
 import { ExerciseGlyphIcon, type ExerciseGlyphName } from "./exercise-glyph";
 import { getRehabExerciseGuide, rehabExerciseTarget } from "@/lib/rehab-exercise-guide";
 
@@ -374,9 +375,17 @@ const PlanSourceTextContext = createContext<string | null>(null);
 // plan: only the Today screen turns them on for its exercise rows.
 const ExerciseRationaleContext = createContext(false);
 
-/** Shows each exercise's "Builds" / "Why today" lines inside it (Today only). */
-export function ExerciseRationaleProvider({ children }: { children: ReactNode }) {
-  return <ExerciseRationaleContext.Provider value>{children}</ExerciseRationaleContext.Provider>;
+// UNLXCK cues keyed by block_id, each shown under its own exercise (Today only).
+export type ExerciseCues = { cues: Record<string, ShownFocus>; onDismiss?: (id: string) => void };
+const ExerciseCueContext = createContext<ExerciseCues | null>(null);
+
+/** Shows each exercise's "Builds" / "Why today" lines and its UNLXCK cue inside it (Today only). */
+export function ExerciseRationaleProvider({ children, cues = null }: { children: ReactNode; cues?: ExerciseCues | null }) {
+  return (
+    <ExerciseRationaleContext.Provider value>
+      <ExerciseCueContext.Provider value={cues}>{children}</ExerciseCueContext.Provider>
+    </ExerciseRationaleContext.Provider>
+  );
 }
 const PlanSafetyTextContext = createContext<string[]>([]);
 
@@ -830,6 +839,8 @@ export function ExerciseRow({
   const whyTodayRaw = showRationale ? athleteFacingRationale(block.why_today) : null;
   const whyToday = sameCopy(builds, whyTodayRaw) ? null : whyTodayRaw;
   const leadCue = getBlockExecutionDisplay(block).cues[0] ?? null;
+  const cueContext = useContext(ExerciseCueContext);
+  const unlxckCue = block.block_id ? cueContext?.cues[block.block_id] ?? null : null;
   // Matches the demo's first render (facade, not yet known to be watched), so
   // the server markup and hydration never print the lead cue twice.
   const [leadCuePinned, setLeadCuePinned] = useState(Boolean(media && leadCue));
@@ -891,6 +902,18 @@ export function ExerciseRow({
           {!compact && !open && detail === "inline" && compactStopRule ? <span className="ex-row-stop">
             <span className="sp-stat-label">Stop rule</span>{compactStopRule}
           </span> : null}
+          {unlxckCue ? (
+            <p className="ex-row-cue">
+              <span className="sp-stat-label">UNLXCK CUE</span>
+              {unlxckCue.text}
+              {unlxckCue.id && cueContext?.onDismiss ? (
+                <button type="button" className="today-session-focus-dismiss" aria-label="Dismiss this UNLXCK cue"
+                  onClick={() => cueContext.onDismiss?.(unlxckCue.id!)}>
+                  Dismiss
+                </button>
+              ) : null}
+            </p>
+          ) : null}
         </div>
         {/* Collapsed rows show which exercises have a demo; open, the demo
             itself is right below. On the right so every title lines up. */}

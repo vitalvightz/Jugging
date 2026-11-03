@@ -1,4 +1,4 @@
-"""Pins how athlete-built sessions reach the web, for the "Last training focus".
+"""Pins how athlete-built sessions reach the web, for "Your focus".
 
 The web decides relevance from these exact fields (web/lib/training-focus.ts).
 This compiles a real custom plan and checks it against the fixture the web

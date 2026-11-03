@@ -161,8 +161,16 @@ export function inferredFocusFits(item: TrainingFocusItem, target: FocusTarget):
 
 export type ShownFocus = { id: string | null; text: string; origin: "athlete" | "inferred" };
 
-/** The one focus to show before this card's work (newest that fits), or null. */
-export function relevantFocusItem(focus: TrainingFocus | null, target: FocusTarget): ShownFocus | null {
+/**
+ * The one focus to show before this card's work (newest that fits), or null.
+ * `accept` narrows the candidates, so the fighter's own focus and an UNLXCK
+ * cue are picked separately and never compete for one slot.
+ */
+export function relevantFocusItem(
+  focus: TrainingFocus | null,
+  target: FocusTarget,
+  accept: (item: TrainingFocusItem) => boolean = () => true,
+): ShownFocus | null {
   // An older API sends only the newest explicit focus.
   const items: TrainingFocusItem[] = focus?.items ?? (focus?.focus ? [{
     id: "", origin: "athlete", focus: focus.focus, training_day: focus.training_day ?? "", sport: focus.sport,
@@ -170,7 +178,7 @@ export function relevantFocusItem(focus: TrainingFocus | null, target: FocusTarg
   }] : []);
   for (const item of items) {
     const text = item.focus?.trim();
-    if (!text) continue;
+    if (!text || !accept(item)) continue;
     const fits = item.origin === "athlete"
       ? focusFitsSport(item.sport, target.sport) && focusFitsSession(target)
       : inferredFocusFits(item, target);
@@ -182,4 +190,26 @@ export function relevantFocusItem(focus: TrainingFocus | null, target: FocusTarg
 /** The focus text to show before this card's work, or null. */
 export function relevantFocus(focus: TrainingFocus | null, target: FocusTarget): string | null {
   return relevantFocusItem(focus, target)?.text ?? null;
+}
+
+/**
+ * UNLXCK cues under the exercise each is about, keyed by block_id: each cue
+ * once, under the first exercise it fits (same matching as above, one block
+ * at a time). Sport-technique cues have no exercise and stay on the session.
+ */
+export function exerciseCues(
+  focus: TrainingFocus | null,
+  blocks: readonly StructuredBlock[],
+): Record<string, ShownFocus> {
+  const cues: Record<string, ShownFocus> = {};
+  const placed = new Set<string>();
+  for (const block of blocks) {
+    if (!block.block_id) continue;
+    const cue = relevantFocusItem(focus, { session: { blocks: [block] }, contactLeads: false, sport: null },
+      (item) => item.origin === "inferred" && item.scope !== "sport_technique" && !placed.has(item.id));
+    if (!cue) continue;
+    cues[block.block_id] = cue;
+    placed.add(cue.id ?? "");
+  }
+  return cues;
 }
