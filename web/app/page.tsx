@@ -10,7 +10,7 @@ import { useAppSession } from "@/components/auth-provider";
 import { useConnectivity, useOnReconnect } from "@/components/connection-status-banner";
 import { getAuthenticatedLandingHref, needsStartingPath } from "@/lib/auth-routing";
 import { EmptyState } from "@/components/empty-state";
-import { FightCountdown, FightCountdownSkeleton } from "@/components/fight-countdown";
+import { FightCountdown, FightCountdownSkeleton, FightWeightCard } from "@/components/fight-countdown";
 import { getFightCountdown } from "@/lib/fight-countdown";
 import { InstallUnlxck } from "@/components/install-unlxck";
 import { LandingFeaturePanel } from "@/components/landing-feature-panel";
@@ -679,7 +679,7 @@ export default function HomePage() {
       phase: activePlan.phase ? String(activePlan.phase) : null,
       plan: structuredPlan,
       eventName: activePlan.event_name ?? null,
-      // Target fight weight from the plan's intake, never current bodyweight.
+      // The athlete's current target fight weight (the newest one set), never current bodyweight.
       // Under-18s have no weight-cut feature, so it never shows for them.
       targetWeightKg: me.profile.is_minor ? null : (activePlan.target_weight_kg ?? null),
       // The calendar read for this plan hasn't settled yet (success or failure).
@@ -724,6 +724,8 @@ export default function HomePage() {
             </div>
             <div className="overview-primary-session">
               {showCountdown ? <FightCountdown key={activePlanId} {...countdownProps} /> : <XpProgressCard />}
+              {/* No fight scheduled: the target still shows, as on the countdown card. */}
+              {!showCountdown && hasActivePlan ? <FightWeightCard targetWeightKg={countdownProps.targetWeightKg} /> : null}
             </div>
           </div>
           {commandError ? (

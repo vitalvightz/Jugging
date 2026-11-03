@@ -433,7 +433,7 @@ def test_workspace_reports_weight_to_target_status_for_the_fight():
     assert workspace["derived"]["weight_cut_behind_kg"] is None
 
 
-def test_target_and_weigh_in_can_be_added_from_the_tracker_but_not_overwrite_camp_setup():
+def test_target_and_weigh_in_can_be_added_from_the_tracker_and_the_newest_target_wins():
     client, store, _ = _build_client()
     client.get("/api/me", headers={"Authorization": "Bearer athlete-token"})
     athlete = {**_build_request({}).athlete.model_dump(mode="json"), "target_weight_kg": None}
@@ -458,6 +458,7 @@ def test_target_and_weigh_in_can_be_added_from_the_tracker_but_not_overwrite_cam
     assert (shared["target_weight_kg"], shared["weigh_in_type"], shared["weigh_in_time"]) == (70.0, "day_before", "18:00")
     assert store.get_latest_intake("athlete-1")["intake"]["athlete"]["target_weight_kg"] == 70.0
 
-    # Once Camp Setup holds a target, the tracker cannot replace it.
+    # The newest target wins, even once the intake holds one.
     workspace = put_target(workspace, 66.0)
-    assert workspace["shared_camp_context"]["target_weight_kg"] == 70.0
+    assert workspace["shared_camp_context"]["target_weight_kg"] == 66.0
+    assert store.get_latest_intake("athlete-1")["intake"]["athlete"]["target_weight_kg"] == 66.0

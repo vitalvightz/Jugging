@@ -930,6 +930,7 @@ function QuickBuildFormInner() {
                   no_scheduled_fight: event.target.checked,
                   fight_date: event.target.checked ? "" : current.fight_date,
                   event_name: event.target.checked ? "" : current.event_name,
+                  target_weight_kg: event.target.checked ? null : current.target_weight_kg,
                 }));
               }}
             />
@@ -963,6 +964,25 @@ function QuickBuildFormInner() {
               value={input.event_name ?? ""}
               onChange={(event) => patch("event_name", event.target.value)}
             />
+          </div>
+        ) : null}
+        {/* Fight weight for the countdown card and weight tracker. Not asked of
+            under-18s (no weight-cut feature) or without health-data consent;
+            the backend strips it for minors too. */}
+        {!input.no_scheduled_fight && !me?.profile.is_minor && healthConsentGranted ? (
+          <div className="field">
+            <label htmlFor="qb-target-weight">Target weight (kg, optional)</label>
+            <input
+              id="qb-target-weight"
+              type="number"
+              min="0"
+              step="0.1"
+              inputMode="decimal"
+              value={input.target_weight_kg ?? ""}
+              onChange={(event) => patch("target_weight_kg", event.target.value.trim() === "" ? null : Number(event.target.value))}
+            />
+            <p className="muted">Your realistic fight-week target.</p>
+            <FieldError message={visibleError("target_weight_kg")} />
           </div>
         ) : null}
 
@@ -1056,7 +1076,7 @@ function QuickBuildFormInner() {
               className="secondary-button"
               onClick={() => {
                 setSubmitError(null);
-                setInput((current) => ({ ...current, no_scheduled_fight: true, fight_date: "", event_name: "" }));
+                setInput((current) => ({ ...current, no_scheduled_fight: true, fight_date: "", event_name: "", target_weight_kg: null }));
                 setMessage("Open Plan selected. Continue with your available training schedule.");
               }}
             >

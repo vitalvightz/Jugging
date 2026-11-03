@@ -5,6 +5,8 @@ import { isolateFromNetwork } from "./support";
 // plumbing and the "Coming soon" gate are gone. Set WEIGHT_TRACKER_SCREENSHOTS
 // to a directory to capture the page and logging sheet at phone and desktop widths.
 const shots = process.env.WEIGHT_TRACKER_SCREENSHOTS;
+// The pinned clock below means 27 Oct only in a browser on UTC.
+test.use({ timezoneId: "UTC" });
 
 // What the API derives from the log: a calendar 7-day average, the weekly pace,
 // the smoothed trend and the plan's own weight-cut band. `legacy` drops the
@@ -54,6 +56,8 @@ function workspace(isMinor: boolean, empty = false, legacy = false) {
 
 async function signInAthlete(page: Page, baseURL: string, { isMinor, empty = false, legacy = false, campWeight }: { isMinor: boolean; empty?: boolean; legacy?: boolean; campWeight?: number }) {
   await isolateFromNetwork(page, baseURL);
+  // The fixture's weigh-ins run 21-26 Oct and trend ranges end on today, so pin today.
+  await page.clock.setFixedTime(new Date("2026-10-27T12:00:00Z"));
   const key = `sb-${new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://stub.supabase.co").hostname.split(".")[0]}-auth-token`;
   await page.addInitScript(([key, value]) => localStorage.setItem(key, value), [key, JSON.stringify({
     access_token: "fixture-token", refresh_token: "fixture", token_type: "bearer", expires_at: Math.floor(Date.now() / 1000) + 86400,
@@ -116,17 +120,39 @@ for (const [width, height] of [[390, 844], [1280, 800]] as const) {
       await expect(page.getByText(removed, { exact: true })).toHaveCount(0);
     }
 
-    // The trend selects the latest weigh-in; arrow keys step back through it.
+    // The headline is always the latest weigh-in; the chart is inspected separately.
     const trend = page.getByRole("region", { name: "Weight trend" });
-    const selected = trend.getByLabel("Selected weight");
-    await expect(selected).toContainText("73.4 kg");
-    await expect(selected).toContainText("−0.2 kg vs previous");
-    await expect(trend.getByText("Down 0.7 kg since Wed 21 Oct 2026")).toBeVisible();
-    await expect(selected).toContainText("Trend 73.7 kg");
-    await expect(trend.getByText("Trend (estimate)")).toBeVisible();
-    await trend.getByRole("slider", { name: "Inspect logged weight" }).focus();
+    const latest = trend.getByLabel("Latest weight");
+    await expect(latest).toContainText("73.4 kg");
+    await expect(latest).toContainText("Mon 26 Oct 2026");
+    await expect(latest).toContainText("−0.2 kg vs previous");
+    // Sparse recent data opens on 7 days, ending today.
+    await expect(trend.getByRole("button", { name: "7 days" })).toHaveAttribute("aria-pressed", "true");
+    await expect(latest).toContainText("3 entries · Down 0.7 kg");
+    // Only logged weights are drawn: no smoothed estimate, no shaded area.
+    await expect(trend.getByText("Trend (estimate)")).toHaveCount(0);
+    await expect(latest).not.toContainText("Trend");
+    const slider = trend.getByRole("slider", { name: "Inspect logged weight" });
+    await expect(slider.locator("circle")).toHaveCount(3);
+    await expect(slider.locator("path")).toHaveCount(1);
+    // The 70 kg target sits below the weights: named, not plotted.
+    await expect(trend.getByText("Target 70.0 kg · below chart")).toBeVisible();
+    expect((await slider.boundingBox())!.height).toBeLessThanOrEqual(170);
+    // 30 days is a calendar window ending today: six days of weigh-ins use a fifth of it.
+    await trend.getByRole("button", { name: "30 days" }).click();
+    const [first, last] = await slider.locator("circle").evaluateAll(circles => [circles[0], circles[2]].map(c => Number(c.getAttribute("cx"))));
+    const plotWidth = await slider.evaluate(element => element.getBoundingClientRect().width);
+    expect((last - first) / plotWidth).toBeLessThan(0.25);
+    // Inspecting shows a tooltip only while it lasts, and never moves the headline.
+    await slider.focus();
     await page.keyboard.press("ArrowLeft");
-    await expect(selected).toContainText("73.6 kg");
+    await expect(slider).toContainText("73.6 kg");
+    await expect(latest).toContainText("73.4 kg");
+    await expect(trend.getByRole("button", { name: /Edit 23 Oct weight/ })).toBeVisible();
+    await shot("weight-trend-inspect");
+    await page.keyboard.press("Tab");
+    await expect(slider).not.toContainText("73.6 kg");
+    await trend.getByRole("button", { name: "7 days" }).click();
     await shot("weight-tracker", true);
     await trend.scrollIntoViewIfNeeded();
     await shot("weight-trend");

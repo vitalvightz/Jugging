@@ -3766,6 +3766,19 @@ html[data-theme="light"]:root a.weigh-in-surface:focus-visible {
   border-left: 1px solid var(--progress-gold-border);
 }
 
+/* Fight weight on its own (no fight scheduled): one row, no divider. */
+.fight-weight-card .fight-countdown-stats {
+  flex-direction: row;
+  align-items: center;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.fight-weight-card .fight-countdown-weight {
+  padding-left: 0;
+  border-left: 0;
+}
+
 .fight-countdown-weight-icon {
   display: grid;
   color: var(--text-secondary);

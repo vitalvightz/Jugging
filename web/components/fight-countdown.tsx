@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { getFightCountdown } from "@/lib/fight-countdown";
@@ -89,6 +90,38 @@ function WeightGlyph() {
   );
 }
 
+const shownWeight = (kg: number | null | undefined) => kg != null && Number.isFinite(kg) && kg > 0 ? formatWeight(kg) : null;
+
+function FightWeight({ value }: { value: string }) {
+  return (
+    <div className="fight-countdown-weight">
+      <span className="fight-countdown-weight-icon"><WeightGlyph /></span>
+      <div>
+        <p className="fight-countdown-weight-label">Fight weight</p>
+        <p className="fight-countdown-weight-value">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Home's fight weight when no fight is scheduled (an open plan): the same
+ * weight block as the countdown card, linking to the weight tracker. Renders
+ * nothing without a target.
+ */
+export function FightWeightCard({ targetWeightKg }: { targetWeightKg: number | null | undefined }) {
+  const value = shownWeight(targetWeightKg);
+  if (!value) return null;
+  return (
+    <section className="fight-countdown fight-weight-card" aria-label={`Fight weight ${value}`}>
+      <div className="fight-countdown-stats">
+        <FightWeight value={value} />
+        <Link href="/nutrition" className="fight-countdown-next-label">Weight tracker</Link>
+      </div>
+    </section>
+  );
+}
+
 /**
  * Overview fight-camp countdown: the event, days to fight night, the target
  * fight weight, a gold camp-progress bar with the current week and phase, and
@@ -134,9 +167,7 @@ export function FightCountdown({
   const meta = [weekLabel, phaseLabel].filter(Boolean).join(" · ");
   const label = fightDay ? "Fight day" : `${daysOut} ${daysOut === 1 ? "day" : "days"} to fight night`;
   const event = eventName?.trim() || FIGHT_EVENT_FALLBACK;
-  const fightWeight = targetWeightKg != null && Number.isFinite(targetWeightKg) && targetWeightKg > 0
-    ? formatWeight(targetWeightKg)
-    : null;
+  const fightWeight = shownWeight(targetWeightKg);
 
   return (
     <section
@@ -165,15 +196,7 @@ export function FightCountdown({
             <p className="fight-countdown-date">{formatPlanFightDate(fightDateISO).replace(/^[A-Za-z]{3}\s+/, "")}</p>
           </div>
         </div>
-        {fightWeight ? (
-          <div className="fight-countdown-weight">
-            <span className="fight-countdown-weight-icon"><WeightGlyph /></span>
-            <div>
-              <p className="fight-countdown-weight-label">Fight weight</p>
-              <p className="fight-countdown-weight-value">{fightWeight}</p>
-            </div>
-          </div>
-        ) : (
+        {fightWeight ? <FightWeight value={fightWeight} /> : (
           <h2 className="fight-countdown-event fight-countdown-event-side">{event}</h2>
         )}
       </div>

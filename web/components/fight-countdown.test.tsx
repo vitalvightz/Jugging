@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { FightCountdown, FightCountdownSkeleton } from "./fight-countdown";
+import { FightCountdown, FightCountdownSkeleton, FightWeightCard } from "./fight-countdown";
 
 test("server render shows the final day count, not the animation's start", () => {
   const html = renderToStaticMarkup(
@@ -90,4 +90,14 @@ test("a calendar that was already loaded renders without the settle-in fade", ()
   );
   assert.doesNotMatch(html, /data-arrived|aria-busy/);
   assert.match(html, /role="progressbar"/);
+});
+
+test("with no fight scheduled the target still shows as the fight weight", () => {
+  const html = renderToStaticMarkup(<FightWeightCard targetWeightKg={90.7} />);
+  assert.match(html, /fight-countdown-weight-label">Fight weight</);
+  assert.match(html, /fight-countdown-weight-value">90\.7 kg</);
+  assert.match(html, /href="\/nutrition"/);
+  for (const missing of [null, undefined, 0, Number.NaN]) {
+    assert.equal(renderToStaticMarkup(<FightWeightCard targetWeightKg={missing} />), "");
+  }
 });
