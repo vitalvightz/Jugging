@@ -976,6 +976,7 @@
       "388e7d79effb0a64ba64b60eea8c5f7ce7f933d51131d8e9e76a8e7afbbb0beb": {"id": "d757bc47-d293-4b23-a311-6ecf51b97996", "name": "Fence Exit to Center Rebase"},
       "478389fc6a2b00863b6b9de07f34fd84f00bf0e3e0421dfc0edb67f633aac1ab": {"id": "965ea2eb-7b25-4ddf-9fd6-6f071e87ec86", "name": "Wrestling Stance-Motion Circle Reset"},
       "49bedf91399376acb6ddff2c7e4e5a567dff1d7e84504cd12ac6cb61b1150922": {"id": "326da562-fdc9-440f-8dd0-6ae82464cab2", "name": "Level-Change Feint to Angle"},
+      "5cfcabe4a57bab6f5a0c0c988f2ddde3503972f7877e4221783133a7a29d7316": {"id": "908f57a7-2833-44d0-8af5-3199a5b110e4", "name": "Double Pivot Chain"},
       "602f35a172bc9a7a6abfb839595659086f057774491f3b51ec07d49a895f1edd": {"id": "28582d72-4f1f-4906-94bb-89b6a5091bb4", "name": "45-Degree Angle Step to Jab Reset"},
       "64df621c5056747640015fbd499e25d987b22deac07cce8d81bef325bed87dd2": {"id": "a26a05b0-9380-442e-93a7-ee6733f7098a", "name": "Shot-Line Circle-Off Reset"},
       "6a6905b031dc846135b451d6b8be86f3be84eee816d9a5fd1179240a2f59fdaf": {"id": "e6ee5b6f-06e1-4299-bdb4-d11984a7f595", "name": "Thai Ring-Cut Pressure Walkdown"},
@@ -985,6 +986,7 @@
       "7e8ba7608f4ee71d4b9c010af2e325fad3461c35216f4dd3e5497bb245792f12": {"id": "f28a5eb5-5c77-4d2f-8c8e-d7dcacefc88a", "name": "Standing Guard-Pass Base Circle"},
       "88f8756fb3e0d8e9409991ab3fe60adaa80260d26c7cbf78dd41945cbdd07d48": {"id": "4e5f25c1-51fe-4622-909b-da636e530be4", "name": "Lateral Exit to Re-Enter"},
       "91cacab57f68acc8e869dd5d5153bedca3d4d3bebdb9f26313b299d00bcb5ad4": {"id": "6a323963-ca6d-4f58-8849-b8509456668d", "name": "Corner Escape L-Step"},
+      "9801a40bddecde27f0ab967ba815659393670e424946324794b96917d193a9ed": {"id": "d2d56b26-31e9-485e-a9f2-d4e28b44d914", "name": "Shift-Step Angle Creation"},
       "a2d402f6e04bd809138875334a456d71968101fcb2e7338b4ccebbde89fd1ff5": {"id": "43fb527c-5031-41dd-b02b-de7f37b0423f", "name": "Cage Circle and Cut-Off"},
       "a9e28cc4f500df44b6e69aa8525a1aa5cbb05510875569e656b219400df8d880": {"id": "d2ddf756-9170-4e03-800c-85ff60b4eb39", "name": "Step-Back Pivot Reset"},
       "aa9d2959b15da2274126c98549b15c6902e5899cad299462c7a284a4054757dd": {"id": "27cde2c4-2d83-4af1-8869-56f6f4cdd640", "name": "Ring Cut-Off Walkdown"},
@@ -994,6 +996,7 @@
       "d399e3b1d5787cc9c504bd675b91022380960cbb7303df5746397d1981919223": {"id": "c82064a3-ec00-4249-963f-9d30598c3447", "name": "Teep Retreat and Re-Stance"},
       "dd00b7790f6c89acc20d11a017e68030b83014b9c2b0dee86af2feb647c13a1d": {"id": "58b62fa3-3cf5-4a3a-95b0-a13bfe6e0f50", "name": "Switch-Step Stance Recovery"},
       "e30e1f482888b3ba674101a6b1cccf98cc4b4eea17e3ef68ae3e002e0754aaba": {"id": "b5b0ce3f-54ae-42f8-b71f-661f7bdb8cc7", "name": "Check and Return Step"},
+      "e47dd3d0481ad0caa6b4479ca1165681b232f438e6eabae22d612a2dab49fe02": {"id": "2908b95a-4197-4ee8-931d-34e5ff44ea89", "name": "Foot Feint and Reposition"},
       "f00ee453a302c465571cd7b76ba2e57245ce6e57c9c2d5ef453bb84aa3bbdd44": {"id": "a97ccfe6-365c-4b33-91f5-3a1ddb406e2b", "name": "Kick-Recovery Anti-Shot Rebase"}
     }
   }

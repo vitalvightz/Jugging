@@ -123,8 +123,27 @@ won every phase. Two ranking nudges now apply inside the relevance-ranked list
 
 Both add reason codes (`technical_footwork_complexity_fit:<band>:<complexity>`,
 `technical_footwork_repeat_deprioritised`, `technical_footwork_taper_familiar`).
-The boxing bank has only one high-complexity drill (Pressure Step-Cut Reset), so
-the experience nudge has most effect once advanced boxing drills are added.
+### 5. Advanced boxing drills
+
+Three boxing drills were added after checking each against the existing bank
+for overlap:
+
+| Drill | Complexity | Phases | Fills |
+|---|---|---|---|
+| Double Pivot Chain | high | GPP, SPP | Advanced progression of Step-Back Pivot / Check-Hook Pivot: chain rear- and lead-foot pivots to take a new attacking angle (counter / distance strikers). |
+| Shift-Step Angle Creation | high | GPP, SPP | Boxing shift: no drill previously changed stance and lane mid-attack (pressure fighters / brawlers; `side_rule: alternate_stances`). |
+| Foot Feint and Reposition | moderate | GPP, SPP, TAPER | Foot feints to draw a reaction before repositioning (counter / distance strikers). |
+
+Their tactical functions are set so that athletes with unknown or novice
+maturity keep their existing default picks; established pros reach Double Pivot
+Chain (counter striker) and Shift-Step (pressure fighter) through the maturity
+nudge. Foot Feint is a lower-ranked relevant candidate (fallback / gap-fill),
+not a default. Outside-foot front shuffle, back shuffle + jam, and the slip-line
+180° pivot were left out as overlapping existing drills or being head-movement
+work rather than footwork; guard-manipulation shuffle is hand-fighting.
+
+Demonstration clips are not attached yet: they still go through the normal
+media review before any URL is added.
 
 ## Note on the late-camp golden snapshot
 

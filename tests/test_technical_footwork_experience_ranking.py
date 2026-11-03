@@ -105,3 +105,66 @@ def test_selection_reasons_report_ranking_adjustments():
     )
     assert "technical_footwork_complexity_fit:experienced:low" in reasons["reason_codes"]
     assert "technical_footwork_repeat_deprioritised" in reasons["reason_codes"]
+
+
+ADVANCED_BOXING_DRILLS = {
+    "Double Pivot Chain",
+    "Shift-Step Angle Creation",
+    "Foot Feint and Reposition",
+}
+
+
+def _camp(style: str, maturity: str = "") -> list[str]:
+    prior: list[str] = []
+    for phase in ("GPP", "SPP", "TAPER"):
+        prior.append(
+            _ranked(
+                phase=phase,
+                style_tactical=[style],
+                competitive_maturity=maturity,
+                prior_technical_footwork=list(prior),
+            )[0]
+        )
+    return prior
+
+
+def test_advanced_boxing_drills_are_in_the_bank_with_the_safety_contract():
+    bank = {d["name"]: d for d in conditioning.get_technical_footwork_bank()}
+    assert ADVANCED_BOXING_DRILLS <= set(bank)
+    for name in ADVANCED_BOXING_DRILLS:
+        drill = bank[name]
+        assert "boxing" in drill["tags"]
+        assert drill["modality"] == "technical_footwork"
+        assert drill["movement_cost"] in {"low", "moderate"}
+        assert drill["rpe"] <= 5
+        assert "mech_lower_limb_weight_bearing" in drill["mechanical_risk_tags"]
+        assert drill["late_windows"]
+    assert bank["Double Pivot Chain"]["technical_complexity"] == "high"
+    assert bank["Shift-Step Angle Creation"]["technical_complexity"] == "high"
+    assert bank["Shift-Step Angle Creation"]["side_rule"] == "alternate_stances"
+
+
+@pytest.mark.parametrize(
+    ("style", "drill"),
+    [("counter_striker", "Double Pivot Chain"), ("pressure_fighter", "Shift-Step Angle Creation")],
+)
+def test_established_pro_reaches_the_advanced_drill_for_their_style(style, drill):
+    assert drill in _camp(style, "established_pro")
+
+
+@pytest.mark.parametrize("style", ["counter_striker", "pressure_fighter", "distance_striker"])
+def test_unknown_and_novice_camps_do_not_default_to_new_advanced_drills(style):
+    for maturity in ("", "novice_amateur"):
+        assert not set(_camp(style, maturity)) & ADVANCED_BOXING_DRILLS
+
+
+def test_new_high_complexity_drills_never_reach_the_taper():
+    for style in ("counter_striker", "pressure_fighter"):
+        ranked = _ranked(phase="TAPER", style_tactical=[style], competitive_maturity="established_pro")
+        assert "Double Pivot Chain" not in ranked
+        assert "Shift-Step Angle Creation" not in ranked
+
+
+def test_foot_feint_is_a_taper_safe_candidate_for_counter_strikers():
+    ranked = _ranked(phase="TAPER", style_tactical=["counter_striker"])
+    assert "Foot Feint and Reposition" in ranked
