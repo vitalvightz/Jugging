@@ -6,7 +6,8 @@ from time import perf_counter
 
 from .bout_format import bout_format_metadata
 from .coach_review import run_coach_review
-from .conditioning import generate_conditioning_block
+from .athlete_model import _derive_competitive_maturity
+from .conditioning import generate_conditioning_block, get_technical_footwork_bank
 from api.contracts.readiness_message import ReadinessCheckin, ReadinessContext, build_readiness_adjustment
 from .injury_location import canonicalize_location
 from .mindset_module import get_mindset_by_phase
@@ -173,6 +174,18 @@ def _generate_conditioning_blocks(context: PlanRuntimeContext, *, progress_callb
 
     logger = logging.getLogger(__name__)
     conditioning_started = perf_counter()
+    # Status + record -> competitive maturity, the same derivation the Stage 2
+    # athlete model uses. Technical footwork uses it only to rank drills of a
+    # fitting complexity; it never changes dose, eligibility or session count.
+    competitive_maturity = _derive_competitive_maturity(
+        context.training_context.status, context.plan_input.record
+    )["competitive_maturity"]
+    technical_footwork_names = {
+        drill.get("name") for drill in get_technical_footwork_bank()
+    }
+    # Technical footwork already placed in an earlier phase, so later phases can
+    # vary it (GPP/SPP) or keep it familiar (taper).
+    prior_technical_footwork: list[str] = []
 
     for phase in PHASES:
         if not context.phase_active(phase):
@@ -204,6 +217,8 @@ def _generate_conditioning_blocks(context: PlanRuntimeContext, *, progress_callb
                 # length, so selection must measure the workload it will render.
                 "rounds_format": context.plan_input.rounds_format,
                 "random_seed": context.random_seed,
+                "competitive_maturity": competitive_maturity,
+                "prior_technical_footwork": list(prior_technical_footwork),
                 "time_to_fight_days": context.plan_input.days_until_fight,
                 "weeks_out": context.plan_input.weeks_out,
                 "restrictions": context.training_context.injury_restrictions,
@@ -211,6 +226,9 @@ def _generate_conditioning_blocks(context: PlanRuntimeContext, *, progress_callb
                 "conditioning_substep_callback": lambda code, label: _emit_progress(progress_callback, code, label),
             }
         )
+        for name in names:
+            if name in technical_footwork_names and name not in prior_technical_footwork:
+                prior_technical_footwork.append(name)
         phase_elapsed = perf_counter() - phase_started
         logger.info("[stage1] conditioning_phase_elapsed phase=%s elapsed=%.2f", phase.lower(), phase_elapsed)
         if phase_elapsed > 10.0:
