@@ -1848,6 +1848,75 @@ def _apply_adjacent_strength_recovery(
             "adjacent_strength_recovery"
         ] = evidence
 
+    _rehost_yielded_trunk_blocks(scheduled)
+
+
+def _rehost_yielded_trunk_blocks(scheduled: list[dict[str, Any]]) -> None:
+    """Re-rule a week's Core Development Block host after recovery yielded it.
+
+    Hosting was chosen before adjacent recovery; once recovery strips the
+    host, its week's other sessions must not keep ``hosted_elsewhere``. Each
+    remaining eligible session (not itself recovery-reduced) is offered the
+    block, lightest first, through the same selector; it is accepted only if
+    the block adds no substantial mechanical loading shared with a neighbour.
+    Otherwise every candidate records its real reason and the downgrade stands;
+    ``hosted_elsewhere`` survives only when another session now delivers it.
+    """
+    by_week: dict[int, list[dict[str, Any]]] = {}
+    for entry in scheduled:
+        if not entry.get("context_only") and entry.get("trunk_development"):
+            by_week.setdefault(id(entry["week"]), []).append(entry)
+    for entries in by_week.values():
+        outcomes = [(e, (e["role"].get("strength_composition_policy") or {}).get("trunk_block") or {})
+                    for e in entries]
+        yielded = [e for e, o in outcomes if o.get("reason_code") == _ADJACENT_STRENGTH_RECOVERY_REASON]
+        if not yielded or any(o.get("status") in {"delivered", "constrained"} for _, o in outcomes):
+            continue
+        candidates = [e for e, o in outcomes if o.get("status") == "hosted_elsewhere"]
+        candidates.sort(key=lambda e: len(e["selected_records"]))
+        hosted = False
+        for entry in candidates:
+            policy = entry["role"]["strength_composition_policy"]
+            day = role_d_day(entry["week"], entry["role"])
+            recovery = policy.get("adjacent_strength_recovery") or {}
+            if hosted:
+                continue  # Genuinely hosted elsewhere now.
+            if recovery.get("decision") not in (None, "compatible"):
+                policy["trunk_block"] = {"intent": "development", "status": "not_eligible",
+                                         "reason_code": _ADJACENT_STRENGTH_RECOVERY_REASON}
+                continue
+            target = entry["trunk_block_size"]
+            selected, _ = _select_bounded_records(
+                entry["records"], role_key=entry["role_key"], cap=entry["effective_cap"],
+                pressure=entry["pressure"], preserve_trunk_support=entry["preserve_trunk_support"],
+                preserve_adaptation=entry.get("preserve_adaptation", ""),
+                preserve_weakness=entry.get("preserve_weakness", ""),
+                preserve_strength=entry.get("preserve_strength", False), trunk_block_target=target,
+                trunk_alternates=[*trunk_alternate_records(entry["records"]), *entry["core_records"]],
+            )
+            added = [r for r in selected if r not in entry["selected_records"]]
+            neighbours = [r for other in scheduled if other is not entry
+                          and role_d_day(other["week"], other["role"]) in {day - 1, day + 1}
+                          for r in other["selected_records"]]
+            new_load = _substantial_mechanical_tags(added) - _substantial_mechanical_tags(entry["selected_records"])
+            if (not trunk_block_members(selected) or any(r not in selected for r in entry["selected_records"])
+                    or new_load & _substantial_mechanical_tags(neighbours)):
+                outcome = _trunk_block_outcome(selected, entry["records"], host=True, target=target,
+                                               core_records=entry["core_records"])
+                if outcome["status"] == "delivered" or new_load & _substantial_mechanical_tags(neighbours):
+                    outcome = {"intent": "development", "status": "not_eligible",
+                               "reason_code": _ADJACENT_STRENGTH_RECOVERY_REASON}
+                policy["trunk_block"] = outcome
+                continue
+            entry.update(selected_records=selected, trunk_block_target=target, trunk_block_additions=added)
+            _assign_selected_records(entry, selected)
+            policy["trunk_block"] = _trunk_block_outcome(selected, entry["records"], host=True, target=target,
+                                                         core_records=entry["core_records"])
+            if policy.get("injury_restricted"):
+                policy["trunk_block"]["dose_held_by"] = "injury_constraint"
+            policy["trunk_block"]["rehosted_from_d_day"] = role_d_day(yielded[0]["week"], yielded[0]["role"])
+            hosted = True
+
 
 def compose_normal_strength_assignments(
     *,
@@ -2188,6 +2257,7 @@ def compose_normal_strength_assignments(
                 "trunk_block_target": block_target,
                 "trunk_block_additions": additions,
                 "trunk_development": trunk_development,
+                "trunk_block_size": trunk_block_size,
                 "week_ordinal": ctx["week_position"] + 1,
                 "standalone_eligible": (
                     not microdose_only
