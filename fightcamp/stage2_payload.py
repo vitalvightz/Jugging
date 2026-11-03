@@ -2251,6 +2251,8 @@ def _attach_open_development_block(
     consolidate_compatible_physical_sessions(role_map, athlete_model=_open_block_athlete_view(athlete_model))
     if role_map.get("session_consolidation_audit"):
         refresh_goal_evidence_after_composition(block)
+    from .stage1_handoff_integrity import enforce_handoff_integrity
+    enforce_handoff_integrity(role_map)
     block = stamp_role_execution_order(block)
     suppress_unfilled_physical_roles(block)
     spec = dict(brief.get("open_plan_spec") or {})
@@ -2308,6 +2310,10 @@ def build_planning_brief(
     from .camp_week_fillers_impl import govern_weekly_mental_training
     govern_weekly_mental_training(role_map, athlete_model)
     enforce_total_session_budget(role_map, athlete_model, candidate_pools)
+    # Last deterministic gate before Stage 2: never hand over a day the
+    # structured-card audit would reject.
+    from .stage1_handoff_integrity import enforce_handoff_integrity
+    enforce_handoff_integrity(role_map)
     if "late_fight_session_sequence" in brief:
         # _effective_map wraps the authoritative sequence in a temporary week;
         # removals rebind that week's list, so write the final roles back.

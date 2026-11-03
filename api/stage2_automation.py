@@ -190,12 +190,14 @@ def _stage2_call_deadline_seconds(attempt_label: str) -> float | None:
     The SDK timeouts above only bound the gap between streamed events, so a
     response that keeps the stream alive but never finishes could otherwise
     hold the job until the whole-finalize cap. Successful plans complete every
-    pass well inside these defaults (slowest observed whole Stage 2 response:
-    ~510s across all passes; GPT-6 Luna ~200s). ``0``/``none`` disables.
+    pass well inside these defaults: on GPT-6 Luna the plan-text call takes
+    55-86s and the structured-card call 121-193s (production, Nov 2026), so
+    each default is roughly 2x the slowest observed call. A slower model
+    needs these raised via env. ``0``/``none`` disables.
     """
     if attempt_label.startswith("structured"):
-        return _env_deadline_seconds("UNLXCK_STAGE2_STRUCTURED_CALL_DEADLINE_SECONDS", 420.0)
-    return _env_deadline_seconds("UNLXCK_STAGE2_CALL_DEADLINE_SECONDS", 360.0)
+        return _env_deadline_seconds("UNLXCK_STAGE2_STRUCTURED_CALL_DEADLINE_SECONDS", 360.0)
+    return _env_deadline_seconds("UNLXCK_STAGE2_CALL_DEADLINE_SECONDS", 180.0)
 
 
 def _estimated_input_tokens(prompt: str) -> int:

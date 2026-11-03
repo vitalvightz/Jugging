@@ -1336,12 +1336,14 @@ def _low_load_trunk_support_records(slots: list[dict[str, Any]]) -> list[dict[st
     return records
 
 
-_EMBEDDED_TRUNK_HOLD_PRESCRIPTION = "1-2 controlled sets x 15-20 sec hold; stop before fatigue"
+# One exact working dose each (no set or rep ranges): the card and the app
+# render a single prescription, and a range left the Full prescription empty.
+_EMBEDDED_TRUNK_HOLD_PRESCRIPTION = "2 sets x 20 sec hold; rest 45 sec; RPE 5; stop before fatigue"
 _EMBEDDED_TRUNK_REP_PRESCRIPTION = (
-    "1-2 controlled sets x 3-5 slow reps (each side if one-sided); stop before fatigue"
+    "2 sets x 5 slow reps (each side if one-sided); rest 60 sec; RPE 5; stop before fatigue"
 )
 _EMBEDDED_TRUNK_CARRY_PRESCRIPTION = (
-    "1-2 controlled sets x 15-20 m carry (each side if one-sided); light load, stop before fatigue"
+    "2 sets x 20 m carry (each side if one-sided); rest 60 sec; RPE 5; light load, stop before fatigue"
 )
 _HOLD_NAME_RE = re.compile(r"\b(?:hold|holds|plank|isometric|iso)\b", re.IGNORECASE)
 _CARRY_RE = re.compile(r"\b(?:carry|carries|walk)\b", re.IGNORECASE)
@@ -3210,11 +3212,16 @@ def compose_normal_conditioning_assignments(
                 role=role,
                 fatigue_applied=True,
             )
+            from .session_workload import substantial_endurance
+            endurance_host = long_aerobic or any(
+                substantial_endurance(assignment) for assignment in assignments
+            )
             if (
                 workload_met
                 and trunk_strength_selected
                 and not adjacent_hard_spar
                 and not low_load_only
+                and not endurance_host
                 and int(pressure_state["pressure"]) < 2
             ):
                 trunk_options = [
@@ -3247,8 +3254,12 @@ def compose_normal_conditioning_assignments(
                 # A day upgraded to low-load support keeps that contract: its
                 # membership is the conditioning drill that met it, not added
                 # S&C work.
+                # Strength work beside substantial continuous endurance breaks
+                # the same-day rule the structured card audits.
                 trunk_support_skip_reason = (
-                    "hard_sparring_adjacent"
+                    "substantial_endurance_host"
+                    if endurance_host and workload_met and not adjacent_hard_spar and not low_load_only
+                    else "hard_sparring_adjacent"
                     if adjacent_hard_spar
                     else "low_load_support_day"
                     if low_load_only
