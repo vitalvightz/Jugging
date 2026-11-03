@@ -145,6 +145,31 @@ work rather than footwork; guard-manipulation shuffle is hand-fighting.
 Demonstration clips are not attached yet: they still go through the normal
 media review before any URL is added.
 
+### 6. Weekly pattern variety when footwork is the primary weakness — DONE
+
+Production showed a boxing distance striker (footwork primary weakness, no
+status/record) whose open 4-week block placed Step-Back Pivot Reset on Monday
+and again on Saturday every week. Two causes, both downstream of ranking:
+
+- **Supply.** The single-insert guarantee put one drill per phase into the
+  pool, and footwork slots carried no alternates (the reservoir held only the
+  inserted drill). For footwork-focused athletes the conditioning reservoir
+  step now carries the selector's other ranked drills as same-role alternates
+  (`_TECHNICAL_FOOTWORK_RESERVOIR_LIMIT`), each passing the insert path's
+  equipment, restriction, injury and late-window gates.
+- **Allocation.** Strength composition offers every footwork record when
+  footwork is the primary weakness, and each session independently forced the
+  first one. `_rotate_footwork` now forces the best drill not yet placed that
+  week, avoiding the one the capacity fill would add anyway, and prefers a
+  drill's own slot over the same drill offered as another slot's alternate.
+
+Footwork exposure count per session is unchanged, and the week-to-week pattern
+is stable so each drill can progress across the block. On the production
+intake the block now carries Lateral Exit + Foot Feint (Monday) and Step-Back
+Pivot (Saturday) instead of Step-Back twice. Advanced drills are still gated by
+maturity. Separately: with `fatigue_level: high` that intake places no
+technical footwork at all, on Main as well; not changed here.
+
 ## Note on the late-camp golden snapshot
 
 `tests/golden_snapshots/late_camp_selector_audit/after.json` was already stale

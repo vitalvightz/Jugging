@@ -2176,6 +2176,9 @@ _TECHNICAL_FOOTWORK_COMPLEXITY_ADJUSTMENT = {
 # to more than one relevant pattern, and preferred in the taper, which should
 # rehearse already-grooved movement rather than introduce a new drill.
 _TECHNICAL_FOOTWORK_REPEAT_PENALTY = 0.75
+# Selected drill + ranked same-role alternates kept per phase for footwork-
+# focused athletes (see the candidate reservoir step).
+_TECHNICAL_FOOTWORK_RESERVOIR_LIMIT = 4
 _TECHNICAL_FOOTWORK_TAPER_FAMILIARITY_BONUS = 0.5
 
 _TECHNICAL_FOOTWORK_REACTIVE_LEVELS = {"closed", "semi_reactive", "reactive"}
@@ -5374,6 +5377,25 @@ def generate_conditioning_block(flags):
             explanation = _conditioning_explanation(reasons)
             why_log.append({"name": nm, "system": system, "reasons": reasons, "explanation": explanation})
 
+    def _technical_footwork_alternate_ok(drill: dict) -> bool:
+        drill_equipment = _cached_equipment(drill)
+        if drill_equipment and not set(drill_equipment).issubset(equipment_access_set):
+            return False
+        if not ignore_restrictions:
+            restriction_text = " ".join(
+                str(drill.get(field) or "") for field in ("name", "modality", "notes", "equipment_note")
+            )
+            if not evaluate_restriction_impact(
+                restrictions, text=restriction_text, tags=_cached_tags(drill), limit_penalty=-0.75,
+            ).get("allowed", True):
+                return False
+        if _cached_injury_decision(drill).action == "exclude":
+            return False
+        system = _cached_system(drill, "technical_footwork")
+        if system is None:
+            return False
+        return not _cached_late_eval(drill, system, "technical_footwork_bank.json")["blocked"]
+
     def _build_candidate_reservoir_step():
         def metadata_safe(source):
             return {system: [entry for entry in entries
@@ -5399,6 +5421,30 @@ def generate_conditioning_block(flags):
                 "score_evidence": build_score_evidence(reasons=reasons),
                 "metadata": normalize_selection_metadata(drill),
             })
+        # Footwork-focused athletes: carry the selector's other ranked drills as
+        # same-role alternates, so downstream composition can vary the movement
+        # pattern across sessions and weeks instead of repeating the one drill
+        # that won the single-insert guarantee. Nothing here is selected or
+        # dosed; each alternate passes the same equipment, restriction, injury
+        # and late-window gates the insert path applies.
+        if technical_footwork_focus:
+            entries = reservoir.setdefault(TECHNICAL_FOOTWORK_GROUP, [])
+            held = {entry["drill"].get("name") for entry in entries}
+            for drill in select_technical_footwork_candidates(
+                {**flags, "equipment": equipment_access}, set(), injuries
+            ):
+                if len(entries) >= _TECHNICAL_FOOTWORK_RESERVOIR_LIMIT:
+                    break
+                if drill.get("name") in held or not _technical_footwork_alternate_ok(drill):
+                    continue
+                reasons = _technical_footwork_selection_reasons(flags, drill)
+                entries.append({
+                    "drill": drill.copy(), "score": reasons["final_score"],
+                    "reasons": reasons.copy(), "explanation": _conditioning_explanation(reasons),
+                    "score_evidence": build_score_evidence(score=reasons["final_score"], reasons=reasons),
+                    "metadata": normalize_selection_metadata(drill),
+                })
+                held.add(drill.get("name"))
         total_candidates = sum(len(v) for v in reservoir.values())
         max_candidates = 400
         if total_candidates > max_candidates:
