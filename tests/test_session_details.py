@@ -283,3 +283,32 @@ def test_old_snapshot_without_block_id_shows_prescription_without_name_join():
     result = read(store_for(row, [log(actual={"sets": 2})]), row)
     assert result.blocks[0].prescribed["sets"] == 4
     assert result.blocks[0].status is None and result.blocks[0].actual.sets is None
+
+
+def test_a_run_carries_every_run_through_its_week_not_just_a_history_page():
+    client, store, _ = _build_client()
+    auth = {"Authorization": "Bearer athlete-token"}
+
+    def add(day, activity="roadwork", **fields):
+        return store.create_external_training_session(ATHLETE, {"training_day": day, "activity": activity,
+            "duration_minutes": 30, "effort": "easy", "client_request_id": str(uuid4()), "request_fingerprint": "a" * 64, **fields})
+
+    # More runs than one History page (200) reads, the longest one oldest.
+    add("2020-01-06", distance_value=40, distance_unit="km")
+    for index in range(210):
+        add(f"2021-{index // 28 + 1:02d}-{index % 28 + 1:02d}", distance_value=5, distance_unit="km")
+    run = add("2026-11-04", distance_value=10, distance_unit="km", duration_seconds=3000, duration_minutes=50, run_type="long")
+    add("2026-11-08")  # same week (Sunday): counted
+    add("2026-11-09")  # next week: not sent
+    add("2026-11-05", activity="boxing")
+    removed = add("2026-11-03")
+    store.delete_external_training_session(ATHLETE, removed["id"])
+
+    body = client.get(f"/api/training/history/external/{run['id']}", headers=auth).json()
+    days = [item["training_day"] for item in body["runs"]]
+    assert len(days) == 213 and days[0] == "2020-01-06" and days[-1] == "2026-11-08"
+    assert body["runs"][0]["distance_value"] == 40
+    assert next(item for item in body["runs"] if item["id"] == run["id"])["run_type"] == "long"
+
+    boxing = add("2026-11-02", activity="boxing")
+    assert client.get(f"/api/training/history/external/{boxing['id']}", headers=auth).json()["runs"] is None

@@ -2152,6 +2152,12 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
                        and (not before_day or row["training_day"] < before_day)),
                       key=lambda row: (row["training_day"], row["created_at"]), reverse=True)[:limit]
 
+    def list_external_runs(self, athlete_id: str, *, through_day: str) -> list[dict]:
+        return sorted((dict(row) for row in self.external_training_sessions.values()
+                       if row["athlete_id"] == athlete_id and row.get("activity") == "roadwork"
+                       and not row.get("deleted_at") and str(row["training_day"]) <= through_day),
+                      key=lambda row: (row["training_day"], row["created_at"], row["id"]))
+
     def get_external_training_session(self, athlete_id: str, entry_id: str) -> dict | None:
         row = self.external_training_sessions.get(entry_id)
         if not row or row["athlete_id"] != athlete_id or row.get("deleted_at"):

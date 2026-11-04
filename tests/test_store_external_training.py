@@ -114,3 +114,18 @@ def test_manual_exercise_reads_are_owner_scoped_and_hide_tombstones():
     assert query.is_.call_count == 4
     assert all(call.args == ("deleted_at", "null") for call in query.is_.call_args_list)
     assert store.count_manual_exercises("owner", []) == {}
+
+
+def test_run_history_reads_every_page_owner_scoped_and_roadwork_only():
+    store, query = store_query()
+    for method in ("lte", "range"):
+        getattr(query, method).return_value = query
+    pages = [[{"id": str(i)} for i in range(500)], [{"id": "last"}]]
+    query.execute.side_effect = [SimpleNamespace(data=page) for page in pages]
+    rows = store.list_external_runs("owner", through_day="2026-11-08")
+    assert len(rows) == 501
+    assert [call.args for call in query.range.call_args_list] == [(0, 499), (500, 999)]
+    assert ("athlete_id", "owner") in [call.args for call in query.eq.call_args_list]
+    assert ("activity", "roadwork") in [call.args for call in query.eq.call_args_list]
+    query.is_.assert_called_with("deleted_at", "null")
+    query.lte.assert_called_with("training_day", "2026-11-08")

@@ -17,7 +17,7 @@ const PACE_RECORD_MIN_KM = 1;
 /** How many earlier runs the pace and distance averages use. */
 const RECENT_RUNS = 5;
 /** How many runs the distance trend shows, ending at this one. */
-const TREND_RUNS = 8;
+const TREND_RUNS = 10;
 
 type RunRow = Pick<TrainingHistorySession, "id" | "training_day" | "activity" | "source" | "distance_value" | "distance_unit"
   | "duration_seconds" | "duration_minutes"> & { created_at?: string | null };
@@ -27,7 +27,7 @@ export const isRun = (row: Pick<TrainingHistorySession, "activity" | "source">) 
 export function toKm(value: number, unit: DistanceUnit): number {
   return unit === "km" ? value : value * KM_PER_MILE;
 }
-const fromKm = (km: number, unit: DistanceUnit) => unit === "km" ? km : km / KM_PER_MILE;
+export const fromKm = (km: number, unit: DistanceUnit) => unit === "km" ? km : km / KM_PER_MILE;
 
 export function runKm(row: Pick<RunRow, "distance_value" | "distance_unit">): number | null {
   return row.distance_value && row.distance_unit ? toKm(row.distance_value, row.distance_unit) : null;
@@ -46,7 +46,7 @@ export function formatSpeed(row: Pick<RunRow, "distance_value" | "distance_unit"
   return `${perHour.toFixed(1)} ${row.distance_unit === "km" ? "km/h" : "mph"}`;
 }
 
-export type RunTrendPoint = { id: string; day: string; km: number; current: boolean };
+export type RunTrendPoint = { id: string; day: string; km: number; paceSecondsPerKm: number | null; current: boolean };
 export type RunInsights = {
   /** Seconds per the run's unit versus the earlier average; negative is faster. */
   paceDelta: { seconds: number; runs: number } | null;
@@ -112,12 +112,12 @@ export function runInsights(run: RunRow, rows: readonly RunRow[]): RunInsights {
   };
 
   const trend = runs.slice(0, index + 1).filter(row => runKm(row) !== null).slice(-TREND_RUNS)
-    .map(row => ({ id: row.id, day: row.training_day, km: runKm(row)!, current: row.id === run.id }));
+    .map(row => ({ id: row.id, day: row.training_day, km: runKm(row)!, paceSecondsPerKm: paceSecondsPerKm(row), current: row.id === run.id }));
   return { paceDelta, distanceDelta, records, week, trend };
 }
 
 /** A per-km pace difference in seconds per the run's own unit. */
-function fromKmPace(secondsPerKm: number, unit: DistanceUnit): number {
+export function fromKmPace(secondsPerKm: number, unit: DistanceUnit): number {
   return unit === "km" ? secondsPerKm : secondsPerKm * KM_PER_MILE;
 }
 

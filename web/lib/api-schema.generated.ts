@@ -2417,6 +2417,18 @@ export type SessionDetailBlock = {
   responses: ExposureResponse[];
 };
 
+/** One of the athlete's logged runs, enough to compare a run against. */
+export type SessionDetailRun = {
+  id: string;
+  training_day: string;
+  created_at: string | null;
+  duration_minutes: number;
+  duration_seconds: number | null;
+  distance_value: number | null;
+  distance_unit: "km" | "miles" | null;
+  run_type: "easy" | "intervals" | "long" | "race" | "sprints" | "tempo" | null;
+};
+
 export type SessionDetailSparring = {
   intensity: string;
   rounds_completed: number;
@@ -2432,6 +2444,7 @@ export type SessionDetails = {
   prescription_source: "exercise_logs" | "manual" | "snapshot" | "unavailable";
   message: string | null;
   sparring: SessionDetailSparring | null;
+  runs: SessionDetailRun[] | null;
 };
 
 /** The athlete's own sparring log, newest first, with recent exposure. */

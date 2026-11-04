@@ -1,6 +1,7 @@
 """Historical evidence projection. Never reads a current plan or writes evidence."""
 from collections import Counter
 from collections.abc import Mapping
+from datetime import date, timedelta
 import re
 
 from fastapi import HTTPException
@@ -9,7 +10,7 @@ from pydantic import ValidationError
 from api.contracts.external_training import TrainingHistorySession
 from api.contracts.rehab_completion import completed_dose_from_session, is_guidance_only_rehab
 from api.contracts.rehab_exposure import ExposureDose
-from api.contracts.session_details import SessionDetailBlock, SessionDetails, SessionDetailSparring
+from api.contracts.session_details import SessionDetailBlock, SessionDetailRun, SessionDetails, SessionDetailSparring
 from api.models import ExerciseLogActual
 from api.services.rehab_completion_service import (
     _canonical_stored_event, _prescribed_dose_from_block, rehab_response_contexts_by_injury,
@@ -126,6 +127,18 @@ def _rehab_responses(store, athlete_id, row):
     return responses
 
 
+def _run_history(store, athlete_id: str, training_day: str) -> list[SessionDetailRun]:
+    """Every live run through the Sunday of ``training_day``'s week, oldest first."""
+    day = date.fromisoformat(training_day[:10])
+    week_end = (day + timedelta(days=6 - day.weekday())).isoformat()
+    rows = store.list_external_runs(athlete_id, through_day=week_end)
+    return [SessionDetailRun(**{key: row.get(key) for key in SessionDetailRun.model_fields}
+                             | {"id": str(row["id"]), "training_day": str(row["training_day"])[:10],
+                                "created_at": str(row["created_at"]) if row.get("created_at") else None})
+            for row in rows if row.get("athlete_id") == athlete_id and row.get("activity") == "roadwork"
+            and not row.get("deleted_at") and str(row["training_day"])[:10] <= week_end]
+
+
 def session_details(store, athlete_id, source, entry_id, *, health_consent_granted):
     consent = health_consent_granted
     row = (store.get_external_training_session(athlete_id, entry_id) if source == "external"
@@ -147,8 +160,9 @@ def session_details(store, athlete_id, source, entry_id, *, health_consent_grant
                    if entry.get("athlete_id") == athlete_id and str(entry.get("external_session_id")) == entry_id
                    and not entry.get("deleted_at")]
         summary = _summary({**occurrence, "exercise_count": len(entries)}, source, occurrence["title"], consent)
+        runs = _run_history(store, athlete_id, str(row["training_day"])) if row.get("activity") == "roadwork" else None
         return SessionDetails(session=summary, blocks=[_manual_block(entry, consent) for entry in entries],
-                              prescription_source="manual", sparring=safe_sparring)
+                              prescription_source="manual", sparring=safe_sparring, runs=runs)
 
     session = _snapshot_session(row)
     blocks = _rows(session.get("blocks")) if session else []

@@ -327,7 +327,7 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
       {sparringDraft && token ? <SparringLogPrompt key={sparringDraft.externalSessionId} token={token} draft={sparringDraft}
         onSaved={onSparringSaved} onDismiss={() => setSparringDraft(null)} /> : null}
       {selected && token ? <SessionDetails key={`${selected.source}:${selected.id}`} row={selected} token={token}
-        cache={detailsCache} onDismiss={() => setSelected(null)} runs={rows}
+        cache={detailsCache} onDismiss={() => setSelected(null)}
         onEditRun={row => { setEditRun(row); setSelected(null); }}
         onEditExercises={selected.source === "external" ? row => { setExercisesFor({ row, reopenDetails: true }); setSelected(null); } : undefined} /> : null}
       {editRun && token ? <LogTraining key={`edit-${editRun.id}`} accessToken={token} entry={editRun} autoOpen
