@@ -70,3 +70,39 @@ def test_background_replay_failure_preserves_cursor_and_allows_retry(monkeypatch
         assert len(calls) == 2
 
     asyncio.run(scenario())
+
+
+def test_replay_waits_the_idle_interval_only_after_a_pass_finds_nothing(monkeypatch):
+    async def scenario():
+        clock = [1.0]
+        monkeypatch.setattr(worker.time, "monotonic", lambda: clock[0])
+        monkeypatch.setitem(worker._CONTRIBUTION_XP_REPLAY_TASK, "task", None)
+        cursors = iter(["page-1", None, "page-1"])
+        calls = []
+
+        async def background(function, store, **kwargs):
+            calls.append(kwargs["after_id"])
+            return next(cursors)
+
+        monkeypatch.setattr(worker.asyncio, "to_thread", background)
+        state = {}
+
+        async def tick(at):
+            clock[0] = at
+            await worker._run_contribution_xp_replay_if_due(store=object(), state=state)
+            task = worker._CONTRIBUTION_XP_REPLAY_TASK["task"]
+            if task is not None:
+                await task
+
+        await tick(1.0)  # first pass starts at once; a full page leaves a cursor
+        await tick(62.0)  # mid-walk: the short cadence drains the backlog
+        assert calls == [None, "page-1"]
+        assert state["after_id"] is None  # caught up
+
+        await tick(123.0)
+        await tick(900.0)
+        assert len(calls) == 2, "a caught-up replay waits the idle interval"
+        await tick(963.0)
+        assert calls == [None, "page-1", None]
+
+    asyncio.run(scenario())
