@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "supabase/migrations"
 GUARD_MIGRATION = MIGRATIONS / "20260803182000_guard_timezone_day_rollover.sql"
 FIRST_SETUP_MIGRATION = MIGRATIONS / "20261019160000_allow_first_athlete_timezone_setup.sql"
-SKIP_UNCHANGED_MIGRATION = MIGRATIONS / "20261104190000_skip_unchanged_timezone_validation.sql"
+SKIP_UNCHANGED_MIGRATION = MIGRATIONS / "20261104185957_skip_unchanged_timezone_validation.sql"
 AUTH = {"Authorization": "Bearer athlete-token"}
 
 

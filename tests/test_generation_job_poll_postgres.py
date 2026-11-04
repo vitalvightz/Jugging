@@ -12,7 +12,7 @@ from uuid import uuid4
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-POLL_MIGRATION = ROOT / "supabase/migrations/20261104190100_index_friendly_generation_job_poll.sql"
+POLL_MIGRATION = ROOT / "supabase/migrations/20261104190005_index_friendly_generation_job_poll.sql"
 
 _ORIGINAL = """
 create function original_claim(p_limit integer, p_stale_before timestamptz, p_include_legacy_blank boolean)
