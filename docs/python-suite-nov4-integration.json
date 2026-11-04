@@ -172,5 +172,38 @@
       "test": "tests/test_injury_policy_journey.py::test_no_contact_alone_does_not_hold_fitness_or_support_without_contact_metadata[cooldown_recovery]",
       "decision": "#3166 explicitly inserts published rehab before the closing cooldown. Assert the unchanged cooldown at the final position; preserve no-hold, no-rehab-only and no-changes assertions."
     }
-  ]
+  ],
+  "no_equipment_recount": {
+    "main": "b898cbce21b853b41dad3d9bba77b37d8f7bb2d3",
+    "count": 280,
+    "unique_ids": 280,
+    "by_source": {
+      "conditioning_bank.json": 81,
+      "coordination/grappling.json": 1,
+      "coordination/kicks.json": 8,
+      "coordination/mma_transitions.json": 3,
+      "coordination/striking.json": 7,
+      "coordination/universal.json": 6,
+      "exercise_bank.json": 101,
+      "style_conditioning_bank.json": 21,
+      "style_taper_conditioning.json": 24,
+      "technical_footwork_bank.json": 28
+    },
+    "added_ids_since_496821b9": [
+      "exercise_bank.json:472dc701-8ecc-45cf-84f4-7ce5a68fa71c",
+      "exercise_bank.json:50cf4158-4e54-4822-9af7-c03162b0fccc",
+      "exercise_bank.json:57c5a0e7-eebd-4002-958f-7b7f295a4800",
+      "technical_footwork_bank.json:2908b95a-4197-4ee8-931d-34e5ff44ea89",
+      "technical_footwork_bank.json:908f57a7-2833-44d0-8af5-3199a5b110e4",
+      "technical_footwork_bank.json:d2d56b26-31e9-485e-a9f2-d4e28b44d914"
+    ],
+    "removed_ids_since_496821b9": [
+      "exercise_bank.json:c9ce3822-c17f-4177-b43d-ffc7ba92fb4e"
+    ],
+    "reviewed_changes": [
+      "#3166: three equipment-free core rows; one retired stance hold",
+      "#3181: three technical footwork rows"
+    ],
+    "coverage": "API total equals the exact independently enumerated ID set; mandatory Towel Pull-Up setup and prescription boundaries remain asserted."
+  }
 }
