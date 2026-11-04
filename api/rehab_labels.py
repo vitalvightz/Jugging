@@ -118,6 +118,7 @@ def _bank_drill_terms(region: str, *, covered_by: set[str]) -> list[str]:
     exactly where plain synonym matching would fail and silently downgrade live
     rehab work to "Prehab".
     """
+    from fightcamp.injury_synonyms import LOCATION_MAP
     from fightcamp.rehab_protocols import get_rehab_bank
 
     try:
@@ -130,7 +131,16 @@ def _bank_drill_terms(region: str, *, covered_by: set[str]) -> list[str]:
     for entry in bank:
         if not isinstance(entry, dict):
             continue
-        if _canonical_region(str(entry.get("location") or "").replace("_", " ")) != region:
+        # Bank locations are controlled taxonomy labels, not athlete free text.
+        # Reuse the existing dictionary instead of running NLP for every row.
+        location = str(entry.get("location") or "").replace("_", " ")
+        if location == "unspecified":
+            continue
+        bank_region = (
+            _fold_region(LOCATION_MAP[location]) if location in LOCATION_MAP
+            else _canonical_region(location)
+        )
+        if bank_region != region:
             continue
         for drill in entry.get("drills") or []:
             name = normalize_match_term(
