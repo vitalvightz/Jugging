@@ -64,6 +64,13 @@ class Store:
     def get_plan_for_athlete(self, plan_id, athlete_id):
         return next((row for row in self.plans if row["id"] == plan_id and row["athlete_id"] == athlete_id), None)
 
+    def get_training_plan_for_athlete(self, plan_id, athlete_id):
+        # The real projection, so a streak that needs a column it leaves out fails here.
+        from api.store import TRAINING_PLAN_SELECT
+
+        row = self.get_plan_for_athlete(plan_id, athlete_id)
+        return {key: row[key] for key in TRAINING_PLAN_SELECT.split(",") if key in row} if row else None
+
     def list_plan_session_completions(self, athlete_id, plan_id, *, limit=500):
         return [row for row in self.completions if row["plan_id"] == plan_id][:limit]
 
