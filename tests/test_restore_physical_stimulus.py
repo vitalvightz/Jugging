@@ -61,7 +61,12 @@ def test_saved_intake_replays_the_production_calendar_context(programmes):
     assert athlete["days_until_fight"] == 18
     assert athlete["include_generation_day"] is True
     assert athlete["training_frequency"] == 4
-    assert athlete["has_active_injury"] is False  # Saved non-limiting surface injury.
+    # 62c8fa6d explicitly keeps this flag true for wound-care visibility;
+    # surface-only injuries must not add rehab, restriction or compression.
+    assert athlete["has_active_injury"] is True
+    assert athlete["surface_injury_only"] is True
+    assert not athlete["injury_restrictions"]
+    assert "injury_management" not in athlete["readiness_flags"]
     assert summary["hard_sparring_cutoff"] == 17
     assert summary["effective_hard_appointments"] == 0
     assert all(c["allows_compatible_sc"] for c in summary["contacts"])

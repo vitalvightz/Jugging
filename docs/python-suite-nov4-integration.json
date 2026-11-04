@@ -171,6 +171,11 @@
     {
       "test": "tests/test_injury_policy_journey.py::test_no_contact_alone_does_not_hold_fitness_or_support_without_contact_metadata[cooldown_recovery]",
       "decision": "#3166 explicitly inserts published rehab before the closing cooldown. Assert the unchanged cooldown at the final position; preserve no-hold, no-rehab-only and no-changes assertions."
+    },
+    {
+      "test": "tests/test_restore_physical_stimulus.py::test_saved_intake_replays_the_production_calendar_context",
+      "decision": "62c8fa6d03a0d13ec9ab3d1f3bdafcf4c247d876 explicitly keeps has_active_injury true for wound-care visibility. Assert surface_injury_only, no injury restrictions and no injury_management readiness flag. No product behavior changed.",
+      "verification": "The complete saved-intake replay fixture passes this case on the merged branch (153.65 seconds)."
     }
   ],
   "no_equipment_recount": {
