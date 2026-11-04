@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "supabase/migrations"
 GUARD_MIGRATION = MIGRATIONS / "20260803182000_guard_timezone_day_rollover.sql"
 FIRST_SETUP_MIGRATION = MIGRATIONS / "20261019160000_allow_first_athlete_timezone_setup.sql"
+SKIP_UNCHANGED_MIGRATION = MIGRATIONS / "20261104190000_skip_unchanged_timezone_validation.sql"
 AUTH = {"Authorization": "Bearer athlete-token"}
 
 
@@ -164,6 +165,8 @@ def timezone_db():
             db.execute(GUARD_MIGRATION.read_text(encoding="utf-8"))
             db.execute(FIRST_SETUP_MIGRATION.read_text(encoding="utf-8"))
             db.execute(FIRST_SETUP_MIGRATION.read_text(encoding="utf-8"))
+            db.execute(SKIP_UNCHANGED_MIGRATION.read_text(encoding="utf-8"))
+            db.execute(SKIP_UNCHANGED_MIGRATION.read_text(encoding="utf-8"))
         yield local
     finally:
         with psycopg.connect(dsn, autocommit=True) as admin:
@@ -209,5 +212,26 @@ def test_postgres_genuine_timezone_changes_stay_guarded(timezone_db):
 
         with pytest.raises(psycopg.errors.CheckViolation, match="cannot be cleared"):
             db.execute("update profiles set athlete_timezone='' where id=%s", (athlete_id,))
+        with pytest.raises(psycopg.errors.InvalidParameterValue):
+            db.execute("update profiles set athlete_timezone='Mars/Olympus' where id=%s", (athlete_id,))
+
+
+def test_postgres_unchanged_timezone_saves_skip_validation_and_keep_the_stamp(timezone_db):
+    import psycopg
+
+    with psycopg.connect(timezone_db, autocommit=True) as db:
+        athlete_id = _new_athlete_with_daily_xp(db)
+        db.execute("update profiles set athlete_timezone='Europe/London' where id=%s", (athlete_id,))
+        stamp = db.execute("select athlete_timezone_updated_at from profiles where id=%s", (athlete_id,)).fetchone()[0]
+
+        # A profile save resends the same zone (padded here) right after training:
+        # not a change, so neither the activity nor the 24-hour guard applies.
+        db.execute("update profiles set athlete_timezone=' Europe/London ' where id=%s", (athlete_id,))
+        row = db.execute(
+            "select athlete_timezone, athlete_timezone_updated_at from profiles where id=%s", (athlete_id,)
+        ).fetchone()
+        assert row == ("Europe/London", stamp)
+
+        # The zone lookup is skipped only for an unchanged value.
         with pytest.raises(psycopg.errors.InvalidParameterValue):
             db.execute("update profiles set athlete_timezone='Mars/Olympus' where id=%s", (athlete_id,))
