@@ -12,6 +12,7 @@ test("beta events send without a preference read and retry with the same identit
   const bodies: string[] = [];
   globalThis.fetch = async (input, init) => {
     assert.ok(String(input).endsWith("/events"));
+    assert.equal(init?.keepalive, true);
     bodies.push(String(init?.body));
     return new Response(JSON.stringify(bodies.length === 1 ? { detail: "temporary" } : { accepted: true }), { status: bodies.length === 1 ? 503 : 202 });
   };

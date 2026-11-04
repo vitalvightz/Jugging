@@ -40,6 +40,9 @@ export function ProductAnalytics() {
   const [status, setStatus] = useState("");
   const [sport, setSport] = useState("");
   const [planMode, setPlanMode] = useState("");
+  const [searchDraft, setSearchDraft] = useState("");
+  const [athleteSearch, setAthleteSearch] = useState("");
+  const [visitFilter, setVisitFilter] = useState("all");
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState<ProductReport | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +57,8 @@ export function ProductAnalytics() {
       days: String(days),
       offset: String(offset),
     });
+    if (athleteSearch) params.set("athlete_search", athleteSearch);
+    if (visitFilter !== "all") params.set("visit_filter", visitFilter);
     if (status) params.set("professional_status", status);
     if (sport) params.set("sport", sport);
     if (planMode) params.set("plan_mode", planMode);
@@ -69,7 +74,7 @@ export function ProductAnalytics() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [token, days, status, sport, planMode, offset, reload]);
+  }, [token, days, status, sport, planMode, offset, reload, athleteSearch, visitFilter]);
   return (
     <section className={`panel ${styles.root}`}>
       <div className="section-heading">
@@ -177,13 +182,18 @@ export function ProductAnalytics() {
             <p>{data.tracking_health?.healthy
               ? "The database is ready to receive beta usage events. Visits below confirm which accounts have actually sent events."
               : "Usage events may be missing. Check the analytics migration and retention job before relying on visit counts."}</p>
-            <p>Automatic beta tracking since {stamp(data.tracking_since ?? null)}. Earlier visits were not recorded and cannot be recovered. Counts update when you refresh.</p>
+            <p>Browser tracking since {stamp(data.tracking_since ?? null)}. Earlier browsing may be missing; saved feature actions still prove use. Counts update when you refresh.</p>
+            <p>Last browser event received: {stamp(data.latest_browser_event ?? null)} · {data.browser_reporting_athletes ?? "—"} accounts sent browser events in this period. A healthy collector does not mean every browser reported.</p>
             <button className="secondary-button" onClick={() => setReload(n => n + 1)}>Refresh activity</button>
           </div>
           <div className={styles.grid}>
-            <Metric label="Visited today" value={data.visitors_today ?? null} definition="People who opened or returned to the app today. Each person counts once." />
-            <Metric label="Visited this week" value={data.visitors_7d ?? null} definition="People who opened the app in the last 7 days, including today." />
-            <Metric label="Visited this month" value={data.visitors_30d ?? null} definition="People who opened the app in the last 30 days, including today. A visit does not mean they trained." />
+            <Metric label="Visited today" value={data.visitors_today ?? null} definition="People with a recorded visit, page view or feature action today. Each person counts once." />
+            <Metric label="Visited this week" value={data.visitors_7d ?? null} definition="People with recorded app use in the last 7 days, including today." />
+            <Metric label="Visited this month" value={data.visitors_30d ?? null} definition="People with recorded app use in the last 30 days, including today. Browsing does not mean they trained." />
+          </div>
+          <div className={styles.grid}>
+            <Metric label="Seen in the last 30 minutes" value={data.seen_recently ?? null} definition="Recent recorded use. This does not prove someone is still online." />
+            <Metric label="No recorded visit in 7 days" value={data.no_visit_7d ?? null} definition="Accounts with no recorded use this week, including accounts with unknown history. Open the athlete list to follow up." />
           </div>
           <p className="muted">
             UTC calendar days · Updated {stamp(data.as_of)} · Admin and
@@ -549,15 +559,23 @@ export function ProductAnalytics() {
             <p className="muted">
               Admin-only activity. Open a profile for its timeline.
             </p>
+            <form className={styles.filters} onSubmit={e => { e.preventDefault(); setAthleteSearch(searchDraft.trim()); setOffset(0); }}>
+              <label>Find an athlete<input type="search" value={searchDraft} onChange={e => setSearchDraft(e.target.value)} placeholder="Name or email" maxLength={120} /></label>
+              <button className="secondary-button" type="submit">Search athletes</button>
+              <label>Visit history<select value={visitFilter} onChange={e => { setVisitFilter(e.target.value); setOffset(0); }}>
+                <option value="all">All athletes</option><option value="seen_today">Seen today</option><option value="no_visit_7d">No visit in 7 days</option><option value="never_seen">No recorded visit ever</option>
+              </select></label>
+            </form>
+            <p className="muted">Search and visit history filter this list. The summary above still covers your selected period and segments.</p>
             <div className={styles.table}>
-              <table>
+              <table className={styles.directory}>
                 <thead>
                   <tr>
                     <th>Athlete</th>
-                    <th>First action</th>
+                    <th>Latest action</th>
                     <th>Last seen in app</th>
-                    <th>Active days 7 / 30</th>
-                    <th>Inactive days</th>
+                    <th>Visit days 7 / 30</th>
+                    <th>Days since feature action</th>
                     <th>Observed signals</th>
                   </tr>
                 </thead>
@@ -569,10 +587,10 @@ export function ProductAnalytics() {
                           {athleteIdentity(p)}
                         </Link>
                       </td>
-                      <td>{stamp(p.first_activity)}</td>
+                      <td>{p.latest_action ? p.latest_action.action === "app_opened" ? humanize(p.latest_action.action) : `${humanize(p.latest_action.feature)} · ${humanize(p.latest_action.action)}` : "No recorded action"}</td>
                       <td>{stamp(p.last_seen ?? null)}</td>
                       <td>
-                        {p.active_days_7} / {p.active_days_30}
+                        {p.visit_days_7 ?? "—"} / {p.visit_days_30 ?? "—"}
                       </td>
                       <td>{p.inactivity_days ?? "No recorded activity"}</td>
                       <td>{p.signals?.join(" · ") || "None recorded"}</td>
@@ -581,6 +599,7 @@ export function ProductAnalytics() {
                 </tbody>
               </table>
             </div>
+            {data.athlete_total === 0 ? <p role="status">No athletes match this search and visit history.</p> : null}
             <div className={styles.filters}>
               <button
                 disabled={!offset}
@@ -671,6 +690,7 @@ export function AthleteActivityPanel({ athleteId }: { athleteId: string }) {
       ) : data ? (
         <>
           <div className={styles.grid}>
+            <Metric label="Visit days in 7 / 30 days" value={`${data.summary.visit_days_7 ?? "—"} / ${data.summary.visit_days_30 ?? "—"}`} definition="Different days with a visit, page view or recorded feature action. Browsing counts here." />
             <Metric label="Last seen in app" value={stamp(data.summary.last_seen ?? null)} definition="Latest recorded visit, feature action or training save. No record means unknown, not proof they never visited." />
             <Metric
               label="Registered"
