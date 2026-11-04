@@ -106,10 +106,15 @@ def today_command_build(
         state["inflight"][athlete_id] = entry
 
     def publish(view: Any) -> None:
+        ttl = _ttl_seconds()
+        registry = _registry(store)
+        if ttl <= 0 or registry is None or view is None:
+            return
+        # Check and insert as one step: a save committing in between would
+        # otherwise leave this pre-save view for XP to reuse for the whole TTL.
         with _LOCK:
-            current = state["generation"].get(athlete_id, 0) == generation
-        if current:
-            remember_today_command(store, athlete_id=athlete_id, athlete_timezone=athlete_timezone, view=view)
+            if state["generation"].get(athlete_id, 0) == generation:
+                _insert_locked(registry, athlete_id, athlete_timezone, view, ttl)
 
     try:
         yield publish
@@ -156,14 +161,25 @@ def remember_today_command(
     registry = _registry(store)
     if registry is None:
         return
-    now = time.monotonic()
     with _LOCK:
-        if athlete_id not in registry and len(registry) >= _MAX_ENTRIES:
-            for key in [key for key, entry in registry.items() if entry[2] <= now]:
-                registry.pop(key, None)
-            if len(registry) >= _MAX_ENTRIES:
-                registry.clear()
-        registry[athlete_id] = (str(athlete_timezone or ""), view, now + ttl)
+        _insert_locked(registry, athlete_id, athlete_timezone, view, ttl)
+
+
+def _insert_locked(
+    registry: dict[str, tuple[str, Any, float]],
+    athlete_id: str,
+    athlete_timezone: str | None,
+    view: Any,
+    ttl: float,
+) -> None:
+    """Store a view; the caller holds ``_LOCK``."""
+    now = time.monotonic()
+    if athlete_id not in registry and len(registry) >= _MAX_ENTRIES:
+        for key in [key for key, entry in registry.items() if entry[2] <= now]:
+            registry.pop(key, None)
+        if len(registry) >= _MAX_ENTRIES:
+            registry.clear()
+    registry[athlete_id] = (str(athlete_timezone or ""), view, now + ttl)
 
 
 def recent_today_command(
@@ -194,15 +210,13 @@ def forget_today_command(store: AppStore, athlete_id: str | None) -> None:
     if not athlete_id:
         return
     state = getattr(store, _STATE_ATTR, None)
-    if isinstance(state, dict):
-        with _LOCK:
+    registry = getattr(store, _REGISTRY_ATTR, None)
+    with _LOCK:
+        if isinstance(state, dict):
             # Builds that began before this write must not be remembered.
             state["generation"][athlete_id] = state["generation"].get(athlete_id, 0) + 1
-    registry = getattr(store, _REGISTRY_ATTR, None)
-    if not isinstance(registry, dict):
-        return
-    with _LOCK:
-        registry.pop(athlete_id, None)
+        if isinstance(registry, dict):
+            registry.pop(athlete_id, None)
 
 
 __all__ = [

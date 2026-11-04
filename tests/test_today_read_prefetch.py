@@ -158,3 +158,55 @@ def test_analytics_events_keep_the_reusable_today_view(neutral):
         client.post("/api/injury-flags", headers=headers, json={"body_area": "knee", "description": "knee pain"})
     kept = recent_today_command(store, athlete_id="athlete-1", athlete_timezone=None) is not None
     assert kept is neutral
+
+
+def test_a_save_between_the_validity_check_and_the_insert_is_never_overwritten(monkeypatch):
+    """The save lands at the last moment before the view is stored.
+
+    Validity and insertion must be one step: a check-in committing after the
+    check but before the insert would otherwise leave the pre-save view for
+    XP to reuse for the whole TTL.
+    """
+    from api.services import today_command_cache as cache
+
+    store = FakeStore()
+    real_registry = cache._registry
+    armed = {"on": False}
+
+    def registry_with_save(target):
+        if armed["on"]:
+            armed["on"] = False
+            forget_today_command(target, ATHLETE)  # the check-in commits now
+        return real_registry(target)
+
+    monkeypatch.setattr(cache, "_registry", registry_with_save)
+    with today_command_build(store, athlete_id=ATHLETE, athlete_timezone="UTC") as publish:
+        armed["on"] = True
+        publish({"view": "pre-save"})
+
+    assert armed["on"] is False  # the save really happened inside publish
+    assert recent_today_command(store, athlete_id=ATHLETE, athlete_timezone="UTC") is None
+    assert await_today_command(store, athlete_id=ATHLETE, athlete_timezone="UTC") is None
+
+
+def test_concurrent_saves_never_leave_a_pre_save_view_remembered():
+    """Saves racing publishes: whenever a save follows a build's start, that build's view is gone."""
+    from api.services.today_command_cache import remember_today_command  # noqa: F401 - same module state
+
+    for _ in range(300):
+        store = FakeStore()
+        go = threading.Barrier(2)
+
+        def save():
+            go.wait()
+            forget_today_command(store, ATHLETE)
+
+        saver = threading.Thread(target=save)
+        saver.start()
+        with today_command_build(store, athlete_id=ATHLETE, athlete_timezone="UTC") as publish:
+            go.wait()
+            publish({"view": "pre-save"})
+        saver.join(5)
+        # The save began after the build did, so whichever order they took,
+        # the pre-save view must not survive.
+        assert recent_today_command(store, athlete_id=ATHLETE, athlete_timezone="UTC") is None
