@@ -11,6 +11,7 @@ import {
   type Draft, type ExerciseChoice, type ExerciseOption, type FieldId, type MeasurementFormat,
 } from "@/lib/manual-exercises";
 import type { TrainingHistorySession } from "@/lib/training-history";
+import { trainingTitle } from "@/lib/training-disciplines";
 import sheet from "./log-training.module.css";
 import styles from "./manual-exercise-logger.module.css";
 import { SetRows } from "./set-rows";
@@ -289,7 +290,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
     onCancel={event => { event.preventDefault(); close(); }}>
     <header className={sheet.header}>
       <div><h2 id={`${fieldId}-title`}>Add exercises</h2>
-        <p className={sheet.source}>{[session.title, session.duration_minutes ? `${session.duration_minutes} min` : null, formatAppDate(session.training_day)].filter(Boolean).join(" · ")}</p>
+        <p className={sheet.source}>{[trainingTitle(session), session.duration_minutes ? `${session.duration_minutes} min` : null, formatAppDate(session.training_day)].filter(Boolean).join(" · ")}</p>
       </div>
       <button className={sheet.close} type="button" aria-label="Close exercises" disabled={busy} onClick={close}>×</button>
     </header>

@@ -154,3 +154,35 @@
 @media (prefers-reduced-motion: reduce) {
   .dialog[open], .dialog[open]::backdrop, .dialog[data-closing], .dialog[data-closing]::backdrop { animation: none; }
 }
+
+/* A run, laid out like the weight tracker: summary card, trend card, week card. */
+.runCards { display: grid; gap: 14px; }
+.runCard { gap: 14px; min-width: 0; }
+.runMeta { font-size: 0.78rem; color: var(--text-muted); }
+.runHeadline { display: flex; align-items: center; gap: 16px; margin: 2px 0; }
+.runHeadline strong { font-size: clamp(52px, 13vw, 72px); font-weight: 700; line-height: .95; letter-spacing: -.055em; font-variant-numeric: tabular-nums; }
+.runHeadline strong[data-empty] { color: var(--text-muted); }
+.runHeadline > span { font-size: 0.82rem; line-height: 1.7; color: var(--text-secondary); }
+.runRecords { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 0; }
+.runRecords > span { margin-left: 0; vertical-align: 0; }
+/* Pace and times run long; keep the three tiles on one line at phone width. */
+.runTiles dd { font-size: clamp(1.15rem, 5.4vw, 1.5rem); }
+.runTiles dd small { margin-left: 2px; font-size: 0.55em; font-weight: 600; letter-spacing: 0; color: var(--text-secondary); }
+.runEdit { min-height: 32px; padding: 0; }
+.runTiles div { padding: 12px 4px; }
+.runPrompt { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.runPrompt p { margin: 0; flex: 1 1 200px; font-size: 0.88rem; color: var(--text-secondary); }
+.runPrompt :global(.secondary-button) { flex: none; }
+.runTrendHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.runSectionTitle { margin: 0; font-size: 1rem; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+.runToggle { flex: none; }
+.runToggle button { min-height: 30px; padding: 0 10px; font-size: 0.74rem; }
+.runToggle button:disabled { opacity: .45; cursor: not-allowed; }
+.runReadout p { margin: 0; }
+.runReadout strong { font-size: 1.9rem; font-weight: 700; letter-spacing: -.035em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.runChange { margin-top: 2px !important; font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.runReadoutMeta { margin-top: 2px !important; font-size: 12px; line-height: 1.45; color: var(--text-muted); }
+.runCard [role="slider"]:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: 4px; }
+.runCard [role="slider"] { height: 160px; margin: 2px 0 0; background: transparent; }
+.runChartFoot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.runChartFoot p { margin: 0; }

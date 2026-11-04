@@ -672,7 +672,7 @@ function PlanSetupAlternatives() {
     <nav className="action-alternatives" aria-label="Other ways to build a plan">
       <p className="action-alternatives-label">Other ways to build</p>
       <ActionLink href="/quick-build">Quick Build</ActionLink>
-      <ActionLink href="/plans/custom">Build your own</ActionLink>
+      <ActionLink href="/plans/custom">Add my plan</ActionLink>
     </nav>
   );
 }
@@ -852,8 +852,9 @@ function getReviewStepBlockingIssue(
   if (!nextForm.fight_date && !options.noScheduledFight) return { message: "Choose a fight date or mark \"No scheduled fight\" to continue.", step: 1, fieldId: "fightDate" };
   if (!options.noScheduledFight && isFightDateInPast(nextForm.fight_date)) return { message: FIGHT_DATE_IN_PAST_MESSAGE, step: 1, fieldId: "fightDate" };
   if (!nextForm.training_availability.length) return { message: "Pick at least one training day to continue.", step: 2, fieldId: "trainingAvailabilityGroup" };
-  if (!nextForm.weekly_training_frequency || nextForm.weekly_training_frequency < 1) return { message: "Planned sessions per week must be at least 1.", step: 1, fieldId: "sessionsPerWeek" };
-  if (nextForm.weekly_training_frequency > 14) return { message: "Planned sessions per week cannot exceed 14.", step: 1, fieldId: "sessionsPerWeek" };
+  if (!nextForm.weekly_training_frequency || nextForm.weekly_training_frequency < 1) return { message: "Training days per week must be at least 1.", step: 1, fieldId: "sessionsPerWeek" };
+  if (!Number.isInteger(nextForm.weekly_training_frequency)) return { message: "Training days per week must be a whole number.", step: 1, fieldId: "sessionsPerWeek" };
+  if (nextForm.weekly_training_frequency > 7) return { message: "Training days per week cannot exceed 7.", step: 1, fieldId: "sessionsPerWeek" };
   const parsedRounds = parseRoundsFormat(nextForm.rounds_format);
   if (!parsedRounds.roundCount) return { message: "Choose round count and duration to continue.", step: 1, fieldId: "roundCount" };
   if (!parsedRounds.roundDuration) return { message: "Choose round count and duration to continue.", step: 1, fieldId: "roundDuration" };
@@ -1076,9 +1077,9 @@ export function PlanIntakeForm() {
         case "roundDuration":
           return Boolean(parsed.roundDuration);
         case "sessionsPerWeek":
-          return Boolean(form.weekly_training_frequency)
+          return Number.isInteger(form.weekly_training_frequency)
             && (form.weekly_training_frequency ?? 0) >= 1
-            && (form.weekly_training_frequency ?? 0) <= 14;
+            && (form.weekly_training_frequency ?? 0) <= 7;
         case "trainingAvailabilityGroup":
           return form.training_availability.length > 0;
         case "keyGoalsGroup":
@@ -1852,14 +1853,21 @@ export function PlanIntakeForm() {
     }
     if (!nextForm.weekly_training_frequency || nextForm.weekly_training_frequency < 1) {
       return reportInvalidField({
-        message: "Planned sessions per week must be at least 1.",
+        message: "Training days per week must be at least 1.",
         fieldId: "sessionsPerWeek",
         step: 1,
       });
     }
-    if (nextForm.weekly_training_frequency > 14) {
+    if (!Number.isInteger(nextForm.weekly_training_frequency)) {
       return reportInvalidField({
-        message: "Planned sessions per week cannot exceed 14.",
+        message: "Training days per week must be a whole number.",
+        fieldId: "sessionsPerWeek",
+        step: 1,
+      });
+    }
+    if (nextForm.weekly_training_frequency > 7) {
+      return reportInvalidField({
+        message: "Training days per week cannot exceed 7.",
         fieldId: "sessionsPerWeek",
         step: 1,
       });
@@ -2205,8 +2213,9 @@ export function PlanIntakeForm() {
   ];
   const campSetupReviewItems = [
     { label: "Fight date", value: formatFightDateValue(form.fight_date) },
+    ...(!noScheduledFight && form.event_name?.trim() ? [{ label: "Event", value: form.event_name.trim() }] : []),
     { label: "Rounds", value: formatValue(form.rounds_format) },
-    { label: "Planned sessions per week", value: formatValue(form.weekly_training_frequency) },
+    { label: "Training days per week", value: formatValue(form.weekly_training_frequency) },
     { label: "Fatigue level", value: formatValue(form.fatigue_level || "low") },
   ];
   const trainingReviewItems = [
@@ -2281,11 +2290,11 @@ export function PlanIntakeForm() {
     },
     {
       label:
-        form.weekly_training_frequency && form.weekly_training_frequency >= 1 && form.weekly_training_frequency <= 14
-          ? "Sessions per week set."
-          : "Set sessions per week (1 to 14).",
+        Number.isInteger(form.weekly_training_frequency) && (form.weekly_training_frequency ?? 0) >= 1 && (form.weekly_training_frequency ?? 0) <= 7
+          ? "Training days per week set."
+          : "Set training days per week (1 to 7).",
       status:
-        form.weekly_training_frequency && form.weekly_training_frequency >= 1 && form.weekly_training_frequency <= 14
+        Number.isInteger(form.weekly_training_frequency) && (form.weekly_training_frequency ?? 0) >= 1 && (form.weekly_training_frequency ?? 0) <= 7
           ? "done"
           : "pending",
       fix: { fieldId: "sessionsPerWeek", step: 1 },
@@ -2300,7 +2309,7 @@ export function PlanIntakeForm() {
     },
     ...(availabilityConsistency.hardError
       ? [{ label: availabilityConsistency.hardError, status: "warning" as const, fix: { fieldId: "availabilityConsistencyAlert", step: 2 } }]
-      : [{ label: "You have enough training days for your sessions.", status: "done" as const }]),
+      : [{ label: "Your planned training days fit your availability.", status: "done" as const }]),
     ...(sparringConsistency.hardError
       ? [{ label: sparringConsistency.hardError, status: "warning" as const, fix: { fieldId: "sparringConsistencyAlert", step: 2 } }]
       : [{ label: "Sparring and light days fit your training days.", status: "done" as const }]),
@@ -2362,11 +2371,11 @@ export function PlanIntakeForm() {
             },
             {
               label:
-                form.weekly_training_frequency && form.weekly_training_frequency >= 1 && form.weekly_training_frequency <= 14
-                  ? "Sessions per week set."
-                  : "Set sessions per week (1 to 14).",
+                Number.isInteger(form.weekly_training_frequency) && (form.weekly_training_frequency ?? 0) >= 1 && (form.weekly_training_frequency ?? 0) <= 7
+                  ? "Training days per week set."
+                  : "Set training days per week (1 to 7).",
               status:
-                form.weekly_training_frequency && form.weekly_training_frequency >= 1 && form.weekly_training_frequency <= 14
+                Number.isInteger(form.weekly_training_frequency) && (form.weekly_training_frequency ?? 0) >= 1 && (form.weekly_training_frequency ?? 0) <= 7
                   ? "done"
                   : "pending",
               fix: { fieldId: "sessionsPerWeek", step: 1 },
@@ -2388,7 +2397,7 @@ export function PlanIntakeForm() {
             {
               label: availabilityConsistency.hardError
                 ? availabilityConsistency.hardError
-                : "You have enough training days for your sessions.",
+                : "Your planned training days fit your availability.",
               status: availabilityConsistency.hardError ? "warning" : "done",
               fix: { fieldId: "availabilityConsistencyAlert", step: 2 },
             },
@@ -2721,6 +2730,20 @@ export function PlanIntakeForm() {
                       <p id="fightDate-error" className="error-text" role="alert">{error}</p>
                     ) : null}
                   </div>
+                  {!noScheduledFight ? (
+                    <div className="field">
+                      <label htmlFor="eventName">Event name (optional)</label>
+                      <input
+                        id="eventName"
+                        type="text"
+                        maxLength={80}
+                        autoComplete="off"
+                        placeholder="e.g. London Regionals"
+                        value={form.event_name ?? ""}
+                        onChange={(event) => updateField("event_name", event.target.value)}
+                      />
+                    </div>
+                  ) : null}
                   <div className={`field${invalidFieldId === "roundCount" ? " field-invalid" : ""}`}>
                     <label htmlFor="roundCount">Fight rounds</label>
                     <CustomSelect
@@ -2755,35 +2778,33 @@ export function PlanIntakeForm() {
                   </div>
                   {shouldHideField(daysOutCtx, "weekly_training_frequency") ? (
                     <div className="field field-span-full">
-                      <p className="muted" style={{ opacity: 0.5 }}>Weekly session count is not used for planning at this stage.</p>
+                      <p className="muted" style={{ opacity: 0.5 }}>Training-day count is not used for planning at this stage.</p>
                     </div>
                   ) : (
                     <div
                       className={`field field-span-full${invalidFieldId === "sessionsPerWeek" ? " field-invalid" : ""}`}
                       style={shouldDeEmphasizeField(daysOutCtx, "weekly_training_frequency") ? { opacity: 0.55 } : undefined}
                     >
-                      <label htmlFor="sessionsPerWeek">Planned sessions per week</label>
+                      <label htmlFor="sessionsPerWeek">Training days per week</label>
                       <input
                         id="sessionsPerWeek"
                         type="number"
                         min="1"
-                        max="14"
+                        max="7"
+                        step="1"
                         inputMode="numeric"
                         disabled={shouldDisableField(daysOutCtx, "weekly_training_frequency")}
                         value={form.weekly_training_frequency ?? ""}
                         onChange={(event) => {
                           const nextValue = numberOrNull(event.target.value);
-                          updateField(
-                            "weekly_training_frequency",
-                            nextValue === null ? null : Math.min(Math.max(nextValue, 1), 14),
-                          );
+                          updateField("weekly_training_frequency", nextValue);
                         }}
                         aria-invalid={invalidFieldId === "sessionsPerWeek" ? true : undefined}
                         aria-describedby={invalidFieldId === "sessionsPerWeek" ? "sessionsPerWeek-error" : undefined}
                       />
                       <p className="muted">
                         {getFieldHelperText(daysOutCtx, "weekly_training_frequency") ||
-                          "Total training sessions per week: sparring, technical boxing, strength and conditioning. Count two sessions on the same day as two."}
+                          "Count each training day once, even if you do multiple sessions that day."}
                       </p>
                       {invalidFieldId === "sessionsPerWeek" && error ? (
                         <p id="sessionsPerWeek-error" className="error-text" role="alert">{error}</p>

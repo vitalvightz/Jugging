@@ -141,6 +141,16 @@ def test_original_null_insert_fails_with_23502_and_safe_response(persistence, ca
     assert "Test athlete" not in caplog.text
 
 
+def test_custom_plan_without_intake_persists_null_fk(persistence):
+    store, db, payloads = persistence
+    row = store.create_plan(
+        athlete_id=OWNER, intake_id=None, request=PlanRequest(athlete={"full_name": "Test athlete"}),
+        result={"status": "ready", "plan_text": "# Self-built plan"},
+    )
+    assert payloads[0]["intake_id"] is None
+    assert db.execute("select intake_id from plans where id=%s", (row["id"],)).fetchone()[0] is None
+
+
 def test_saved_custom_plan_publish_view_activate_today_and_retries(persistence):
     persistent, db, payloads = persistence
 
@@ -199,6 +209,40 @@ def test_saved_custom_plan_publish_view_activate_today_and_retries(persistence):
     store.create_plan = racing_insert
     assert client.post(endpoint, headers=AUTH).json()["plan_id"] == plan_id
     assert db.execute("select count(*) from plans").fetchone()[0] == 1
+
+
+def test_atomic_only_plan_activation_checks_candidate_and_uniqueness(persistence):
+    store, db, _ = persistence
+    # Execute the actual migration function in the disposable PostgreSQL DB.
+    # The test DB has no Supabase API roles, so omit only its GRANT/REVOKE.
+    migration = (ROOT / "supabase/migrations/20261031200000_atomic_single_plan_activation.sql")
+    db.execute(migration.read_text(encoding="utf-8").split("revoke all on function")[0])
+
+    request = PlanRequest(athlete={"full_name": "Test athlete"})
+    first = store.create_plan(
+        athlete_id=OWNER, intake_id=INTAKE, request=request,
+        result={"status": "ready", "plan_text": "# First"},
+    )
+    def activate(candidate, expected=None):
+        return db.execute(
+            "select public.try_activate_only_unarchived_plan(%s, %s, %s, current_date)",
+            (OWNER, candidate, expected),
+        ).fetchone()[0]
+
+    assert activate(first["id"]) is True
+    assert activate(first["id"]) is False  # Idempotent: don't overwrite the pointer.
+    db.execute("update profiles set active_plan_id=null")
+
+    second = store.create_plan(
+        athlete_id=OWNER, intake_id=INTAKE, request=request,
+        result={"status": "ready", "plan_text": "# Second"},
+    )
+    assert activate(first["id"]) is False  # Ambiguous with two unarchived plans.
+    db.execute("update plans set status='archived' where id=%s", (second["id"],))
+    assert activate(first["id"]) is True
+    db.execute("update profiles set active_plan_id=null")
+    db.execute("update plans set status='archived' where id=%s", (first["id"],))
+    assert activate(first["id"]) is False  # Cannot activate an archived candidate.
 
 
 def test_existing_ai_generated_metadata_and_text_remain_unchanged(persistence):

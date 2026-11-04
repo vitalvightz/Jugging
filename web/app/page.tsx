@@ -10,13 +10,16 @@ import { useAppSession } from "@/components/auth-provider";
 import { useConnectivity, useOnReconnect } from "@/components/connection-status-banner";
 import { getAuthenticatedLandingHref, needsStartingPath } from "@/lib/auth-routing";
 import { EmptyState } from "@/components/empty-state";
-import { FightCountdown } from "@/components/fight-countdown";
+import { FightCountdown, FightCountdownSkeleton, FightWeightCard } from "@/components/fight-countdown";
+import { getFightCountdown } from "@/lib/fight-countdown";
 import { InstallUnlxck } from "@/components/install-unlxck";
 import { LandingFeaturePanel } from "@/components/landing-feature-panel";
 import { LandingPreviewCard } from "@/components/landing-preview-card";
 import { UnlockGlitchText } from "@/components/unlock-glitch-text";
 import { PlansFeaturedSkeleton, Skeleton } from "@/components/skeleton";
 import { XpProgressCard, XpProgressCardSkeleton } from "@/components/xp-progress-card";
+import { WeighInShortcut } from "@/components/weigh-in-shortcut";
+import { inFinalWeeks } from "@/lib/weight-cut-status";
 import { TrainingSummaryCard } from "@/components/training-summary-card";
 import { useXp } from "@/components/xp-provider";
 import { getPlan, getToday, getTrainingHistory } from "@/lib/api";
@@ -141,7 +144,7 @@ function OverviewDisclosure({
   );
 }
 
-function WorkspaceOverviewSkeleton() {
+function WorkspaceOverviewSkeleton({ showCountdown = false }: { showCountdown?: boolean }) {
   return (
     <>
       <section
@@ -160,7 +163,7 @@ function WorkspaceOverviewSkeleton() {
             </div>
           </div>
           <div className="overview-primary-session">
-            <XpProgressCardSkeleton />
+            {showCountdown ? <FightCountdownSkeleton /> : <XpProgressCardSkeleton />}
           </div>
         </div>
       </section>
@@ -564,7 +567,7 @@ export default function HomePage() {
     }
 
     if (!commandState && !commandError) {
-      return <WorkspaceOverviewSkeleton />;
+      return <WorkspaceOverviewSkeleton showCountdown={Boolean(latestPlan?.fight_date)} />;
     }
 
     if (!commandState && commandError) {
@@ -670,6 +673,19 @@ export default function HomePage() {
         canCheckIn: hasHealthDataConsent(me), habits: me.profile.training_habits,
       })
       : null;
+    const countdownProps = {
+      fightDate: activePlan.fight_date ? String(activePlan.fight_date) : null,
+      trainingDay: commandState?.today?.training_day,
+      phase: activePlan.phase ? String(activePlan.phase) : null,
+      plan: structuredPlan,
+      eventName: activePlan.event_name ?? null,
+      // The athlete's current target fight weight (the newest one set), never current bodyweight.
+      // Under-18s have no weight-cut feature, so it never shows for them.
+      targetWeightKg: me.profile.is_minor ? null : (activePlan.target_weight_kg ?? null),
+      // The calendar read for this plan hasn't settled yet (success or failure).
+      calendarPending: Boolean(activePlanId) && !(calendar?.token === session?.access_token && calendar?.id === activePlanId),
+    };
+    const showCountdown = !tracking && getFightCountdown(countdownProps) !== null;
     const trainingStreak = xpProgress.streaks.adherence.current;
     const trackingSlot = tracking ? tracking.slot ?? (trainingStreak > 0 ? "habits" : null) : null;
     const hero = tracking
@@ -699,7 +715,7 @@ export default function HomePage() {
                 ) : tracking ? (
                   <>
                     <ActionLink href="/quick-build">Generate my S&amp;C plan</ActionLink>
-                    <ActionLink href="/plans/custom">Build your own plan</ActionLink>
+                    <ActionLink href="/plans/custom">Add my plan</ActionLink>
                   </>
                 ) : (
                   <ActionLink href="/quick-build">Quick Build</ActionLink>
@@ -707,7 +723,9 @@ export default function HomePage() {
               </div>
             </div>
             <div className="overview-primary-session">
-              <XpProgressCard />
+              {showCountdown ? <FightCountdown key={activePlanId} {...countdownProps} /> : <XpProgressCard />}
+              {/* No fight scheduled: the target still shows, as on the countdown card. */}
+              {!showCountdown && hasActivePlan ? <FightWeightCard targetWeightKg={countdownProps.targetWeightKg} /> : null}
             </div>
           </div>
           {commandError ? (
@@ -766,21 +784,18 @@ export default function HomePage() {
             <>
           <p className="kicker overview-secondary-eyebrow">{openOngoing ? "Block progress" : "Camp progress"}</p>
               <div className="overview-operational-strip" aria-label={openOngoing ? "Training status" : "Camp status"}>
-                <div className="overview-operational-item"><span className="overview-operational-label">Plan</span><span className="overview-operational-value">{String(activePlan.name || "No active plan")}</span></div>
+                <div className="overview-operational-item"><span className="overview-operational-label">Plan</span><span className="overview-operational-value">{String(activePlan.name || (hasActivePlan ? "Active plan" : "No active plan"))}</span></div>
                 <div className="overview-operational-item"><span className="overview-operational-label">{openOngoing ? "Cycle" : "Camp day"}</span><span className="overview-operational-value">{openOngoing ? "Renewable 4-week block" : campDay || "Not set"}</span></div>
                 <div className="overview-operational-item"><span className="overview-operational-label">{openOngoing ? "Mode" : "Phase"}</span><span className="overview-operational-value">{openOngoing ? "Ongoing" : humanizeIfRawEnum(activePlan.phase) || "Not set"}</span></div>
                 <div className="overview-operational-item"><span className="overview-operational-label">Fight date</span><span className="overview-operational-value">{openOngoing ? "Not scheduled" : formatPlanFightDate(String(activePlan.fight_date || ""))}</span></div>
               </div>
-              <FightCountdown
-                key={activePlanId}
-                fightDate={activePlan.fight_date ? String(activePlan.fight_date) : null}
-                trainingDay={commandState?.today?.training_day}
-                phase={activePlan.phase ? String(activePlan.phase) : null}
-                plan={structuredPlan}
-              />
+              {showCountdown ? <XpProgressCard /> : null}
             </>
           )}
-          <Link href="/nutrition" className="overview-risk-more">Weight tracker: log a weigh-in</Link>
+          {/* In a dated camp's final weeks, the same gate as Today's weigh-in card. */}
+          <WeighInShortcut token={session?.access_token ?? null}
+            showStatus={!tracking && hasActivePlan && !openOngoing && inFinalWeeks(activePlan.fight_date, trainingDay)
+              && !me.profile.is_minor && hasHealthDataConsent(me)} />
           <OverviewRiskWatch risks={risks} />
         </section>
       </>

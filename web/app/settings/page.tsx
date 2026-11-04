@@ -250,7 +250,10 @@ function summarizeGoal(request: PlanRequest): string {
 
 function summarizeTrainingDays(request: PlanRequest): string {
   const labels = getOptionLabels(TRAINING_AVAILABILITY_OPTIONS, request.training_availability);
-  const sessions = request.weekly_training_frequency ? `${request.weekly_training_frequency}/week` : "";
+  const frequency = request.weekly_training_frequency;
+  const sessions = !frequency ? "" : frequency > 7
+    ? `${frequency} sessions/week (legacy)`
+    : `${frequency}/week (recorded)`;
   const days = formatList(labels, "No days set", 4);
   return sessions ? `${sessions} - ${days}` : days;
 }
@@ -1224,7 +1227,6 @@ export default function SettingsPage() {
                   <span className="appearance-mode-copy">
                     <span className="appearance-mode-title-row">
                       <span className="appearance-mode-title">{option.label}</span>
-                      {isSelected ? <span className="appearance-mode-state">Selected</span> : null}
                     </span>
                     <span className="appearance-mode-description">{option.description}</span>
                   </span>

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 import uuid
 from contextlib import contextmanager
@@ -2146,7 +2147,8 @@ def _normalized_structured_phase(value: Any) -> str:
 
 
 def _structured_phase_for_day(plan_row: Mapping[str, Any], training_day: str) -> str:
-    for week in _structured_plan_weeks(plan_row, training_day=training_day):
+    weeks = _structured_plan_weeks(plan_row, training_day=training_day)
+    for week in weeks:
         if not isinstance(week, Mapping):
             continue
         for day in _iter_mapping_items(week.get("days")):
@@ -2157,6 +2159,13 @@ def _structured_phase_for_day(plan_row: Mapping[str, Any], training_day: str) ->
                 return _normalized_structured_phase(day.get("phase_label")) or _normalized_structured_phase(
                     week.get("phase_label")
                 )
+    # Before a self-built plan's first day, there is no dated day to match.
+    # Use its authored first-week phase for readiness, without unlocking training.
+    from api.plan_mappers import _decode_structured_text
+    if (_open_plan_has_not_started(plan_row, training_day)
+            and (_decode_structured_text(plan_row.get("planning_brief")) or {}).get("custom_plan")
+            and weeks):
+        return _normalized_structured_phase(weeks[0].get("phase_label"))
     return ""
 
 
@@ -3113,6 +3122,52 @@ def _merge_risks(*risk_lists: list[RiskWatchItem]) -> list[RiskWatchItem]:
     return merged
 
 
+def _athlete_is_adult(store: AppStore, athlete_id: str) -> bool:
+    """True only when the profile positively reads as 18+. A missing profile or
+    a failed read fails closed, so a minor's target weight is never exposed."""
+    try:
+        from api.compliance import evaluate_profile_compliance
+        profile = store.get_profile_compliance(athlete_id)
+        return profile is not None and not evaluate_profile_compliance(profile).is_minor
+    except Exception:
+        logger.exception("[today] profile_compliance_read_failed athlete_id=%s", athlete_id)
+        return False
+
+
+def _current_target_weight(store: AppStore, athlete_id: str) -> float | None:
+    """The target weight the athlete set most recently, as the weight tracker
+    shows it (onboarding draft, else latest intake). ``None`` on a failed read,
+    so the card falls back to the plan's own intake."""
+    try:
+        from api.nutrition_workspace import current_target_weight_kg
+        profile = store.get_profile(athlete_id) or {}
+        return current_target_weight_kg(
+            onboarding_draft=profile.get("onboarding_draft"),
+            latest_intake_row=store.get_latest_intake(athlete_id),
+        )
+    except Exception:
+        logger.exception("[today] current_target_weight_read_failed athlete_id=%s", athlete_id)
+        return None
+
+
+def _fight_card_fields_from_intake(intake: Mapping[str, Any]) -> dict[str, Any]:
+    """Event name and target fight weight from the plan's own intake, for Home's
+    fight countdown card. Display-only; absent values are simply omitted."""
+    fields: dict[str, Any] = {}
+    event_name = " ".join(str(intake.get("event_name") or "").split())
+    if event_name:
+        fields["event_name"] = event_name
+    athlete = intake.get("athlete")
+    raw_target = athlete.get("target_weight_kg") if isinstance(athlete, Mapping) else None
+    try:
+        target = float(raw_target) if raw_target is not None and not isinstance(raw_target, bool) else None
+    except (TypeError, ValueError):
+        target = None
+    if target is not None and math.isfinite(target) and target > 0:
+        fields["target_weight_kg"] = target
+    return fields
+
+
 def _plan_with_resolved_phase(
     plan_row: Mapping[str, Any],
     week: Any,
@@ -3298,6 +3353,22 @@ def build_today_command_view(
             now=now,
             active_plan=active_plan,
         )
+
+
+def _with_added_rehab_note(reason: str | None, *, before_cooldown: bool) -> str:
+    """Say on the day's guidance that reviewed rehab was added to the session.
+
+    The reason is title / detail / action lines (one line is the detail alone);
+    the note joins the detail so the day's verdict and action are unchanged.
+    """
+    note = ("Your reviewed rehab is added to today's session, before the cool-down." if before_cooldown
+            else "Your reviewed rehab is added to today's session.")
+    lines = [line for line in (reason or "").split("\n") if line.strip()]
+    if not lines:
+        return note
+    at = 1 if len(lines) >= 2 else 0
+    lines[at] = f"{lines[at].rstrip()} {note}"
+    return "\n".join(lines)
 
 
 def _build_today_command_view(
@@ -3700,6 +3771,15 @@ def _build_today_command_view(
 
     intake, _intake_ok = _checked_intake_payload_for_readiness(store, plan_row)
     equipment = _rehab_equipment_from_intake(intake)
+    fight_card = _fight_card_fields_from_intake(intake)
+    # A target set after the plan was built (weight tracker, Camp Setup) wins.
+    current_target = _current_target_weight(store, athlete_id)
+    if current_target is not None:
+        fight_card["target_weight_kg"] = current_target
+    if "target_weight_kg" in fight_card and not _athlete_is_adult(store, athlete_id):
+        # Under-18s have no weight-cut feature: never send a target weight.
+        fight_card.pop("target_weight_kg")
+    resolved_plan.update(fight_card)
     # Today logs the entire training day. Reconcile every scheduled block,
     # preserving the primary completion identity and checking sibling demands.
     training_session = _entry_mapping_for_readiness(today_session_entry) if today_session_entry else None
@@ -3822,7 +3902,10 @@ def _build_today_command_view(
             view.today.recommendation_state = "pull_back"
             view.today.decision_tier = "stop"
             view.today.recommendation_reason = "Session blocked\n" + live.get("safety_hold_reason", "This session is on hold for the current injury guidance.") + "\nDo not start this session. Review your injury guidance."
-        elif not live["safety_hold"] and view.today.decision_tier in {"green", "modify"} and (live.get("rehab_only") or live.get("changes")):
+        # Rehab added beside finished or absent training changes nothing: only a
+        # held planned session (it carries a hold reason) adjusts the guidance.
+        elif not live["safety_hold"] and view.today.decision_tier in {"green", "modify"} and (
+                (live.get("rehab_only") and live.get("training_hold_reason")) or live.get("changes")):
             policy_changed_guidance = True
             view.today.recommendation_state = "modify"
             view.today.decision_tier = "modify"
@@ -3830,6 +3913,13 @@ def _build_today_command_view(
                 view.today.recommendation_reason = "Reviewed rehab today\n" + live.get("training_hold_reason", "Your planned training is held by the current injury restrictions.") + "\nFollow only the reviewed rehab shown today."
             else:
                 view.today.recommendation_reason = "Session adjusted\nCurrent injury restrictions changed today's work.\nFollow the adjusted session shown and its current injury restrictions."
+        session_blocks = live["session"].get("blocks", [])
+        rehab_at = [i for i, block in enumerate(session_blocks) if block.get("block_type") == "rehab"
+                    and block.get("policy_id") and not block.get("_policy_held")]
+        if (rehab_at and not live["safety_hold"] and not live.get("rehab_only")
+                and view.today.decision_tier in {"green", "modify"}):
+            view.today.recommendation_reason = _with_added_rehab_note(view.today.recommendation_reason,
+                before_cooldown=any(block.get("block_type") == "cooldown_recovery" for block in session_blocks[rehab_at[-1]:]))
         if policy_changed_guidance:
             view.today.recommendation_trigger_labels = list(dict.fromkeys([*view.today.recommendation_trigger_labels, "Current injury restrictions"]))
             view.today.recommendation_sources = list(dict.fromkeys([*view.today.recommendation_sources, "your tracked injuries"]))

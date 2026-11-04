@@ -86,6 +86,24 @@ _GUIDED_INJURY_SEVERITY_ALIASES = {
 }
 _HARD_SPARRING_DAY_CAP = 4
 
+
+def _parse_training_days_per_week(value: Any) -> int | None:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    if isinstance(value, bool):
+        raise ValueError("weekly_training_frequency must be numeric")
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError("weekly_training_frequency must be numeric") from None
+    if not math.isfinite(numeric) or not numeric.is_integer():
+        raise ValueError("weekly_training_frequency must be a whole number")
+    parsed = int(numeric)
+    if not 1 <= parsed <= 7:
+        raise ValueError("weekly_training_frequency must be between 1 and 7")
+    return parsed
+
+
 # Upper bound on a manually submitted Stage 2 plan body (admin-only path).
 MANUAL_STAGE2_MAX_CHARS = 80_000
 
@@ -107,6 +125,7 @@ AVATAR_URL_MAX_CHARS = 256 * 1024
 ATHLETE_STYLE_LIST_MAX_ITEMS = 32
 ATHLETE_LIST_ITEM_MAX_CHARS = 120
 PLAN_LIST_ITEM_MAX_CHARS = 120
+EVENT_NAME_MAX_CHARS = 80
 PLAN_DAY_ITEM_MAX_CHARS = 80
 INJURIES_MAX_CHARS = 2000
 TRAINING_PREFERENCE_MAX_CHARS = 1000
@@ -764,20 +783,8 @@ class NutritionSharedCampContext(BaseModel):
 
     @field_validator("weekly_training_frequency", mode="before")
     @classmethod
-    def coerce_frequency(cls, value: Any) -> Any:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            normalized = value.strip()
-            if not normalized:
-                return None
-            try:
-                value = int(round(float(normalized)))
-            except ValueError:
-                raise ValueError("weekly_training_frequency must be numeric") from None
-        if isinstance(value, (int, float)):
-            return max(1, min(int(round(float(value))), 14))
-        return value
+    def coerce_frequency(cls, value: Any) -> int | None:
+        return _parse_training_days_per_week(value)
 
     @field_validator("session_types_by_day", mode="before")
     @classmethod
@@ -804,6 +811,7 @@ class NutritionBodyweightTrendPoint(BaseModel):
 
 
 WeightCutRiskBand = Literal["none", "moderate", "high", "severe"]
+WeightCutStatus = Literal["none", "on_target", "on_track", "behind", "too_aggressive"]
 
 
 class NutritionDerivedState(BaseModel):
@@ -814,6 +822,12 @@ class NutritionDerivedState(BaseModel):
     # the same reading the plan's nutrition block uses. Always none/False for a minor.
     weight_cut_risk_band: WeightCutRiskBand = "none"
     weight_cut_supervision_required: bool = False
+    # The same band read against the fight: how far the camp weight is from target
+    # and whether the cut is on track. "behind" carries how much lighter the camp
+    # weight would need to be today for the rest of the cut not to escalate.
+    kg_to_target: float | None = None
+    weight_cut_status: WeightCutStatus = "none"
+    weight_cut_behind_kg: float | None = None
     aggressive_weight_cut: bool = False
     high_pressure_weight_cut: bool = False
     short_notice: bool = False
@@ -870,6 +884,9 @@ MAX_OPEN_CAMP_WEEKS = 24
 class PlanRequest(BaseModel):
     athlete: AthleteProfileInput
     fight_date: str = ""
+    # Optional event/competition name for the scheduled fight (e.g. "London
+    # Regionals"). Display-only: shown on Home's fight countdown card.
+    event_name: str = Field(default="", max_length=EVENT_NAME_MAX_CHARS)
     no_scheduled_fight: bool = False
     open_camp_weeks: int = _DEFAULT_OPEN_CAMP_WEEKS
     rounds_format: str = ""
@@ -930,29 +947,17 @@ class PlanRequest(BaseModel):
         updated["no_scheduled_fight"] = True
         return updated
 
+    @field_validator("event_name", mode="before")
+    @classmethod
+    def clean_event_name(cls, value: Any) -> str:
+        if value is None:
+            return ""
+        return " ".join(str(value).split())
+
     @field_validator("weekly_training_frequency", mode="before")
     @classmethod
-    def validate_weekly_training_frequency(cls, value: Any) -> Any:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            normalized = value.strip()
-            if not normalized:
-                return None
-            try:
-                value = int(round(float(normalized)))
-            except ValueError:
-                raise ValueError("weekly_training_frequency must be numeric") from None
-        if isinstance(value, bool):
-            raise ValueError("weekly_training_frequency must be numeric")
-        if isinstance(value, (int, float)):
-            # Accept a requested double-day cadence. This is intake capacity,
-            # not permission to add work: calendar/readiness policies still gate it.
-            parsed = int(round(float(value)))
-            if parsed < 1 or parsed > 14:
-                raise ValueError("weekly_training_frequency must be between 1 and 14")
-            return parsed
-        return value
+    def validate_weekly_training_frequency(cls, value: Any) -> int | None:
+        return _parse_training_days_per_week(value)
 
     @field_validator("no_scheduled_fight", mode="before")
     @classmethod
@@ -1058,6 +1063,8 @@ class PlanRequest(BaseModel):
     @model_validator(mode="after")
     def validate_schedule_days(self) -> "PlanRequest":
         normalized_training_days = {day.strip().lower() for day in self.training_availability if str(day).strip()}
+        if self.weekly_training_frequency and normalized_training_days and self.weekly_training_frequency > len(normalized_training_days):
+            raise ValueError("weekly_training_frequency cannot exceed selected training_availability days")
 
         invalid_hard_days = [day for day in self.hard_sparring_days if str(day).strip().lower() not in normalized_training_days]
         if invalid_hard_days:
@@ -1136,7 +1143,7 @@ class PlanRequest(BaseModel):
             _field("When is your next fight?", normalized_fight_date),
             _field("Athlete Time Zone", athlete.athlete_timezone),
             _field("Rounds x Minutes", self.rounds_format),
-            _field("Sessions per Week", self.weekly_training_frequency),
+            _field("Training Days per Week", self.weekly_training_frequency),
             _field("Fatigue Level", self.fatigue_level),
             _field("Equipment Access", self.equipment_access),
             _field("Training Availability", self.training_availability),
@@ -2336,6 +2343,7 @@ SparringPlannedIntensity = Literal["hard", "light", "technical", "contact"]
 SparringHeadContact = Literal["none", "light", "heavy"]
 SparringLogSource = Literal["contact", "session", "free"]
 SPARRING_NOTE_MAX_CHARS = 1000
+SPARRING_FOCUS_MAX_CHARS = 140
 
 
 class SparringLogRequest(BaseModel):
@@ -2366,8 +2374,10 @@ class SparringLogRequest(BaseModel):
     head_contact: SparringHeadContact
     rocked: bool = False
     notes: str = Field(default="", max_length=SPARRING_NOTE_MAX_CHARS)
+    # Optional: one thing to work on next time. Never safety or workload data.
+    focus: str = Field(default="", max_length=SPARRING_FOCUS_MAX_CHARS)
 
-    @field_validator("notes", mode="before")
+    @field_validator("notes", "focus", mode="before")
     @classmethod
     def clean_notes(cls, value: Any) -> str:
         return str(value or "").strip()
@@ -2406,7 +2416,40 @@ class SparringLogRecord(BaseModel):
     head_contact: SparringHeadContact
     rocked: bool = False
     notes: str = ""
+    focus: str = ""
     created_at: str = ""
+
+
+class TrainingFocusItem(BaseModel):
+    """One candidate focus. ``athlete``: written by the fighter after sparring.
+    ``inferred``: drawn by AI from a note they wrote, shown only before work its
+    ``scope``, ``exercise_targets`` and ``movement_patterns`` match."""
+
+    id: str
+    origin: Literal["athlete", "inferred"]
+    focus: str
+    training_day: str
+    sport: str | None = None
+    scope: Literal["specific_exercise", "movement_pattern", "general_quality", "sport_technique"] | None = None
+    category: str | None = None
+    exercise_targets: list[str] = Field(default_factory=list)
+    movement_patterns: list[str] = Field(default_factory=list)
+
+
+class TrainingFocusResponse(BaseModel):
+    """The athlete's latest recorded sparring focus, for the next relevant session.
+
+    ``focus`` is None when there is nothing recent to show. ``sport`` is the
+    sport it was recorded for when known (a manual session's sport), else None.
+    ``items`` holds the recent candidates (up to 30 of each kind within the
+    28-day window), explicit and inferred, newest first; none are cut after
+    merging, so a client can pick the first that fits.
+    """
+
+    focus: str | None = None
+    training_day: str | None = None
+    sport: str | None = None
+    items: list[TrainingFocusItem] = Field(default_factory=list)
 
 
 class SparringLogResponse(BaseModel):

@@ -248,7 +248,9 @@ function canAddFocusValue(
 }
 
 function focusValueAvailable(group: PerformanceFocusGroup, value: string, daysOutCtx: DaysOutContext): boolean {
-  return getPerformanceFocusOptionAvailability(daysOutCtx, group, value).available;
+  const options = group === "key_goals" ? KEY_GOAL_OPTIONS : WEAK_AREA_OPTIONS;
+  return !options.some((option) => option.value === value && option.disabled)
+    && getPerformanceFocusOptionAvailability(daysOutCtx, group, value).available;
 }
 
 export function resolveFocusPresetSelections(

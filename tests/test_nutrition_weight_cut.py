@@ -196,3 +196,53 @@ def test_nutrition_targets_mark_cut_known_when_both_weights_present():
     # are added only when there is genuinely no cut data.
     assert set(targets["weight_cut"]) == {"active", "risk_band", "supervision_required"}
     assert targets["weight_cut"].get("known", True) is True
+
+
+def test_escalation_cut_pct_is_the_strain_scale_boundary_inverted():
+    from fightcamp.weight_cut import (
+        CUT_MAGNITUDE_FLOOR_PCT,
+        HEALTH_ESCALATION_SCORE,
+        compute_cut_severity_score,
+        escalation_cut_pct,
+        weight_cut_risk_band,
+    )
+
+    for days in (1, 7, 14, 21):
+        pct = escalation_cut_pct(days)
+        assert pct < CUT_MAGNITUDE_FLOOR_PCT
+        assert abs(compute_cut_severity_score(pct, days) - HEALTH_ESCALATION_SCORE) <= 0.1
+        assert weight_cut_risk_band(True, pct - 0.05, days) == "moderate"
+        assert weight_cut_risk_band(True, pct + 0.05, days) == "high"
+    # Closer to the fight, less of the cut can remain before it escalates.
+    assert escalation_cut_pct(1) < escalation_cut_pct(7) < escalation_cut_pct(21)
+    # Far out, the magnitude floor is the limit.
+    assert escalation_cut_pct(28) == CUT_MAGNITUDE_FLOOR_PCT
+    assert escalation_cut_pct(60) == CUT_MAGNITUDE_FLOOR_PCT
+
+
+def test_weight_cut_status_reads_the_canonical_band():
+    from api.nutrition_workspace import _weight_cut_status
+    from fightcamp.weight_cut import compute_weight_cut_pct, weight_cut_risk_band
+
+    def status(current, target, days):
+        pct = compute_weight_cut_pct(current, target)
+        return _weight_cut_status(
+            current_weight_kg=current,
+            target_weight_kg=target,
+            days_until_fight=days,
+            risk_band=weight_cut_risk_band(pct >= 3.0, pct, days),
+        )
+
+    assert status(None, 70.0, 10) == ("none", None, None)
+    assert status(72.0, None, 10) == ("none", None, None)
+    assert status(72.0, 70.0, None) == ("none", None, None)
+    assert status(72.0, 70.0, -1) == ("none", None, None)
+    assert status(69.8, 70.0, 10) == ("on_target", 0.0, None)
+    assert status(72.5, 70.0, 19) == ("on_track", 2.5, None)
+    # 4.5% with a week to go is above the 4.15% the strain scale allows at D-7.
+    state, to_target, behind = status(73.3, 70.0, 7)
+    assert (state, to_target) == ("behind", 3.3)
+    assert behind == round(73.3 - 70.0 / (1 - 0.0415), 1)
+    # A lighter weigh-in recovers the status.
+    assert status(72.9, 70.0, 7)[0] == "on_track"
+    assert status(80.0, 74.0, 21) == ("too_aggressive", 6.0, None)

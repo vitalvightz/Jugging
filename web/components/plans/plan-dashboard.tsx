@@ -56,11 +56,11 @@ function formatCompactList(values: string[], fallback: string): string {
   return values.length ? values.join(", ") : fallback;
 }
 
-function formatWeeklySessions(value: number | null | undefined): string | null {
+function formatWeeklyTrainingDays(value: number | null | undefined): string | null {
   if (!Number.isFinite(value) || value === null || value === undefined || value <= 0) {
     return null;
   }
-  return `${value} session${value === 1 ? "" : "s"} per week`;
+  return value > 7 ? `${value} sessions per week (legacy)` : `${value} per week (recorded)`;
 }
 
 function countTrainingDays(availability: string[] | undefined): number | null {
@@ -130,12 +130,12 @@ function summarizeIntake(me: MeResponse | null): SummaryLine[] {
   }
 
   const lines: SummaryLine[] = [];
-  const weeklySessions = formatWeeklySessions(intake.weekly_training_frequency);
+  const weeklyTrainingDays = formatWeeklyTrainingDays(intake.weekly_training_frequency);
   const trainingDayCount = countTrainingDays(intake.training_availability);
   const equipmentSummary = summarizeEquipment(intake.equipment_access);
 
-  if (weeklySessions) {
-    lines.push({ label: "Weekly volume", value: weeklySessions });
+  if (weeklyTrainingDays) {
+    lines.push({ label: "Training frequency", value: weeklyTrainingDays });
   }
   if (trainingDayCount !== null) {
     lines.push({ label: "Training days", value: `${trainingDayCount} day${trainingDayCount === 1 ? "" : "s"} available` });

@@ -33,7 +33,7 @@
 
                 <h1 style="margin:0 0 16px 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:26px; line-height:1.25; font-weight:700; color:#f5f7fa;">Confirm your email</h1>
 
-                <p style="margin:0 0 28px 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:15px; line-height:1.6; color:#a7adb7;">Enter this code on the signup screen to finish setting up your account and start your first plan.</p>
+                <p style="margin:0 0 28px 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:15px; line-height:1.6; color:#a7adb7;">Keep your UNLXCK signup screen open. Enter the code below there to confirm your email and finish setting up your account.</p>
 
                 <!-- The one-time code is the primary path: the athlete types it into
                      the signup screen they are already on. Mono and spaced so it reads
@@ -42,25 +42,8 @@
                   <span style="font-family:'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace; font-size:32px; font-weight:700; letter-spacing:0.3em; color:#f5f7fa;">{{ .Token }}</span>
                 </div>
 
-                <p style="margin:0 0 16px 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:1.6; color:#a7adb7;">On another device? Tap the button instead.</p>
-
-                <!-- Button is a table-wrapped anchor with bgcolor on the cell, so it still
-                     renders as a solid block where CSS background-color is stripped. -->
-                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                  <tr>
-                    <td align="center" bgcolor="#b5122b" style="border-radius:10px;">
-                      <a href="{{ .ConfirmationURL }}" target="_blank" style="display:inline-block; padding:15px 30px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:15px; font-weight:600; line-height:1; color:#ffffff; text-decoration:none; border-radius:10px; background-color:#b5122b;">Confirm my email</a>
-                    </td>
-                  </tr>
-                </table>
-
-                <p style="margin:28px 0 8px 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:1.6; color:#a7adb7;">Button not working? Paste this into your browser:</p>
-                <p style="margin:0; font-family:'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace; font-size:12px; line-height:1.6; word-break:break-all;">
-                  <a href="{{ .ConfirmationURL }}" target="_blank" style="color:#e07084; text-decoration:underline;">{{ .ConfirmationURL }}</a>
-                </p>
-
                 <div style="margin:28px 0 0 0; padding:16px 18px; background-color:#15181c; border:1px solid #2a2f37; border-radius:14px;">
-                  <p style="margin:0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:1.6; color:#a7adb7;">This code and link can only be used once and expire shortly after they were sent.</p>
+                  <p style="margin:0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:1.6; color:#a7adb7;">This code can only be used once and expires shortly after it was sent.</p>
                 </div>
 
               </td>

@@ -34,7 +34,12 @@ export function getAthleteWorkspaceHref(me: MeResponse | null): string {
   return FIRST_PLAN_HREF;
 }
 
-export function getAuthenticatedLandingHref(me: MeResponse | null): string {
+/** Only internal plan links may survive a sign-in redirect. */
+export function getSafePlanReturnHref(href: string | null): string | null {
+  return href && /^\/plans\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(href) ? href : null;
+}
+
+export function getAuthenticatedLandingHref(me: MeResponse | null, next?: string | null): string {
   if (me?.profile.role === "admin") {
     return "/admin";
   }
@@ -60,5 +65,5 @@ export function getAuthenticatedLandingHref(me: MeResponse | null): string {
 
   // The private trial briefing is no longer a gate between signup and the first
   // plan. It stays readable in Settings and at /private-trial.
-  return getAthleteWorkspaceHref(me);
+  return getSafePlanReturnHref(next ?? null) ?? getAthleteWorkspaceHref(me);
 }

@@ -22,6 +22,41 @@ function demo(): CustomPlan {
 }
 
 test.afterEach(async ({ page }) => { await page.unrouteAll({ behavior: "wait" }); });
+
+test("rest-day Add session shortcut opens the existing editor on the selected weekday", async ({ page, baseURL }) => {
+  test.skip(Boolean(process.env.CUSTOM_PLAN_TEST_API), "Uses a saved draft fixture.");
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { saved } = await setup(page, baseURL!);
+  const original = demo();
+  saved.set(original.id, original);
+  await page.goto(`/plans/custom?plan=${original.id}&addSession=Sun`);
+  const sheet = page.getByRole("dialog", { name: "New session" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByLabel("Day", { exact: true })).toHaveValue("Sunday");
+  await sheet.getByLabel("Session name", { exact: true }).fill("Sunday conditioning");
+  await sheet.getByRole("button", { name: "Add session", exact: true }).click();
+  // A new workout goes straight on to choosing its exercises; Done leaves it to fill later.
+  const add = page.getByRole("dialog", { name: "Add to Sunday conditioning", exact: true });
+  await expect(add.getByLabel("Search exercises", { exact: true })).toBeVisible();
+  await add.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Sunday,/ })).toContainText("Sunday conditioning");
+  await expect(page.getByRole("button", { name: "Save draft", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect.poll(() => saved.get(original.id)?.sessions.filter(s => s.weekday === "Sunday").map(s => s.name)).toEqual(["Sunday conditioning"]);
+});
+test("rest-day shortcut respects the existing 28-session limit", async ({ page, baseURL }) => {
+  test.skip(Boolean(process.env.CUSTOM_PLAN_TEST_API), "Uses a saved draft fixture.");
+  const { saved } = await setup(page, baseURL!);
+  const original = demo();
+  original.sessions = Array.from({ length: 28 }, (_, index) => ({
+    ...original.sessions[0], id: crypto.randomUUID(), name: `Session ${index + 1}`,
+  }));
+  saved.set(original.id, original);
+  await page.goto(`/plans/custom?plan=${original.id}&addSession=Sun`);
+  await expect(page.getByText("This plan already has the maximum 28 sessions.")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "New session" })).toHaveCount(0);
+});
+
 for (const width of [320, 390, 1280]) {
   test(`Repair Demo, editable rounds, incomplete workout route and footer (${width}px)`, async ({ page, baseURL }) => {
     test.skip(Boolean(process.env.CUSTOM_PLAN_TEST_API), "This case exercises the offline saved-draft fixture.");
@@ -57,24 +92,27 @@ for (const width of [320, 390, 1280]) {
     expect(saved.get(original.id)!.sessions.find(s => s.weekday === "Monday")!.exercises).toEqual(original.sessions[0].exercises);
     await page.getByRole("button", { name: /^Thursday,/ }).click();
     await page.getByRole("button", { name: "Edit session 4", exact: true }).click();
-    await page.getByLabel("Session type").selectOption("conditioning");
+    const sessionType = (name: string) => page.getByRole("group", { name: "Session type", exact: true }).getByRole("button", { name, exact: true });
+    await sessionType("Conditioning").click();
     await expect(page.getByLabel("Session name", { exact: true })).toHaveValue("Lower Body");
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Sunday, Rest", exact: true }).click();
     await page.getByRole("button", { name: "Add session on Sunday", exact: true }).click();
-    await page.getByLabel("Session type").selectOption("strength_power");
+    await expect(page.getByLabel("Day", { exact: true })).toHaveValue("Sunday");
+    await sessionType("Strength / power").click();
     await expect(page.getByLabel("Session name", { exact: true })).toHaveValue("Strength & Power");
-    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await page.getByRole("button", { name: "Add session", exact: true }).click();
+    await page.getByRole("dialog", { name: "Add to Strength & Power", exact: true }).getByRole("button", { name: "Done", exact: true }).click();
     await expect(page.getByRole("button", { name: "Save & view plan", exact: true })).toBeDisabled();
     await expect(page.getByRole("button", { name: "Save draft", exact: true })).toBeEnabled();
-    await page.getByRole("button", { name: "Edit Sunday", exact: true }).click();
-    await expect(page.getByLabel("Session type")).toHaveValue("strength_power");
-    await page.getByLabel("Session type").selectOption("rest");
+    await page.getByRole("button", { name: "Edit session 7", exact: true }).click();
+    await expect(sessionType("Strength / power")).toHaveAttribute("aria-pressed", "true");
+    await sessionType("Off / Rest").click();
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await expect(page.getByRole("button", { name: "Save & view plan", exact: true })).toBeEnabled();
     await page.getByRole("button", { name: /^Sunday,/ }).click();
     await page.getByRole("button", { name: "Edit session 7", exact: true }).click();
-    await page.getByLabel("Session type").selectOption("skill");
+    await sessionType("Light technical / skill").click();
     await expect(page.getByLabel("Session name", { exact: true })).toHaveValue("Light Technical");
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await expect(page.getByRole("button", { name: "Edit dose for Light Technical rounds" })).toBeVisible();

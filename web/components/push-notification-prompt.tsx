@@ -7,6 +7,7 @@ import { getPushSettings } from "@/lib/api";
 import { isPushSupported, subscribeToPushNotifications } from "@/lib/push";
 import { installPromptClaimed, PUSH_PROMPT_EVENT } from "@/lib/push-prompt";
 import { lockOverlayScroll } from "@/lib/overlay-scroll-lock";
+import { isInstagramBrowser } from "@/lib/pwa";
 import styles from "./push-notification-prompt.module.css";
 import { useSheetExit } from "@/lib/use-sheet-exit";
 
@@ -37,7 +38,7 @@ export function DevicePushPrompt({ token, athleteId }: { token: string; athleteI
 
     async function onSaved(event: Event) {
       if ((event as CustomEvent<{ token: string }>).detail?.token !== token || offered.current || checking || timer) return;
-      if (!isPushSupported() || Notification.permission !== "default") return;
+      if (isInstagramBrowser(navigator.userAgent) || !isPushSupported() || Notification.permission !== "default") return;
       checking = true;
       try {
         const [settings, registration] = await Promise.all([

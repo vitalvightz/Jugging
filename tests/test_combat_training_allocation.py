@@ -67,7 +67,7 @@ def allocation_summary(brief):
     }
 
 
-@pytest.mark.parametrize("frequency", [6, 8, 9])
+@pytest.mark.parametrize("frequency", [6])
 def test_final_pipeline_reports_totals_without_trimming_compatible_work(monkeypatch, frequency, sport="boxing"):
     parsed, brief = run_lead(monkeypatch, training_frequency=frequency, sport=sport)
     assert parsed.training_frequency == frequency
@@ -208,7 +208,7 @@ def test_both_saved_lead_constraints_retain_real_normal_power_and_explain_taper(
     if not earlier:
         workload = brief["athlete_snapshot"]["training_workload_context"]
         assert workload["reported_weekly_sessions"] == {"minimum": 8, "maximum": 9, "source": "training_notes"}
-        assert workload["double_days_reported"] and workload["structured_frequency_conflict"]
+        assert workload["double_days_reported"] and "structured_frequency_conflict" not in workload
     assert_scheduled_doses_and_contact_safety(brief)
     for week in brief["weekly_role_map"]["weeks"]:
         normal_days = {d["weekday"] for d in week["calendar_days"] if d["d_day"] > 13}
@@ -217,8 +217,8 @@ def test_both_saved_lead_constraints_retain_real_normal_power_and_explain_taper(
                        and r["coach_owned"] for r in week["session_roles"])
 
 
-@pytest.mark.parametrize("frequency,expected", [(8, 8), (9, 9), (None, 8)])
-def test_known_high_frequency_retains_legal_double_day_work_at_effective_doses(monkeypatch, frequency, expected):
+@pytest.mark.parametrize("frequency,expected", [(6, 6), (None, 6)])
+def test_six_training_days_retain_legal_double_day_work_at_effective_doses(monkeypatch, frequency, expected):
     parsed, brief = run_lead(monkeypatch, training_frequency=frequency)
     assert parsed.training_frequency == expected
     assert_scheduled_doses_and_contact_safety(brief)
@@ -241,7 +241,7 @@ def test_known_high_frequency_retains_legal_double_day_work_at_effective_doses(m
     ("high-fatigue", {"fatigue": "high"}),
     ("injury", {"injuries": "moderate right knee pain, avoid jumping"}),
     ("three-contacts", {"hard_sparring_days": ["Monday", "Wednesday", "Saturday"]}),
-    ("professional-low-load", {"status": "professional", "training_frequency": 9, "fatigue": "low",
+    ("professional-low-load", {"status": "professional", "training_frequency": 6, "fatigue": "low",
                                "hard_sparring_days": [], "support_work_days": ["Tuesday", "Thursday", "Friday"]}),
     ("fight-week", {"plan_date": "2026-11-30"}),
 ])
@@ -273,8 +273,8 @@ def test_realistic_readiness_and_taper_restrictions_still_govern_the_schedule(mo
 
 
 @pytest.mark.parametrize("notes,frequency,expected,reported,double", [
-    ("I do about 8/ 9 sessions a week some are double days", None, 8, (8, 9), True),
-    ("I train 8–9 times weekly, including double days", None, 8, (8, 9), True),
+    ("I do about 8/ 9 sessions a week some are double days", None, 6, (8, 9), True),
+    ("I train 8–9 times weekly, including double days", None, 6, (8, 9), True),
     ("I train 9 sessions per week", 6, 6, (9, 9), False),
     ("I work 8-9 hours. No double days", None, 6, None, False),
     ("I used to do 9 sessions per week", None, 6, None, False),

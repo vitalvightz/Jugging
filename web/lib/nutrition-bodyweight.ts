@@ -7,7 +7,8 @@ export type IndexedBodyweightEntry = NutritionBodyweightLogEntry & {
   sourceIndex: number;
 };
 
-const RANGE_DAY_WINDOW: Record<Exclude<BodyweightRange, "All">, number> = {
+/** Calendar days each range covers, ending today. */
+export const RANGE_DAY_WINDOW: Record<Exclude<BodyweightRange, "All">, number> = {
   "7D": 7,
   "30D": 30,
 };
@@ -36,18 +37,38 @@ export function getBodyweightEntriesWithIndex(entries: NutritionBodyweightLogEnt
     .sort((left, right) => getBodyweightTimestamp(right) - getBodyweightTimestamp(left));
 }
 
+/** A `YYYY-MM-DD` date shifted by whole local calendar days. */
+export function shiftDate(date: string, days: number): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const shifted = new Date(year, month - 1, day + days);
+  return `${shifted.getFullYear()}-${String(shifted.getMonth() + 1).padStart(2, "0")}-${String(shifted.getDate()).padStart(2, "0")}`;
+}
+
+/** First calendar day of a range ending on `today`; null for all history. */
+export function getRangeStart(range: BodyweightRange, today: string): string | null {
+  return range === "All" ? null : shiftDate(today, 1 - RANGE_DAY_WINDOW[range]);
+}
+
 /**
  * Weigh-ins that can be plotted for the range, oldest first. Ranges count back
- * from the latest weigh-in, so a gap in logging never leaves an empty chart.
+ * whole calendar days from `today` (YYYY-MM-DD, local), so a range with no
+ * recent weigh-ins is empty. Future-dated entries are never plotted.
  */
-export function getBodyweightTrend(entries: NutritionBodyweightLogEntry[], range: BodyweightRange): IndexedBodyweightEntry[] {
-  const plottable = getBodyweightEntriesWithIndex(entries)
+export function getBodyweightTrend(entries: NutritionBodyweightLogEntry[], range: BodyweightRange, today: string): IndexedBodyweightEntry[] {
+  const firstDay = getRangeStart(range, today) ?? "";
+  return getBodyweightEntriesWithIndex(entries)
     .filter((entry) => Number.isFinite(getBodyweightTimestamp(entry)) && Number.isFinite(entry.weight_kg))
+    .filter((entry) => entry.date >= firstDay && entry.date <= today)
     .reverse();
-  const latest = plottable.at(-1);
-  if (range === "All" || !latest) return plottable;
-  const cutoff = getBodyweightTimestamp(latest) - (RANGE_DAY_WINDOW[range] - 1) * 24 * 60 * 60 * 1000;
-  return plottable.filter((entry) => getBodyweightTimestamp(entry) >= cutoff);
+}
+
+/**
+ * The range to open on: 7 days when everything from the last 30 days falls in
+ * the last week (sparse, recent data), else 30 days.
+ */
+export function getDefaultBodyweightRange(entries: NutritionBodyweightLogEntry[], today: string): BodyweightRange {
+  const week = getBodyweightTrend(entries, "7D", today).length;
+  return week > 0 && week === getBodyweightTrend(entries, "30D", today).length ? "7D" : "30D";
 }
 
 /** Change from the first to the last weigh-in in a trend, or null with fewer than two. */

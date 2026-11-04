@@ -1,54 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  getAnalyticsPreference,
-  setAnalyticsPreference,
   trackProductEvent,
   productEventIdentity,
 } from "./api";
+import { __resetConnectivityForTests, getConnectivitySnapshot } from "./connectivity";
 import { percent } from "./product-analytics";
 
-test("no consent means no interaction requests; opt-in and withdrawal are account scoped", async () => {
+test("beta events send without a preference read and retry with the same identity", async () => {
   const original = globalThis.fetch;
-  const calls: { path: string; body: unknown }[] = [];
-  let enabled = false;
+  const bodies: string[] = [];
   globalThis.fetch = async (input, init) => {
-    const path = String(input);
-    const body = init?.body ? JSON.parse(String(init.body)) : null;
-    calls.push({ path, body });
-    if (path.endsWith("/preference")) {
-      if (init?.method === "PUT") enabled = body.enabled;
-      return new Response(JSON.stringify({ enabled }), { status: 200 });
-    }
-    return new Response(JSON.stringify({ accepted: true }), { status: 202 });
+    assert.ok(String(input).endsWith("/events"));
+    assert.equal(init?.keepalive, true);
+    bodies.push(String(init?.body));
+    return new Response(JSON.stringify(bodies.length === 1 ? { detail: "temporary" } : { accepted: true }), { status: bodies.length === 1 ? 503 : 202 });
   };
   try {
-    await trackProductEvent("unloaded-account", "timer_started", "timer");
-    assert.equal(calls.length, 0);
-    await getAnalyticsPreference("consent-account");
-    await trackProductEvent("consent-account", "timer_started", "timer");
-    assert.equal(calls.length, 1);
-    await setAnalyticsPreference("consent-account", true);
-    await trackProductEvent(
-      "consent-account",
-      "timer_started",
-      "timer",
-      "00000000-0000-4000-8000-000000000001",
-    );
-    const event = calls.find((c) => c.path.endsWith("/events"))!;
-    assert.deepEqual(event.body, {
-      event_name: "timer_started",
-      feature: "timer",
-      request_id: "00000000-0000-4000-8000-000000000001",
-    });
-    assert.equal(calls.filter((c) => c.path.endsWith("/events")).length, 1);
-    await trackProductEvent("other-account", "timer_started", "timer");
-    await setAnalyticsPreference("consent-account", false);
-    await trackProductEvent("consent-account", "timer_started", "timer");
-    assert.equal(calls.filter((c) => c.path.endsWith("/events")).length, 1);
-  } finally {
-    globalThis.fetch = original;
-  }
+    assert.equal(await trackProductEvent("no-choice", "timer_started", "timer"), true);
+    assert.equal(bodies.length, 2);
+    assert.equal(bodies[0], bodies[1]);
+    assert.deepEqual(Object.keys(JSON.parse(bodies[0])).sort(), ["event_name", "feature", "request_id"]);
+  } finally { globalThis.fetch = original; }
 });
 test("retry identities are stable, valid UUIDs and do not contain their input", async () => {
   const id = await productEventIdentity("flow:123:start");
@@ -99,7 +72,7 @@ test("background plan, history and bodyweight reads do not manufacture feature o
     const path = String(input);
     if (path.endsWith("/events")) events.push(JSON.parse(String(init?.body)));
     return new Response(
-      JSON.stringify(path.endsWith("/preference") ? { enabled: true } : {}),
+      JSON.stringify({}),
       {
         status: fail && path.endsWith("/nutrition/current") ? 422 : 200,
         headers: { "Content-Type": "application/json" },
@@ -107,7 +80,6 @@ test("background plan, history and bodyweight reads do not manufacture feature o
     );
   };
   try {
-    await setAnalyticsPreference("read-background", true);
     await getPlan("read-background", "00000000-0000-4000-8000-000000000001");
     await getTrainingHistory("read-background");
     await getNutritionCurrent("read-background");
@@ -126,5 +98,39 @@ test("background plan, history and bodyweight reads do not manufacture feature o
     );
   } finally {
     globalThis.fetch = original;
+  }
+});
+
+
+test("analytics network and gateway failures never degrade app connectivity", async () => {
+  const original = globalThis.fetch;
+  try {
+    for (const status of [null, 502, 503, 504]) {
+      __resetConnectivityForTests();
+      let attempts = 0;
+      globalThis.fetch = async () => {
+        attempts++;
+        if (status === null) throw new TypeError("Failed to fetch");
+        return new Response("unavailable", { status });
+      };
+      assert.equal(await trackProductEvent("beta", "app_opened", "onboarding"), false);
+      assert.equal(attempts, 3);
+      assert.deepEqual(getConnectivitySnapshot(), { offline: false, degraded: false });
+    }
+    // Isolation is limited to background event delivery. Real app failures
+    // must still activate the shared connection warning and recovery flow.
+    const { getNutritionCurrent } = await import("./api");
+    for (const status of [null, 503]) {
+      __resetConnectivityForTests();
+      globalThis.fetch = async () => {
+        if (status === null) throw new TypeError("Failed to fetch");
+        return new Response("unavailable", { status });
+      };
+      await assert.rejects(getNutritionCurrent("foreground"));
+      assert.equal(getConnectivitySnapshot().degraded, true);
+    }
+  } finally {
+    globalThis.fetch = original;
+    __resetConnectivityForTests();
   }
 });

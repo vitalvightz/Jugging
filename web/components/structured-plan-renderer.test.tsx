@@ -9,6 +9,7 @@ import {
   ExerciseRow,
   SessionCard,
   SessionlessDayCard,
+  TodayCard,
   StructuredPlanRenderer,
   weekStripCenterOffset,
 } from "./structured-plan-renderer";
@@ -95,6 +96,44 @@ for (const openOngoing of [false, true]) {
     }
   });
 }
+
+test("owned custom plan rest and recovery days offer Add session without changing AI plans", () => {
+  const plan: StructuredPlan = {
+    plan_metadata: { title: "Own plan", plan_type: "open_ongoing_system" },
+    weeks: [{ week_index: 1, days: [
+      { weekday: "Mon", date: "2026-11-02", day_type: "rest", sessions: [], today_card: { headline: "Rest day" } },
+      { weekday: "Tue", date: "2026-11-03", day_type: "recovery", sessions: [], today_card: { headline: "Recovery day" } },
+      { weekday: "Wed", date: "2026-11-04", day_type: "moderate", sessions: [
+        { session_id: "strength", title: "Strength", session_type: "strength_power", blocks: [] },
+      ] },
+    ] }],
+  };
+  const own = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} openOngoing customPlanId="draft-1"
+    today={new Date("2026-11-02T12:00:00")} />);
+  assert.match(own, /href="\/plans\/custom\?plan=draft-1&amp;addSession=Mon"/);
+  assert.match(own, /href="\/plans\/custom\?plan=draft-1&amp;addSession=Tue"/);
+  assert.equal(countOccurrences(own, "+ Add session"), 2);
+  const generated = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} openOngoing
+    today={new Date("2026-11-02T12:00:00")} />);
+  assert.doesNotMatch(generated, /Add session/);
+});
+
+test("custom calendar enables rest selection without disabling planned sessions or AI-plan restrictions", () => {
+  const plan: StructuredPlan = { weeks: [{ week_index: 1, days: [
+    { weekday: "Mon", date: "2026-11-02", day_type: "rest", sessions: [] },
+    { weekday: "Tue", date: "2026-11-03", day_type: "moderate", sessions: [
+      { session_id: "training", title: "Training", blocks: [{ block_id: "exercise", display_name: "Squat" }] },
+    ] },
+  ] }] };
+  const own = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} defaultView="calendar" customPlanId="custom-1"
+    today={new Date("2026-11-02T12:00:00")} />);
+  assert.match(own, /<td data-state="rest"><button/);
+  assert.match(own, /<td data-state="planned"><button/);
+  const generated = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} defaultView="calendar"
+    today={new Date("2026-11-02T12:00:00")} />);
+  assert.match(generated, /<td data-state="rest"><span/);
+  assert.match(generated, /<td data-state="planned"><button/);
+});
 
 test("legacy open neutral rows use the real training date on a recurring weekday match", () => {
   const plan: StructuredPlan = { weeks: [{ days: [{ date: "2026-10-12", weekday: "Mon", day_type: "rest",
@@ -977,8 +1016,9 @@ test("keeps calm lead notes out of Red Flags while retaining the safety disclaim
 
   const html = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} />);
 
-  assert.equal(countOccurrences(html, leadText), 1);
-  assert.equal(html.includes("Plan notes"), true);
+  // Plan notes are not shown in the plan view; Red Flags keeps the disclaimer.
+  assert.equal(countOccurrences(html, leadText), 0);
+  assert.equal(html.includes("Plan notes"), false);
   assert.equal(html.includes("Red flags - stop"), true);
   assert.equal(countOccurrences(html, 'class="safety-note '), 1);
 });
@@ -1706,7 +1746,7 @@ test("compresses the plan: dedupes safety, folds the disclaimer, trims the week 
   const count = (needle: string) => html.split(needle).length - 1;
 
   // Constraints and stop actions must be seen before the training prescription.
-  assert.ok(html.indexOf("Plan notes") < html.indexOf(">Lower<"));
+  assert.equal(html.includes("Plan notes"), false);
   assert.ok(html.indexOf("Red flags - stop") < html.indexOf(">Lower<"));
 
   // The medical disclaimer is folded into the Red Flags card — exactly one
@@ -1714,7 +1754,7 @@ test("compresses the plan: dedupes safety, folds the disclaimer, trims the week 
   assert.equal(count('class="safety-note '), 1);
   // The Active note that just restated the red flag is dropped; the contextual
   // injury note stays, and the escalation sentence renders once (in Red Flags).
-  assert.equal(html.includes("rehab drills included each session"), true);
+  assert.equal(html.includes("rehab drills included each session"), false);
   assert.equal(count("stop non-essential activity and escalate"), 1);
   // The week overview no longer prints a Phase stat row (phase lives in the
   // status chips and the week pill).
@@ -2107,7 +2147,7 @@ test("completed work is tagged with the calm success tone, never the brand red a
   assert.equal(/class="[^"]*sp-accent[^"]*"[^>]*>[^<]*1\/1/.test(html), false);
 });
 
-test("renders plan-level active notes as a standalone card", () => {
+test("the plan view does not render plan-level notes", () => {
   const plan = {
     schema_version: "1.0",
     plan_metadata: { title: "Fight Camp", sport: "boxing", plan_type: "fight_camp" },
@@ -2127,12 +2167,9 @@ test("renders plan-level active notes as a standalone card", () => {
 
   const html = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} />);
 
-  assert.equal(html.includes("Plan notes"), true);
-  assert.equal(html.includes("~5.7% target — protect freshness."), true);
-  assert.equal(html.includes("Small cut above the elbow — keep covered and dry."), true);
-  // Weight-cut / injury notes get the accent class.
-  assert.equal(html.includes("sp-note-weight_cut"), true);
-  assert.equal(html.includes("sp-note-injury"), true);
+  assert.equal(html.includes("Plan notes"), false);
+  assert.equal(html.includes("~5.7% target — protect freshness."), false);
+  assert.equal(html.includes("Small cut above the elbow — keep covered and dry."), false);
 });
 
 // --- open-plan development-block wave ---------------------------------------
@@ -2943,4 +2980,17 @@ test("How is shown only when the exercise has no demo video", async () => {
     const html = renderToStaticMarkup(<BlockCard block={{ ...block, ...video }} />);
     assert.doesNotMatch(html, /ex-execution-instructions/);
   }
+});
+
+test("legacy raw day and session labels do not reach the athlete renderer", () => {
+  const day = { today_card: { headline: "technical_combat" }, sessions: [] };
+  const headline = renderToStaticMarkup(<TodayCard day={day as never} />);
+  assert.match(headline, /Technical Combat/);
+  assert.doesNotMatch(headline, /technical_combat/);
+
+  const session = renderToStaticMarkup(<SessionCard session={{
+    session_id: "legacy", title: "technical_combat", session_type: "skill", blocks: [],
+  } as never} />);
+  assert.match(session, /Technical Combat/);
+  assert.doesNotMatch(session, /technical_combat/);
 });

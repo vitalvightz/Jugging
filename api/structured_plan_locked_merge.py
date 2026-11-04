@@ -740,6 +740,48 @@ def merge_locked_structured_content(
     return result
 
 
+
+def _remove_repeated_tactical_physical_blocks(plan: dict[str, Any]) -> None:
+    """Keep a physical prescription in its training session, not Tactical Focus."""
+    dose_fields = ("sets", "reps", "rounds", "work", "duration", "distance", "load")
+    coaching_fields = {"block_id", "coaching_cues", "stop_rules", "why_today"}
+    for week in plan.get("weeks") or []:
+        for day in week.get("days") or []:
+            sessions = day.get("sessions") or []
+            physical = [
+                block for session in sessions
+                if _normalise(session.get("title")) != "tactical focus"
+                for block in session.get("blocks") or []
+                if block.get("block_type") != "mindset"
+            ]
+            for session in sessions:
+                if _normalise(session.get("title")) != "tactical focus":
+                    continue
+                blocks = session.get("blocks") or []
+                # Do not leave an empty Tactical Focus or discard unique work.
+                if not any(block.get("block_type") == "mindset" for block in blocks):
+                    continue
+                kept = []
+                for block in blocks:
+                    identity = block.get("exercise_key") or _normalise(block.get("display_name"))
+                    host = next((
+                        other for other in physical
+                        if identity
+                        and (other.get("exercise_key") or _normalise(other.get("display_name"))) == identity
+                        and any(block.get(field) is not None for field in dose_fields)
+                        and all(block.get(field) == other.get(field)
+                                for field in block.keys() | other.keys() if field not in coaching_fields)
+                    ), None)
+                    if host is None or block.get("block_type") == "mindset":
+                        kept.append(block)
+                        continue
+                    for name in ("coaching_cues", "stop_rules"):
+                        if block.get(name):
+                            values = list(host.get(name) or [])
+                            host[name] = values + [item for item in block[name] if item not in values]
+                session["blocks"] = kept
+
+
 def merge_planner_owned_structured_content(
     structured_plan: dict[str, Any], planning_brief: Any
 ) -> LockedMergeResult:
@@ -753,6 +795,8 @@ def merge_planner_owned_structured_content(
 
     structured_plan = reconcile_open_development_sessions(structured_plan, planning_brief)
     result = merge_locked_structured_content(structured_plan, planning_brief)
+    if not (isinstance(planning_brief, dict) and planning_brief.get("custom_plan")):
+        _remove_repeated_tactical_physical_blocks(result.plan)
 
     reconcile_coach_led_sparring_days(result.plan, planning_brief)
     return result

@@ -35,6 +35,7 @@
     "plan": "Plan",
     "planMeta": "Planes activos y guardados",
     "history": "Historia",
+    "historyHint": "Consulta todo tu trabajo en Historia",
     "historyMeta": "Sesiones, revisiones, lesiones",
     "timer": "Temporizador de asaltos",
     "timerMeta": "Asaltos y descanso, cuando quieras",
@@ -159,7 +160,7 @@
     "resendIn": "Reenviar código en {seconds} s",
     "codeResent": "Te hemos enviado un código nuevo.",
     "differentEmail": "Usar otro correo",
-    "linkFallback": "También puedes tocar el enlace del correo.",
+    "linkFallback": "Introduce aquí el código del correo para completar el registro.",
     "invalidCode": "Código incorrecto o caducado. Revísalo o pide uno nuevo."
   },
   "Workspace": {

@@ -35,6 +35,7 @@
     "plan": "Piano",
     "planMeta": "Piani attivi e risparmiati",
     "history": "Cronologia",
+    "historyHint": "Trova tutto il tuo lavoro in Cronologia",
     "historyMeta": "Sedute, controlli, infortuni",
     "timer": "Timer dei round",
     "timerMeta": "Round e recupero, in qualsiasi momento",
@@ -159,7 +160,7 @@
     "resendIn": "Invia di nuovo il codice tra {seconds} s",
     "codeResent": "Un nuovo codice è in arrivo.",
     "differentEmail": "Usa un’altra email",
-    "linkFallback": "Puoi anche toccare il link nell’email.",
+    "linkFallback": "Inserisci qui il codice ricevuto via email per completare la registrazione.",
     "invalidCode": "Codice errato o scaduto. Controllalo o richiedine uno nuovo."
   },
   "Workspace": {

@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+
+import { getSafePlanReturnHref } from "@/lib/auth-routing";
 
 import { useAppSession } from "@/components/auth-provider";
 
@@ -20,6 +22,7 @@ export function RequireAuth({
   adminOnly = false,
 }: Readonly<{ children: React.ReactNode; adminOnly?: boolean }>) {
   const router = useRouter();
+  const pathname = usePathname();
   const { isReady, isMeHydrated, hasTransientMeError, session, me } = useAppSession();
   const role = me?.profile.role;
 
@@ -28,20 +31,22 @@ export function RequireAuth({
       return;
     }
     if (!session) {
-      router.replace("/login");
+      const next = getSafePlanReturnHref(pathname);
+      router.replace(next ? `/login?next=${encodeURIComponent(next)}` : "/login");
       return;
     }
     if (adminOnly && !isMeHydrated) {
       return;
     }
     if (isMeHydrated && !me) {
-      router.replace("/login");
+      const next = getSafePlanReturnHref(pathname);
+      router.replace(next ? `/login?next=${encodeURIComponent(next)}` : "/login");
       return;
     }
     if (adminOnly && role && role !== "admin") {
       router.replace("/plans");
     }
-  }, [adminOnly, hasTransientMeError, isMeHydrated, isReady, me, role, router, session]);
+  }, [adminOnly, hasTransientMeError, isMeHydrated, isReady, me, pathname, role, router, session]);
 
   // Connection loss is surfaced by the app-wide ConnectionStatusBanner in the
   // root layout, which also re-hydrates the profile on reconnect.

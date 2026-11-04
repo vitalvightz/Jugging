@@ -692,6 +692,8 @@ def _select_bounded_records(
     preserve_adaptation: str = "",
     preserve_weakness: str = "",
     preserve_strength: bool = False,
+    trunk_block_target: int = 0,
+    trunk_alternates: list[dict[str, Any]] = (),
 ) -> tuple[list[dict[str, Any]], dict[str, str]]:
     family_limit = 2 if pressure == 0 else 1
     selected: list[dict[str, Any]] = []
@@ -787,6 +789,19 @@ def _select_bounded_records(
             continue
         _add_record(record, selected, family_counts)
 
+    if trunk_block_target >= TRUNK_BLOCK_MINIMUM:
+        # The Core Development Block has its OWN capacity: the capped main
+        # selection above is exactly what it is without a block, and the block
+        # is added beside it. Its members still count in every load, recovery
+        # and adjacency check downstream; only the exercise COUNT cap is not
+        # spent on them.
+        block = _trunk_block_additions(records, selected, family_counts, family_limit,
+                                       room=trunk_block_target, alternates=trunk_alternates,
+                                       target=trunk_block_target)
+        for candidate in block or []:
+            _add_record(candidate, selected, family_counts)
+            dropped.pop(candidate["name"], None)
+
     selected_ids = {id(item) for item in selected}
     for record in records:
         if id(record) in selected_ids:
@@ -801,6 +816,429 @@ _PRESSURE_SOURCE_REASONS = (
     ("fatigue_pressure", "high_fatigue"),
     ("cut_pressure", "weight_cut_pressure"),
 )
+
+
+# --- Core Development Block --------------------------------------------------
+#
+# A trunk DEVELOPMENT target (trunk strength as the primary goal or primary
+# weakness, classified ``build`` by goal preservation) is one logical component:
+# 3-4 complementary trunk-targeted Stage 1 members in one suitable session a
+# week. Each member stays an ordinary closed member with its own slot, dose,
+# equipment, cost and safety checks; the block only reserves room for them
+# inside the role's EXISTING exercise cap, after the athlete's more important
+# priorities, in place of lower-priority accessories. A maintenance target keeps
+# the single trunk member below. Never adds a session, exercise slot or dose.
+TRUNK_BLOCK_GROUP = "core_development"
+_TRUNK_BLOCK_TARGET = 4
+TRUNK_BLOCK_MINIMUM = 3
+_TRUNK_BLOCK_PHASES = frozenset({"GPP", "SPP"})
+# Inside D-13 the late-fight tail owns freshness and no week is a build week.
+_TRUNK_BLOCK_MIN_D_DAY = 14
+
+
+def _record_trunk_function(record: dict[str, Any]) -> str:
+    from .strength_session_quality import trunk_function
+
+    if not record.get("trunk_targeted"):
+        return ""
+    return trunk_function(_slot_selected_item(record["slot"]), trunk_targeted=True)
+
+
+def _base_slot_id(record: dict[str, Any]) -> str:
+    return str(record.get("alternate_of") or record["slot"].get("slot_id") or id(record["slot"]))
+
+
+def trunk_alternate_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Trunk-targeted Stage 1 alternates of the session's own trunk slots.
+
+    An alternate already passed the same injury, equipment and restriction
+    filtering as its slot's selection; it is ONE substitution for that slot
+    (identity ``<slot_id>:alternate:<n>``), never an extra member beside it.
+    """
+    alternates = []
+    for record in records:
+        slot = record["slot"]
+        if not record.get("trunk_targeted") or not slot.get("slot_id") or record.get("alternate_of"):
+            continue
+        for index, option in enumerate(slot.get("alternates") or []):
+            if not isinstance(option, dict):
+                continue
+            alternate_slot = {**slot, "slot_id": f"{slot['slot_id']}:alternate:{index}",
+                              "selected": option, "alternates": []}
+            for candidate in _candidate_records([alternate_slot]):
+                if candidate.get("trunk_targeted"):
+                    candidate.update(alternate_of=slot["slot_id"], sort_key=record["sort_key"])
+                    alternates.append(candidate)
+    return alternates
+
+
+# Only dedicated core work fills or counts toward a Core Development Block: a
+# trunk-targeted SUPPORT-class item. An anchor-class lift or power movement with
+# a trunk tag (a landmine press, a rotational slam) stays ordinary main work;
+# the serialized Stage 1 option drops the authored category, so its tags alone
+# must not make it a core exercise.
+_DEDICATED_CORE_QUALITY = frozenset({"support_accessory", "support_isometric", "rehab_support"})
+_RESISTED_TIERS = frozenset({"loaded", "rotational_power"})
+
+
+def _dedicated_core(record: dict[str, Any]) -> bool:
+    return bool(record.get("trunk_targeted")) and record.get("quality_class") in _DEDICATED_CORE_QUALITY
+
+
+def _record_trunk_tier(record: dict[str, Any]) -> str:
+    from .strength_session_quality import trunk_load_tier
+
+    if not record.get("trunk_targeted"):
+        return ""
+    return trunk_load_tier(_slot_selected_item(record["slot"]), trunk_targeted=True)
+
+
+# The block's own load budget: core is real training, so a block may carry at
+# most one explosive rotational-power member (neural cost beside the session's
+# own power work), at most one authored HIGH-cost member (a heavy carry, a long
+# brutal hold, a get-up) and at most three resisted members, so it is never a
+# high-volume loaded circuit.
+_TRUNK_BLOCK_MAX_TIER = {"rotational_power": 1, "high_cost": 1, "loaded": 3}
+
+
+def _record_budget_keys(record: dict[str, Any]) -> list[str]:
+    from .strength_session_quality import trunk_high_cost
+
+    keys = [_record_trunk_tier(record)]
+    if trunk_high_cost(_slot_selected_item(record["slot"])):
+        keys.append("high_cost")
+    return keys
+
+
+def _trunk_block_additions(
+    records: list[dict[str, Any]],
+    selected: list[dict[str, Any]],
+    family_counts: dict[str, int],
+    family_limit: int,
+    room: int,
+    alternates: list[dict[str, Any]] = (),
+    target: int = _TRUNK_BLOCK_TARGET,
+    tier_limits: dict[str, int] | None = None,
+    minimum: int = TRUNK_BLOCK_MINIMUM,
+    require_resisted: bool = True,
+) -> list[dict[str, Any]] | None:
+    """Complementary trunk members to add, or None when no real block fits.
+
+    Trunk members the session already holds (a rotational slam kept as the
+    power goal) count, both as functions and against the load budget. Each
+    addition must train a function the block does not already cover - two
+    planks are one stimulus, not two - and respect the movement-family limit
+    and the block's load-tier budget. Stage 1 rank decides between equals, with
+    rehab-level drills last: development wants resistance, not the gentlest item.
+    """
+    limits = _TRUNK_BLOCK_MAX_TIER if tier_limits is None else tier_limits
+    held = [r for r in selected if _dedicated_core(r)]
+    base_functions = {_record_trunk_function(r) for r in held} - {""}
+    base_tiers: dict[str, int] = {}
+    for record in held:
+        for key in _record_budget_keys(record):
+            base_tiers[key] = base_tiers.get(key, 0) + 1
+    if any(base_tiers.get(key, 0) > limit for key, limit in limits.items()):
+        return None
+    selected_names = {r["name"] for r in selected}
+    used_slots = {_base_slot_id(r) for r in selected}
+    # A slot's own selection first; an alternate only to add a missing function.
+    candidates = sorted(
+        [r for r in [*(r for r in records if r not in selected and r.get("trunk_targeted")), *alternates]
+         if _dedicated_core(r) and r["name"] not in selected_names and _base_slot_id(r) not in used_slots
+         and _record_trunk_function(r) not in base_functions],
+        key=lambda r: (bool(r.get("alternate_of")), r.get("quality_class") == "rehab_support", r["sort_key"]),
+    )
+    best: list[dict[str, Any]] = []
+    held_resisted = any(_record_trunk_tier(r) in _RESISTED_TIERS for r in held)
+
+    def _resisted(chosen: list[dict[str, Any]]) -> bool:
+        # Maintenance is low-fatigue control work: it does not need resistance.
+        return not require_resisted or held_resisted or any(_record_trunk_tier(r) in _RESISTED_TIERS for r in chosen)
+
+    # Bounded depth-first search in preference order (a handful of candidates,
+    # at most four picks): the first combination that reaches the target wins;
+    # otherwise the one covering the most functions. Greedy picking could spend
+    # the load budget on an early loaded item and miss a valid block.
+    def search(start: int, chosen: list[dict[str, Any]], functions: set[str], tiers: dict[str, int],
+               counts: dict[str, int], slots: set[str]) -> bool:
+        nonlocal best
+        # A block must carry at least one resisted or explosive member: three
+        # bodyweight holds are not a development stimulus (see goal validation).
+        best_functions = base_functions | {_record_trunk_function(r) for r in best}
+        if _resisted(chosen) and (len(functions) > len(best_functions) or not _resisted(best)):
+            best = list(chosen)
+        if (len(functions) >= target and _resisted(chosen)) or len(chosen) >= room:
+            return len(functions) >= target and _resisted(chosen)
+        for index in range(start, len(candidates)):
+            record = candidates[index]
+            function, keys = _record_trunk_function(record), _record_budget_keys(record)
+            if (function in functions or _base_slot_id(record) in slots
+                    or any(r["name"] == record["name"] for r in chosen)
+                    or any(tiers.get(key, 0) >= limits.get(key, len(candidates) + len(held) + 1) for key in keys)
+                    or _would_exceed_family_limit(record["families"], counts, family_limit)):
+                continue
+            next_counts = dict(counts)
+            for family in record["families"]:
+                next_counts[family] = next_counts.get(family, 0) + 1
+            next_tiers = dict(tiers)
+            for key in keys:
+                next_tiers[key] = next_tiers.get(key, 0) + 1
+            if search(index + 1, [*chosen, record], functions | {function},
+                      next_tiers, next_counts, slots | {_base_slot_id(record)}):
+                return True
+        return False
+
+    search(0, [], set(base_functions), base_tiers, dict(family_counts), set(used_slots))
+    covered = base_functions | {_record_trunk_function(r) for r in best}
+    return best if len(covered) >= minimum and _resisted(best) else None
+
+
+def main_exercise_count(assignments: list[dict[str, Any]] | None) -> int:
+    """Members the role's exercise cap governs: everything except the block's
+    own additions. A trunk item the capped selection chose itself still counts,
+    even when it leads the block, so grouping never frees cap room."""
+    return sum(1 for item in assignments or []
+               if isinstance(item, dict) and not item.get("exercise_cap_exempt"))
+
+
+def trunk_block_members(selected: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The block: one selected trunk member per distinct function (at most
+    four), when they reach three functions; otherwise []. A second item of an
+    already-covered function stays ordinary main work."""
+    members: list[dict[str, Any]] = []
+    functions: set[str] = set()
+    for record in selected:
+        if not _dedicated_core(record):
+            continue  # main power/strength work with a trunk tag is not a core slot
+        function = _record_trunk_function(record)
+        if function and function not in functions and len(members) < _TRUNK_BLOCK_TARGET:
+            members.append(record)
+            functions.add(function)
+    resisted = any(_record_trunk_tier(r) in _RESISTED_TIERS for r in members)
+    return members if len(functions) >= TRUNK_BLOCK_MINIMUM and resisted else []
+
+
+def _hard_sparring_day_offsets(week: dict[str, Any], role: dict[str, Any]) -> set[int]:
+    """Days from this role forward to each planned hard-sparring day (0..6)."""
+    weekday_order = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+                     "friday": 4, "saturday": 5, "sunday": 6}
+    scheduled_index = weekday_order.get(str(role.get("scheduled_day_hint") or "").strip().lower())
+    if scheduled_index is None:
+        return set()
+    hard_days = {str(day).strip().lower() for day in (week.get("effective_hard_sparring_days") or [])
+                 if str(day).strip()}
+    if not hard_days:
+        hard_days = {
+            str(entry.get("day") or "").strip().lower()
+            for entry in (week.get("hard_sparring_plan") or [])
+            if isinstance(entry, dict) and entry.get("status") == "hard_as_planned"
+        }
+    return {(weekday_order[day] - scheduled_index) % 7 for day in hard_days if day in weekday_order}
+
+
+def trunk_development_block_target(athlete_model: dict[str, Any] | None) -> int:
+    """Block size owed to a trunk development (build) target; 0 for maintenance.
+
+    Reads the same classifier goal preservation validates against, so the
+    composer and the validator can never disagree about development vs
+    maintenance (a secondary target, high fatigue or fight proximity is
+    maintenance). Trunk as the primary goal earns the full four; as the primary
+    weakness it complements another primary goal, so three keeps that goal's
+    main work in the session.
+    """
+    if not isinstance(athlete_model, dict) or not _trunk_strength_selected(athlete_model):
+        return 0
+    from .goal_preservation import classify_goal_preservation
+
+    entry = next((e for e in classify_goal_preservation(athlete_model)
+                  if e["goal"] == "trunk_strength" and e["state"] == "build"), None)
+    if entry is None:
+        return 0
+    return _TRUNK_BLOCK_TARGET if entry["priority"] == "primary" else TRUNK_BLOCK_MINIMUM
+
+
+def trunk_development_targeted(athlete_model: dict[str, Any] | None) -> bool:
+    return trunk_development_block_target(athlete_model) > 0
+
+
+def _pre_hard_contact_day(ctx: dict[str, Any]) -> bool:
+    """The canonical pre-hard-contact decision for this role's day, asked now.
+
+    ``apply_pre_hard_contact_strength_exposure_cap`` marks such a role only
+    after composition; its doses are then capped to D17-D14 retention, so the
+    same calendar policy is consulted here rather than re-derived.
+    """
+    from .pre_hard_contact_strength import PRE_HARD_CONTACT_REASON, _decision_for_role
+
+    weekly_role_map = ctx.get("weekly_role_map")
+    if not isinstance(weekly_role_map, dict):
+        return False
+    decision = _decision_for_role(weekly_role_map, ctx["week"], ctx["week_position"], ctx["role"])
+    return decision is not None and getattr(decision, "reason_code", None) == PRE_HARD_CONTACT_REASON
+
+
+def _trunk_block_ineligibility(ctx: dict[str, Any]) -> dict[str, Any] | None:
+    """Why this session may not host the block, or None when it may."""
+    week, role = ctx["week"], ctx["role"]
+    d_day = role_d_day(week, role)
+    if ctx["phase"] not in _TRUNK_BLOCK_PHASES:
+        return {"reason_code": "taper_phase"}
+    if d_day is None or d_day < _TRUNK_BLOCK_MIN_D_DAY:
+        return {"reason_code": "fight_proximity"}
+    from .late_camp_role_morph import FULL_STRENGTH_ROLE_KEYS, STRENGTH_NEURAL_MORPH_MAX_D
+
+    if (str(role.get("role_key") or "").strip().lower() in FULL_STRENGTH_ROLE_KEYS
+            and d_day <= STRENGTH_NEURAL_MORPH_MAX_D) or isinstance(role.get("strength_dose_cap"), dict):
+        # The late-camp morph caps this session to a D-17..D-14 retention
+        # touch (its own rule, read here): retention doses cannot develop core.
+        return {"reason_code": "fight_proximity", "source": "late_camp_strength_retention"}
+    sources = [reason for key, reason in _PRESSURE_SOURCE_REASONS
+               if int(ctx["pressure_state"].get(key) or 0) > 0]
+    if ctx["exercise_count_pressure"] > 0:
+        return {"reason_code": "readiness_capacity", "pressure_sources": sources or ["readiness_pressure"]}
+    if role.get("pre_hard_contact_managed_stress") is True or ctx["microdose_only"] or _pre_hard_contact_day(ctx):
+        # Hard contact is near: the day keeps one capped retention exposure
+        # (its doses are reduced by the resolver), so it cannot develop core.
+        return {"reason_code": "hard_sparring_priority", "source": "pre_hard_contact_strength"}
+    if _hard_sparring_day_offsets(week, role) & {0, 1}:
+        # Hard sparring today or tomorrow owns this athlete's freshness.
+        return {"reason_code": "hard_sparring_priority", "source": "hard_sparring_adjacent"}
+    return None
+
+
+# --- Late-fight core maintenance (D-13..D-7) ----------------------------------
+#
+# Development stops at D-14 (``_TRUNK_BLOCK_MIN_D_DAY``). Inside the late-fight
+# tail a selected trunk target keeps a smaller MAINTENANCE stimulus instead: 2-3
+# complementary, low-fatigue trunk members added to at most one existing
+# tail-owned strength session per calendar week, D-13..D-7 inclusive. It never
+# adds a session, never displaces the session's own members and is never
+# grouped: each member is an ordinary closed assignment dosed by the
+# scheduled-day resolver. D-6 inward carries no core programming.
+LATE_CORE_MAINTENANCE_MAX_D_DAY = 13
+LATE_CORE_MAINTENANCE_MIN_D_DAY = 7
+LATE_CORE_MAINTENANCE_TARGET = 3
+LATE_CORE_MAINTENANCE_MINIMUM = 2
+_LATE_CORE_PRESSURE_REASONS = (*_PRESSURE_SOURCE_REASONS, ("injury_pressure", "injury_constraint"))
+
+
+def late_core_maintenance_ineligibility(
+    week: dict[str, Any], role: dict[str, Any], pressure_state: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Why this tail session may not carry core maintenance, or None when it may.
+
+    Any readiness pressure (fatigue, weight cut, injury) protects freshness this
+    close to the fight; hard sparring today or tomorrow owns the day, as it does
+    for the development block.
+    """
+    d_day = role_d_day(week, role)
+    if d_day is None:
+        return {"reason_code": "unscheduled"}
+    if d_day > LATE_CORE_MAINTENANCE_MAX_D_DAY:
+        # D-14 and earlier belong to the Core Development Block.
+        return {"reason_code": "development_window"}
+    if d_day < LATE_CORE_MAINTENANCE_MIN_D_DAY:
+        return {"reason_code": "fight_proximity"}
+    if role.get("coach_owned") or not role.get("selected_exercise_assignments"):
+        return {"reason_code": "no_eligible_host"}
+    sources = [reason for key, reason in _LATE_CORE_PRESSURE_REASONS if int(pressure_state.get(key) or 0) > 0]
+    if sources:
+        return {"reason_code": "readiness_capacity", "pressure_sources": sources}
+    if _hard_sparring_day_offsets(week, role) & {0, 1}:
+        return {"reason_code": "hard_sparring_priority", "source": "hard_sparring_adjacent"}
+    return None
+
+
+def late_core_maintenance_additions(
+    records: list[dict[str, Any]], *, loaded_allowed: bool, target: int = LATE_CORE_MAINTENANCE_TARGET,
+    held: list[dict[str, Any]] = (),
+) -> list[dict[str, Any]] | None:
+    """2-3 complementary low-fatigue trunk members, or None.
+
+    The development block's own search, with a maintenance budget: no ballistic
+    rotational power, no authored high-cost or high-eccentric item, and at most
+    one resisted member (none on a day whose countdown cap forbids loading).
+    Trunk work the session already ``held`` counts exactly as it does for the
+    block: its functions are not repeated, and it spends the same budget (a
+    session already over budget gets no maintenance).
+    """
+    from .strength_session_quality import trunk_high_cost
+
+    def low_fatigue(record: dict[str, Any]) -> bool:
+        item = _slot_selected_item(record["slot"])
+        metadata = item.get("selection_metadata") if isinstance(item.get("selection_metadata"), dict) else {}
+        eccentric = str(item.get("eccentric_cost") or metadata.get("eccentric_cost") or "").strip().lower()
+        return not trunk_high_cost(item) and eccentric != "high"
+
+    candidates = [r for r in records if r.get("trunk_targeted") and low_fatigue(r)]
+    limits = {"rotational_power": 0, "high_cost": 0, "loaded": 1 if loaded_allowed else 0}
+    held = [r for r in held if r.get("trunk_targeted")]
+    family_counts: dict[str, int] = {}
+    for record in held:
+        for family in record["families"] - {"support"}:
+            family_counts[family] = family_counts.get(family, 0) + 1
+    return _trunk_block_additions(candidates, held, family_counts, family_limit=2, room=target, target=target,
+                                  tier_limits=limits, minimum=LATE_CORE_MAINTENANCE_MINIMUM,
+                                  require_resisted=False)
+
+
+def _trunk_block_outcome(
+    selected: list[dict[str, Any]],
+    records: list[dict[str, Any]],
+    *,
+    core_records: list[dict[str, Any]] = (),
+    host: bool,
+    ineligible: dict[str, Any] | None = None,
+    target: int = _TRUNK_BLOCK_TARGET,
+) -> dict[str, Any]:
+    """The audit record for one session of a trunk development week."""
+    members = trunk_block_members(selected) if host else []
+    if members:
+        return {"intent": "development", "status": "delivered", "group": TRUNK_BLOCK_GROUP,
+                "target": target, "minimum": TRUNK_BLOCK_MINIMUM,
+                "members": [r["name"] for r in members],
+                "functions": [_record_trunk_function(r) for r in members],
+                "load_tiers": [_record_trunk_tier(r) for r in members]}
+    if ineligible is not None:
+        return {"intent": "development", "status": "not_eligible", **ineligible}
+    if not host:
+        return {"intent": "development", "status": "hosted_elsewhere"}
+    alternates = [*trunk_alternate_records(records), *core_records]
+    available = {_record_trunk_function(r) for r in [*records, *alternates] if r.get("trunk_targeted")}
+    # With unlimited room, could this session's own slots (one member each)
+    # form a block at all? If not, supply limits it; otherwise capacity does.
+    feasible = _trunk_block_additions(records, [], {}, family_limit=len(records) + 1,
+                                      room=len(records), alternates=alternates, tier_limits={})
+    # Supply limits it, or the block's load budget / movement-family limit did.
+    reason = "insufficient_complementary_candidates" if feasible is None else "trunk_load_limits"
+    return {"intent": "development", "status": "constrained", "reason_code": reason,
+            "available_functions": sorted(available)}
+
+
+def _stamp_trunk_block(
+    assignments: list[dict[str, Any]], selected: list[dict[str, Any]], *, host: bool,
+    additions: list[dict[str, Any]] = (),
+) -> list[dict[str, Any]]:
+    """Group block members as one logical component, kept contiguous and last.
+
+    Grouping is presentation only: every member keeps its own assignment,
+    slot identity and dose, and counts in every exercise/volume/load check.
+    """
+    members = {r["name"]: _record_trunk_function(r) for r in trunk_block_members(selected)} if host else {}
+    added = {r["name"] for r in additions} if host else set()
+    for assignment in assignments:
+        assignment.pop("component_group", None)
+        assignment.pop("trunk_function", None)
+        assignment.pop("exercise_cap_exempt", None)
+        if assignment.get("name") in members:
+            assignment["component_group"] = TRUNK_BLOCK_GROUP
+            assignment["trunk_function"] = members[assignment["name"]]
+        if assignment.get("name") in added:
+            # The block's own capacity: outside the role's exercise-count cap,
+            # inside every load, recovery and safety check.
+            assignment["exercise_cap_exempt"] = True
+    return sorted(assignments, key=lambda item: item.get("component_group") == TRUNK_BLOCK_GROUP)
 
 
 def _trunk_support_outcome(
@@ -870,6 +1308,10 @@ def _trunk_strength_selected(athlete_model: dict[str, Any] | None) -> bool:
         *(model.get("goals") or []),
         *(model.get("weaknesses") or []),
         *(model.get("weak_areas") or []),
+        # The primary weak area / goal is a selection even when the athlete
+        # did not repeat it in the lists above.
+        model.get("primary_weak_area"),
+        model.get("primary_goal"),
     ]
     return any(
         re.sub(r"[^a-z0-9]+", "_", str(value).strip().lower()).strip("_")
@@ -894,12 +1336,14 @@ def _low_load_trunk_support_records(slots: list[dict[str, Any]]) -> list[dict[st
     return records
 
 
-_EMBEDDED_TRUNK_HOLD_PRESCRIPTION = "1-2 controlled sets x 15-20 sec hold; stop before fatigue"
+# One exact working dose each (no set or rep ranges): the card and the app
+# render a single prescription, and a range left the Full prescription empty.
+_EMBEDDED_TRUNK_HOLD_PRESCRIPTION = "2 sets x 20 sec hold; rest 45 sec; RPE 5; stop before fatigue"
 _EMBEDDED_TRUNK_REP_PRESCRIPTION = (
-    "1-2 controlled sets x 3-5 slow reps (each side if one-sided); stop before fatigue"
+    "2 sets x 5 slow reps (each side if one-sided); rest 60 sec; RPE 5; stop before fatigue"
 )
 _EMBEDDED_TRUNK_CARRY_PRESCRIPTION = (
-    "1-2 controlled sets x 15-20 m carry (each side if one-sided); light load, stop before fatigue"
+    "2 sets x 20 m carry (each side if one-sided); rest 60 sec; RPE 5; light load, stop before fatigue"
 )
 _HOLD_NAME_RE = re.compile(r"\b(?:hold|holds|plank|isometric|iso)\b", re.IGNORECASE)
 _CARRY_RE = re.compile(r"\b(?:carry|carries|walk)\b", re.IGNORECASE)
@@ -1240,10 +1684,14 @@ def _assign_selected_records(
                       else assignment_from_slot(entry["phase"], "strength_slots", record["slot"]))
         if assignment:
             assignments.append(assignment)
+    assignments = _stamp_trunk_block(assignments, selected_records, host=entry.get("trunk_block_target", 0) > 0,
+                                     additions=entry.get("trunk_block_additions") or ())
     entry["role"]["selected_exercise_assignments"] = assignments
     policy = entry["role"]["strength_composition_policy"]
     policy["selected_count"] = len(assignments)
     policy["selected_names"] = [item["name"] for item in assignments]
+    policy["main_exercise_count"] = main_exercise_count(assignments)
+    policy["core_block_count"] = sum(1 for a in assignments if a.get("component_group") == TRUNK_BLOCK_GROUP)
     entry["selected_records"] = selected_records
 
 
@@ -1323,6 +1771,13 @@ def _apply_adjacent_strength_recovery(
             if not record["material_movement_cost"]
             or not (record["mechanical_risk_tags"] & previous_substantial_tags)
         ]
+        # A session whose own main work must be cut to recover from yesterday
+        # is no place to add core load: its Core Development Block yields (and
+        # says why) rather than sit on a recovery-reduced session.
+        block_yielded = bool(current.get("trunk_block_target"))
+        if block_yielded:
+            current["trunk_block_target"] = 0
+            current["trunk_block_additions"] = []
         selected_records, dropped = _select_bounded_records(
             safe_records,
             role_key=current["role_key"],
@@ -1342,6 +1797,9 @@ def _apply_adjacent_strength_recovery(
                     role_key=current["role_key"], pressure_state=policy,
                     preserve_adaptation=current.get("preserve_adaptation", ""),
                 )
+            if current.get("trunk_development") and block_yielded:
+                policy["trunk_block"] = {"intent": "development", "status": "not_eligible",
+                                         "reason_code": _ADJACENT_STRENGTH_RECOVERY_REASON}
             existing_dropped = {
                 str(item.get("name") or ""): str(item.get("reason") or "")
                 for item in policy.get("dropped") or []
@@ -1392,6 +1850,75 @@ def _apply_adjacent_strength_recovery(
             "adjacent_strength_recovery"
         ] = evidence
 
+    _rehost_yielded_trunk_blocks(scheduled)
+
+
+def _rehost_yielded_trunk_blocks(scheduled: list[dict[str, Any]]) -> None:
+    """Re-rule a week's Core Development Block host after recovery yielded it.
+
+    Hosting was chosen before adjacent recovery; once recovery strips the
+    host, its week's other sessions must not keep ``hosted_elsewhere``. Each
+    remaining eligible session (not itself recovery-reduced) is offered the
+    block, lightest first, through the same selector; it is accepted only if
+    the block adds no substantial mechanical loading shared with a neighbour.
+    Otherwise every candidate records its real reason and the downgrade stands;
+    ``hosted_elsewhere`` survives only when another session now delivers it.
+    """
+    by_week: dict[int, list[dict[str, Any]]] = {}
+    for entry in scheduled:
+        if not entry.get("context_only") and entry.get("trunk_development"):
+            by_week.setdefault(id(entry["week"]), []).append(entry)
+    for entries in by_week.values():
+        outcomes = [(e, (e["role"].get("strength_composition_policy") or {}).get("trunk_block") or {})
+                    for e in entries]
+        yielded = [e for e, o in outcomes if o.get("reason_code") == _ADJACENT_STRENGTH_RECOVERY_REASON]
+        if not yielded or any(o.get("status") in {"delivered", "constrained"} for _, o in outcomes):
+            continue
+        candidates = [e for e, o in outcomes if o.get("status") == "hosted_elsewhere"]
+        candidates.sort(key=lambda e: len(e["selected_records"]))
+        hosted = False
+        for entry in candidates:
+            policy = entry["role"]["strength_composition_policy"]
+            day = role_d_day(entry["week"], entry["role"])
+            recovery = policy.get("adjacent_strength_recovery") or {}
+            if hosted:
+                continue  # Genuinely hosted elsewhere now.
+            if recovery.get("decision") not in (None, "compatible"):
+                policy["trunk_block"] = {"intent": "development", "status": "not_eligible",
+                                         "reason_code": _ADJACENT_STRENGTH_RECOVERY_REASON}
+                continue
+            target = entry["trunk_block_size"]
+            selected, _ = _select_bounded_records(
+                entry["records"], role_key=entry["role_key"], cap=entry["effective_cap"],
+                pressure=entry["pressure"], preserve_trunk_support=entry["preserve_trunk_support"],
+                preserve_adaptation=entry.get("preserve_adaptation", ""),
+                preserve_weakness=entry.get("preserve_weakness", ""),
+                preserve_strength=entry.get("preserve_strength", False), trunk_block_target=target,
+                trunk_alternates=[*trunk_alternate_records(entry["records"]), *entry["core_records"]],
+            )
+            added = [r for r in selected if r not in entry["selected_records"]]
+            neighbours = [r for other in scheduled if other is not entry
+                          and role_d_day(other["week"], other["role"]) in {day - 1, day + 1}
+                          for r in other["selected_records"]]
+            new_load = _substantial_mechanical_tags(added) - _substantial_mechanical_tags(entry["selected_records"])
+            if (not trunk_block_members(selected) or any(r not in selected for r in entry["selected_records"])
+                    or new_load & _substantial_mechanical_tags(neighbours)):
+                outcome = _trunk_block_outcome(selected, entry["records"], host=True, target=target,
+                                               core_records=entry["core_records"])
+                if outcome["status"] == "delivered" or new_load & _substantial_mechanical_tags(neighbours):
+                    outcome = {"intent": "development", "status": "not_eligible",
+                               "reason_code": _ADJACENT_STRENGTH_RECOVERY_REASON}
+                policy["trunk_block"] = outcome
+                continue
+            entry.update(selected_records=selected, trunk_block_target=target, trunk_block_additions=added)
+            _assign_selected_records(entry, selected)
+            policy["trunk_block"] = _trunk_block_outcome(selected, entry["records"], host=True, target=target,
+                                                         core_records=entry["core_records"])
+            if policy.get("injury_restricted"):
+                policy["trunk_block"]["dose_held_by"] = "injury_constraint"
+            policy["trunk_block"]["rehosted_from_d_day"] = role_d_day(yielded[0]["week"], yielded[0]["role"])
+            hosted = True
+
 
 def compose_normal_strength_assignments(
     *,
@@ -1430,6 +1957,8 @@ def compose_normal_strength_assignments(
     if pressure_context is None:
         pressure_context = _composition_context_from_model(None)
     trunk_strength_selected = _trunk_strength_selected(athlete_model)
+    trunk_block_size = trunk_development_block_target(athlete_model)
+    trunk_development = trunk_block_size > 0
     primary_adaptation = _primary_goal_adaptation(athlete_model)
     from .priority_profile import build_priority_profile, selected_priority_targets
     # Other weakness families retain their existing composition owners (for
@@ -1440,6 +1969,7 @@ def compose_normal_strength_assignments(
 
     weekly_role_map["strength_composition_context"] = dict(pressure_context)
     composed_roles: list[dict[str, Any]] = []
+    pending: list[dict[str, Any]] = []
 
     first_strength_week_position = next(
         (
@@ -1543,7 +2073,18 @@ def compose_normal_strength_assignments(
                     # The conditioning selector already chose and filtered this
                     # physical movement drill. Use its own dose within this
                     # session's cap rather than substituting stance/prep cues.
-                    for record in _candidate_records([slot]):
+                    # Its ranked same-role alternates are offered too, so the
+                    # block can rotate movement patterns (see the per-week
+                    # footwork ordering in the final selection loop).
+                    footwork_slots = [slot]
+                    if slot.get("slot_id"):
+                        footwork_slots.extend(
+                            {**slot, "slot_id": f"{slot['slot_id']}:alternate:{index}",
+                             "selected": alternate, "alternates": []}
+                            for index, alternate in enumerate(slot.get("alternates") or [])
+                            if isinstance(alternate, dict)
+                        )
+                    for record in _candidate_records(footwork_slots):
                         record.update(adaptations=frozenset({"footwork"}), slot_group="conditioning_slots")
                         records.append(record)
             if primary_adaptation and not any(primary_adaptation in r["adaptations"] for r in records):
@@ -1602,72 +2143,221 @@ def compose_normal_strength_assignments(
                 else None
             )
             microdose_only = role.get("pre_hard_contact_microdose_only") is True
-            selected_records, dropped = _select_bounded_records(
-                records,
-                role_key=role_key,
-                cap=effective_cap,
-                pressure=exercise_count_pressure,
-                preserve_trunk_support=trunk_strength_selected,
-                preserve_adaptation=primary_adaptation,
-                preserve_weakness=primary_weakness,
-                preserve_strength=strength_selected,
-            )
-
-            assignments: list[dict[str, Any]] = []
-            for record in selected_records:
-                assignment = (conditioning_assignment_from_slot(phase, record["slot"], record["slot"]["selected"])
-                              if record.get("slot_group") == "conditioning_slots"
-                              else assignment_from_slot(phase, "strength_slots", record["slot"]))
-                if assignment:
-                    assignments.append(assignment)
-            role["selected_exercise_assignments"] = assignments
-            role["strength_composition_policy"] = {
-                **pressure_state,
+            # Stage 1's core candidates for this phase: block-only, never main.
+            held_names = {r["name"] for r in records}
+            core_records = [r for r in _candidate_records([s for s in (pool or {}).get("core_development_slots") or []
+                                                           if s.get("role") != "core_maintenance"])
+                            if r["trunk_targeted"] and r["name"] not in held_names]
+            # Selection waits until every role of the week is known: the Core
+            # Development Block picks ONE host per week. The placeholder keeps
+            # this role's position in ``composed_roles``.
+            ctx = {
+                "week": week,
+                "role": role,
+                "phase": phase,
+                "records": records,
                 "role_key": role_key,
-                "base_exercise_cap": base_cap,
-                "effective_exercise_cap": effective_cap,
-                "pre_hard_contact_microdose_only": microdose_only,
-                "standalone_minimum_applied": False,
-                # The day this membership was chosen for. Any later move must
-                # recompose the role; the final calendar is checked against it.
-                "composed_for_d_day": role_d_day(week, role),
-                "major_family_limit": 2 if exercise_count_pressure == 0 else 1,
-                "selected_count": len(assignments),
-                "selected_names": [item["name"] for item in assignments],
-                "dropped": [
-                    {"name": name, "reason": reason}
-                    for name, reason in dropped.items()
-                ],
+                "base_cap": base_cap,
+                "effective_cap": effective_cap,
+                "pressure_state": pressure_state,
+                "pressure": exercise_count_pressure,
+                "exercise_count_pressure": exercise_count_pressure,
+                "microdose_only": microdose_only,
+                "standalone_pressure": pressure,
+                "week_position": week_position,
+                "prior_standalone_minimum": prior_standalone_minimum,
+                "core_records": core_records,
+                "weekly_role_map": weekly_role_map,
             }
-            if trunk_strength_selected:
-                role["strength_composition_policy"]["trunk_support"] = _trunk_support_outcome(
-                    records, records, selected_records, role_key=role_key, pressure_state=pressure_state,
-                    preserve_adaptation=primary_adaptation,
-                )
-            composed_roles.append(
-                {
-                    "week": week,
-                    "role": role,
-                    "phase": phase,
-                    "records": records,
-                    "selected_records": selected_records,
-                    "role_key": role_key,
-                    "effective_cap": effective_cap,
-                    "pressure": exercise_count_pressure,
-                    "preserve_trunk_support": trunk_strength_selected,
-                    "preserve_adaptation": primary_adaptation,
-                    "preserve_weakness": primary_weakness,
-                    "preserve_strength": strength_selected,
-                    "week_ordinal": week_position + 1,
-                    "standalone_eligible": (
-                        not microdose_only
-                        and pressure <= _STANDALONE_STRENGTH_MAX_PRESSURE
-                        and phase in {"GPP", "SPP"}
-                        and role_key in _STANDALONE_STRENGTH_MINIMUM_ROLE_KEYS
-                    ),
-                    "prior_standalone_minimum": prior_standalone_minimum,
-                }
+            pending.append(ctx)
+            composed_roles.append(ctx)
+
+    def _select(ctx: dict[str, Any], block_target: int) -> tuple[list[dict[str, Any]], dict[str, str]]:
+        return _select_bounded_records(
+            ctx["records"],
+            role_key=ctx["role_key"],
+            cap=ctx["effective_cap"],
+            pressure=ctx["exercise_count_pressure"],
+            preserve_trunk_support=trunk_strength_selected,
+            preserve_adaptation=primary_adaptation,
+            preserve_weakness=primary_weakness,
+            preserve_strength=strength_selected,
+            trunk_block_target=block_target,
+            trunk_alternates=([*trunk_alternate_records(ctx["records"]), *ctx["core_records"]]
+                              if block_target else ()),
+        )
+
+    # One host per week: the eligible session that can hold a complementary
+    # block, lightest main session first, so core work complements the week
+    # rather than piling onto its heaviest day.
+    hosts: set[int] = set()
+    if trunk_development:
+        by_week: dict[int, list[dict[str, Any]]] = {}
+        for ctx in pending:
+            ctx["trunk_block_ineligible"] = _trunk_block_ineligibility(ctx)
+            if ctx["trunk_block_ineligible"] is None:
+                by_week.setdefault(id(ctx["week"]), []).append(ctx)
+        # A recompose of some roles must not open a second block in a week
+        # whose untouched (context-only) session already hosts one.
+        hosted_weeks = {
+            id(entry["week"]) for entry in composed_roles
+            if entry.get("context_only")
+            and ((entry["role"].get("strength_composition_policy") or {}).get("trunk_block") or {}).get("status")
+            in {"delivered", "constrained"}
+        }
+        for week_id, candidates in by_week.items():
+            if week_id in hosted_weeks:
+                continue
+            ordered = sorted(candidates, key=lambda item: len(_select(item, 0)[0]))
+            for ctx in ordered:
+                if trunk_block_members(_select(ctx, trunk_block_size)[0]):
+                    hosts.add(id(ctx["role"]))
+                    break
+            else:
+                # Nobody can hold it: the first-choice session reports why.
+                hosts.add(id(ordered[0]["role"]))
+
+    # Footwork as the primary weakness: vary the movement pattern within a
+    # week. Each session prefers a footwork drill not yet placed that week;
+    # ties keep Stage 1's ranking, so the same pattern recurs in the same
+    # session each week and can progress across the block. Only the order
+    # changes; caps, doses and every legality gate are unchanged.
+    footwork_week_use: dict[int, set[str]] = {}
+    for entry in composed_roles:
+        if entry.get("context_only"):
+            for record in entry.get("selected_records") or []:
+                if "footwork" in record.get("adaptations", ()):
+                    footwork_week_use.setdefault(id(entry["week"]), set()).add(record["name"])
+
+    def _origin_slot(record: dict[str, Any]) -> str:
+        slot_id = str(record["slot"].get("slot_id") or "")
+        return slot_id.partition(":alternate:")[0] or f"name:{record['name']}"
+
+    def _rotate_footwork(ctx: dict[str, Any]) -> None:
+        records = ctx["records"]
+        positions = [i for i, r in enumerate(records) if "footwork" in r.get("adaptations", ())]
+        if len(positions) < 2:
+            return
+        unique: dict[str, dict[str, Any]] = {}
+        for i in positions:
+            record = records[i]
+            held = unique.get(record["name"])
+            # A drill's own selected slot beats the same drill offered as
+            # another slot's alternate: an alternate is one substitution for
+            # its original slot, so it cannot sit beside that slot's pick.
+            if held is None or (":alternate:" in str(held["slot"].get("slot_id") or "")
+                                and ":alternate:" not in str(record["slot"].get("slot_id") or "")):
+                unique[record["name"]] = record
+        drills = list(unique.values())
+        week_used = footwork_week_use.get(id(ctx["week"]), set())
+        # The weakness guarantee takes the FIRST footwork record; the capacity
+        # fill then ranks by (support_only, Stage 1 priority). Force the best
+        # drill not yet placed this week that the fill would not add anyway,
+        # so one session can carry two different patterns. Same count as
+        # before; only which drill is guaranteed changes.
+        fill_pick = min(drills, key=lambda r: (1 if r["support_only"] else 0, r["sort_key"]))
+        unused = [r for r in drills if r["name"] not in week_used]
+        forced = next((r for r in unused if _origin_slot(r) != _origin_slot(fill_pick)), None) \
+            or next((r for r in unused if r is not fill_pick), None) or (unused or drills)[0]
+        # One candidate per ORIGINAL slot in this session: an alternate replaces
+        # its original, it never sits beside it (or beside a sibling alternate).
+        # The guaranteed pick claims its slot first, then the fill's pick, then
+        # the rest in Stage 1 order; other sessions may still use the others.
+        ordered: list[dict[str, Any]] = []
+        claimed: set[str] = set()
+        for record in [forced, fill_pick, *drills]:
+            origin = _origin_slot(record)
+            if record in ordered or origin in claimed:
+                continue
+            claimed.add(origin)
+            ordered.append(record)
+        others = [r for i, r in enumerate(records) if i not in set(positions)]
+        # Footwork keeps its place after the session's own strength records.
+        ctx["records"] = [*others[:positions[0]], *ordered, *others[positions[0]:]]
+
+    for ctx in pending:
+        if primary_weakness == "footwork":
+            _rotate_footwork(ctx)
+        week, role, phase, records = ctx["week"], ctx["role"], ctx["phase"], ctx["records"]
+        role_key, pressure_state = ctx["role_key"], ctx["pressure_state"]
+        base_cap, effective_cap = ctx["base_cap"], ctx["effective_cap"]
+        exercise_count_pressure, microdose_only = ctx["exercise_count_pressure"], ctx["microdose_only"]
+        host = id(role) in hosts
+        block_target = trunk_block_size if host else 0
+        selected_records, dropped = _select(ctx, block_target)
+        for record in selected_records:
+            if "footwork" in record.get("adaptations", ()):
+                footwork_week_use.setdefault(id(week), set()).add(record["name"])
+        main_records = _select(ctx, 0)[0] if block_target else selected_records
+        additions = [r for r in selected_records if r not in main_records]
+
+        assignments: list[dict[str, Any]] = []
+        for record in selected_records:
+            assignment = (conditioning_assignment_from_slot(phase, record["slot"], record["slot"]["selected"])
+                          if record.get("slot_group") == "conditioning_slots"
+                          else assignment_from_slot(phase, "strength_slots", record["slot"]))
+            if assignment:
+                assignments.append(assignment)
+        assignments = _stamp_trunk_block(assignments, selected_records, host=host, additions=additions)
+        role["selected_exercise_assignments"] = assignments
+        role["strength_composition_policy"] = {
+            **pressure_state,
+            "role_key": role_key,
+            "base_exercise_cap": base_cap,
+            "effective_exercise_cap": effective_cap,
+            "pre_hard_contact_microdose_only": microdose_only,
+            "standalone_minimum_applied": False,
+            # The day this membership was chosen for. Any later move must
+            # recompose the role; the final calendar is checked against it.
+            "composed_for_d_day": role_d_day(week, role),
+            "major_family_limit": 2 if exercise_count_pressure == 0 else 1,
+            "selected_count": len(assignments),
+            "selected_names": [item["name"] for item in assignments],
+            # The exercise cap governs main members; a Core Development Block
+            # has its own capacity and is counted separately.
+            "main_exercise_count": main_exercise_count(assignments),
+            "core_block_count": sum(1 for a in assignments if a.get("component_group") == TRUNK_BLOCK_GROUP),
+            "dropped": [
+                {"name": name, "reason": reason}
+                for name, reason in dropped.items()
+            ],
+        }
+        if trunk_strength_selected:
+            role["strength_composition_policy"]["trunk_support"] = _trunk_support_outcome(
+                records, records, selected_records, role_key=role_key, pressure_state=pressure_state,
+                preserve_adaptation=primary_adaptation,
             )
+        if trunk_development:
+            outcome = _trunk_block_outcome(
+                selected_records, records, host=host, ineligible=ctx.get("trunk_block_ineligible"),
+                target=trunk_block_size, core_records=ctx["core_records"],
+            )
+            if outcome["status"] == "delivered" and pressure_state.get("injury_restricted"):
+                # The members are safe to train, but the resolver's injury
+                # readiness reduction holds every dose at its floor: this is a
+                # maintenance-dosed block, and the cause is on record.
+                outcome["dose_held_by"] = "injury_constraint"
+            role["strength_composition_policy"]["trunk_block"] = outcome
+        ctx.update(
+            {
+                "selected_records": selected_records,
+                "preserve_trunk_support": trunk_strength_selected,
+                "preserve_adaptation": primary_adaptation,
+                "preserve_weakness": primary_weakness,
+                "preserve_strength": strength_selected,
+                "trunk_block_target": block_target,
+                "trunk_block_additions": additions,
+                "trunk_development": trunk_development,
+                "trunk_block_size": trunk_block_size,
+                "week_ordinal": ctx["week_position"] + 1,
+                "standalone_eligible": (
+                    not microdose_only
+                    and ctx["standalone_pressure"] <= _STANDALONE_STRENGTH_MAX_PRESSURE
+                    and phase in {"GPP", "SPP"}
+                    and role_key in _STANDALONE_STRENGTH_MINIMUM_ROLE_KEYS
+                ),
+            }
+        )
     _apply_adjacent_strength_recovery(weekly_role_map, composed_roles, allow_relocation=allow_relocation)
     _propose_standalone_strength_minimum(weekly_role_map, composed_roles)
     return weekly_role_map
@@ -1759,7 +2449,8 @@ def _propose_standalone_strength_minimum(
         }:
             continue
         selected = entry["selected_records"]
-        if len(selected) >= _STANDALONE_STRENGTH_MINIMUM:
+        added = entry.get("trunk_block_additions") or []
+        if len([r for r in selected if r not in added]) >= _STANDALONE_STRENGTH_MINIMUM:
             continue
         if not _strength_role_is_standalone(
             weekly_role_map, week, entry["week_ordinal"], role
@@ -1917,12 +2608,16 @@ def apply_standalone_strength_minimum(
         roles = _strength_roles_by_position(role_map)
         for position, assignment in accepted:
             role = roles[position]
-            role["selected_exercise_assignments"] = [
-                *(role.get("selected_exercise_assignments") or []),
-                deepcopy(assignment),
-            ]
+            # The extra is main work: it goes before a Core Development Block,
+            # which stays contiguous and last.
+            role["selected_exercise_assignments"] = sorted(
+                [*(role.get("selected_exercise_assignments") or []), deepcopy(assignment)],
+                key=lambda item: item.get("component_group") == TRUNK_BLOCK_GROUP,
+            )
             policy = role["strength_composition_policy"]
             policy["selected_count"] = len(role["selected_exercise_assignments"])
+            if "main_exercise_count" in policy:
+                policy["main_exercise_count"] = main_exercise_count(role["selected_exercise_assignments"])
             policy["selected_names"] = [
                 item["name"] for item in role["selected_exercise_assignments"]
             ]
@@ -2214,36 +2909,7 @@ def _scheduled_phase_for_role(week: dict[str, Any], role: dict[str, Any]) -> str
 
 
 def _conditioning_role_is_hard_spar_adjacent(week: dict[str, Any], role: dict[str, Any]) -> bool:
-    weekday_order = {
-        "monday": 0,
-        "tuesday": 1,
-        "wednesday": 2,
-        "thursday": 3,
-        "friday": 4,
-        "saturday": 5,
-        "sunday": 6,
-    }
-    scheduled_day = str(role.get("scheduled_day_hint") or "").strip().lower()
-    scheduled_index = weekday_order.get(scheduled_day)
-    if scheduled_index is None:
-        return False
-
-    hard_days = {
-        str(day).strip().lower()
-        for day in (week.get("effective_hard_sparring_days") or [])
-        if str(day).strip()
-    }
-    if not hard_days:
-        hard_days = {
-            str(entry.get("day") or "").strip().lower()
-            for entry in (week.get("hard_sparring_plan") or [])
-            if isinstance(entry, dict) and entry.get("status") == "hard_as_planned"
-        }
-    return any(
-        ((weekday_order[hard_day] - scheduled_index) % 7) in {1, 6}
-        for hard_day in hard_days
-        if hard_day in weekday_order
-    )
+    return bool(_hard_sparring_day_offsets(week, role) & {1, 6})
 
 
 def _option_metadata(option: dict[str, Any]) -> dict[str, Any]:
@@ -2561,11 +3227,16 @@ def compose_normal_conditioning_assignments(
                 role=role,
                 fatigue_applied=True,
             )
+            from .session_workload import substantial_endurance
+            endurance_host = long_aerobic or any(
+                substantial_endurance(assignment) for assignment in assignments
+            )
             if (
                 workload_met
                 and trunk_strength_selected
                 and not adjacent_hard_spar
                 and not low_load_only
+                and not endurance_host
                 and int(pressure_state["pressure"]) < 2
             ):
                 trunk_options = [
@@ -2598,8 +3269,12 @@ def compose_normal_conditioning_assignments(
                 # A day upgraded to low-load support keeps that contract: its
                 # membership is the conditioning drill that met it, not added
                 # S&C work.
+                # Strength work beside substantial continuous endurance breaks
+                # the same-day rule the structured card audits.
                 trunk_support_skip_reason = (
-                    "hard_sparring_adjacent"
+                    "substantial_endurance_host"
+                    if endurance_host and workload_met and not adjacent_hard_spar and not low_load_only
+                    else "hard_sparring_adjacent"
                     if adjacent_hard_spar
                     else "low_load_support_day"
                     if low_load_only
@@ -3514,7 +4189,7 @@ def consolidate_compatible_physical_sessions(
                         or not host.get("effective_strength_prescriptions")):
                     continue
                 cap = policy.get("effective_exercise_cap")
-                if not isinstance(cap, int) or len(host_members) + 1 > cap:
+                if not isinstance(cap, int) or main_exercise_count(host_members) + 1 > cap:
                     continue
                 if any(m.get("slot_group") != "strength_slots" for m in host_members):
                     continue
@@ -3557,6 +4232,11 @@ def consolidate_compatible_physical_sessions(
                 ]
                 composition = trial_host["strength_composition_policy"]
                 composition["selected_count"] = len(trial_host["selected_exercise_assignments"])
+                if "main_exercise_count" in composition:
+                    composition["main_exercise_count"] = main_exercise_count(trial_host["selected_exercise_assignments"])
+                    composition["core_block_count"] = sum(
+                        1 for a in trial_host["selected_exercise_assignments"]
+                        if a.get("component_group") == TRUNK_BLOCK_GROUP)
                 composition["selected_names"] = [
                     item["name"] for item in trial_host["selected_exercise_assignments"]
                 ]

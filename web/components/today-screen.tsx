@@ -20,10 +20,12 @@ import { TodayReadinessForm } from "@/components/today/today-readiness-form";
 import { TodayRiskWatch } from "@/components/today/today-risk-watch";
 import { StandaloneRehab } from "@/components/today/standalone-rehab";
 import { TodaySessionPanel } from "@/components/today/today-session-panel";
+import { TodayWeighInCard } from "@/components/today/today-weigh-in-card";
 import { useTodayCommand } from "@/components/today/use-today-command";
 import { resolvePlanProgress } from "@/lib/camp-map";
 import { isOpenOngoingPlan } from "@/lib/plan-format";
 import { isCalmRehabBlock } from "@/lib/rehab-label";
+import { inFinalWeeks } from "@/lib/weight-cut-status";
 import { rehabExerciseTarget } from "@/lib/rehab-exercise-guide";
 import {
   getCompletionLabel,
@@ -237,6 +239,10 @@ export function TodayScreen() {
   // (the server enforces consent for both).
   const canCheckIn = hasPlan || hasHealthDataConsent(me);
   const showCheckin = state && canCheckIn ? shouldShowTodayCheckin(state) : false;
+  // Weight-to-target in a dated camp's final weeks. Weigh-ins are health data
+  // and under-18s have no weight-cut feature, so both gate it.
+  const showWeighIn = Boolean(token && hasPlan && !openOngoing && activePlan.fight_date && trainingDate
+    && inFinalWeeks(activePlan.fight_date, trainingDate) && me && !me.profile.is_minor && hasHealthDataConsent(me));
   // Unknown (null) until shared history confirms it; never assumed.
   const [loggedToday, setLoggedToday] = useState<boolean | null>(null);
   const trainingDayLabel = useMemo(
@@ -351,6 +357,7 @@ export function TodayScreen() {
       exerciseMedia={mergedExerciseMedia}
       planSchedule={planSchedule}
       painReasonAllowed={hasHealthDataConsent(me)}
+      athleteSports={me?.profile.technical_style}
       token={token ?? ""}
       onRefresh={refresh}
       athleteFullName={me?.profile.full_name}
@@ -432,6 +439,8 @@ export function TodayScreen() {
         ) : null}
       </section>
 
+      {showWeighIn ? <TodayWeighInCard token={token!} fightDate={String(activePlan.fight_date)} trainingDay={trainingDate!} /> : null}
+
       {/* The session keeps one slot, so a change of order never remounts it
           (and loses a running timer); only the check-in moves around it. */}
       {resolvedDecision.useSafeReplacement ? null : readinessForm}
@@ -509,7 +518,7 @@ export function TodayScreen() {
             // Coach-led athletes put their coach's sessions into a plan of their own.
             <Link href="/plans/custom" className={styles.quickAction}>
               <TileIcon name="plan" />
-              Build your own plan
+              Add my plan
               <span className={styles.chevron} aria-hidden="true" />
             </Link>
           )}

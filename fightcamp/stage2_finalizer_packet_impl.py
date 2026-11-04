@@ -231,6 +231,11 @@ _ASSIGNMENT_PROVENANCE_FIELDS = (
     # composed session's realised cross-day cost. No finalizer rule names it and
     # the model must not act on it, so it stays on the rich Stage 1 object.
     "mechanical_risk_tags",
+    # Core Development Block grouping is planner/UI metadata. Stage 2 renders
+    # block members as ordinary closed exercises and never sees the grouping.
+    "component_group",
+    "trunk_function",
+    "exercise_cap_exempt",
 )
 
 
@@ -785,6 +790,12 @@ def build_stage2_finalizer_packet(
         _entries = _goal_source.get("goal_preservation")
         if _entries:
             goal_preservation_entries = deepcopy(_entries)
+            # Core Development Block evidence detail is planner-only metadata.
+            for _entry in goal_preservation_entries:
+                for _item in (_entry.get("evidence") or []) if isinstance(_entry, dict) else []:
+                    if isinstance(_item, dict):
+                        for _key in ("trunk_function", "trunk_load_tier", "trunk_development", "trunk_block_functions"):
+                            _item.pop(_key, None)
             goal_preservation_version = (
                 _goal_source.get("goal_preservation_version") or _GOAL_PRESERVATION_VERSION
             )
@@ -814,8 +825,7 @@ def build_stage2_finalizer_packet(
             # Late-camp effective strength dose is authoritative over the bank dose.
             "If a session role carries effective_strength_prescriptions, each entry's effective_prescription is the authoritative dose or dose bound for that exercise on that day. Render one exact value within any bound, never the base_prescription, and never a dose above it. Its base_prescription is the original exercise-bank dose kept only for provenance — do not render it as the prescription.",
             "Preserve the effective prescription's exertion method: a %1RM load stays %1RM, and max-speed jump/throw work stays a speed-and-quality cue. Do not replace either with generic RPE.",
-            "Write a brief How instruction explaining each exercise setup and movement, separate from its execution cue. Preserve source sequence and clinical restrictions.",
-            "You are the sole author of exercise Progress and Easier. Write one concise actionable Easier for each selected physical exercise, using its current movement and available equipment without overriding clinical stop rules. Progress may describe technique or quality at the same dose. Numerical advancement requires the actual next selected exposure in the same session context; never invent a future dose, load, rest reduction, intensity or workout. Respect taper, fatigue, injury and weight-cut restrictions. Deterministic reconciliation preserves your valid lines and rejects unsupported adjustments; it does not write replacements.",
+            "Write each exercise's coaching lines as RULE 6A describes; a Swap is a suggestion, not an added exercise. Deterministic reconciliation preserves your valid lines and rejects unsupported adjustments; it does not write replacements.",
             "A selected_exercise_assignments entry may carry coaching_notes: the authored exercise-bank guidance for that exercise. Use it as source-backed execution evidence — choose the one or two most relevant cues (technique, load, or a stop/quality rule) and phrase them in your own words. Do not dump every note verbatim or repeat generic advice. coaching_notes is never a dose: it can never override effective_prescription, effective_strength_envelope, restrictions, taper rules, or closed membership.",
             "If a session role carries effective_strength_envelope, treat it as a hard ceiling: do not render more sets than effective_strength_envelope.max_sets, more reps than max_reps (for the loaded anchor/secondary lifts), or a higher RPE than rpe_cap_high. If effective_strength_envelope.loaded_allowed is false, render no loaded strength lifting on that day — neural/primer, readiness, or mobility work only.",
             "If effective_strength_envelope.complete_exercise_allow_list is true, effective_strength_envelope.allowed_exercise_names is the complete S&C exercise allow-list selected by the deterministic planner for that role. Render only those named exercises; do not restore omitted candidates, alternates, substitutes, add another loaded lift, or invent another strength, power, plyometric, trunk, or support exercise for that session. An individually legal dose does not make an unselected exercise legal. If effective_strength_envelope.forbid_slow_eccentric_emphasis is true, do not restore a slow/tempo eccentric prescription from the base exercise-bank text.",

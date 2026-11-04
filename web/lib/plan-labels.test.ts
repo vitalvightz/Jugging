@@ -76,3 +76,9 @@ test("a generated title that opens with its weekday drops it", () => {
   assert.equal(stripLeadingWeekday("Mondays off"), "Mondays off");
   assert.equal(stripLeadingWeekday("Strength anchor"), "Strength anchor");
 });
+
+test("legacy technical_combat identifier is athlete-readable", () => {
+  assert.equal(formatPlanLabel("technical_combat"), "Technical Combat");
+  assert.equal(athleteFacingSessionTitle("technical_combat"), "Technical Combat");
+  assert.equal(athleteFacingSessionTitle("Hard sparring"), "Hard sparring");
+});

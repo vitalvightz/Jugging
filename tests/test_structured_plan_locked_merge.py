@@ -7,7 +7,7 @@ import pytest
 
 from api.structured_plan_faithfulness import check_structured_faithfulness
 from api.structured_plan_generation import build_structured_plan_outcome
-from api.structured_plan_locked_merge import merge_locked_structured_content
+from api.structured_plan_locked_merge import merge_locked_structured_content, merge_planner_owned_structured_content
 from api.structured_plan_models import safe_parse_structured_plan
 
 WHY = "Know what happens after the first punches so pocket exchanges stay planned rather than chaotic."
@@ -520,3 +520,96 @@ def test_open_plan_range_map_is_restored_from_weekly_rotation():
     assert block["duration"] == {"value": 10, "unit": "minutes"}
     assert session["session_type"] == "skill"
     assert merge_locked_structured_content(result.plan, brief).plan == result.plan
+
+
+def _same_day_tactical_duplicate_plan():
+    """Amy's Week 1/3 shape: one physical drill also copied into Tactical Focus."""
+    weeks = []
+    for week in range(1, 5):
+        drill = {
+            "block_id": f"physical-{week}",
+            "exercise_key": "lateral-shuffle-strike-drills",
+            "display_name": "Lateral Shuffle + Strike Drills",
+            "block_type": "conditioning",
+            "rounds": 3,
+            "work": {"value": 5, "unit": "minutes"},
+            "rest": {"value": 60, "unit": "seconds"},
+            "effort": {"method": "RPE", "value": 5, "scale": "1-10"},
+            "purpose": "Keep footwork and pressure rhythm with low hip load.",
+            "execution_instructions": "Short lateral shuffles with light strikes.",
+            "coaching_cues": ["Small steps", "3 x 5min rounds"],
+            "why_today": f"Week {week} support",
+        }
+        sessions = [{"title": "Rehab-friendly low-load support", "session_type": "rehab",
+                     "blocks": [drill]}]
+        if week in (1, 3):
+            copied = deepcopy(drill)
+            copied.update({
+                "block_id": f"tactical-copy-{week}",
+                "coaching_cues": ["Small steps", "Keep hands high"],
+                "why_today": "Tactical framing",
+            })
+            sessions.append({
+                "title": "Tactical Focus",
+                "session_type": "skill",
+                "blocks": [
+                    {"block_id": f"watch-{week}", "block_type": "mindset",
+                     "display_name": "Safe Entry Builder", "duration": {"value": 10, "unit": "minutes"}},
+                    copied,
+                ],
+            })
+        weeks.append({"days": [{"weekday": "Tue", "sessions": sessions}]})
+    return {"weeks": weeks}
+
+
+def test_tactical_merge_removes_amys_week_1_and_3_duplicate_without_losing_coaching():
+    original = _same_day_tactical_duplicate_plan()
+    merged = merge_planner_owned_structured_content(original, {}).plan
+    for number, week in enumerate(merged["weeks"], 1):
+        sessions = week["days"][0]["sessions"]
+        drill = sessions[0]["blocks"][0]
+        assert drill["block_id"] == f"physical-{number}"
+        if number in (1, 3):
+            assert [b["display_name"] for b in sessions[1]["blocks"]] == ["Safe Entry Builder"]
+            assert drill["coaching_cues"] == ["Small steps", "3 x 5min rounds", "Keep hands high"]
+        else:
+            assert len(sessions) == 1
+    assert len(original["weeks"][0]["days"][0]["sessions"][1]["blocks"]) == 2
+    assert merge_planner_owned_structured_content(merged, {}).plan == merged
+
+
+@pytest.mark.parametrize("changed", [
+    {"rounds": 4},
+    {"exercise_key": "another-drill"},
+    {"purpose": "Different purpose and work"},
+])
+def test_tactical_merge_keeps_distinct_prescriptions_and_exercises(changed):
+    plan = _same_day_tactical_duplicate_plan()
+    plan["weeks"][0]["days"][0]["sessions"][1]["blocks"][1].update(changed)
+    merged = merge_planner_owned_structured_content(plan, {}).plan
+    assert len(merged["weeks"][0]["days"][0]["sessions"][1]["blocks"]) == 2
+
+
+def test_tactical_merge_does_not_deduplicate_two_physical_sessions():
+    plan = _same_day_tactical_duplicate_plan()
+    plan["weeks"][0]["days"][0]["sessions"][1]["title"] = "Additional technical session"
+    merged = merge_planner_owned_structured_content(plan, {}).plan
+    assert len(merged["weeks"][0]["days"][0]["sessions"][1]["blocks"]) == 2
+
+
+def test_tactical_merge_does_not_remove_orphan_or_unanchored_exercises():
+    plan = _same_day_tactical_duplicate_plan()
+    first_day = plan["weeks"][0]["days"][0]
+    first_day["sessions"][0]["blocks"] = []
+    third_day = plan["weeks"][2]["days"][0]
+    third_day["sessions"][1]["blocks"].pop(0)
+    merged = merge_planner_owned_structured_content(plan, {}).plan
+    assert len(merged["weeks"][0]["days"][0]["sessions"][1]["blocks"]) == 2
+    assert len(merged["weeks"][2]["days"][0]["sessions"][1]["blocks"]) == 1
+
+
+def test_tactical_merge_does_not_change_custom_plans():
+    plan = _same_day_tactical_duplicate_plan()
+    merged = merge_planner_owned_structured_content(plan, {"custom_plan": True}).plan
+    assert len(merged["weeks"][0]["days"][0]["sessions"][1]["blocks"]) == 2
+

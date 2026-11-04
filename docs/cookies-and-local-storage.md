@@ -1,7 +1,7 @@
 # UNLXCK Cookies & Local Storage (PECR Position)
 
 **Regulation:** Regulation 6, Privacy and Electronic Communications (EC Directive) Regulations 2003
-**Status:** Existing functional storage remains necessary for requested features. Optional product analytics has a separate default-off account consent choice; it adds no cookies, localStorage identifiers or replay. See `docs/product-analytics.md`.
+**Status:** Existing functional storage remains necessary for requested features. Private beta usage analytics is included under the beta agreement; it adds no cookies, localStorage identifiers or replay. See `docs/beta-usage-analytics.md`.
 
 ## The rule
 
@@ -55,6 +55,6 @@ Re-check when storage is added or removed, when a third-party script is introduc
 
 This is an internal compliance assessment, not legal advice.
 
-## Optional product analytics
+## Private beta usage analytics
 
-Optional first-party feature interactions are collected only for opted-in adults. The preference is stored on the account in Supabase and loaded into memory after authentication. No new device storage or fingerprint is introduced. Existing timer run state supplies a deduplicated transition identity only after opt-in. Withdrawal is enforced at server ingestion, independently of browser state. Health values, notes and nutrition contents never enter these events. Saved service records and onboarding workflow timestamps remain first-party operational records. See the version 1.6 Privacy Notice and `docs/product-analytics.md` for purposes, lawful bases, retention, exclusions and limitations.
+Usage events are automatic for beta athlete accounts. No analytics cookie, persistent browser identifier, fingerprint or session replay is added. Events contain named feature/action categories and request/flow UUIDs; the authenticated API supplies the account and server timestamp. Events expire after 180 days. See `docs/beta-usage-analytics.md` for exclusions, verification and rollout.

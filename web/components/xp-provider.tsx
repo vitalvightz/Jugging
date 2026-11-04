@@ -87,7 +87,7 @@ function feedbackLabel(awards: XpAwardRecord[]): string {
     actions.has("training_logged") ||
     actions.has("planned_session_completed")
   ) {
-    return "Session complete";
+    return "Session logged. Work done.";
   }
   if (
     actions.has("first_checkin_completed") ||
@@ -96,7 +96,7 @@ function feedbackLabel(awards: XpAwardRecord[]): string {
     return "Check-in complete";
   }
   if (actions.has("injury_update_completed")) {
-    return "Injury update complete";
+    return "Injury update saved";
   }
   if (awards.length === 1) {
     return XP_ACTIONS[awards[0].action].label;

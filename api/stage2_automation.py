@@ -89,6 +89,10 @@ def _with_stage2_cost(
     return error
 
 
+class Stage2CallDeadlineError(Stage2AutomationError):
+    """One model call exceeded its total wall-clock deadline."""
+
+
 class Stage2AutomationUnavailableError(Stage2AutomationError):
     """Raised when Stage 2 automation is not configured for runtime use."""
 
@@ -167,6 +171,33 @@ def _stage2_structured_timeout_seconds() -> float:
             default_timeout,
         )
         return default_timeout
+
+
+def _env_deadline_seconds(name: str, default: float) -> float | None:
+    raw_value = os.getenv(name, str(default)).strip()
+    if raw_value in {"", "0", "none", "None", "NONE"}:
+        return None
+    try:
+        return max(1.0, float(raw_value))
+    except ValueError:
+        logger.warning("[stage2] invalid float env %s=%r; using %s", name, raw_value, default)
+        return default
+
+
+def _stage2_call_deadline_seconds(attempt_label: str) -> float | None:
+    """Total wall-clock cap for ONE model call, including the whole stream.
+
+    The SDK timeouts above only bound the gap between streamed events, so a
+    response that keeps the stream alive but never finishes could otherwise
+    hold the job until the whole-finalize cap. Successful plans complete every
+    pass well inside these defaults: on GPT-6 Luna the plan-text call takes
+    55-86s and the structured-card call 121-193s (production, Nov 2026), so
+    each default is roughly 2x the slowest observed call. A slower model
+    needs these raised via env. ``0``/``none`` disables.
+    """
+    if attempt_label.startswith("structured"):
+        return _env_deadline_seconds("UNLXCK_STAGE2_STRUCTURED_CALL_DEADLINE_SECONDS", 360.0)
+    return _env_deadline_seconds("UNLXCK_STAGE2_CALL_DEADLINE_SECONDS", 180.0)
 
 
 def _estimated_input_tokens(prompt: str) -> int:
@@ -1282,8 +1313,8 @@ class OpenAIStage2Automator:
                     request_phase, time.monotonic() - started,
                 )
 
-        wait_logger = asyncio.create_task(log_waiting())
-        try:
+        async def consume_stream() -> Any:
+            nonlocal request_phase
             # Stream instead of a single blocking create: the HTTP read timeout
             # then applies to the gap between events, not the whole generation,
             # so long responses stop tripping idle-connection timeouts.
@@ -1295,7 +1326,32 @@ class OpenAIStage2Automator:
                     "[stage2] model_stream_opened job_id=%s attempt=%s model=%s elapsed_seconds=%.3f phase=awaiting_final_response",
                     context.get("job_id") or "unknown", attempt_label, self.model, time.monotonic() - started,
                 )
-                response = await stream.get_final_response()
+                return await stream.get_final_response()
+
+        deadline_seconds = _stage2_call_deadline_seconds(attempt_label)
+        wait_logger = asyncio.create_task(log_waiting())
+        try:
+            if deadline_seconds is None:
+                response = await consume_stream()
+            else:
+                # Leaving the stream context closes the connection; the
+                # background response is not retrieved after this point.
+                response = await asyncio.wait_for(consume_stream(), timeout=deadline_seconds)
+        except asyncio.TimeoutError as exc:
+            elapsed = time.monotonic() - started
+            logger.warning(
+                "[stage2] model_request_deadline_exceeded job_id=%s attempt=%s model=%s phase=%s elapsed_seconds=%.3f deadline_seconds=%s",
+                context.get("job_id") or "unknown", attempt_label, self.model,
+                request_phase, elapsed, deadline_seconds,
+            )
+            raise _with_stage2_cost(
+                Stage2CallDeadlineError(
+                    f"Stage 2 {attempt_label} model call exceeded its {deadline_seconds:.0f}s deadline."
+                ),
+                _build_stage2_cost(
+                    self.model, prompt=prompt, response=None, elapsed_seconds=elapsed, **call_cost,
+                ),
+            ) from exc
         except asyncio.CancelledError:
             logger.warning(
                 "[stage2] model_request_cancelled job_id=%s attempt=%s model=%s elapsed_seconds=%.3f",
@@ -1439,12 +1495,27 @@ class OpenAIStage2Automator:
             len(draft_plan_text),
         )
 
-        first_pass_text, first_pass_cost = await self._generate_text(
-            handoff_text,
-            attempt_label="first_pass",
-            source=source,
-            log_context=log_context,
-        )
+        try:
+            first_pass_text, first_pass_cost = await self._generate_text(
+                handoff_text,
+                attempt_label="first_pass",
+                source=source,
+                log_context=log_context,
+            )
+        except Stage2CallDeadlineError:
+            # A hung plan-text call is retried once. The whole-finalize cap in
+            # api/generation/timeouts.py still bounds the job; a second hang
+            # fails with the deadline error instead of waiting out that cap.
+            logger.warning(
+                "[stage2] first_pass deadline exceeded; retrying once job_id=%s source=%s",
+                (log_context or {}).get("job_id") or "unknown", source,
+            )
+            first_pass_text, first_pass_cost = await self._generate_text(
+                handoff_text,
+                attempt_label="first_pass_retry",
+                source=source,
+                log_context=log_context,
+            )
         from fightcamp.programme_fidelity import reconcile_authoritative_programme
         programme_reconciliation = reconcile_authoritative_programme(package["planning_brief"], first_pass_text)
         first_pass_text = programme_reconciliation["text"]

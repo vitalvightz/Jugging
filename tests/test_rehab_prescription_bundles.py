@@ -26,7 +26,7 @@ def fixture(bundle=True):
     policy = next(p for p in load_clinical_policies() if p.policy_id == "ankle_sprain")
     if not bundle:
         # Keep the pre-bundle v3 policy explicit; default tests use live content.
-        from tests.test_rehab_pathway_equivalence import composed
+        from tests.rehab_pathway_migration import composed
         policy = next(p for p in composed() if p.policy_id == "ankle_sprain")
         raw = policy.model_dump()
         raw.update(version=3, status="draft", activation="shadow", content_hash=None,

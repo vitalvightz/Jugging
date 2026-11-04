@@ -15,7 +15,8 @@ import sys
 from copy import deepcopy
 from typing import Any
 
-from .exercise_identity import stamp_exercise_key
+from .exercise_identity import normalize_exercise_key, stamp_exercise_key
+from .injury_guard import injury_guard
 from . import stage2_planning_brief as stage2_planning_brief_module
 from .stage2_finalizer_packet import build_stage2_finalizer_packet
 from .stage2_llm_boundary import build_stage2_llm_planning_brief
@@ -63,6 +64,7 @@ from .late_camp_role_morph import apply_late_camp_role_morph
 from .prescription_resolver import apply_effective_strength_prescriptions
 from .session_composition import (
     _conditioning_prescription,
+    _trunk_strength_selected,
     _refresh_stress_stamps,
     _prescription_total_reps,
     _stress_stamp,
@@ -1755,6 +1757,163 @@ def _build_late_fight_allowed_exercises_by_day(
     )
 
 
+def _late_assignment_match(
+    candidate_pools: dict[str, Any], assignment: dict[str, Any]
+) -> tuple[str, str, dict[str, Any]] | None:
+    """The exact Stage 1 slot (or alternate) a late-tail assignment came from."""
+    phase = str(assignment.get("source_phase") or assignment.get("phase") or "")
+    group = str(assignment.get("slot_group") or "")
+    pool = candidate_pools.get(phase) if isinstance(candidate_pools, dict) else None
+    if not isinstance(pool, dict) or not group:
+        return None
+    slots = [*(pool.get(group) or []),
+             *((pool.get("late_tail_candidates") or []) if group == "conditioning_slots" else ())]
+    base_id, _, alternate = str(assignment.get("slot_id") or "").partition(":alternate:")
+    for slot in slots:
+        if not isinstance(slot, dict) or str(slot.get("slot_id") or "") != base_id:
+            continue
+        if alternate.isdigit() and int(alternate) < len(slot.get("alternates") or []):
+            option = slot["alternates"][int(alternate)]
+            slot = {"slot_id": assignment.get("slot_id"), "selected": option, "alternates": [],
+                    "role": option.get("system") or option.get("role")
+                    or (option.get("selection_metadata") or {}).get("system", "")}
+        if _slot_exercise_name(slot) == assignment.get("name"):
+            return phase, group, slot
+    return None
+
+
+def _apply_late_core_maintenance(
+    weekly_role_map: dict[str, Any],
+    tail_roles: list[dict[str, Any]],
+    candidate_pools: dict[str, Any],
+    athlete_model: dict[str, Any],
+) -> None:
+    """Core maintenance (D-13..D-7) inside one existing tail strength session a week.
+
+    Adds 2-3 complementary low-fatigue trunk members from Stage 1's verified
+    candidates within the primer's ``LATE_PRIMER_MAX_MEMBERS`` cap. It keeps
+    the session's lead and meaningful members, may stand in only for support-only
+    primer complements (recorded), never adds a session and stamps no grouping. The composed session must stay
+    inside the primer's own load envelope and canonical day legality, exactly
+    as a primer complement must; otherwise maintenance is withheld and the
+    reason recorded on the session's planner-only ``late_core_maintenance``
+    audit record. Doses are left to the scheduled-day strength resolver.
+    """
+    from .late_camp_role_morph import late_fight_strength_dose_cap
+    from .session_composition import (
+        LATE_CORE_MAINTENANCE_MAX_D_DAY, LATE_CORE_MAINTENANCE_MINIMUM, LATE_CORE_MAINTENANCE_TARGET,
+        _candidate_records, _composition_context_from_model, _role_pressure_state, _scheduled_phase_for_role,
+        assignment_from_slot, late_core_maintenance_additions, late_core_maintenance_ineligibility,
+    )
+    from .calendar_context import role_d_day
+
+    if not _trunk_strength_selected(athlete_model):
+        return
+    context = _composition_context_from_model(athlete_model)
+    for week in weekly_role_map.get("weeks") or []:
+        hosts = sorted(
+            (role for role in week.get("session_roles") or []
+             if isinstance(role, dict) and role.get("late_fight_tail_owned")
+             and str(role.get("category") or "").lower() == "strength"
+             and isinstance(role_d_day(week, role), int) and role_d_day(week, role) <= LATE_CORE_MAINTENANCE_MAX_D_DAY),
+            key=lambda role: -role_d_day(week, role),
+        )
+        delivered = False
+        for role in hosts:
+            if delivered:
+                role["late_core_maintenance"] = {"intent": "maintenance", "status": "hosted_elsewhere"}
+                continue
+            d_day = role_d_day(week, role)
+            pressure_state = _role_pressure_state(context, role=role, fatigue_applied=True)
+            ineligible = late_core_maintenance_ineligibility(week, role, pressure_state)
+            if ineligible is not None:
+                role["late_core_maintenance"] = {"intent": "maintenance", "status": "not_eligible", **ineligible}
+                continue
+            outcome = {"intent": "maintenance", "status": "constrained",
+                       "reason_code": "insufficient_complementary_candidates"}
+            current = [m for m in role.get("selected_exercise_assignments") or [] if isinstance(m, dict)]
+            existing = [_late_assignment_match(candidate_pools, m) for m in current]
+            phase = _scheduled_phase_for_role(week, role) or str(week.get("phase") or "").upper()
+            pool = candidate_pools.get(phase) if isinstance(candidate_pools, dict) else None
+            day_names = {str(m.get("name") or "") for r in week.get("session_roles") or []
+                         if isinstance(r, dict) and role_d_day(week, r) == d_day
+                         for m in r.get("selected_exercise_assignments") or [] if isinstance(m, dict)}
+            # Stage 1's verified, injury/equipment-filtered candidates, through
+            # the same late-window, sport and day-safety gates as the tail selector.
+            slots = [
+                slot for slot in [*((pool or {}).get("strength_slots") or []),
+                                  *((pool or {}).get("core_development_slots") or [])]
+                if isinstance(slot, dict) and _slot_exercise_name(slot) not in day_names
+                and _slot_late_window_allowed(phase, "strength_slots", slot, offset=d_day)
+                and _slot_sport_allowed(slot, {"athlete_model": athlete_model})
+                and not _late_fight_assignment_is_unsafe(f"D-{d_day}", _slot_exercise_name(slot))
+            ]
+            records = _candidate_records(slots)
+            cap = late_fight_strength_dose_cap(d_day) or {}
+            lead_stress = (_late_primer_session_stress(role, existing, set())
+                           if existing and None not in existing else None)
+            # The primer's member cap holds for the final session. Core takes
+            # free room first; beyond that it may stand in only for the
+            # primer's own support-only, single-set complements -- never its
+            # lead or any meaningful work -- and says which.
+            # Support-only status is read from the matched Stage 1 slot (the
+            # primer selector's own test); an assignment need not carry it.
+            # Unmatched or meaningful members are never displaceable.
+            displaceable = [index for index, m in enumerate(current)
+                            if m.get("primer_complement") and existing[index] is not None
+                            and _slot_support_only(existing[index][2]) and m.get("meaningful_stress") is not True]
+            # Trunk work the session already holds counts: its functions are
+            # not repeated and it spends the maintenance load budget.
+            held = _candidate_records([match[2] for match in existing if match is not None])
+            loaded_allowed = cap.get("loaded_allowed", True) is not False
+            for target in range(LATE_CORE_MAINTENANCE_TARGET, LATE_CORE_MAINTENANCE_MINIMUM - 1, -1):
+                picks = late_core_maintenance_additions(
+                    records, loaded_allowed=loaded_allowed, target=target, held=held)
+                if not picks:
+                    if outcome["reason_code"] == "insufficient_complementary_candidates" and \
+                            late_core_maintenance_additions(records, loaded_allowed=loaded_allowed, target=target):
+                        outcome["reason_code"] = "trunk_load_limits"
+                    break
+                if lead_stress is None:
+                    outcome["reason_code"] = "session_stress_unknown"
+                    break
+                overflow = len(current) + len(picks) - LATE_PRIMER_MAX_MEMBERS
+                if overflow > len(displaceable):
+                    outcome["reason_code"] = "primer_member_cap"
+                    continue
+                dropped = set(displaceable[len(displaceable) - overflow:]) if overflow > 0 else set()
+                kept = [m for index, m in enumerate(current) if index not in dropped]
+                trial = [*(match for index, match in enumerate(existing) if index not in dropped),
+                         *((phase, "strength_slots", r["slot"]) for r in picks)]
+                stress = _late_primer_session_stress(role, trial, set())
+                if stress is None:
+                    # A member whose load cannot be measured is never evidence
+                    # that more work fits.
+                    outcome["reason_code"] = "session_stress_unknown"
+                    continue
+                if (not _late_primer_within_envelope(role, lead_stress, stress)
+                        or _late_primer_neighbour_rank(role, stress, tail_roles)
+                        > _late_primer_neighbour_rank(role, lead_stress, tail_roles)):
+                    outcome["reason_code"] = "session_stress_limit"
+                    continue
+                additions = []
+                for record in picks:
+                    assignment = assignment_from_slot(phase, "strength_slots", record["slot"])
+                    if assignment:
+                        assignment.update(role_key=role.get("role_key"), phase=phase,
+                                          scheduled_countdown_label=f"D-{d_day}")
+                        additions.append(assignment)
+                role["selected_exercise_assignments"] = [*kept, *additions]
+                role["calendar_stress"] = _stress_stamp(stress)
+                outcome = {"intent": "maintenance", "status": "delivered",
+                           "members": [a["name"] for a in additions]}
+                if dropped:
+                    outcome["displaced_primer_complements"] = [current[index]["name"] for index in sorted(dropped)]
+                delivered = True
+                break
+            role["late_core_maintenance"] = outcome
+
+
 def _late_fight_countdown_days_from_spec(days_until_fight: Any, spec: dict[str, Any]) -> list[int]:
     days: list[int] = []
     for segment in spec.get("countdown_mode_sequence", []) or []:
@@ -1912,6 +2071,7 @@ def _open_block_session(role: dict[str, Any]) -> dict[str, Any] | None:
             "name": str(member.get("name") or ""),
             "prescription": doses.get(str(member.get("name") or ""))
             or str(member.get("effective_prescription") or member.get("base_prescription") or ""),
+            # Presentation grouping only; each exercise keeps its own dose.
         }
         for member in role.get("selected_exercise_assignments") or []
         if isinstance(member, dict) and member.get("name")
@@ -2034,7 +2194,47 @@ def _attach_open_development_block(
         # list follows that score; otherwise every general slot would outrank
         # every specific one purely by concatenation order.
         slots = [slot for pool in sources for slot in pool.get(group) or [] if isinstance(slot, dict)]
-        return sorted(slots, key=lambda slot: -float(_slot_selected_option(slot).get("score") or 0))
+        ranked = sorted(slots, key=lambda slot: -float(_slot_selected_option(slot).get("score") or 0))
+        if group != "strength_slots":
+            return ranked
+        unique = {}
+        # Reserve every original selection before filling a losing duplicate's
+        # slot, so its backup cannot displace a different selected exercise.
+        selected_names = {
+            normalize_exercise_key(_slot_selected_option(slot).get("name"))
+            for slot in ranked
+        }
+        for slot in ranked:
+            key = normalize_exercise_key(_slot_selected_option(slot).get("name")) or slot.get("slot_id") or id(slot)
+            if key in unique:
+                if slot.get("replace_with_same_role") is not True:
+                    continue
+                replacement = next((
+                    option for option in sorted(
+                        (option for option in slot.get("alternates") or [] if isinstance(option, dict)),
+                        key=lambda option: -float(option.get("score") or 0),
+                    )
+                    if normalize_exercise_key(option.get("name"))
+                    and normalize_exercise_key(option["name"]) not in selected_names
+                    and normalize_exercise_key(option["name"]) not in unique
+                    and str(option.get("prescription") or "").strip()
+                ), None)
+                if replacement is None:
+                    continue
+                slot = {
+                    **slot,
+                    **{field: replacement[field] for field in (
+                        "quality_class", "anchor_capable", "support_only",
+                        "meaningful_stress", "fulfillment_authority", "base_categories",
+                    ) if field in replacement},
+                    "selected": replacement,
+                    "purpose": replacement.get("why") or slot.get("purpose"),
+                    "alternates": [option for option in slot.get("alternates") or []
+                                   if option is not replacement],
+                }
+                key = normalize_exercise_key(replacement["name"])
+            unique[key] = slot
+        return sorted(unique.values(), key=lambda slot: -float(_slot_selected_option(slot).get("score") or 0))
 
     block_pools = {OPEN_BLOCK_PHASE: {group: merged(group) for group in _OPEN_BLOCK_SLOT_GROUPS}}
     block = _build_planning_brief(
@@ -2051,6 +2251,8 @@ def _attach_open_development_block(
     consolidate_compatible_physical_sessions(role_map, athlete_model=_open_block_athlete_view(athlete_model))
     if role_map.get("session_consolidation_audit"):
         refresh_goal_evidence_after_composition(block)
+    from .stage1_handoff_integrity import enforce_handoff_integrity
+    enforce_handoff_integrity(role_map)
     block = stamp_role_execution_order(block)
     suppress_unfilled_physical_roles(block)
     spec = dict(brief.get("open_plan_spec") or {})
@@ -2108,6 +2310,10 @@ def build_planning_brief(
     from .camp_week_fillers_impl import govern_weekly_mental_training
     govern_weekly_mental_training(role_map, athlete_model)
     enforce_total_session_budget(role_map, athlete_model, candidate_pools)
+    # Last deterministic gate before Stage 2: never hand over a day the
+    # structured-card audit would reject.
+    from .stage1_handoff_integrity import enforce_handoff_integrity
+    enforce_handoff_integrity(role_map)
     if "late_fight_session_sequence" in brief:
         # _effective_map wraps the authoritative sequence in a temporary week;
         # removals rebind that week's list, so write the final roles back.
@@ -2142,6 +2348,20 @@ def _build_planning_brief(
     ).primary_goal
     if _resolved_primary:
         athlete_model["primary_goal"] = _resolved_primary
+    # Same for the primary weak area: composition reads it from the athlete
+    # model while goal preservation reads the plan input's priority focus, and
+    # the two must name the same development target.
+    _resolved_weak_area = build_priority_profile(
+        plan_input if plan_input is not None else athlete_model
+    ).primary_weak_area
+    if _resolved_weak_area:
+        # This builder works on a copy, but composition reads the governed
+        # context model, so the resolved value must reach that model too.
+        from .planner_context import get_planner_athlete_model
+
+        for model in (athlete_model, get_planner_athlete_model()):
+            if isinstance(model, dict):
+                model["primary_weak_area"] = _resolved_weak_area
     # Compute short-camp compression up front so downstream consumers (role
     # map, weekly stress map, planning brief output) see a real
     # ``compressed_priorities`` dict. The helper is otherwise dead code, which
@@ -2370,6 +2590,7 @@ def _build_planning_brief(
         for week in weekly_role_map.get("weeks", []) or []:
             drop_displaced_occupancy_fillers(week.get("session_roles") or [])
         attach_late_fight_assignments(tail_roles, tail_assignments)
+        _apply_late_core_maintenance(weekly_role_map, tail_roles, candidate_pools, athlete_model)
     # A provisional receiver is legal only when existing source exercises
     # actually move. If the selected bank cannot fund at least two low-cost
     # members, the role-budget owner cancels the receiver without adding work.
@@ -2756,6 +2977,9 @@ def _build_strength_alternates(
     selected_names: set[str],
     current_name: str,
     phase: str | None = None,
+    open_alternates: bool = False,
+    injuries: list | None = None,
+    fatigue: str = "low",
 ) -> list[dict]:
     alternates: list[dict] = []
     seen: set[str] = set()
@@ -2763,6 +2987,10 @@ def _build_strength_alternates(
         exercise = candidate.get("exercise", {})
         name = exercise.get("name")
         if not name or name == current_name or name in selected_names or name in seen:
+            continue
+        if open_alternates and injuries and injury_guard(
+            exercise, deepcopy(injuries), phase=phase, fatigue=fatigue,
+        ).action == "exclude":
             continue
         alternates.append(
             _serialize_strength_option(
@@ -2781,7 +3009,7 @@ def _build_strength_alternates(
             )
         )
         seen.add(name)
-        if len(alternates) >= 2:
+        if not open_alternates and len(alternates) >= 2:
             break
     return alternates
 
@@ -2859,7 +3087,10 @@ def _parse_rehab_groups(rehab_block: str) -> list[dict]:
     return groups
 
 
-def _build_strength_slots(strength_block: dict | None, phase: str) -> list[dict]:
+def _build_strength_slots(
+    strength_block: dict | None, phase: str, *,
+    open_alternates: bool = False, injuries: list | None = None, fatigue: str = "low",
+) -> list[dict]:
     if not strength_block:
         return []
     reason_lookup = {
@@ -2914,6 +3145,9 @@ def _build_strength_slots(strength_block: dict | None, phase: str) -> list[dict]
                     selected_names=selected_names,
                     current_name=name,
                     phase=phase,
+                    open_alternates=open_alternates,
+                    injuries=injuries,
+                    fatigue=fatigue,
                 ),
                 "replace_with_same_role": True,
                 "priority": _strength_slot_priority(phase, role, idx),
@@ -2926,6 +3160,66 @@ def _build_strength_slots(strength_block: dict | None, phase: str) -> list[dict]
                 "base_categories": quality_profile["base_categories"],
             }
         )
+    return slots
+
+
+def _build_core_development_slots(strength_block: dict | None, phase: str, strength_slots: list[dict]) -> list[dict]:
+    """Stage 1's trunk candidates for a Core Development Block, as pool slots.
+
+    Kept apart from ``strength_slots`` so no session selector can pick them:
+    only the planner's block composition draws on them. Each keeps its own slot
+    identity so the dose resolver, goal evidence and exercise keys resolve it
+    like any other Stage 1 slot. Names already offered by a strength slot are
+    left out: that slot already owns the exercise.
+    """
+    if not strength_block:
+        return []
+    offered = {
+        str(option.get("name") or "")
+        for slot in strength_slots
+        for option in [slot.get("selected") or {}, *(slot.get("alternates") or [])]
+        if isinstance(option, dict)
+    }
+    slots = []
+    reservoir = strength_block.get("candidate_reservoir") or {}
+    # Development candidates first; then late-window-approved maintenance
+    # candidates (role ``core_maintenance``), which only the D-13..D-7 core
+    # maintenance draws on and the development block never sees.
+    sources = [("core_development", 1000 + index, candidate)
+               for index, candidate in enumerate(reservoir.get("__core_development__") or [], 1)]
+    sources += [("core_maintenance", 2000 + index, candidate)
+                for index, candidate in enumerate(reservoir.get("__core_maintenance__") or [], 1)]
+    seen: set[str] = set()
+    for role, number, candidate in sources:
+        exercise = candidate.get("exercise") or {}
+        name = exercise.get("name")
+        if not name or name in offered or name in seen:
+            continue
+        seen.add(name)
+        quality_profile = classify_strength_item(exercise)
+        slots.append({
+            "slot_id": f"{phase.lower()}_strength_{number}_{slugify(name)}",
+            "role": role,
+            "purpose": candidate.get("explanation", "balanced selection"),
+            "selected": _serialize_strength_option(
+                exercise, candidate.get("explanation", "balanced selection"),
+                candidate.get("score_evidence"), phase=phase,
+            ),
+            "alternates": [],
+            "replace_with_same_role": False,
+            # After every selected strength slot: Stage 1's ranking still leads.
+            "priority": 9_000 + number,
+            "session_index": 0,
+            "quality_class": quality_profile["quality_class"],
+            "anchor_capable": False,
+            "support_only": exercise.get("support_only") if isinstance(exercise.get("support_only"), bool) else quality_profile["support_only"],
+            "meaningful_stress": exercise.get("meaningful_stress"),
+            "fulfillment_authority": has_meaningful_fulfillment_authority(
+                exercise, source_kind="strength", source=str(exercise.get("_schema_source") or ""),
+                allow_legacy_unstamped=True,
+            ),
+            "base_categories": quality_profile["base_categories"],
+        })
     return slots
 
 
@@ -3185,7 +3479,12 @@ def build_stage2_payload(
                 stance=athlete_model.get("stance"),
                 required_windows=required_windows,
             ),
-            "strength_slots": _build_strength_slots(strength_blocks.get(phase), phase),
+            "strength_slots": _build_strength_slots(
+                strength_blocks.get(phase), phase,
+                open_alternates=_uses_open_ongoing_payload(athlete_model),
+                injuries=training_context.injuries,
+                fatigue=training_context.fatigue,
+            ),
             "conditioning_slots": _build_conditioning_slots(
                 conditioning_blocks.get(phase),
                 phase,
@@ -3194,6 +3493,10 @@ def build_stage2_payload(
             ),
             "rehab_slots": _build_rehab_slots(rehab_blocks.get(phase, ""), phase) if has_active_injury else [],
         }
+        if phase in {"GPP", "SPP"} and _trunk_strength_selected(athlete_model):
+            candidate_pools[phase]["core_development_slots"] = _build_core_development_slots(
+                strength_blocks.get(phase), phase, candidate_pools[phase]["strength_slots"],
+            )
 
     athlete_model["triage_summary"] = dict(training_context.triage_summary or {})
     injury_context = _build_injury_context(athlete_model=athlete_model)
@@ -3422,9 +3725,11 @@ In GPP and SPP, apply the safest-strong selection rule only to open roles; prese
 RULE 6 — SPORT SPECIFICITY
 The plan must read as a real combat-sport camp for this athlete. Conditioning, power work, weekly rhythm, and taper choices must match the athlete's sport, style, fight date, fatigue, injury context, weight cut, equipment, goals, weak areas, sparring/contact schedule, and phase.
 
-RULE 6A — SESSION COACHING STANDARD
-Scheduled-dose authority: where future selected exposures have exact effective prescriptions, Progress may name only ONE measurable increase supported by the next scheduled exposure of that exercise in the same programming context. Use its exact authorised target, rest and effort. Never invent a kg/percentage increment without an authorised starting value and adjustment. If that exposure is unchanged, give its exact maintenance target under Cue or omit advancement; technique-quality instructions belong under Cue, not Progress. Do not increase anything during taper, injury restrictions, significant fatigue, weight-cut pressure or managed recovery. Preserve authored bank regressions and stop rules; Easier may reduce one known work quantity but cannot increase work or shorten rest.
-Every app-owned session must include exact drill/exercise, sets/reps/duration, rest, intensity or RPE, one concise execution cue, purpose, why today, a supported `Progress:` line when advancement is authorised, and a regression or stop rule. Outside the taper lockout below, where the next scheduled dose or explicit numerical adjustment authorises an increase, give that exercise a `Progress:` line saying the ONE supported step it takes next time, in that exercise's own units and stepped from its own dose (3 x 30 sec -> 3 x 40 sec; 2 x 6/side -> 2 x 8/side; 20 min easy -> 25 min easy), progressing the variable that suits the work, never numbering weeks inside it and never naming a kilo or percentage the plan has not prescribed. Write `Progress: none this block` for warm-ups, mobility or symptom-led rehab that should not advance. A `Progress:` line is not a swap or a safety line, and inside the taper lockout described below it is omitted entirely. If a selected drill or exercise has an authoritative volume but does not supply rest or intensity/RPE, create and state the missing value using a conservative dose appropriate to its exercise type, phase, fight proximity, and safety restrictions. Missing rest or effort does not make an otherwise authorised exercise an unresolved-dose conflict. Never exceed an authoritative RPE, volume, or rest constraint when one is supplied. Write the execution instruction as `Cue: ...`; aim for at most seven words without cutting essential safety or technique. Keep longer coaching detail separate. Give one actionable Easier option and one readable Stop instruction, combining overlapping criteria. Never repeat an equivalent numerical regression in different words. The cue must tell the athlete how to perform the movement, not why it was selected. From D-10 to the fight, that line must offer regressions and stop rules only — never a progression/advance option (no "add load/sets", "heavier ball", "stronger band", or "to progress"). Strength & conditioning sessions (strength, power, alactic, aerobic, fight-pace, neural speed work) lock earlier: throughout the final fortnight (from D-14) they offer regressions and stop rules only. Fillers, rehab, mobility, and light recovery work may still progress on D-14 to D-11 only when safe and authorised; physical exercise advancement requires D-15 or earlier and all recovery restrictions to permit it. Do not render generic slot labels such as "Strength", "Aerobic support", or "Low-load mobility support" without actual coaching content.
+RULE 6A — YOUR COACHING JOB
+You are an expert S&C coach completing an approved programme, not formatting a document and not redesigning it.
+Locked: exercise names and session membership, calendar and session ownership, phase, every sets/reps/duration/load/rest/effort value, workload limits, injury restrictions, equipment, and recovery, sparring and fight-week protections. If a selected drill has an authoritative volume but no rest or effort, state a conservative value for its type, phase, fight proximity and restrictions; never exceed a supplied RPE, volume or rest constraint. Missing rest or effort is not an unresolved-dose conflict.
+Yours: under each programmed exercise, give concise, personalised coaching for this athlete and exercise on indented labelled lines: How, Cue, Easier, Stop, and optionally Swap (an alternative suggestion, not a replacement) and Purpose. Progress only when the next scheduled exposure of that exercise in the packet is a higher dose (give that one step), or as a same-dose technique focus; never from D-14 for strength and conditioning or from D-10 for anything. Coaching never changes the scheduled exercise or its dose.
+Easier: Give one specific, practical modification to the exercise. Explain exactly what the athlete should change in their movement, equipment, range, resistance or technique. Avoid vague instructions such as "reduce effort" or "make it easier." Keep it concise and actionable.
 If selected_plan.weekly_role_map.weeks[*].session_count_summary.reduced_from_planned is true, explain the smaller week once in the week lead using the provided reduction_reasons. Do not restore suppressed sessions to make the week look fuller.
 If a wrist sprain or wrist restriction exists, repeat the exact restrictions and include wrist-safe isometric or rehab exposure where appropriate; do not prescribe loaded wrist extension, gripping volume, catching, front-rack, or punch-volume work that violates the restriction.
 If a weight cut exists, reduce volume and noisy accessories, not specificity.
@@ -3492,7 +3797,7 @@ Write like an elite coach, not a document generator. Coach voice should feel dec
 Do not render planner/meta recap blocks in athlete-facing output. Never output headings or lines like: "Ownership:", "Hard-sparring summary:", "SPP additions summary", "Late-camp sparring", "Short support notes", "Final coaching call", "Schedule integrity", or "That’s the camp plan."
 Do not output admin/compliance explanations about pool resolution, equipment swap policy, or internal planning rationale.
 Do not open corrective lines with 'focus on', 'ensure', 'make sure', or 'it's important to'. Start with the action.
-Never use an em dash or en dash (the long '—' or '–') anywhere in the output. Coaches write in full stops and commas; the long dash reads as machine-generated text and undermines the plan. Where you would reach for one, use a full stop if a new sentence starts, a comma if the clause continues, or a colon if a label introduces detail. A normal hyphen may separate numeric bounds in safety limits or conditional adjustments, never in a working exercise dose. Do not use a spaced hyphen (' - ') as a substitute. Bullet lines start with '- ', never with a long dash.
+Never use an em dash or en dash (the long '—' or '–') in athlete-facing sentences. The only exception is the structural week and day headers, which keep the exact separators shown in the FINAL RENDER CONTRACT. Coaches write in full stops and commas; the long dash reads as machine-generated text and undermines the plan. Where you would reach for one, use a full stop if a new sentence starts, a comma if the clause continues, or a colon if a label introduces detail. A normal hyphen may separate numeric bounds in safety limits or conditional adjustments, never in a working exercise dose. Do not use a spaced hyphen (' - ') as a substitute. Bullet lines start with '- ', never with a long dash.
 Use autonomy-supportive phrasing only when a real safe choice exists; if so, offer at most two practical options, and only when both are safe and materially equivalent.
 Do not rely on generic motivation such as 'stay consistent', 'trust the process', 'push yourself', or 'you've got this'.
 Do not use empty safety boilerplate such as 'listen to your body', 'be careful', or 'avoid overtraining' unless the line adds a concrete rule, symptom trigger, or plan change.
@@ -3683,18 +3988,12 @@ Non-negotiable output contract:
 4. In camp_plan mode, every planning week that is active in the finalizer packet / weekly_role_map must appear as its own week header; do not collapse multiple weeks into one or drop the earliest weeks.
 5. Every app-owned training day must clearly show:
    - why the session exists today
-   - one brief `How:` line explaining each exercise setup and movement; preserve source sequence and restrictions
-   - exact drill/exercise, sets/reps/duration, rest, intensity/RPE, and one `Cue:` execution line of at most 9 words. Use at most 9 words for each Easier, Progress and Stop line; preserve all quantities, conditions and safety triggers. Never add a Coaching cues subtitle or repeat the cue. If a drill or exercise has an authoritative volume but omits rest or intensity/RPE, create and state the missing value conservatively for the exercise type, phase, fight proximity, and restrictions; never exceed an authoritative supplied constraint. Missing rest or effort alone is not an unresolved-dose conflict.
+   - exact drill/exercise, sets/reps/duration, rest and intensity/RPE, followed by the RULE 6A coaching lines. Never add a Coaching cues subtitle or a separate coach call.
    - write one labelled working dose per exercise in this order when applicable: `N sets x N reps; load N kg or N% 1RM; work N sec; rest N sec; RPE N`. Use `rounds` for intervals, `duration N min` for continuous work, and `distance N m` for carries; metres and seconds are never reps. For a timed hold, write `3 holds x 10 sec; rest 180 sec; RPE 7`, never `3 sets x 1 rep` without the hold duration. Omit fields that do not apply. Keep each quantity and its unit together. Never write an unlabeled number chain such as `8x8x30`, a bare load, or a set/rep/work/rest/effort range as the working instruction. Where the bank gives a range but no narrower selected dose, use its lower work/intensity bound and longer rest; obey all role, readiness and taper caps. Preserve fixed effective_prescription values and never invent a kg, percentage or 1RM value.
      Bad: `8x8x30`. If the source explicitly means sets, reps and rest, write `8 sets x 8 reps; rest 30 sec`. If it does not say what 30 measures, do not guess.
    - for D-7 and tighter, never raise a selected drill's RPE or volume; if a selected drill has RPE/rounds/work_sec fields, use those caps
-   - the purpose behind the work
-   - a `Progress:` line on every programmed exercise (the ONE next step in that exercise's own units, stepped from its own dose; `Progress: none this block` for warm-ups, mobility or symptom-led rehab), plus a regression or stop rule; the lockout below overrides it and the `Progress:` line is omitted there: from D-10 to the fight, offer regressions and stop rules only — never a progression/advance option (no "add load/sets", "heavier ball", "stronger band", or "to progress"). From D-13, strength & conditioning sessions (strength, power, alactic, aerobic, fight-pace, neural speed work) also lock to regressions/stop rules only; fillers, rehab, mobility, and light recovery work may still progress on D-13 to D-11. D-14 and earlier may progress everywhere.
-   - render meaningful adjustment lines only: "Easier: <action>" and
-     "Stop: <trigger/action>" on separate lines. Never emit a bare
-     "Regression /", "Regression", or slash-separated structural label.
+   - never emit a bare "Regression /", "Regression", or slash-separated structural label
    - injury/rehab insert when relevant
-   - do not add a separate coach call; one Cue per exercise
 5A. For every closed role, preserve every selected exercise as a separate line with its authoritative effective prescription. One prescription per exercise is not one exercise per session. A selected_option=false provenance flag does not make the assignment optional. The LOCKED SESSION RENDER MANIFEST is a copy of the selected membership; never use a draft, generic writing rule, candidate menu or shared slot_id to reduce its count. If a hard restriction makes an exercise illegal, leave the gap and retain the safety conflict; never substitute downstream.
 6. If session_count_summary.reduced_from_planned is true for a week, include one short reason tied to taper, weight cut, risk-adjusted hard-sparring cutoff, injury/cut management, hard sparring / contact load, fight-week override, or intentional compression.
 7. Contact appointments must stay minimal: the contact label plus one freshness note. Render compatible planner-selected S&C separately on technical-only days; effective hard or reduced contact forbids extra physical work.
@@ -3707,8 +4006,11 @@ Mini example (do not copy the volume/intensity when rendering D-7 or tighter; se
 D-5 (Tuesday) — Fight-speed primer
 Why: sharpen punch speed without adding fatigue.
 - Movement prep: duration 5 min; shoulder swings, band pull-aparts, easy shadowboxing.
-- Explosive Boxing Burst Intervals: 2 rounds x 6 sec work; rest 120 sec; RPE 6. Fast relaxed bursts.
-- Coach call: Stop when speed drops. This sharpens output without soreness.
+- Explosive Boxing Burst Intervals: 2 rounds x 6 sec work; rest 120 sec; RPE 6
+  How: From your stance, throw fast relaxed straight punches for 6 seconds, then walk and breathe.
+  Cue: Snap each punch back to guard.
+  Easier: Throw straight punches only, at half power, and keep the same work and rest.
+  Stop: Stop when hand speed drops.
 
 Preferred longer-camp week header:
 SPP — Week 4 (D-28 to D-22) — Raise fight-pace repeatability without compromising sparring freshness."""
@@ -3751,15 +4053,33 @@ Rules:
 - Do not expose internal candidate pools, scoring logic, tags, or unused options.
 - If restrictions/red flags exist, render them once in the safety section and reference them briefly in session cards only when needed.
 - If symptoms, fatigue, or weight-cut pressure rise, remove optional conditioning before trimming key anchors.
-- For every programmed exercise or drill, state volume and effort. For set-, round-, or interval-based work, also state rest. Add a brief `How:` setup and movement instruction and one `Cue:` execution line, maximum 9 words. Easier, Progress and each Stop line also use at most 9 words; preserve quantities and conditions. Never add a second Coaching cues section. Purpose and Why today remain separate and are never substitutes for the cue.
+- For every programmed exercise or drill, state volume and effort. For set-, round-, or interval-based work, also state rest. Under it give concise, personalised coaching on labelled lines: `How:`, `Cue:`, `Easier:`, `Stop:`, and optionally `Swap:` (a suggestion, not a replacement). Never add a second Coaching cues section. Purpose and Why today remain separate and are never substitutes for the cue.
 - Name ONE exercise per main-work line. Never write a choice such as "A or B" as the exercise itself: pick the one the athlete is doing and put the alternative on that line's `Easier:` or `Swap:` line. A superset or contrast pair is the one exception and must be written as a deliberate pairing ("A + B") with the dose that applies to the pair.
-- Give every programmed exercise a `Progress:` line saying what ONE step it takes when the block steps up, stated in that exercise's own units and stepped from its own dose (3 x 30 sec -> 3 x 40 sec; 2 x 6/side -> 2 x 8/side; 20 min easy -> 25 min easy). Progress the variable that suits the work: load/reps/sets for strength, quality and reps for power and speed, duration or pace for aerobic work, reps/work/recovery for intervals, complexity or live resistance for technical work, range or control for mobility. Write `Progress: none this block` for warm-ups, mobility or symptom-led rehab that should not advance, and never name a kilo or percentage the plan has not prescribed.
+- Give each programmed exercise that advances in the block a `Progress:` line saying what ONE step it takes when the block steps up, stated in that exercise's own units and stepped from its own dose (3 x 30 sec -> 3 x 40 sec; 2 x 6/side -> 2 x 8/side; 20 min easy -> 25 min easy). Progress the variable that suits the work: load/reps/sets for strength, quality and reps for power and speed, duration or pace for aerobic work, reps/work/recovery for intervals, complexity or live resistance for technical work, range or control for mobility. Omit the `Progress:` line for warm-ups, mobility or symptom-led rehab that should not advance, and never name a kilo or percentage the plan has not prescribed.
 - A `Progress:` line is not a swap or a safety line. "Switch to X if it hurts" belongs on `Easier:` or `Stop:`, never on `Progress:`.
 - Never number the weeks inside a `Progress:` line. The athlete sees one week at a time, so "Progress: week 2 add 1 more burst, week 3 add 1 more burst, week 4 keep same low volume" prints other weeks' work on every card. Write the step alone ("Progress: add one more burst") and put the block's easy week on its own `Deload:` line ("Deload: keep the same low volume").
 """
 
+# Core Development Block metadata is planner/UI-only: Stage 2 renders block
+# members as ordinary closed exercises and must never see the grouping.
+PLANNER_ONLY_PROMPT_KEYS = frozenset({
+    "component_group", "trunk_function", "exercise_cap_exempt", "trunk_block",
+    "trunk_load_tier", "trunk_development", "trunk_block_functions",
+    "core_development_slots", "main_exercise_count", "core_block_count",
+    "late_core_maintenance",
+})
+
+
+def scrub_planner_only_keys(value):
+    if isinstance(value, dict):
+        return {k: scrub_planner_only_keys(v) for k, v in value.items() if k not in PLANNER_ONLY_PROMPT_KEYS}
+    if isinstance(value, list):
+        return [scrub_planner_only_keys(v) for v in value]
+    return value
+
+
 def _json_block(value: dict | list) -> str:
-    return "```json\n" + json.dumps(value, separators=(",", ":"), ensure_ascii=False) + "\n```"
+    return "```json\n" + json.dumps(scrub_planner_only_keys(value), separators=(",", ":"), ensure_ascii=False) + "\n```"
 
 
 

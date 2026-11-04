@@ -148,6 +148,8 @@ test("answers post to the session surface as multipart form data", async () => {
   const originalFetch = globalThis.fetch;
   const calls: Array<{ url: string; body: FormData }> = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    // Usage analytics fire beside the save; only feedback requests count here.
+    if (String(input).includes("/api/analytics/")) return new Response(JSON.stringify({ accepted: true }), { status: 202 });
     calls.push({ url: String(input), body: init?.body as FormData });
     return new Response(JSON.stringify(savedRecord()), {
       status: 201,

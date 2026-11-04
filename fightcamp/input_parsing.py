@@ -96,6 +96,7 @@ _CRITICAL_LABEL_ALIASES = {
         _normalize_label("Combat style (tactical)"),
     },
     _normalize_label("Weekly Training Frequency"): {
+        _normalize_label("Training Days per Week"),
         _normalize_label("Training frequency"),
         _normalize_label("Sessions per week"),
         _normalize_label("How many times do you train per week"),
@@ -1105,36 +1106,20 @@ class PlanInput:
                 raise ValueError(
                     f"invalid Weekly Training Frequency: expected integer, got {raw_frequency!r}"
                 ) from exc
-            if training_frequency < 1:
+            if not 1 <= training_frequency <= 7:
+                raise ValueError(f"invalid Weekly Training Frequency: expected integer 1..7, got {training_frequency}")
+            if training_days and training_frequency > len(training_days):
                 raise ValueError(
-                    f"invalid Weekly Training Frequency: expected integer >= 1, got {training_frequency}"
-                )
-            # Frequency counts sessions, availability counts days. A declared
-            # double day is valid input; placement still owns whether it fits.
-            if training_days and training_frequency > 2 * len(training_days):
-                raise ValueError(
-                    "invalid Weekly Training Frequency: cannot exceed two sessions per selected Training Availability day "
+                    "invalid Weekly Training Frequency: cannot exceed selected Training Availability days "
                     f"({len(training_days)}), got {training_frequency}"
                 )
             training_frequency_metadata = _metadata("user_supplied")
         else:
-            reported = training_workload_context.get("reported_weekly_sessions") or {}
-            if reported and reported["minimum"] <= 2 * len(training_days):
-                training_frequency = reported["minimum"]
-                training_frequency_metadata = _metadata(
-                    "user_supplied", "weekly_training_frequency_from_explicit_training_notes",
-                )
-            else:
-                # Availability is a fallback estimate, never a reported count.
-                training_frequency = len(training_days)
-                training_frequency_metadata = _metadata(
-                    "system_inferred",
-                    "weekly_training_frequency_missing_inferred_from_training_availability",
-                )
-        reported = training_workload_context.get("reported_weekly_sessions") or {}
-        if raw_frequency.strip() and reported:
-            training_workload_context["structured_frequency_conflict"] = not (
-                reported["minimum"] <= training_frequency <= reported["maximum"]
+            # Reported sessions in notes are workload context, not training days.
+            training_frequency = len(training_days)
+            training_frequency_metadata = _metadata(
+                "system_inferred",
+                "weekly_training_frequency_missing_inferred_from_training_availability",
             )
         training_workload_context["frequency_source"] = training_frequency_metadata["source"]
 

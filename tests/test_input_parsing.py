@@ -428,7 +428,7 @@ def test_contradictory_frequency_and_availability_raise_value_error():
 
     with pytest.raises(
         ValueError,
-        match="invalid Weekly Training Frequency: cannot exceed two sessions per selected Training Availability day",
+        match="invalid Weekly Training Frequency: cannot exceed selected Training Availability days",
     ):
         PlanInput.from_payload(data)
 
@@ -1558,3 +1558,18 @@ def test_guided_resolver_tendon_ligament_red_flags_do_not_count_as_rupture_evide
     entry = parsed.parsed_injuries[0]
     assert entry["injury_type"] == "soft_tissue_joint_issue"
     assert entry["injury_type"] != "tendon_rupture_or_avulsion"
+
+
+def test_training_day_frequency_seven_valid_and_eight_rejected():
+    days = "Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday"
+    valid = _payload([
+        {"label": "Training Days per Week", "value": "7"},
+        {"label": "Training Availability", "value": days},
+    ])
+    assert PlanInput.from_payload(valid).training_frequency == 7
+    invalid = _payload([
+        {"label": "Training Days per Week", "value": "8"},
+        {"label": "Training Availability", "value": days},
+    ])
+    with pytest.raises(ValueError, match="expected integer 1..7"):
+        PlanInput.from_payload(invalid)

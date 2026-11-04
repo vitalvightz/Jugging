@@ -12,7 +12,7 @@ import {
   recordCompliance,
   renamePlan,
   setActivePlan,
-  setAnalyticsPreference,
+  trackProductEvent,
   submitRehabResponses,
   submitTodayCheckin,
   submitTodayInjuryCheckin,
@@ -143,7 +143,7 @@ for (const [name, write] of [
 
 test("a write invalidates reads for every token, and analytics events do not", async () => {
   await Promise.all([getToday("athlete-a"), getToday("athlete-b")]);
-  await setAnalyticsPreference("athlete-a", false);
+  await trackProductEvent("athlete-a", "app_opened", "onboarding");
   await Promise.all([getToday("athlete-a", REUSE), getToday("athlete-b", REUSE)]);
   assert.equal(reads("/api/today"), 2);
   await renamePlan("athlete-b", "plan-1", "Renamed");

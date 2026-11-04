@@ -78,7 +78,7 @@ class PlanStore(Protocol):
         self,
         *,
         athlete_id: str,
-        intake_id: str,
+        intake_id: str | None,
         request: PlanRequest,
         result: dict[str, Any],
         plan_id: str | None = None,
@@ -326,6 +326,11 @@ class TodayStore(Protocol):
 
     def get_session_completion_by_id(self, athlete_id: str, completion_id: str) -> dict[str, Any] | None: ...
 
+    def update_session_completion_fields(self, athlete_id: str, completion_id: str,
+                                         fields: dict[str, Any]) -> dict[str, Any] | None: ...
+
+    def reset_history_plan_session(self, athlete_id: str, completion_id: str) -> dict[str, Any] | None: ...
+
     def list_session_detail_exercise_logs(self, athlete_id: str, *, plan_id: str,
                                          training_day: str, session_ids: list[str]) -> list[dict[str, Any]]: ...
 
@@ -360,6 +365,8 @@ class TodayStore(Protocol):
 
     def list_external_training_sessions(self, athlete_id: str, *, limit: int = 200, include_deleted: bool = False,
                                         before_day: str | None = None) -> list[dict[str, Any]]: ...
+
+    def list_external_runs(self, athlete_id: str, *, through_day: str) -> list[dict[str, Any]]: ...
 
     def get_external_training_session(self, athlete_id: str, entry_id: str) -> dict[str, Any] | None: ...
 
@@ -617,13 +624,32 @@ class InjuryStore(Protocol):
         self, athlete_id: str, fields: dict[str, Any], *, review_reason: str | None
     ) -> dict[str, Any]: ...
 
+    def set_sparring_log_focus(self, athlete_id: str, log_id: str, focus: str, *, revision: int) -> dict[str, Any] | None: ...
+
     def list_sparring_logs(
-        self, athlete_id: str, *, limit: int = 60, from_day: str | None = None
+        self, athlete_id: str, *, limit: int = 60, from_day: str | None = None, with_focus: bool = False
     ) -> list[dict[str, Any]]: ...
 
     def latest_sparring_log_day(
         self, athlete_id: str, *, hard: bool = False, rocked: bool = False
     ) -> str | None: ...
+
+    def claim_training_focus_inference(self, athlete_id: str, source_kind: str, source_id: str, *,
+                                       training_day: str, source_revision: str) -> bool: ...
+
+    def finish_training_focus_inference(self, athlete_id: str, source_kind: str, source_id: str, *,
+                                        source_revision: str, fields: dict[str, Any]) -> bool: ...
+
+    def list_training_focus_inferences(self, athlete_id: str, *, from_day: str, limit: int = 5) -> list[dict[str, Any]]: ...
+
+    def dismiss_training_focus_inference(self, athlete_id: str, inference_id: str) -> bool: ...
+
+    def list_training_focus_inferences_for_day(self, athlete_id: str, training_day: str) -> list[dict[str, Any]]: ...
+
+    def restamp_training_focus_inference(self, athlete_id: str, inference_id: str, *, source_revision: str,
+                                         context_revision: str | None, fields: dict[str, Any]) -> bool: ...
+
+    def reserve_training_focus_call(self, athlete_id: str, *, limit: int) -> bool: ...
 
     def upsert_exercise_log(self, athlete_id: str, fields: dict[str, Any]) -> dict[str, Any]: ...
 

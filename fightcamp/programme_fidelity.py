@@ -12,6 +12,7 @@ from .render_authority import authoritative_render_for_role
 
 _DAY = re.compile(r"^\s*(?:#{1,6}\s*)?D-(\d+)\s*\((\w+)\)\s*[—–-]\s*(.+)$", re.I)
 _WEEK = re.compile(r"^\s*(?:#{1,6}\s*)?(?:GPP|SPP|TAPER|Week)\b.*\bWeek\s*\d+|^\s*#{1,6}\s*Week\s*\d+", re.I)
+_PURPOSE = re.compile(r"^\s*(?:\*\*)?Purpose(?:\*\*)?\s*:", re.I)
 _SUPPORT = re.compile(r"^\s*#{1,2}\s+(?:Nutrition|Recovery|Mindset|Rehab|Mobility|Coach Notes)\b", re.I)
 
 
@@ -30,7 +31,8 @@ def _blocks(text: str) -> list[tuple]:
             current = None
         elif current is not None and line.strip():
             # Coaching wording is AI-owned; programme identity and dose remain exact.
-            if not re.match(r"^\s*(?:How|Cue|Coaching cues|Easier|Regression|Progress|Progression|Stop|Stop rule)\s*:", line, re.I):
+            if not re.match(r"^\s*(?:\*\*)?(?:How|Cue|Coaching cues|Easier|Regression|Progress|Progression|Stop|Stop rule|"
+                            r"Swap|Swaps|Substitution|Substitutions)(?:\*\*)?\s*:", line, re.I):
                 current[3].append(line.strip())
     if current:
         blocks.append(current)
@@ -42,7 +44,12 @@ def programme_fidelity_findings(planning_brief: dict, text: str) -> list[dict]:
     if not expected:
         return []  # Separate direct-countdown/open programme owner.
     required_blocks = _blocks(expected)
-    actual_blocks = _blocks(text)
+    # Purpose is coaching where the authority writes none; where the planner
+    # wrote one (tactical/mental sessions) it stays part of the exact body.
+    planner_purpose = {block[:3] for block in required_blocks if any(_PURPOSE.match(line) for line in block[3])}
+    actual_blocks = [block if block[:3] in planner_purpose else
+                     (*block[:3], tuple(line for line in block[3] if not _PURPOSE.match(line)))
+                     for block in _blocks(text)]
     required = Counter(required_blocks)
     actual = Counter(actual_blocks)
     findings = []
@@ -82,30 +89,38 @@ def reconcile_authoritative_programme(planning_brief: dict, text: str) -> dict:
     if not schedule:
         return {"text": text, "applied": text != original, "findings": [],
                 "coaching_rejections": coaching_findings}
+    from .exercise_coaching_source import (
+        _DAY, _EXERCISE, _FIELDS, _LABEL, coaching_identity, coaching_occurrences, lookup_occurrence)
     authored = source_coaching(text)
+    # Authoritative occurrences in the rebuilt schedule. An authored line may
+    # replace bank coaching, never planner-decided Purpose text.
+    scheduled = list(coaching_occurrences(schedule))
+    peers = [item["key"] for item in scheduled]
+    scheduled_fields = {item["key"]: item["fields"] for item in scheduled}
     # Replace only labelled display metadata at an exact occurrence. Never move
     # coaching to another day, appointment or exercise when correcting a dose.
-    from .exercise_coaching_source import _DAY, _EXERCISE, _LABEL
     merged, pending = [], None
     day = title = None
-    from .exercise_coaching_source import coaching_identity
     for line in schedule.splitlines():
         if header := _DAY.match(line):
             pending = None
             day, title = int(header[1] or header[2]), coaching_identity(header[3])
         elif exercise := _EXERCISE.match(line):
-            pending = authored.get((day, title, coaching_identity(exercise[1])))
+            key = (day, title, coaching_identity(exercise[1]))
+            pending = lookup_occurrence(authored, key, peers)
             merged.append(line)
             if pending:
-                merged.extend(pending["lines"])
+                own = scheduled_fields.get(key) or {}
+                merged.extend(raw for raw in pending["lines"]
+                              if not ("purpose" in own and _FIELDS[_LABEL.match(raw)[1].lower()] == "purpose"))
             continue
         elif line.startswith("#"):
             pending = None
         label = _LABEL.match(line)
         if label:
-            from .exercise_coaching_source import _FIELDS
             field = _FIELDS[label[1].lower()]
-            if field in {"progression_rule", "regression_options"} or (pending and field in pending["fields"]):
+            if field in {"progression_rule", "regression_options"} or (
+                    pending and field in pending["fields"] and field != "purpose"):
                 continue
         merged.append(line)
     schedule = "\n".join(merged)

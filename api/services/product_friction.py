@@ -66,7 +66,7 @@ def install_product_friction(app):
                     except Exception:
                         # Existing monitoring owns technical detail; telemetry must not break the response.
                         logger.debug(
-                            "Optional product friction measurement unavailable"
+                            "Product friction measurement unavailable"
                         )
 
                 await run_in_threadpool(record)

@@ -284,6 +284,8 @@ def test_admin_pagination_and_filters_are_validated():
                 athletes=[athlete("a"), athlete("b")],
                 facts=[],
                 optional_coverage=[],
+                tracking_health={"healthy": True},
+                tracking_since="2026-10-30T00:00:00Z",
                 training_records=[],
                 error_returns=[],
             )
@@ -303,18 +305,13 @@ def test_admin_pagination_and_filters_are_validated():
     )
 
 
-def test_children_cannot_enable_optional_browser_tracking():
+def test_beta_analytics_has_no_optional_switch():
     c, store = api_client()
-    c.app.dependency_overrides[require_profile] = lambda: SimpleNamespace(
-        athlete_id="child", is_minor=True
-    )
-    assert (
-        c.put("/api/analytics/preference", json=dict(enabled=True)).status_code == 403
-    )
-    assert c.post(
-        "/api/analytics/events",
-        json=dict(event_name="timer_started", feature="timer", request_id=str(uuid4())),
-    ).json() == dict(accepted=False)
+    for enabled in (True, False):
+        assert (
+            c.put("/api/analytics/preference", json=dict(enabled=enabled)).status_code
+            == 409
+        )
     assert not store.client.calls
 
 
@@ -373,29 +370,18 @@ def test_failed_feature_write_is_observed_without_copying_error_text(path, featu
     assert "Private operational error text" not in str(args)
 
 
-def test_consent_write_uses_authenticated_actor_and_atomic_rpc():
+def test_legacy_choice_cannot_disable_beta_and_actor_spoof_is_rejected():
     c, store = api_client()
-    response = c.put("/api/analytics/preference", json={"enabled": True})
-    assert response.status_code == 200
-    name, args = store.client.calls[-1]
-    assert name == "set_product_analytics_preference"
-    assert args == {"p_athlete_id": "owner", "p_enabled": True}
+    assert (
+        c.put("/api/analytics/preference", json={"enabled": False}).status_code == 409
+    )
     assert (
         c.put(
             "/api/analytics/preference", json={"enabled": True, "athlete_id": "other"}
         ).status_code
         == 422
     )
-
-
-def test_unhealthy_retention_refuses_optin_but_allows_withdrawal():
-    c, store = api_client()
-    store.client.rpc = lambda *_: SimpleNamespace(
-        execute=lambda: SimpleNamespace(data=False)
-    )
-    assert c.put("/api/analytics/preference", json={"enabled": True}).status_code == 503
-    response = c.put("/api/analytics/preference", json={"enabled": False})
-    assert response.status_code == 200 and response.json() == {"enabled": False}
+    assert not store.client.calls
 
 
 def test_history_discovery_is_not_training_recorded():
@@ -593,6 +579,8 @@ def test_identity_projection_is_admin_only_and_consent_stays_aggregate():
         ],
         facts=[],
         optional_coverage=[],
+        tracking_health={"healthy": True},
+        tracking_since="2026-10-30T00:00:00Z",
         training_records=[],
         error_returns=[],
     )
@@ -685,8 +673,8 @@ def test_internal_preference_is_disabled_without_exposing_identity():
 
         def execute(self):
             return SimpleNamespace(
-                data=[{"enabled": True}]
-                if self.table == "product_analytics_preferences"
+                data=[{"role": "athlete", "analytics_excluded": False}]
+                if self.table == "profiles"
                 else [{"email": "internal@example.test"}]
             )
 
@@ -818,11 +806,140 @@ def test_preference_tolerates_a_profile_without_email():
 
         def execute(self):
             return SimpleNamespace(
-                data=[{"enabled": True}]
-                if self.table == "product_analytics_preferences"
+                data=[{"role": "athlete", "analytics_excluded": False}]
+                if self.table == "profiles"
                 else []
             )
 
     store.client.table = Query
     response = c.get("/api/analytics/preference")
     assert response.status_code == 200 and response.json() == {"enabled": True}
+
+
+def test_visits_are_unique_and_separate_from_training():
+    r = report(
+        [athlete(), athlete("b")],
+        [
+            fact(
+                "2026-10-25",
+                action="app_opened",
+                feature="onboarding",
+                meaningful=False,
+                count=4,
+            ),
+            fact(
+                "2026-10-24",
+                action="app_opened",
+                feature="onboarding",
+                meaningful=False,
+            ),
+            fact("2026-10-25", aid="b"),
+        ],
+    )
+    assert (r["visitors_today"], r["visitors_7d"], r["visitors_30d"]) == (2, 2, 2)
+    assert r["active"] == 1
+    assert r["athletes"][0]["last_seen"] == "2026-10-25T12:00:00+00:00"
+    assert r["athletes"][0]["last_activity"] is None
+
+
+def test_page_events_accept_only_categories_and_authenticated_actor():
+    c, store = api_client()
+    body = dict(event_name="page_viewed", feature="plans", request_id=str(uuid4()))
+    assert c.post("/api/analytics/events", json=body).status_code == 202
+    assert store.client.calls[-1][1]["p_athlete_id"] == "owner"
+    assert (
+        c.post(
+            "/api/analytics/events", json={**body, "url": "/private?health=foo"}
+        ).status_code
+        == 422
+    )
+    assert (
+        c.post(
+            "/api/analytics/events", json={**body, "feature": "arbitrary"}
+        ).status_code
+        == 422
+    )
+
+
+def test_browsing_counts_as_discovery_without_inflating_training():
+    r = report(
+        [athlete()],
+        [fact("2026-10-25", action="page_viewed", feature="timer", meaningful=False)],
+    )
+    timer = next(f for f in r["features"] if f["feature"] == "timer")
+    assert timer["discovered"] == 1
+    assert timer["athletes"] == 0
+    assert timer["actions"] == {"page_viewed": 1}
+    assert r["active"] == 0
+
+
+def test_page_views_and_saved_actions_prove_visits_without_app_open_event():
+    r = report(
+        [athlete(), athlete("b"), athlete("c")],
+        [
+            fact(
+                "2026-10-25",
+                action="page_viewed",
+                feature="history",
+                meaningful=False,
+                count=5,
+            ),
+            fact("2026-10-24", action="page_viewed", feature="plans", meaningful=False),
+            fact("2026-10-25", aid="b"),
+            fact("2026-10-25", aid="c", action="plan_generated", meaningful=False),
+            fact("2026-10-25", aid="c", action="operation_failed", meaningful=False),
+        ],
+    )
+    assert r["visitors_today"] == 2
+    assert r["no_visit_7d"] == 1
+    assert r["seen_recently"] == 2
+    assert r["browser_reporting_athletes"] == 1
+    assert r["latest_browser_event"] == "2026-10-25T12:00:00+00:00"
+    assert r["athletes"][0]["visit_days_7"] == 2
+    assert r["athletes"][0]["latest_action"] == {
+        "feature": "history",
+        "action": "page_viewed",
+    }
+    assert r["athletes"][2]["last_seen"] is None
+    assert r["active"] == 1
+
+
+def test_directory_search_before_pagination_leaves_headlines_unchanged():
+    c, store = api_client()
+    c.app.dependency_overrides[require_admin] = lambda: SimpleNamespace(
+        athlete_id="admin"
+    )
+    payload = dict(
+        athletes=[
+            athlete(str(n), full_name=f"Athlete {n}", email=f"tester{n}@example.test")
+            for n in range(40)
+        ],
+        facts=[],
+        optional_coverage=[],
+        training_records=[],
+        error_returns=[],
+        tracking_health={"healthy": True},
+        tracking_since="2026-10-01T00:00:00Z",
+    )
+    store.client.rpc = lambda *_: SimpleNamespace(
+        execute=lambda: SimpleNamespace(data=payload)
+    )
+    result = c.get(
+        "/api/admin/product-analytics?athlete_search=TESTER39&limit=1"
+    ).json()
+    assert result["registered"] == 40
+    assert result["athlete_total"] == 1
+    assert result["athletes"][0]["id"] == "39"
+    assert (
+        c.get("/api/admin/product-analytics?visit_filter=never_seen").json()[
+            "athlete_total"
+        ]
+        == 40
+    )
+    assert (
+        c.get("/api/admin/product-analytics?visit_filter=seen_today").json()[
+            "athlete_total"
+        ]
+        == 0
+    )
+    assert c.get("/api/admin/product-analytics?visit_filter=invalid").status_code == 422

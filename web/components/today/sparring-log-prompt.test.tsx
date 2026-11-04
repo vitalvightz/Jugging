@@ -105,7 +105,9 @@ async function mountInteractive(draft: SparringDraft, responses: Array<{ status:
   const { createRoot } = await import("react-dom/client");
   const bodies: Array<Record<string, unknown>> = [];
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
+  globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
+    // Usage analytics fire beside the report; they are not report saves.
+    if (String(input).includes("/api/analytics/")) return new Response(JSON.stringify({ accepted: true }), { status: 202, headers: { "content-type": "application/json" } });
     bodies.push(JSON.parse(String(init?.body ?? "{}")));
     const next = responses.shift() ?? { status: 201, body: {} };
     return new Response(JSON.stringify(next.body), { status: next.status, headers: { "content-type": "application/json" } });

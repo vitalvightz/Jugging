@@ -1454,19 +1454,15 @@ def _collapse_unprescribed_duplicate_blocks(blocks: list[dict[str, Any]]) -> lis
     card that becomes a second block with the same name and no dose, so the
     athlete sees the same exercise twice — once real, once empty.
 
-    Only a dose-less duplicate of an already-prescribed block is collapsed, and
-    its coaching detail is merged into the real one. Two genuinely prescribed
-    blocks with the same name are left alone: that is a real duplicate and stays
-    visible to the duplicate-detection checks rather than being silently hidden.
+    A dose-less duplicate is merged into its prescribed host. Prescribed physical
+    blocks stay distinct, while otherwise-identical mindset blocks from repeated
+    tactical copy retain only the first block.
     """
     prescribed: dict[str, dict[str, Any]] = {}
     for block in blocks:
         identity = _block_identity(block)
         if identity and _block_has_prescription(block):
             prescribed.setdefault(identity, block)
-    if not prescribed:
-        return blocks
-
     kept: list[dict[str, Any]] = []
     for block in blocks:
         identity = _block_identity(block)
@@ -1479,6 +1475,12 @@ def _collapse_unprescribed_duplicate_blocks(blocks: list[dict[str, Any]]) -> lis
             for text_key in ("purpose", "why_today"):
                 if not str(host.get(text_key) or "").strip() and str(block.get(text_key) or "").strip():
                     host[text_key] = block[text_key]
+            continue
+        if block.get("block_type") == "mindset" and any(
+            {key: value for key, value in prior.items() if key != "block_id"}
+            == {key: value for key, value in block.items() if key != "block_id"}
+            for prior in kept
+        ):
             continue
         kept.append(block)
     return kept
@@ -1529,6 +1531,8 @@ def _coerce_optional_text(value: Any) -> str | None:
 def _normalize_today_card(value: Any) -> dict[str, Any]:
     out = dict(value) if isinstance(value, dict) else {}
     out["headline"] = _coerce_str(out.get("headline"))
+    if out["headline"].strip().casefold() == "technical_combat":
+        out["headline"] = "Technical Combat"
     out["readiness_status"] = _enum(out.get("readiness_status"), _READINESS_VALUES, "train_as_planned")
     out["mindset_anchor"] = _normalize_mindset(out.get("mindset_anchor"))
     for key in ("primary_warning", "nutrition_summary", "weight_cut_warning"):
@@ -1538,7 +1542,7 @@ def _normalize_today_card(value: Any) -> dict[str, Any]:
     # non-empty string so the renderer never shows a blank contact block.
     contact = _coerce_str(out.get("coach_led_contact")).strip()
     if contact:
-        out["coach_led_contact"] = contact
+        out["coach_led_contact"] = "Technical Combat" if contact.casefold() == "technical_combat" else contact
     else:
         out.pop("coach_led_contact", None)
     reason = _coerce_str(out.get("contact_reason")).strip()
@@ -1594,7 +1598,8 @@ def _fold_coach_led_sessions_into_today_card(day: dict[str, Any]) -> None:
         card = _normalize_today_card(card)
         day["today_card"] = card
     if not _coerce_str(card.get("coach_led_contact")).strip():
-        card["coach_led_contact"] = contact_labels[0]
+        label = contact_labels[0]
+        card["coach_led_contact"] = "Technical Combat" if label.casefold() == "technical_combat" else label
     day["sessions"] = app_sessions
 
 
@@ -3988,7 +3993,8 @@ def build_structured_plan_prompt(
         # deterministic and drops the internal pools entirely.
         brief_context = _select_brief_context(planning_brief)
         try:
-            brief_json = json.dumps(brief_context, ensure_ascii=False)
+            from fightcamp.stage2_payload import scrub_planner_only_keys
+            brief_json = json.dumps(scrub_planner_only_keys(brief_context), ensure_ascii=False)
         except (TypeError, ValueError):
             brief_json = ""
         if not brief_json:

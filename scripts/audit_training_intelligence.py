@@ -50,7 +50,7 @@ BASE_FIELDS = {
 # composition, effective dosing, goal reconciliation and rendering.
 SCENARIOS = {
     "mma_27d": {},
-    "mma_monday_capacity": {"Weekly Training Frequency": "6"},
+    "mma_monday_capacity": {"Weekly Training Frequency": "6", "Training Availability": "Monday, Tuesday, Wednesday, Thursday, Friday, Saturday"},
     "strength_primary": {"Primary goal": "strength"},
     "speed_primary": {"Primary goal": "speed", "What are your key performance goals?": "speed, strength"},
     "power_trunk": {"Primary weak area": "trunk_strength"},

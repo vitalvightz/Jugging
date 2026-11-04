@@ -617,6 +617,9 @@ def reconcile_session_prescription(
                 continue
         demands = string_set(block.get("mechanical_load_regions"))
         tags = string_set(block.get("tags"))
+        if tags and "core_development" in tags:
+            tags.discard("core_development")
+            tags = tags or None
         contact = contact_level(block)
         uncertain = bool(blocked_regions) and demands is None
         uncertain = uncertain or bool((demands or set()) - canonical_rehab_locations())
@@ -670,6 +673,10 @@ def reconcile_session_prescription(
     if allocation_ceiling in (1, 2):
         day_budget = min(day_budget, allocation_ceiling)
     budget = max(0, day_budget - rehab_allocation_count(blocks))
+    # Added rehab goes before the closing cool-down, not after it.
+    rehab_at = len(blocks)
+    while rehab_at and blocks[rehab_at - 1].get("block_type") == "cooldown_recovery":
+        rehab_at -= 1
     for index, decision in enumerate(sorted((d for d in prescribed if (d["injury_id"], d["injury_episode_id"]) not in replaced),
                                              key=lambda d: d["injury_id"])):
         if athlete_owned:
@@ -677,7 +684,9 @@ def reconcile_session_prescription(
         if index >= budget:
             changes.append({"injury_id": decision["injury_id"], "action": "deferred", "reason": "rehab_slot_budget"})
             continue
-        blocks.extend(prescribed_blocks(decision))
+        added = prescribed_blocks(decision)
+        blocks[rehab_at:rehab_at] = added
+        rehab_at += len(added)
     if block_contact_ceiling and not blocks:
         hold = True
     entry["blocks"] = blocks
@@ -713,7 +722,9 @@ def reconcile_session_prescription(
                 "allocation_limit": day_budget}
     if clearance_hold and hold and not any(d.get("outcome") == "medical_review" for d in decisions):
         snapshot["safety_hold_reason"] = clearance_hold
-    if hold or rehab_only:
+    # Standalone rehab with no planned session (a rest day, or training already
+    # logged) is additional work: nothing was held, so there is no hold reason.
+    if hold or (rehab_only and session is not None):
         reasons = {reason for change in changes for reason in change.get("restriction_reasons", [])}
         detail = ("The injury-loading details for your planned training are unavailable."
                   if reasons & {"missing_load_details", "unknown_load_regions"}

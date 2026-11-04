@@ -163,6 +163,7 @@ export type NutritionBodyweightTrendPoint = {
 };
 
 export type WeightCutRiskBand = "none" | "moderate" | "high" | "severe";
+export type WeightCutStatus = "none" | "on_target" | "on_track" | "behind" | "too_aggressive";
 
 // Fields added after first release are optional: the web app can deploy ahead
 // of the API, and the tracker must read an older response without them.
@@ -172,6 +173,9 @@ export type NutritionDerivedState = {
   weight_cut_risk: boolean;
   weight_cut_risk_band?: WeightCutRiskBand;
   weight_cut_supervision_required?: boolean;
+  kg_to_target?: number | null;
+  weight_cut_status?: WeightCutStatus;
+  weight_cut_behind_kg?: number | null;
   aggressive_weight_cut: boolean;
   high_pressure_weight_cut: boolean;
   short_notice: boolean;
@@ -205,6 +209,8 @@ export type NutritionWorkspaceUpdateRequest = Omit<NutritionWorkspaceState, "ath
 export type PlanRequest = {
   athlete: AthleteProfileInput;
   fight_date: string;
+  /** Optional event/competition name for the scheduled fight. */
+  event_name?: string;
   no_scheduled_fight?: boolean;
   open_camp_weeks?: number;
   rounds_format?: string;
@@ -1194,6 +1200,10 @@ export type TodayActivePlan = {
   phase?: string;
   fight_date?: string;
   camp_type?: string;
+  /** Event/competition name from the plan's intake, when the athlete gave one. */
+  event_name?: string;
+  /** Target fight weight (kg) from the plan's intake. Not current bodyweight. */
+  target_weight_kg?: number;
 };
 
 export type TodaySession = {
@@ -1353,6 +1363,18 @@ export type SparringLogRequest = {
   head_contact: SparringHeadContact;
   rocked: boolean;
   notes: string;
+  /** Optional: one thing to work on next time (max 140). */
+  focus?: string;
+};
+
+/** The last sparring focus, for the next relevant session; `focus` null when none is recent. */
+export type TrainingFocus = {
+  focus: string | null;
+  training_day: string | null;
+  sport: string | null;
+  /** Every recent candidate (the athlete's own or AI-inferred from a note they
+   * wrote), newest first; absent from older API builds. */
+  items?: import("./api-schema.generated").TrainingFocusItem[];
 };
 
 export type SparringLogRecord = Omit<SparringLogRequest, "client_request_id" | "detail_revision"> & {

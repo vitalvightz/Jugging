@@ -9,6 +9,7 @@
 .stepIcon { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid #ffffff1c; border-radius: 8px; background: #ffffff08; color: #d8d8de; }
 .stepIcon svg, .dialog button svg { width: 16px; height: 16px; flex: none; }
 .done { color: #b4b4be; font-size: 13px; line-height: 1.5; margin: 16px 0 18px; }
+.copyFeedback { color: #a2a2ad; font-size: 12px; line-height: 1.5; text-align: center; margin: 10px 0 0; }
 @media (max-width: 380px) { .dialog { padding: 24px 20px; } }
 @media (max-height: 640px) {
   .dialog { padding-top: 20px; padding-bottom: 14px; }

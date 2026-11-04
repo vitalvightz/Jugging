@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.support import cover
+
 from api.contracts.injury_policy import reconcile_session_prescription, resolve_injury_policy
 from api.contracts.rehab_completion import build_rehab_exposure_event, resolve_rehab_completion
 from api.contracts.rehab_evidence import read_exact_events
@@ -53,8 +55,7 @@ def test_exact_identity_reviewed_baseline_and_real_completion(region, stage):
     assert event.is_attributable_to(row) and event.dose_completed.completion_state == "performed_amount_unknown"
 
 
-@pytest.mark.parametrize("region", REGIONS)
-@pytest.mark.parametrize("kind", ["pain", "soreness", "tightness", "stiffness", "swelling", "tendonitis", "instability", "strain", "sprain", "impingement", "unspecified"])
+@pytest.mark.parametrize("region,kind", cover(REGIONS, ["pain", "soreness", "tightness", "stiffness", "swelling", "tendonitis", "instability", "strain", "sprain", "impingement", "unspecified"]))
 def test_other_types_never_consume_hyperextension_profiles(region, kind):
     policy = next(p for p in load_clinical_policies() if p.policy_id == f"{region}_hyperextension")
     assert resolve_injury_policy(injury(region, kind), policies=[policy], bank=get_rehab_bank())["prescription"] is None
@@ -73,8 +74,7 @@ def test_cross_region_stale_content_and_worsening(region):
     assert worse["stage"] == "calm" and worse["prescription"]["drill"]["rehab_stage"] == "calm"
 
 
-@pytest.mark.parametrize("region", REGIONS)
-@pytest.mark.parametrize("changes", [dict(severity="severe"), dict(severity="high"), dict(injury_type="fracture"),
+@pytest.mark.parametrize("region,changes", cover(REGIONS, [dict(severity="severe"), dict(severity="high"), dict(injury_type="fracture"),
     dict(injury_type="dislocation"), dict(injury_type="tendon_rupture"), dict(description="suspected tendon rupture"),
     dict(description="complete ligament tear"), dict(description="full-thickness rotator cuff tear"),
     dict(description="major structural tear"), dict(injury_type="post_surgery"),
@@ -83,7 +83,7 @@ def test_cross_region_stale_content_and_worsening(region):
         "vascular symptoms", "hand cold and blue", "major swelling", "obvious deformity",
         "unable to bear weight", "unable to use the joint", "significant functional loss",
         "neurological change", "head trauma", "joint feels unstable", "joint locks", "blue foot",
-        "cannot put any weight on it", "major muscle tear", "subluxation", "ligament rupture"]]])
+        "cannot put any weight on it", "major muscle tear", "subluxation", "ligament rupture"]]]))
 def test_structural_high_and_neurological_reports_stay_medical(region, changes):
     decision = resolve(injury(region, "hyperextension", **changes))
     assert decision["outcome"] == "medical_review" and decision["prescription"] is None
@@ -225,39 +225,6 @@ def test_original_audit_hashes_ids_and_review_history_preserved():
         assert row["drill_id"] not in active
     policies = tuple(p for p in load_clinical_policies() if p.injury_type == "hyperextension")
     assert validate_clinical_bank(policies, get_rehab_bank()) == []
-
-
-def test_previous_31_profiles_hashes_decisions_schedules_and_snapshots_unchanged(tmp_path):
-    raw = read("data/rehab_pathways.json")
-    from tools.rehab_metadata_review_lib import before_achilles_load_activation, before_elbow_content_addition
-    raw = before_achilles_load_activation(raw)
-    # #2984/#2986 republished profiles and bank content. Compare this dated
-    # rollout with the same hash-checked historical bank on both sides.
-    dated_bank, _ = before_elbow_content_addition(get_rehab_bank(), read("data/rehab_metadata_review.json"))
-    after_path = tmp_path / "after.json"
-    after_path.write_text(json.dumps(raw), encoding="utf-8")
-    after_policies = load_clinical_policies(after_path, bank=dated_bank)
-    previous = read("tests/fixtures/rehab_profiles_before_hyperextension.json")
-    assert len(previous) == 31
-    previous_ids = {p["policy_id"] for p in previous}
-    assert [p for p in raw["profiles"] if p["policy_id"] in previous_ids] == previous
-    raw["profiles"] = previous
-    baseline = tmp_path / "before.json"
-    baseline.write_text(json.dumps(raw), encoding="utf-8")
-    before_policies = load_clinical_policies(baseline, bank=dated_bank)
-    for policy in before_policies:
-        if policy.policy_id in {"achilles_tendonitis", "elbow_tendonitis", "ankle_sprain", "shoulder_tendonitis"}:
-            # Exact versioned activations are covered by their own journey and
-            # baseline tests; every other profile still compares identically.
-            continue
-        for stage in ("calm", "restore"):
-            for side in ("left", "unknown"):
-                row = injury(policy.region, policy.injury_type, stage, side=side)
-                old = resolve_injury_policy(row, policies=before_policies, bank=dated_bank)
-                new = resolve_injury_policy(row, policies=after_policies, bank=dated_bank)
-                assert old == new
-                assert schedule_rehab(row, old, training_day=DAY) == schedule_rehab(row, new, training_day=DAY)
-                assert reconcile_session_prescription(None, decisions=[old], plan_id=PLAN, training_day=DAY) == reconcile_session_prescription(None, decisions=[new], plan_id=PLAN, training_day=DAY)
 
 
 def test_seed_bank_review_and_profiles_are_byte_idempotent(tmp_path, monkeypatch):

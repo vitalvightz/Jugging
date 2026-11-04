@@ -55,7 +55,7 @@ test("every equipment preset value exists in EQUIPMENT_ACCESS_OPTIONS", () => {
 test("equipment groups contain every supported option exactly once", () => {
   const groupedValues = EQUIPMENT_ACCESS_GROUPS.flatMap((group) => group.options.map((option) => option.value));
   const expectedGroups = {
-    "Weights & strength": ["dumbbells", "kettlebells", "barbell", "trap_bar", "plate", "bench", "cable", "landmine", "log", "atlas_stone"],
+    "Weights & strength": ["dumbbells", "kettlebells", "barbell", "trap_bar", "plate", "bench", "back_extension_bench", "cable", "landmine", "log", "atlas_stone"],
     Conditioning: ["assault_bike", "rower", "treadmill", "step_mill", "pool", "sled", "battle_ropes", "tire", "sledgehammer", "weight_vest"],
     Combat: ["heavy_bag", "pads", "partner"],
     "Plyometrics & movement": ["box", "agility_ladder", "hurdles", "jump_rope"],
@@ -194,7 +194,7 @@ test("focus presets apply selections in priority order", () => {
 test("limited shared cap selects highest-priority goal and weak area first", () => {
   const weightCut = FOCUS_PRESETS.find((preset) => preset.key === "weight_cut_support")!;
   const selections = resolveFocusPresetSelections(weightCut, defaultFocusLimits({ sharedLimit: 2 }));
-  assert.deepEqual(selections.key_goals, ["weight_cut"]);
+  assert.deepEqual(selections.key_goals, ["recovery"]);
   assert.deepEqual(selections.weak_areas, ["gas_tank"]);
 });
 
@@ -240,4 +240,11 @@ test("deriveSetupSource handles three-way match with focus presets", () => {
   assert.equal(deriveSetupSource(["home", "three_days", "gas_tank"]), "preset");
   assert.equal(deriveSetupSource(["home", null, "gas_tank"]), "mixed");
   assert.equal(deriveSetupSource([null, null, null]), "manual");
+});
+
+
+test("disabled weight-cut goal stays unavailable in all focus presets", () => {
+  for (const preset of FOCUS_PRESETS) {
+    assert.equal(resolveFocusPresetSelections(preset, defaultFocusLimits()).key_goals.includes("weight_cut"), false);
+  }
 });

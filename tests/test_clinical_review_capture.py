@@ -93,11 +93,9 @@ def test_target_compliance_not_recorders_own_consent(field, value):
     assert store.writes == 0
 
 
-@pytest.mark.parametrize("field,value", [("athlete_id", str(uuid4())), ("id", str(uuid4())),
-    ("episode_id", str(uuid4())), ("status", "resolved"), ("side", "right"), ("side", "unknown"),
-    ("canonical_location", "elbow"), ("injury_type", "tendonitis")],
-    ids=["athlete", "injury", "episode", "resolved", "wrong_side", "unknown_side", "region", "type"],
-)
+@pytest.mark.parametrize("field,value", [("athlete_id", "00000000-0000-0000-0000-00000000a05f"), ("id", "00000000-0000-0000-0000-00000000a060"),
+    ("episode_id", "00000000-0000-0000-0000-00000000a061"), ("status", "resolved"), ("side", "right"), ("side", "unknown"),
+    ("canonical_location", "elbow"), ("injury_type", "tendonitis")])
 def test_exact_owned_current_known_injury_binding(field, value):
     store, recorder, request, kwargs = capture_bundle()
     store.snapshot["injury"][field] = value

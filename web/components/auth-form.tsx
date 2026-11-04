@@ -25,7 +25,7 @@ import {
   getSignupCodeResendErrorMessage,
 } from "@/lib/auth-feedback";
 import { clearAuthLinkParams, readAuthLinkStatus } from "@/lib/auth-link";
-import { getAuthenticatedLandingHref } from "@/lib/auth-routing";
+import { getAuthenticatedLandingHref, getSafePlanReturnHref } from "@/lib/auth-routing";
 import {
   TERMS_CONSENT_LEAD,
   TERMS_LINK_LABEL,
@@ -38,6 +38,7 @@ import { recordCompliance } from "@/lib/api";
 import { evaluatePasswordStrength } from "@/lib/password-strength";
 import { buildAuthRedirectUrl } from "@/lib/site-url";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { hasSignupAdmission } from "@/lib/signup-invite-guard";
 import type { Session } from "@supabase/supabase-js";
 
 import type { UserRole } from "@/lib/types";
@@ -67,6 +68,10 @@ export function AuthForm({
   const router = useRouter();
   const fadeNavigate = useFadeNavigate();
   const { isReady, session, me, replaceMe } = useAppSession();
+  const nextPlan = () => getSafePlanReturnHref(new URLSearchParams(window.location.search).get("next"));
+  const destination = (account: Parameters<typeof getAuthenticatedLandingHref>[0]) =>
+    getAuthenticatedLandingHref(account, nextPlan());
+  const authRedirectPath = () => nextPlan() ? `/login?next=${encodeURIComponent(nextPlan()!)}` : "/login";
   const emailInputRef = useRef<HTMLInputElement | null>(null);
   const [showEmail, setShowEmail] = useState(false);
   const [isGooglePending, setIsGooglePending] = useState(false);
@@ -78,7 +83,7 @@ export function AuthForm({
   const [showPassword, setShowPassword] = useState(false);
   // Set once signup succeeds without a session (email confirmation is on): the
   // form swaps to a one-time-code step so the athlete never has to leave the
-  // page, follow a link and log in again. The emailed link still works too.
+  // page, follow a link and log in again.
   const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
   const [verificationCode, setVerificationCode] = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -143,7 +148,7 @@ export function AuthForm({
       return;
     }
     if (session && me) {
-      router.replace(getAuthenticatedLandingHref(me));
+      router.replace(destination(me));
     }
   }, [isReady, me, router, session]);
 
@@ -182,7 +187,7 @@ export function AuthForm({
         ...(healthDataConsent ? { health_data_consent: true } : {}),
       });
       replaceMe(nextMe);
-      fadeNavigate(() => router.replace(getAuthenticatedLandingHref(nextMe)));
+      fadeNavigate(() => router.replace(destination(nextMe)));
     } catch (complianceError) {
       setError(
         complianceError instanceof Error
@@ -201,7 +206,7 @@ export function AuthForm({
     try {
       const { error: oauthError } = await getSupabaseBrowserClient().auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: buildAuthRedirectUrl("/login") },
+        options: { redirectTo: buildAuthRedirectUrl(authRedirectPath()) },
       });
       if (oauthError) throw oauthError;
       // Keep the button busy until navigation. The existing AuthProvider consumes
@@ -253,7 +258,7 @@ export function AuthForm({
             password,
             options: {
               captchaToken: captchaTokenForRequest,
-              emailRedirectTo: buildAuthRedirectUrl("/login"),
+              emailRedirectTo: buildAuthRedirectUrl(authRedirectPath()),
               data: {
                 // Seeds the profile's date of birth on first sign-in and lets a
                 // Postgres trigger reject an under-13 signup even when the
@@ -321,8 +326,19 @@ export function AuthForm({
         return;
       }
 
+      try {
+        if (!(await hasSignupAdmission(data.session?.user.id ?? data.user?.id))) {
+          await client.auth.signOut();
+          router.replace("/signup?invite=required");
+          return;
+        }
+      } catch {
+        resetCaptcha();
+        setError("We couldn't verify your account access. Please try again.");
+        return;
+      }
       const nextMe = await getMe(accessToken).catch(() => null);
-      fadeNavigate(() => router.replace(nextMe ? getAuthenticatedLandingHref(nextMe) : "/plans"));
+      fadeNavigate(() => router.replace(nextMe ? destination(nextMe) : "/plans"));
     });
   }
 
@@ -372,7 +388,7 @@ export function AuthForm({
           email: verificationEmail,
           options: {
             captchaToken: captchaTokenForRequest,
-            emailRedirectTo: buildAuthRedirectUrl("/login"),
+            emailRedirectTo: buildAuthRedirectUrl(authRedirectPath()),
           },
         });
       } catch {
@@ -421,7 +437,7 @@ export function AuthForm({
         setError(AUTH_FEEDBACK.connectionFailure);
         return;
       }
-      const redirectTo = buildAuthRedirectUrl("/login");
+      const redirectTo = buildAuthRedirectUrl(authRedirectPath());
       let magicLinkResult;
       try {
         magicLinkResult = await client.auth.signInWithOtp({

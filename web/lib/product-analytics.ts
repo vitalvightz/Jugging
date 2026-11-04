@@ -31,6 +31,10 @@ export type ActivitySummary = {
   full_name?: string | null;
   email?: string | null;
   registered_at: string;
+  last_seen?: string | null;
+  latest_action?: { feature: string; action: string } | null;
+  visit_days_7?: number;
+  visit_days_30?: number;
   first_activity: string | null;
   last_activity: string | null;
   active_days_7: number;
@@ -60,6 +64,15 @@ export type Retention = {
   percent: number | null;
 };
 export type ProductReport = {
+  tracking_health?: { healthy: boolean; configured?: boolean; last_success_at?: string | null } | null;
+  tracking_since?: string | null;
+  latest_browser_event?: string | null;
+  browser_reporting_athletes?: number;
+  seen_recently?: number;
+  no_visit_7d?: number;
+  visitors_today?: number;
+  visitors_7d?: number;
+  visitors_30d?: number;
   coverage: Coverage;
   session_metrics: SessionMetrics;
   plan_funnel: PlanFunnel;
@@ -149,7 +162,14 @@ export type AthleteActivity = {
   }[];
   offset: number;
 };
-export const humanize = (value: string) => value.replaceAll("_", " ");
+export const humanize = (value: string) => ({
+  app_opened: "Opened or returned to the app",
+  page_viewed: "Viewed a page",
+  checkin_started: "Started a check-in",
+  sparring_log_started: "Started a sparring log",
+  operation_failed: "Action failed",
+  frontend_error: "App error",
+}[value] ?? value.replaceAll("_", " "));
 export const percent = (value: number | null) =>
   value === null ? "Insufficient data" : `${value.toFixed(1)}%`;
 
@@ -166,4 +186,4 @@ export const measurementLabel = (coverage?: Coverage | null) =>
         ? "Insufficient data"
         : "Measured";
 export const coverageExplanation = (coverage: Coverage) =>
-  `${measurementLabel(coverage)}: optional interactions can be measured for ${coverage.measurable_athletes} / ${coverage.eligible_athletes} athletes in this period. Earlier gaps and withdrawn consent cannot be reconstructed; events expire after 180 days.`;
+  `${measurementLabel(coverage)}: feature interactions have coverage for ${coverage.measurable_athletes} / ${coverage.eligible_athletes} athletes in this period. Earlier gaps cannot be reconstructed; events expire after 180 days.`;

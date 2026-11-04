@@ -83,36 +83,14 @@ def _unique(values):
 
 
 def short_cue(text):
-    """Prefer a complete authored clause; never truncate a warning at word seven.
+    """The cue to show: known bank wording in its authored compact form.
 
-    If a safe short clause
-    cannot be extracted, keep the longer cue rather than cut technical meaning.
+    Any other cue is validated coaching and is kept whole. Clipping it to a
+    seven-word clause deleted technique ("...and control the lowering phase")
+    and, for long prose, could leave an unsafe fragment.
     """
     text = re.sub(r"^Cue:\s*", "", _text(text), flags=re.I)
-    if text in _COMPACT_COPY:
-        return _COMPACT_COPY[text]
-    if text in _COMPACT_VALUES:
-        return text
-    if len(text.split()) <= 7:
-        return text
-    # Do not split a negated or conditional instruction into an unsafe fragment.
-    if re.search(r"\b(?:if|when|unless|until|without|do not|don't|never)\b", text, re.I):
-        return text
-    clauses = []
-    for clause in re.split(r"[;.!?]|,\s+|\s+and\s+", text):
-        clause = clause.strip(" ,;:")
-        if 2 <= len(clause.split()) <= 7 and not re.match(r"^(?:if|when|or|but)\b", clause, re.I):
-            clauses.append(clause)
-    if clauses:
-        if len(clauses) > 1 and re.match(r"^(?:set up|get in)\b", clauses[0], re.I):
-            clauses = clauses[1:]
-        selected = [clauses[0]]
-        for clause in clauses[1:]:
-            if len((" ".join([*selected, clause])).split()) <= 7:
-                selected.append(clause)
-        lead = "; ".join(selected)
-        return lead[0].upper() + lead[1:]
-    return text
+    return _COMPACT_COPY.get(text, text)
 
 
 def readable_stop(rules):

@@ -524,7 +524,12 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         self.admin_reviews: list[dict] = []
         self.sparring_log_requests: dict[tuple[str, str], str] = {}
         self.sparring_logs: list[dict] = []
+        self.training_focus_inferences: list[dict] = []
+        # Mirrors public.training_focus_call_budget: model calls per athlete per UTC day.
+        self.training_focus_calls: dict[tuple[str, str], int] = {}
         self.exercise_logs: list[dict] = []
+        # Makes reset_history_plan_session fail, as the rehab reset guard does.
+        self.fail_history_reset = False
         # Simulates the bulk write failing in the database (nothing commits).
         self.fail_next_exercise_log_batch = False
         # Simulates the admin-review insert failing inside record_sparring_log.
@@ -817,7 +822,7 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
                 return row
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="intake not found")
 
-    def create_plan(self, *, athlete_id: str, intake_id: str, request: PlanRequest, result: dict, plan_id: str | None = None) -> dict:
+    def create_plan(self, *, athlete_id: str, intake_id: str | None, request: PlanRequest, result: dict, plan_id: str | None = None) -> dict:
         profile = self.profiles[athlete_id]
         plan_id = plan_id or str(uuid4())
         result_status = str(result.get("status") or "generated").strip().lower()
@@ -2003,6 +2008,36 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         return next((row.copy() for row in self.session_completions.get(athlete_id, [])
                      if row.get("athlete_id") == athlete_id and row.get("id") == completion_id), None)
 
+    def _update_completion(self, athlete_id: str, completion_id: str, fields: dict) -> dict | None:
+        for row in self.session_completions.get(athlete_id, []):
+            if row.get("athlete_id") == athlete_id and row.get("id") == completion_id:
+                row.update(fields)
+                row["updated_at"] = _now()
+                return dict(row)
+        return None
+
+    def update_session_completion_fields(self, athlete_id: str, completion_id: str, fields: dict) -> dict | None:
+        return self._update_completion(athlete_id, completion_id,
+                                       {key: fields[key] for key in ("session_rpe", "pain_after", "notes") if key in fields})
+
+    def reset_history_plan_session(self, athlete_id: str, completion_id: str) -> dict | None:
+        """Mirrors public.reset_history_plan_session: all or nothing, idempotent."""
+        row = next((row for row in self.session_completions.get(athlete_id, [])
+                    if row.get("athlete_id") == athlete_id and row.get("id") == completion_id), None)
+        if row is None:
+            return None
+        if row.get("status") not in {"done", "modified"}:
+            return dict(row)
+        if self.fail_history_reset:
+            # Raised before any write, as the RPC's transaction would roll back.
+            raise HTTPException(status_code=409, detail="This session can't be changed from History.")
+        self.exercise_logs[:] = [log for log in self.exercise_logs if not (
+            log.get("athlete_id") == athlete_id and log.get("plan_id") == row.get("plan_id")
+            and log.get("session_id") == row.get("session_id") and str(log.get("training_day")) == str(row.get("training_day")))]
+        return self._update_completion(athlete_id, completion_id, {
+            "status": "not_started", "started_at": None, "completed_at": None, "session_rpe": None,
+            "pain_after": None, "modification_reason": "", "notes": ""})
+
     def list_session_detail_exercise_logs(self, athlete_id: str, *, plan_id: str,
                                          training_day: str, session_ids: list[str]) -> list[dict]:
         return [row for row in self.list_exercise_logs_for_day(athlete_id, plan_id=plan_id, training_day=training_day)
@@ -2116,6 +2151,12 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
                        if row["athlete_id"] == athlete_id and (include_deleted or not row.get("deleted_at"))
                        and (not before_day or row["training_day"] < before_day)),
                       key=lambda row: (row["training_day"], row["created_at"]), reverse=True)[:limit]
+
+    def list_external_runs(self, athlete_id: str, *, through_day: str) -> list[dict]:
+        return sorted((dict(row) for row in self.external_training_sessions.values()
+                       if row["athlete_id"] == athlete_id and row.get("activity") == "roadwork"
+                       and not row.get("deleted_at") and str(row["training_day"]) <= through_day),
+                      key=lambda row: (row["training_day"], row["created_at"], row["id"]))
 
     def get_external_training_session(self, athlete_id: str, entry_id: str) -> dict | None:
         row = self.external_training_sessions.get(entry_id)
@@ -2870,15 +2911,89 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
             self.sparring_log_requests[(athlete_id, request_id)] = row["id"]
         return {"log": dict(row), "review": review_of(row), "replayed": False}
 
-    def list_sparring_logs(self, athlete_id: str, *, limit: int = 60, from_day: str | None = None) -> list[dict]:
+    def set_sparring_log_focus(self, athlete_id: str, log_id: str, focus: str, *, revision: int) -> dict | None:
+        row = next((row for row in self.sparring_logs if row.get("athlete_id") == athlete_id and row.get("id") == log_id), None)
+        if row is None or int(row.get("detail_revision") or 0) != revision:
+            return None
+        row["focus"] = focus
+        return dict(row)
+
+    def list_sparring_logs(self, athlete_id: str, *, limit: int = 60, from_day: str | None = None,
+                           with_focus: bool = False) -> list[dict]:
         rows = [
             dict(row)
             for row in self.sparring_logs
             if row.get("athlete_id") == athlete_id
             and (from_day is None or str(row.get("training_day")) >= from_day)
+            and (not with_focus or str(row.get("focus") or "") != "")
         ]
         rows.sort(key=lambda row: (str(row.get("training_day")), str(row.get("created_at"))), reverse=True)
         return rows[:limit]
+
+    def claim_training_focus_inference(self, athlete_id: str, source_kind: str, source_id: str, *,
+                                       training_day: str, source_revision: str) -> bool:
+        """Mirrors public.claim_training_focus_inference (stale timeouts left out)."""
+        row = next((row for row in self.training_focus_inferences if row["athlete_id"] == athlete_id
+                    and row["source_kind"] == source_kind and row["source_id"] == source_id), None)
+        reset = {"source_revision": source_revision, "training_day": training_day, "status": "pending", "reason": "",
+                 "focus": None, "scope": None, "category": None, "sport": None, "exercise_targets": [],
+                 "movement_patterns": [], "context_revision": None, "dismissed_at": None, "updated_at": _now()}
+        if row is None:
+            self.training_focus_inferences.append({"id": str(uuid4()), "athlete_id": athlete_id, "source_kind": source_kind,
+                                                   "source_id": source_id, "created_at": _now(), "generated_at": None,
+                                                   "model": None, **reset})
+            return True
+        if row["source_revision"] == source_revision:
+            return False
+        row.update(reset)
+        return True
+
+    def finish_training_focus_inference(self, athlete_id: str, source_kind: str, source_id: str, *,
+                                        source_revision: str, fields: dict) -> bool:
+        row = next((row for row in self.training_focus_inferences if row["athlete_id"] == athlete_id
+                    and row["source_kind"] == source_kind and row["source_id"] == source_id
+                    and row["source_revision"] == source_revision and row["status"] == "pending"), None)
+        if row is None:
+            return False
+        row.update({key: value for key, value in fields.items() if key != "generated"}, updated_at=_now())
+        if fields.get("generated"):
+            row["generated_at"] = _now()
+        return True
+
+    def list_training_focus_inferences(self, athlete_id: str, *, from_day: str, limit: int = 5) -> list[dict]:
+        rows = [dict(row) for row in self.training_focus_inferences if row["athlete_id"] == athlete_id
+                and row["status"] == "ready" and not row.get("dismissed_at") and str(row["training_day"]) >= from_day]
+        rows.sort(key=lambda row: (str(row["training_day"]), str(row["updated_at"])), reverse=True)
+        return rows[:limit]
+
+    def dismiss_training_focus_inference(self, athlete_id: str, inference_id: str) -> bool:
+        for row in self.training_focus_inferences:
+            if row["athlete_id"] == athlete_id and row["id"] == inference_id:
+                row["dismissed_at"] = _now()
+                return True
+        return False
+
+    def list_training_focus_inferences_for_day(self, athlete_id: str, training_day: str) -> list[dict]:
+        return [dict(row) for row in self.training_focus_inferences if row["athlete_id"] == athlete_id
+                and str(row["training_day"]) == training_day and row["status"] == "ready" and not row.get("dismissed_at")]
+
+    def restamp_training_focus_inference(self, athlete_id: str, inference_id: str, *, source_revision: str,
+                                         context_revision: str | None, fields: dict) -> bool:
+        for row in self.training_focus_inferences:
+            if (row["athlete_id"] == athlete_id and row["id"] == inference_id and row["status"] == "ready"
+                    and row["source_revision"] == source_revision and row.get("context_revision") == context_revision):
+                row.update(fields, updated_at=_now())
+                return True
+        return False
+
+    def reserve_training_focus_call(self, athlete_id: str, *, limit: int) -> bool:
+        # Atomic like public.reserve_training_focus_call.
+        with self._generation_job_daily_limit_lock:
+            key = (athlete_id, _now()[:10])
+            if self.training_focus_calls.get(key, 0) >= limit:
+                return False
+            self.training_focus_calls[key] = self.training_focus_calls.get(key, 0) + 1
+            return True
 
     def latest_sparring_log_day(self, athlete_id: str, *, hard: bool = False, rocked: bool = False) -> str | None:
         days = [
@@ -3473,7 +3588,7 @@ SYSTEM_SCENARIOS = [
         key="short_notice_contradictory",
         request_overrides={
             "fight_date": "2099-03-24",
-            "weekly_training_frequency": 6,
+            "weekly_training_frequency": 2,
             "training_availability": ["Monday", "Wednesday"],
             "equipment_access": ["assault_bike", "bands", "bodyweight"],
         },
@@ -3630,3 +3745,23 @@ def _build_client(
         )
     )
     return client, store, stage2
+
+
+def cover(*axes):
+    """Parametrize rows where every value of every axis appears at least once.
+
+    A full cross-product of independent axes (profile x red-flag phrase, region x
+    other injury type, ...) multiplies cost without adding much signal: each
+    axis is screened independently. ``cover`` walks the axes in lock-step,
+    cycling the shorter ones, so the row count is the longest axis rather than
+    the product. Tuple values (e.g. ``(key, region, kind)``) are flattened.
+    """
+    axes = [list(axis) for axis in axes]
+    rows = []
+    for i in range(max(len(axis) for axis in axes)):
+        row = []
+        for axis in axes:
+            value = axis[i % len(axis)]
+            row.extend(value if isinstance(value, tuple) else (value,))
+        rows.append(tuple(row))
+    return rows

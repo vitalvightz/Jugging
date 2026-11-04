@@ -13,7 +13,9 @@ export function StandaloneRehab({ state, token, unavailable, refreshing = false,
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
   const live = state.live_prescription;
-  if (!live || live.session.session_type !== "rehab") return null;
+  // A planned mobility session is typed "rehab" too: only the standalone
+  // rehab occurrence belongs here.
+  if (!live || live.rehab_only !== true) return null;
   // A refresh only disables the buttons for its moment: a notice that came
   // and went with every refresh made the card jump.
   const held = live.safety_hold || unavailable || refreshing;

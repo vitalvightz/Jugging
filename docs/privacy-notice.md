@@ -1,6 +1,6 @@
 # UNLXCK Privacy Notice
 
-_Last updated: 25 October 2026_
+_Last updated: 2 November 2026_
 
 UNLXCK uses personal data to create, adapt and deliver personalised training guidance. This notice explains what we use, why, who receives it and your rights.
 
@@ -38,7 +38,7 @@ We rely on four lawful bases, depending on what the processing is for.
 
 **Article 6(1)(f) UK GDPR (legitimate interests):** for keeping UNLXCK secure and available, preventing abuse of signup and login, investigating faults, and improving the service. Our interests are running a secure, reliable product and making it work better for athletes. We have weighed those interests against your rights, and you can object to this processing at any time.
 
-Article 6(1)(a) UK GDPR (consent): optional product analytics for adults, such as feature opens, timer actions and successful saves. This is off by default. You can enable or withdraw it in Settings → Privacy without losing any feature. We record only the feature, action, account identifier, time and a retry/run identifier, not health details, notes or nutrition contents. We do not add analytics cookies, device identifiers or session replay, or send these events to an external analytics provider. Optional events are deleted after 180 days; account deletion also removes them. Existing saved service records and fault monitoring remain subject to their existing purposes and your rights.
+Private beta usage analytics is included as agreed when joining the beta. We record app visits, feature opens, timer actions and successful saves to understand usage and fix problems. There is no separate optional analytics switch in this beta. Events contain only the feature, action, account identifier, server time and retry/run identifier, not health details, notes or nutrition contents. We do not add analytics cookies, device identifiers or session replay, or send events to an external analytics provider. Events are deleted after 180 days; account deletion also removes them. Contact us about your data rights using the details in this notice.
 
 **Article 9(2)(a) UK GDPR (explicit consent):** for health information: injuries, pain, soreness, fatigue, sleep, readiness and bodyweight, used for personalised training and safety features. This consent is asked for separately, is optional, and can be withdrawn at any time.
 
@@ -49,6 +49,8 @@ Withdrawing consent does not affect processing already carried out lawfully, but
 ## AI and automated adaptation
 UNLXCK uses software rules and AI-assisted processing to help generate and adapt training guidance from the information you provide. Relevant plan context may be sent to service providers supporting this processing.
 
+With health-data consent on, the notes you write after training (a sparring note, a manual session's takeaway or a completed session's notes) may be sent to OpenAI with that day's session types, exercise names and what you logged for them, to suggest one technique focus for your next matching session. Your name, email and profile details are not added, but the text of the note is sent (spacing tidied and cut to its first 600 characters). We screen notes for pain, injury, head-impact and other health language and do not send the ones we recognise, but no screen catches every wording, so please keep health details and other people's names out of these notes. A suggestion never changes your training load. Suggestions are stored separately from your notes, can be dismissed, and stop when you withdraw consent.
+
 These systems may change, restrict or withhold training guidance. We have assessed whether that is a decision based solely on automated processing with legal or similarly significant effects under Article 22 UK GDPR, and concluded it is not: it changes what training UNLXCK suggests to you, not your legal position or your access to anything comparable, and you remain free to train differently. We keep that assessment under review, and apply it more cautiously to athletes under 18.
 
 If you think an automated adaptation has got something wrong, contact us using the privacy contact above and a person will look at it.
@@ -57,7 +59,7 @@ If you think an automated adaptation has got something wrong, contact us using t
 We use trusted service providers to run UNLXCK. We share only the information each one needs to provide its part of the service, and require appropriate data-protection safeguards from all of them.
 
 - **Supabase:** sign-in, database and file storage. Holds your account, profile, training, health and feedback data, on servers in the EU.
-- **OpenAI:** AI-assisted plan generation. Receives the plan context needed to build your training, which can include injury and restriction information. Your data is not used to train their models.
+- **OpenAI:** AI-assisted plan generation and training-focus suggestions. Receives the plan context needed to build your training, which can include injury and restriction information, and, with health-data consent, your training notes with that day's session and exercise details. Your data is not used to train their models.
 - **Vercel:** hosting for the UNLXCK website and app. Handles request and device information.
 - **Hetzner:** hosting for our backend and plan-generation service, on servers in Germany.
 - **Resend:** service and feedback email.

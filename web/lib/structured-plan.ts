@@ -2,7 +2,7 @@
 // components in components/structured-plan-renderer.tsx are thin wrappers over
 // these so the rendering rules stay unit-testable (node:test) and crash-proof
 // against malformed/partial payloads.
-import { formatPlanLabel, isRawEnumLabel } from "./plan-labels.ts";
+import { formatPlanLabel, humanizeIfRawEnum, isRawEnumLabel } from "./plan-labels.ts";
 import type {
   DeterministicMacroRange,
   DeterministicNutritionPhase,
@@ -1988,7 +1988,7 @@ function coachLedKindFromHeadline(headline: string): SessionlessDayKind {
 export function classifySessionlessDay(
   day: StructuredDay | null | undefined,
 ): SessionlessDayView {
-  const headline = cleanText(day?.today_card?.headline);
+  const headline = humanizeIfRawEnum(cleanText(day?.today_card?.headline));
   const dayType = cleanText(day?.day_type)?.toLowerCase() ?? null;
 
   if (headline) {
@@ -2080,7 +2080,7 @@ export function getReducedContactReason(day: StructuredDay | null | undefined): 
 export function getCoachLedContactView(
   day: StructuredDay | null | undefined,
 ): CoachLedContactView | null {
-  const headline = cleanText(day?.today_card?.coach_led_contact);
+  const headline = humanizeIfRawEnum(cleanText(day?.today_card?.coach_led_contact));
   if (!headline) {
     return null;
   }

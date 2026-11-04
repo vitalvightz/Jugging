@@ -25,8 +25,8 @@ def test_supabase_auth_redirects_use_configured_site_origin():
     # pointing at protected *.vercel.app preview deployments.
     assert 'import { buildAuthRedirectUrl } from "@/lib/site-url";' in auth_form
     assert 'import { buildAuthRedirectUrl } from "@/lib/site-url";' in forgot_password
-    assert 'emailRedirectTo: buildAuthRedirectUrl("/login")' in auth_form
-    assert 'buildAuthRedirectUrl("/login")' in auth_form
+    assert 'emailRedirectTo: buildAuthRedirectUrl(authRedirectPath())' in auth_form
+    assert 'buildAuthRedirectUrl(authRedirectPath())' in auth_form
     assert 'redirectTo: buildAuthRedirectUrl("/reset-password")' in forgot_password
     assert "getSiteOrigin" not in auth_form
     assert "getSiteOrigin" not in forgot_password

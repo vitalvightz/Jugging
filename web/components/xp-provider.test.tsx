@@ -220,7 +220,7 @@ test("two session awards are aggregated into one +75 routine event", async () =>
     assert.deepEqual(harness.read().feedback, {
       kind: "routine",
       amount: 75,
-      label: "Session complete",
+      label: "Session logged. Work done.",
       awardIds: ["planned-1", "logged-1"],
       actions: ["planned_session_completed", "training_logged"],
     });

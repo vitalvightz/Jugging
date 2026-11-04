@@ -3,10 +3,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 
 import { usePwaRuntime } from "@/components/pwa-register";
 import {
   hasSeenInstallPrompt,
+  isInstagramBrowser,
+  PWA_INSTAGRAM_EXIT_SEEN_KEY,
   rememberInstallGuideDismissal,
   rememberInstallPromptSeen,
   resolveIosInstallBrowser,
@@ -52,6 +55,25 @@ function AddIcon() {
   );
 }
 
+function CopyIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" stroke="currentColor" strokeWidth="1.7" />
+    </svg>
+  );
+}
+
+// Never include auth tokens, codes or other query/fragment data in copied links.
+async function copyCurrentPageLink(): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(window.location.origin + window.location.pathname);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 type IosGuide = Exclude<IosInstallBrowser, "unsupported">;
 type InstallStep = { icon: ReactNode; title: string; hint: string };
 
@@ -83,25 +105,52 @@ const IOS_STEPS: Record<IosGuide, InstallStep[]> = {
   ],
 };
 
-/** One-time automatic offer after a saved session. Takes priority over the
+const INSTAGRAM_STEPS: InstallStep[] = [
+  { icon: <MoreIcon />, title: "Tap ••• in Instagram", hint: "Find the menu in Instagram’s browser toolbar." },
+  { icon: <ShareIcon />, title: "Choose Open in external browser", hint: "The name may vary. Your default browser will open." },
+];
+
+/** Instagram entry guidance or a one-time install offer after a saved session. Takes priority over the
  * notification prompt for that moment and reuses the PWA runtime's install
  * detection; Settings keeps the manual route. */
 export function InstallPrompt() {
-  const { installAvailability, promptInstall } = usePwaRuntime();
+  const pathname = usePathname();
+  const { installAvailability, isInstalled, promptInstall } = usePwaRuntime();
   const dialog = useRef<HTMLDialogElement>(null);
   const availability = useRef(installAvailability);
-  const [guide, setGuide] = useState<"native" | IosGuide | null>(null);
+  const [guide, setGuide] = useState<"native" | IosGuide | "instagram" | null>(null);
+  const instagramOffered = useRef(false);
   const [busy, setBusy] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"copied" | "failed" | null>(null);
   // A guide only stays up while the browser still offers that route.
-  const shown = guide === "native" ? installAvailability === "native" : guide !== null && installAvailability === "ios-manual";
+  const shown = guide === "instagram"
+    ? isInstalled === false
+    : guide === "native" ? installAvailability === "native" : guide !== null && installAvailability === "ios-manual";
 
   useEffect(() => {
     availability.current = installAvailability;
   }, [installAvailability]);
 
   useEffect(() => {
+    // Defer during active training, plan creation and editing. React to route changes.
+    if (isInstalled !== false || guide !== null || instagramOffered.current ||
+        !isInstagramBrowser(navigator.userAgent) ||
+        /^\/(today|create|quick-build|onboarding|generate|round-timer|session-timer|sparring|log-training)(\/|$)/.test(pathname)) return;
+    try {
+      if (window.sessionStorage.getItem(PWA_INSTAGRAM_EXIT_SEEN_KEY) !== null) return;
+    } catch { /* In-memory guard still prevents repeats during this visit. */ }
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible" || document.querySelector('dialog[open], [aria-modal="true"]')) return;
+      window.clearInterval(timer);
+      setGuide("instagram");
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [isInstalled, guide, pathname]);
+
+  useEffect(() => {
     let timer: ReturnType<typeof setInterval> | undefined;
     const resolveGuide = () => {
+      if (isInstagramBrowser(navigator.userAgent)) return null;
       if (availability.current === "native") return "native";
       if (availability.current !== "ios-manual") return null;
       const browser = resolveIosInstallBrowser(navigator.userAgent);
@@ -135,7 +184,13 @@ export function InstallPrompt() {
       release();
       return;
     }
-    if (node.open) rememberInstallPromptSeen(window.localStorage);
+    if (node.open) {
+      if (guide === "instagram") {
+        instagramOffered.current = true;
+        try { window.sessionStorage.setItem(PWA_INSTAGRAM_EXIT_SEEN_KEY, "1"); }
+        catch { /* Only the current visit can be remembered. */ }
+      } else rememberInstallPromptSeen(window.localStorage);
+    }
     return () => {
       node.close();
       release();
@@ -164,9 +219,11 @@ export function InstallPrompt() {
         <Image src="/brand/unlxck-one-angle-48.png" alt="" width={28} height={28} className={promptStyles.mark} />
         <p className={promptStyles.eyebrow}>GET UNLXCK ON YOUR PHONE</p>
       </div>
-      <h2 id="install-prompt-title"><span className={styles.headline}>Your training. One tap away.</span></h2>
+      <h2 id="install-prompt-title"><span className={styles.headline}>{guide === "instagram" ? "Open UNLXCK outside Instagram." : "Your training. One tap away."}</span></h2>
       <p id="install-prompt-description" className={`${promptStyles.description} ${styles.description}`}>
-        Add UNLXCK to your Home Screen, like an app.
+        {guide === "instagram"
+          ? "Open UNLXCK in your phone’s browser to add it to your Home Screen."
+          : "Add UNLXCK to your Home Screen, like an app."}
       </p>
       {guide === "native" ? (
         <button type="button" className={promptStyles.enable} onClick={() => void install()} disabled={busy}>
@@ -174,18 +231,28 @@ export function InstallPrompt() {
         </button>
       ) : (
         <>
-          <ol className={styles.steps} aria-label="Add UNLXCK to your Home Screen">
-            {IOS_STEPS[guide!].map((step) => (
+          <ol className={styles.steps} aria-label={guide === "instagram" ? "Open UNLXCK outside Instagram" : "Add UNLXCK to your Home Screen"}>
+            {(guide === "instagram" ? INSTAGRAM_STEPS : IOS_STEPS[guide!]).map((step) => (
               <li key={step.title}>
                 <span className={styles.stepIcon}>{step.icon}</span>
                 <span><strong>{step.title}</strong><small>{step.hint}</small></span>
               </li>
             ))}
           </ol>
-          <p className={styles.done}>That’s it. UNLXCK will be on your Home Screen.</p>
-          <button type="button" className={promptStyles.enable} onClick={() => dismiss()}>
-            Got it<AddIcon />
+          <p className={styles.done}>{guide === "instagram"
+            ? "Can’t see that option? Copy the link instead."
+            : "That’s it. UNLXCK will be on your Home Screen."}</p>
+          <button type="button" className={promptStyles.enable} onClick={guide === "instagram"
+            ? () => void copyCurrentPageLink().then((copied) => setCopyStatus(copied ? "copied" : "failed"))
+            : () => dismiss()}>
+            {guide === "instagram" ? (copyStatus === "copied" ? "Link copied" : "Copy link") : "Got it"}
+            {guide === "instagram" && copyStatus !== "copied" ? <CopyIcon /> : <AddIcon />}
           </button>
+          {guide === "instagram" ? <p className={styles.copyFeedback} role="status">
+            {copyStatus === "copied" ? "Paste it into your phone’s browser."
+              : copyStatus === "failed" ? "Couldn’t copy automatically. Use Instagram’s menu to copy the link."
+                : "Paste the link into your phone’s browser."}
+          </p> : null}
         </>
       )}
       <button type="button" className={promptStyles.later} disabled={busy} onClick={() => dismiss()}>Maybe later</button>
@@ -197,7 +264,9 @@ export function InstallUnlxck({ variant = "panel" }: { variant?: "panel" | "inli
   const { installAvailability, isInstalled, promptInstall } = usePwaRuntime();
   const canPromptInstall = installAvailability === "native";
   const isIos = installAvailability === "ios-manual";
+  const inInstagram = typeof navigator !== "undefined" && isInstagramBrowser(navigator.userAgent);
   const [showGuide, setShowGuide] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"copied" | "failed" | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
@@ -272,14 +341,15 @@ export function InstallUnlxck({ variant = "panel" }: { variant?: "panel" | "inli
       }
       return;
     }
-    if (isIos) {
+    if (isIos || inInstagram) {
+      setCopyStatus(null);
       setShowGuide(true);
     }
   }
 
   if (
     isInstalled !== false ||
-    (installAvailability !== "native" && installAvailability !== "ios-manual")
+    (!canPromptInstall && !isIos && !inInstagram)
   ) {
     return null;
   }
@@ -311,7 +381,7 @@ export function InstallUnlxck({ variant = "panel" }: { variant?: "panel" | "inli
             <div className="pwa-install-sheet-header">
               <div>
                 <p className="pwa-install-label">Add to your device</p>
-                <h2 id="pwa-install-sheet-title">Install UNLXCK</h2>
+                <h2 id="pwa-install-sheet-title">{inInstagram ? "Open in your browser" : "Install UNLXCK"}</h2>
               </div>
               <button ref={closeRef} type="button" className="pwa-install-sheet-close" onClick={() => closeGuide()} aria-label="Close install instructions">
                 <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -320,21 +390,37 @@ export function InstallUnlxck({ variant = "panel" }: { variant?: "panel" | "inli
               </button>
             </div>
             <p id="pwa-install-sheet-description" className="muted">
-              {sheetBrowser === "unsupported"
-                ? "This browser can’t add to Home Screen. Open UNLXCK in Safari, then:"
-                : "Your browser’s Share menu adds UNLXCK to your Home Screen."}
+              {inInstagram
+                ? "Open UNLXCK in your phone’s browser first. Use Instagram’s menu:"
+                : sheetBrowser === "unsupported"
+                  ? "This browser can’t add to Home Screen. Open UNLXCK in Safari, then:"
+                  : "Your browser’s Share menu adds UNLXCK to your Home Screen."}
             </p>
             <ol className="pwa-install-steps">
-              {IOS_STEPS[sheetBrowser === "unsupported" ? "safari" : sheetBrowser].map((step) => (
+              {(inInstagram ? INSTAGRAM_STEPS : IOS_STEPS[sheetBrowser === "unsupported" ? "safari" : sheetBrowser]).map((step) => (
                 <li key={step.title}>
                   <span className="pwa-install-step-icon">{step.icon}</span>
                   <span><strong>{step.title}</strong><small>{step.hint}</small></span>
                 </li>
               ))}
             </ol>
-            <button type="button" className="ghost-button pwa-install-sheet-done" onClick={() => closeGuide()}>
-              Done
-            </button>
+            {inInstagram ? (
+              <>
+                <button type="button" className="cta pwa-install-sheet-done" onClick={() =>
+                  void copyCurrentPageLink().then((copied) => setCopyStatus(copied ? "copied" : "failed"))}>
+                  {copyStatus === "copied" ? "Link copied" : "Copy link"}
+                </button>
+                <p className={styles.copyFeedback} role="status">
+                  {copyStatus === "copied" ? "Paste it into your phone’s browser."
+                    : copyStatus === "failed" ? "Couldn’t copy automatically. Use Instagram’s menu to copy the link."
+                      : "No open-in-browser option? Copy this link instead."}
+                </p>
+              </>
+            ) : (
+              <button type="button" className="ghost-button pwa-install-sheet-done" onClick={() => closeGuide()}>
+                Done
+              </button>
+            )}
           </section>
         </div>,
         document.body,
@@ -357,7 +443,7 @@ export function InstallUnlxck({ variant = "panel" }: { variant?: "panel" | "inli
             className="secondary-button pwa-install-inline-button"
             onClick={() => void handleInstall()}
           >
-            {canPromptInstall ? "Install UNLXCK" : "View iPhone steps"}
+            {canPromptInstall ? "Install UNLXCK" : inInstagram ? "View browser steps" : "View iPhone steps"}
           </button>
         </div>
         {installSheet}
@@ -384,7 +470,7 @@ export function InstallUnlxck({ variant = "panel" }: { variant?: "panel" | "inli
         </div>
         <div className="pwa-install-actions">
           <button ref={triggerRef} type="button" className="cta" onClick={() => void handleInstall()}>
-            {canPromptInstall ? "Install UNLXCK" : "View iPhone steps"}
+            {canPromptInstall ? "Install UNLXCK" : inInstagram ? "View browser steps" : "View iPhone steps"}
           </button>
         </div>
       </div>

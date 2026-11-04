@@ -35,6 +35,7 @@
     "plan": "Plano",
     "planMeta": "Planos ativos e salvos",
     "history": "História",
+    "historyHint": "Veja todo o seu treino em História",
     "historyMeta": "Sessões, check-ins, lesões",
     "timer": "Cronômetro de rounds",
     "timerMeta": "Rounds e descanso, a qualquer hora",
@@ -159,7 +160,7 @@
     "resendIn": "Reenviar código em {seconds} s",
     "codeResent": "Um novo código está a caminho.",
     "differentEmail": "Usar outro e-mail",
-    "linkFallback": "Você também pode tocar no link do e-mail.",
+    "linkFallback": "Digite aqui o código recebido por e-mail para concluir o cadastro.",
     "invalidCode": "Código incorreto ou expirado. Confira ou peça um novo."
   },
   "Workspace": {

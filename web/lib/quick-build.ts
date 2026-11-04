@@ -32,6 +32,9 @@ export type QuickBuildInput = {
   technical_style: string[];
   tactical_style: string[];
   fight_date: string;
+  event_name?: string;
+  /** Target fight weight in kg; only with a fight date, never for under-18s. */
+  target_weight_kg?: number | null;
   no_scheduled_fight: boolean;
   rounds_format: string;
   weekly_training_frequency: number;
@@ -65,17 +68,17 @@ export function emptyQuickBuildInput(fullName = ""): QuickBuildInput {
   };
 }
 
+function normalizeTrainingDays(values: string[] | undefined): string[] {
+  return (values ?? []).map((day) =>
+    TRAINING_AVAILABILITY_OPTIONS.find((option) => option.value.toLowerCase() === day.trim().toLowerCase())?.value,
+  ).filter((day): day is string => Boolean(day));
+}
+
 export function planRequestToQuickBuildInput(plan: PlanRequest): QuickBuildInput {
   const guidedInjuries = plan.guided_injuries?.length ? plan.guided_injuries : plan.guided_injury ? [plan.guided_injury] : [];
-  const trainingAvailability = retainKnownOptionValues(
-    plan.training_availability ?? [],
-    TRAINING_AVAILABILITY_OPTIONS,
-  );
-  const weeklyFrequencyRaw = plan.weekly_training_frequency ?? 4;
-  const weeklyFrequency = Math.min(
-    Math.max(Number.isFinite(weeklyFrequencyRaw) ? weeklyFrequencyRaw : 4, 1),
-    14,
-  );
+  const trainingAvailability = normalizeTrainingDays(plan.training_availability);
+  // Preserve legacy session counts until the athlete explicitly selects days.
+  const weeklyFrequency = plan.weekly_training_frequency ?? 4;
   return {
     full_name: plan.athlete?.full_name ?? "",
     technical_style: retainKnownOptionValues(
@@ -87,20 +90,17 @@ export function planRequestToQuickBuildInput(plan: PlanRequest): QuickBuildInput
       TACTICAL_STYLE_OPTIONS,
     ).slice(0, 1),
     fight_date: plan.no_scheduled_fight ? "" : (plan.fight_date ?? ""),
+    event_name: plan.no_scheduled_fight ? "" : (plan.event_name ?? ""),
+    target_weight_kg: plan.no_scheduled_fight ? null : (plan.athlete?.target_weight_kg ?? null),
     no_scheduled_fight: Boolean(plan.no_scheduled_fight),
     rounds_format: plan.rounds_format || "3 x 3",
     weekly_training_frequency: weeklyFrequency,
     training_availability: trainingAvailability,
-    hard_sparring_days: retainKnownOptionValues(
-      plan.hard_sparring_days ?? [],
-      TRAINING_AVAILABILITY_OPTIONS,
-    )
+    hard_sparring_days: normalizeTrainingDays(plan.hard_sparring_days)
       .filter((day) => trainingAvailability.includes(day))
       .slice(0, HARD_SPARRING_DAY_CAP),
-    support_work_days: retainKnownOptionValues(
-      plan.support_work_days ?? [],
-      TRAINING_AVAILABILITY_OPTIONS,
-    ).filter((day) => trainingAvailability.includes(day)),
+    support_work_days: normalizeTrainingDays(plan.support_work_days)
+      .filter((day) => trainingAvailability.includes(day)),
     equipment_access: retainKnownOptionValues(
       canonicalizeEquipmentAccessValues(plan.equipment_access ?? []),
       EQUIPMENT_ACCESS_OPTIONS,
@@ -166,6 +166,9 @@ export function validateQuickBuildInput(
   if (input.tactical_style.length > 1) {
     errors.tactical_style = "Pick only one tactical style.";
   }
+  if (!input.no_scheduled_fight && input.target_weight_kg != null && !(Number.isFinite(input.target_weight_kg) && input.target_weight_kg > 0)) {
+    errors.target_weight_kg = "Enter your target weight in kg.";
+  }
   if (input.no_scheduled_fight) {
     if (input.fight_date) {
       errors.fight_date = "Clear the fight date or turn off \"no scheduled fight\".";
@@ -182,13 +185,13 @@ export function validateQuickBuildInput(
   if (!ROUNDS_FORMAT_PATTERN.test(input.rounds_format)) {
     errors.rounds_format = "Pick a rounds format.";
   }
-  if (!Number.isInteger(input.weekly_training_frequency) || input.weekly_training_frequency < 1 || input.weekly_training_frequency > 14) {
-    errors.weekly_training_frequency = "Sessions per week must be between 1 and 14.";
+  if (!Number.isInteger(input.weekly_training_frequency) || input.weekly_training_frequency < 1 || input.weekly_training_frequency > 7) {
+    errors.weekly_training_frequency = "Training days per week must be between 1 and 7.";
   }
   if (input.training_availability.length === 0) {
     errors.training_availability = "Choose at least one training day.";
-  } else if (input.weekly_training_frequency > input.training_availability.length * 2) {
-    errors.training_availability = "Allow up to two sessions per selected training day.";
+  } else if (input.weekly_training_frequency > input.training_availability.length) {
+    errors.training_availability = "Training days per week cannot exceed selected available days.";
   }
   const combatSchedule = getSparringConsistency(
     input.training_availability,
@@ -207,6 +210,9 @@ export function validateQuickBuildInput(
     errors.key_goals = "Choose at least one focus.";
   } else if (input.key_goals.length > QUICK_BUILD_KEY_GOAL_CAP) {
     errors.key_goals = `Pick at most ${QUICK_BUILD_KEY_GOAL_CAP} goals.`;
+  }
+  if (input.key_goals.some((goal) => KEY_GOAL_OPTIONS.some((option) => option.value === goal && option.disabled))) {
+    errors.key_goals = "Selected goal is not available.";
   }
   if (input.weak_areas.length > QUICK_BUILD_WEAK_AREA_CAP) {
     errors.weak_areas = `Pick at most ${QUICK_BUILD_WEAK_AREA_CAP} weak areas.`;
@@ -241,6 +247,7 @@ export function quickBuildToPlanRequest(
   const base = emptyPlanRequest(trimmedName);
   const keyGoals = retainKnownOptionValues(input.key_goals, KEY_GOAL_OPTIONS);
   const weakAreas = retainKnownOptionValues(input.weak_areas, WEAK_AREA_OPTIONS);
+  const trainingAvailability = normalizeTrainingDays(input.training_availability);
   const plan: PlanRequest = {
     ...base,
     athlete: {
@@ -250,20 +257,22 @@ export function quickBuildToPlanRequest(
       tactical_style: retainKnownOptionValues(input.tactical_style, TACTICAL_STYLE_OPTIONS),
       // A saved profile timezone always wins; the device zone only seeds a first-time setup.
       athlete_timezone: options?.savedTimeZone?.trim() || base.athlete.athlete_timezone || detectDeviceTimeZone(),
+      target_weight_kg: input.no_scheduled_fight ? null : (input.target_weight_kg ?? null),
     },
     fight_date: input.no_scheduled_fight ? "" : input.fight_date,
+    event_name: input.no_scheduled_fight ? "" : (input.event_name ?? "").trim(),
     no_scheduled_fight: input.no_scheduled_fight,
     rounds_format: input.rounds_format || "3 x 3",
     weekly_training_frequency: input.weekly_training_frequency,
     // Quick Build does not ask for fatigue. Do not turn absence into a health
     // self-report; JSON serialization omits this optional field.
     fatigue_level: undefined,
-    training_availability: retainKnownOptionValues(input.training_availability, TRAINING_AVAILABILITY_OPTIONS),
-    hard_sparring_days: retainKnownOptionValues(input.hard_sparring_days, TRAINING_AVAILABILITY_OPTIONS)
-      .filter((day) => input.training_availability.includes(day))
+    training_availability: trainingAvailability,
+    hard_sparring_days: normalizeTrainingDays(input.hard_sparring_days)
+      .filter((day) => trainingAvailability.includes(day))
       .slice(0, HARD_SPARRING_DAY_CAP),
-    support_work_days: retainKnownOptionValues(input.support_work_days, TRAINING_AVAILABILITY_OPTIONS)
-      .filter((day) => input.training_availability.includes(day)),
+    support_work_days: normalizeTrainingDays(input.support_work_days)
+      .filter((day) => trainingAvailability.includes(day)),
     equipment_access: retainKnownOptionValues(
       canonicalizeEquipmentAccessValues(input.equipment_access),
       EQUIPMENT_ACCESS_OPTIONS,

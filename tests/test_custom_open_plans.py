@@ -1,23 +1,24 @@
 """Custom prescriptions use the shared Open Plan execution and history paths."""
 import copy
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
 
 from api.contracts.injury_policy import reconcile_session_prescription
-from api.models import PlanRequest
+from api.models import PlanRequest, TodayCheckinRequest
 from api.plan_mappers import _map_plan_detail, _map_profile_row
 from api.services.active_plan import set_active_plan
 from api.services.custom_plans import custom_open_plan_result
 from api.services.open_plan_timeline import project_open_structured_plan
 from api.services.plan_schedule import resolve_current_week
 from api.services.streaks import qualifying_training_days
-from api.services.today_service import _structured_day_for_training_day, resolve_training_day
+from api.services.today_service import (_structured_day_for_training_day, build_today_command_view,
+                                        resolve_training_day, submit_today_checkin)
 from api.services.training_library import cache
 from api.structured_plan_models import StructuredTrainingPlan
-from tests.support import _build_client
+from tests.support import _build_client, clear_compliance
 
 AUTH = {"Authorization": "Bearer athlete-token"}
 OTHER = {"Authorization": "Bearer admin-token"}
@@ -111,6 +112,93 @@ def test_publication_validates_exact_doses_and_uses_shared_detail(api):
     assert detail["structured_card_state"]["state"] == "live"
     assert detail["schedule_context"]["projection_status"] == "projected"
     assert len(detail["outputs"]["structured_plan"]["weeks"]) == 4
+
+
+def test_publishing_first_custom_plan_activates_it_via_route(api):
+    client, store = api
+
+    def conditional(athlete_id, plan_id, expected_id, current_training_day=None):
+        if store.get_active_plan_id(athlete_id) != expected_id:
+            return False
+        remaining = [row for row in store.list_user_plans(athlete_id) if row["status"] != "archived"]
+        if len(remaining) != 1 or remaining[0]["id"] != plan_id:
+            return False
+        store.set_active_plan_id(athlete_id, plan_id)
+        return True
+
+    store.try_set_active_plan_id = conditional
+    _, plan_id = publish(client, body())
+    assert store.get_active_plan_id("athlete-1") == plan_id
+    assert client.get("/api/plans/active", headers=AUTH).json()["plan_id"] == plan_id
+
+
+def test_self_built_plan_works_without_onboarding_intake():
+    client, store, _ = _build_client()
+    assert store.get_latest_intake("athlete-1") is None
+    day = resolve_training_day(None)
+    weekday = WEEKDAYS[date.fromisoformat(day).weekday()]
+    draft, plan_id = publish(client, body(weekday))
+    row = store.plans[plan_id]
+    assert row["intake_id"] is None
+    monday = date.fromisoformat(day) - timedelta(days=date.fromisoformat(day).weekday())
+    row["created_at"] = f"{monday}T12:00:00+00:00"
+    row["planning_brief"]["athlete_snapshot"]["plan_creation_weekday"] = "Mon"
+    assert client.get(f"/api/plans/{plan_id}", headers=AUTH).json()["custom_plan_id"] == draft["id"]
+    assert client.post(f"/api/plans/{plan_id}/set-active", headers=AUTH).status_code == 200
+    today = client.get("/api/today", headers=AUTH)
+    assert today.status_code == 200, today.text
+    session = _structured_day_for_training_day(store.plans[plan_id], day)[0]["sessions"][0]
+    assert today.json()["today"]["next_session"]["session_id"] == session["session_id"]
+    checkin(client, plan_id)
+    complete(client, plan_id, session["session_id"], "started")
+    logged = client.post("/api/today/exercise-log", headers=AUTH, json={
+        "plan_id": plan_id, "block_id": session["blocks"][0]["block_id"], "status": "as_prescribed",
+    })
+    assert logged.status_code == 201, logged.text
+    complete(client, plan_id, session["session_id"], "done")
+    assert any(log["status"] == "done" for log in store.session_completions["athlete-1"])
+    history = client.get("/api/today/session-completions", headers=AUTH)
+    assert history.status_code == 200, history.text
+    assert any(log["session_id"] == session["session_id"] for log in history.json())
+
+
+def test_intake_free_prestart_checkin_uses_custom_phase_without_starting_session():
+    client, store, _ = _build_client()
+    _, plan_id = publish(client, body("Monday"))
+    row = store.plans[plan_id]
+    assert row["intake_id"] is None
+    row["created_at"] = "2026-11-01T12:00:00+00:00"
+    row["planning_brief"]["athlete_snapshot"]["plan_creation_weekday"] = "Sun"
+    assert client.post(f"/api/plans/{plan_id}/set-active", headers=AUTH).status_code == 200
+
+    now = datetime(2026, 11, 1, 14, tzinfo=timezone.utc)
+    before = build_today_command_view(store, athlete_id="athlete-1", athlete_timezone=None, now=now)
+    assert before.active_plan["phase"] == "GPP"
+    assert before.today.session_scope == "next"
+    assert before.today.next_session["calendar_date"] == "2026-11-02"
+    assert before.session_hold is None
+    checkin = submit_today_checkin(store, athlete_id="athlete-1", athlete_timezone=None,
+                                   payload=TodayCheckinRequest(plan_id=plan_id, phase=before.active_plan["phase"],
+                                                               sleep="good", body="normal", pain="none").model_dump(),
+                                   now=now)
+    assert checkin["plan_id"] == plan_id and checkin["phase"] == "GPP"
+    after = build_today_command_view(store, athlete_id="athlete-1", athlete_timezone=None, now=now)
+    assert after.today.session_scope == "next"
+
+
+def test_intake_free_publication_still_requires_age_and_terms():
+    client, store, _ = _build_client()
+    draft = client.post("/api/custom-plans", headers=AUTH, json=body()).json()
+    endpoint = f"/api/custom-plans/{draft['id']}/open-plan"
+    clear_compliance(store)
+    assert client.post(endpoint, headers=AUTH).json()["detail"]["code"] == "date_of_birth_required"
+    store.record_compliance_acceptance("athlete-1", date_of_birth="1996-05-04")
+    assert client.post(endpoint, headers=AUTH).json()["detail"]["code"] == "terms_acceptance_required"
+    store.record_compliance_acceptance("athlete-1", accept_terms=True)
+    assert store.get_latest_intake("athlete-1") is None
+    published = client.post(endpoint, headers=AUTH)
+    assert published.status_code == 200, published.text
+    assert store.plans[published.json()["plan_id"]]["intake_id"] is None
 
 
 def test_retry_has_one_published_plan_and_ownership_is_enforced(api):

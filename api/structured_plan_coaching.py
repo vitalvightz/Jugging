@@ -63,7 +63,7 @@ def _recover_programming(block: dict, role: dict, assignment: dict, context: dic
                          athlete: dict, brief: dict, source: dict | None = None) -> None:
     matches = _dose_matches(block, role, assignment)
     if source is not None:
-        for key in ("progression_rule", "regression_options"):
+        for key in ("progression_rule", "regression_options", "substitutions"):
             if source.get(key):
                 block[key] = deepcopy(source[key])
             else:
@@ -81,9 +81,16 @@ def recover_selected_coaching(plan: dict[str, Any], brief: dict[str, Any],
     if brief.get("custom_plan"):
         return plan
     plan = recover_execution_instructions(plan)
-    from fightcamp.exercise_coaching_source import source_coaching, validate_source_coaching, coaching_identity
+    from fightcamp.exercise_coaching_source import (
+        source_coaching, validate_source_coaching, coaching_identity, lookup_occurrence)
     validated_text, _ = validate_source_coaching(brief, source_text)
     authored = source_coaching(validated_text)
+    card_keys = [
+        (int(str(day.get("countdown_label"))[2:]) if str(day.get("countdown_label") or "")[2:].isdigit() else None,
+         coaching_identity(session.get("title")), coaching_identity(block.get("display_name")))
+        for week in nested_rows(plan, "weeks") for day in nested_rows(week, "days") if isinstance(day, dict)
+        for session in nested_rows(day, "sessions") if isinstance(session, dict)
+        for block in nested_rows(session, "blocks") if isinstance(block, dict)]
     selected = {}
     for week in (brief.get("weekly_role_map") or {}).get("weeks") or []:
         for role in week.get("session_roles") or []:
@@ -158,8 +165,8 @@ def recover_selected_coaching(plan: dict[str, Any], brief: dict[str, Any],
                             continue  # Adjustment notes are owned by the final-session LLM.
                         if value and not block.get(field):
                             block[field] = deepcopy(value)
-                    source = authored.get((offset, coaching_identity(session.get("title")),
-                                           coaching_identity(block.get("display_name"))))
+                    source = lookup_occurrence(authored, (offset, coaching_identity(session.get("title")),
+                                                          coaching_identity(block.get("display_name"))), card_keys)
                     _recover_programming(block, role, assignment, programming_context,
                                          brief.get("athlete_snapshot") or {}, brief,
                                          source["fields"] if source else None)

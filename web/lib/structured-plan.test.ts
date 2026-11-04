@@ -1605,3 +1605,30 @@ test("cluster helpers need two named components and a round count", () => {
   assert.equal(formatRestNote({ rest_note: "Full rest between holds" }), "Full");
   assert.equal(formatRestNote({ rest_note: "Walk back" }), "Walk back");
 });
+
+test("legacy raw contact label renders without altering converted-contact semantics", () => {
+  const day = {
+    countdown_label: "D-6",
+    today_card: { headline: "Lower strength", coach_led_contact: "technical_combat" },
+    sessions: [{ session_id: "strength", title: "Lower strength", blocks: [] }],
+  };
+  const contact = getCoachLedContactView(day);
+  assert.equal(contact?.kind, "technical");
+  assert.equal(contact?.title, "Technical rhythm only");
+  assert.equal(contact?.converted, true);
+  assert.equal(day.today_card.coach_led_contact, "technical_combat");
+
+  const sessionless = classifySessionlessDay({
+    countdown_label: "D-6", today_card: { headline: "technical_combat" }, sessions: [],
+  });
+  assert.equal(sessionless.kind, "technical");
+  assert.equal(sessionless.title, "Technical rhythm only");
+
+  const declared = getCoachLedContactView({
+    planning_day_role_keys: ["light_combat_day"],
+    today_card: { coach_led_contact: "technical_combat" },
+  });
+  assert.equal(declared?.kind, "light_combat");
+  assert.equal(declared?.title, "Technical Combat");
+  assert.equal(declared?.converted, false);
+});

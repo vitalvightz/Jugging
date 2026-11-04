@@ -1,6 +1,8 @@
 "use client";
 
 import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import Link from "next/link";
+import type { ShownFocus } from "@/lib/training-focus";
 import { ExerciseGlyphIcon, type ExerciseGlyphName } from "./exercise-glyph";
 import { getRehabExerciseGuide, rehabExerciseTarget } from "@/lib/rehab-exercise-guide";
 
@@ -76,12 +78,13 @@ import {
 } from "@/lib/rehab-label";
 import { useTrainingDay } from "@/lib/use-training-day";
 import { describeRelativeDay, formatAppDate } from "@/lib/date-format";
-import { buildPlanCalendar, calendarCaption } from "@/lib/plan-calendar";
+import { buildPlanCalendar, calendarCaption, CALENDAR_WEEKDAYS } from "@/lib/plan-calendar";
 import { resolveFiniteWeekNumber } from "@/lib/plan-format";
 import { PlanCalendar } from "@/components/plan-calendar";
 import {
   DECLARED_LIGHT_COMBAT_TITLE,
   formatPlanLabel,
+  humanizeIfRawEnum,
   isDeclaredLightCombatTitle,
   stripLeadingWeekday,
 } from "@/lib/plan-labels";
@@ -372,9 +375,17 @@ const PlanSourceTextContext = createContext<string | null>(null);
 // plan: only the Today screen turns them on for its exercise rows.
 const ExerciseRationaleContext = createContext(false);
 
-/** Shows each exercise's "Builds" / "Why today" lines inside it (Today only). */
-export function ExerciseRationaleProvider({ children }: { children: ReactNode }) {
-  return <ExerciseRationaleContext.Provider value>{children}</ExerciseRationaleContext.Provider>;
+// UNLXCK cues keyed by block_id, each shown under its own exercise (Today only).
+export type ExerciseCues = { cues: Record<string, ShownFocus>; onDismiss?: (id: string) => void };
+const ExerciseCueContext = createContext<ExerciseCues | null>(null);
+
+/** Shows each exercise's "Builds" / "Why today" lines and its UNLXCK cue inside it (Today only). */
+export function ExerciseRationaleProvider({ children, cues = null }: { children: ReactNode; cues?: ExerciseCues | null }) {
+  return (
+    <ExerciseRationaleContext.Provider value>
+      <ExerciseCueContext.Provider value={cues}>{children}</ExerciseCueContext.Provider>
+    </ExerciseRationaleContext.Provider>
+  );
 }
 const PlanSafetyTextContext = createContext<string[]>([]);
 
@@ -740,6 +751,50 @@ function ExerciseGlyph({ block }: { block: StructuredBlock }) {
   return <ExerciseGlyphIcon name={exerciseGlyph(block)} />;
 }
 
+// A planner presentation group (the Core Development block) is a server-owned
+// block tag. Consecutive members render under one collapsible header; every
+// member stays its own ExerciseRow, so each is still swappable, editable,
+// completable and logged on its own.
+const COMPONENT_GROUP_LABELS: Record<string, string> = { core_development: "Core Development" };
+
+function blockComponentGroup(block: StructuredBlock): string | null {
+  return (block.tags ?? []).find(tag => Object.prototype.hasOwnProperty.call(COMPONENT_GROUP_LABELS, tag)) ?? null;
+}
+
+export function groupBlockRows(
+  blocks: StructuredBlock[],
+  renderRow: (block: StructuredBlock, index: number) => ReactNode,
+): ReactNode[] {
+  // Every member of a group renders inside one section placed at its first
+  // member, even when the written plan interleaved another exercise between
+  // them. Each member keeps its own row and original index (swap, edit, log).
+  const groups = new Map<string, number[]>();
+  blocks.forEach((block, index) => {
+    const group = blockComponentGroup(block);
+    if (group) groups.set(group, [...(groups.get(group) ?? []), index]);
+  });
+  const rows: ReactNode[] = [];
+  blocks.forEach((block, index) => {
+    const group = blockComponentGroup(block);
+    const members = group ? groups.get(group) ?? [] : [];
+    if (!group || members.length < 2) {
+      rows.push(renderRow(block, index));
+      return;
+    }
+    if (members[0] !== index) return;
+    rows.push(
+      <details key={`group-${group}-${index}`} className="ex-group" open>
+        <summary className="ex-group-head">
+          <span>{COMPONENT_GROUP_LABELS[group]}</span>
+          <span className="ex-group-count">{members.length} exercises</span>
+        </summary>
+        <div className="ex-group-rows">{members.map(member => renderRow(blocks[member], member))}</div>
+      </details>,
+    );
+  });
+  return rows;
+}
+
 /**
  * One exercise in a session: a compact row (name, headline stat, demo thumbnail)
  * that expands to the demo, what the exercise builds, why it is in today's
@@ -784,6 +839,8 @@ export function ExerciseRow({
   const whyTodayRaw = showRationale ? athleteFacingRationale(block.why_today) : null;
   const whyToday = sameCopy(builds, whyTodayRaw) ? null : whyTodayRaw;
   const leadCue = getBlockExecutionDisplay(block).cues[0] ?? null;
+  const cueContext = useContext(ExerciseCueContext);
+  const unlxckCue = block.block_id ? cueContext?.cues[block.block_id] ?? null : null;
   // Matches the demo's first render (facade, not yet known to be watched), so
   // the server markup and hydration never print the lead cue twice.
   const [leadCuePinned, setLeadCuePinned] = useState(Boolean(media && leadCue));
@@ -845,6 +902,18 @@ export function ExerciseRow({
           {!compact && !open && detail === "inline" && compactStopRule ? <span className="ex-row-stop">
             <span className="sp-stat-label">Stop rule</span>{compactStopRule}
           </span> : null}
+          {unlxckCue ? (
+            <p className="ex-row-cue">
+              <span className="sp-stat-label">UNLXCK CUE</span>
+              {unlxckCue.text}
+              {unlxckCue.id && cueContext?.onDismiss ? (
+                <button type="button" className="today-session-focus-dismiss" aria-label="Dismiss this UNLXCK cue"
+                  onClick={() => cueContext.onDismiss?.(unlxckCue.id!)}>
+                  Dismiss
+                </button>
+              ) : null}
+            </p>
+          ) : null}
         </div>
         {/* Collapsed rows show which exercises have a demo; open, the demo
             itself is right below. On the right so every title lines up. */}
@@ -1224,17 +1293,20 @@ export function SessionCard({
   }, [defaultOpenBlocks]);
 
   const card = day?.today_card;
-  const title = stripLeadingWeekday(
+  const title = humanizeIfRawEnum(stripLeadingWeekday(
     ((session.blocks?.length ?? 0) > 0 && session.blocks!.every(isCalmRehabBlock) ? (cleanText(session.title) ?? "").replace(/rehab/gi, "guidance") : cleanText(session.title)) ||
     cleanText(card?.headline) ||
     titleize(cleanText(session.session_type) || "Session"),
-  );
+  ));
   const isDeclaredLightCombat = isDeclaredLightCombatTitle(title);
   const isTechnicalSession = /^(?:D[-−]\d+\s*[—–:-]\s*)?Technical[ -]only combat$/i.test(title);
   const sessionType = cleanText(session.session_type);
-  const isOptional = session.optional === true || /^Optional\b/i.test(cleanText(session.objective) ?? "");
-  const supportCard = planLayout && (isOptional || mentalSessionCategory(session) !== null || isCompactPlanSupportSession(session)
-    || (getBlocks(session).length > 0 && getBlocks(session).every(block => block.block_type === "mindset")));
+  // Only the server marks a session optional (api/optional_sessions.py); prose saying
+  // "Optional" never makes real training skippable or reshapes its card.
+  const isOptional = session.optional === true;
+  // One rule decides the compact card, so protocols and safety instructions never fold away.
+  const supportCard = planLayout && (isOptional || isCompactPlanSupportSession(session))
+    && !cleanText(card?.primary_warning) && !cleanText(card?.weight_cut_warning);
   const rawObjective = formatSessionObjective(session.objective);
   const objective = supportCard ? rawObjective?.replace(/^Optional[.:]\s*/i, "") || null : rawObjective;
   // A rationale that is just the session title again ("Strength" / "Why
@@ -1411,7 +1483,7 @@ export function SessionCard({
         <ExerciseSessionScope date={occurrenceDate ?? day?.date} session={session}>
           {blocks.length > 0 ? (
             <div className="sp-blocks ex-rows">
-              {blocks.map((block, index) => (
+              {groupBlockRows(blocks, (block, index) => (
                 <ExerciseRow
                   key={cleanText(block.block_id) || `block-${index}`}
                   block={block}
@@ -1485,7 +1557,7 @@ export function SessionCard({
       {isDeclaredLightCombat || isTechnicalSession ? (
         <CoachDayBox
           tag={isDeclaredLightCombat ? "Technical" : TECHNICAL_COMBAT_TAG}
-          heading={planLayout ? <h3 className="sp-session-title">{isDeclaredLightCombat ? DECLARED_LIGHT_COMBAT_TITLE : TECHNICAL_COMBAT_TITLE}<TechnicalCombatWhyTooltip day={day} declared={isDeclaredLightCombat} /></h3> : null}
+          heading={planLayout && !hideTitle ? <h3 className="sp-session-title">{isDeclaredLightCombat ? DECLARED_LIGHT_COMBAT_TITLE : TECHNICAL_COMBAT_TITLE}<TechnicalCombatWhyTooltip day={day} declared={isDeclaredLightCombat} /></h3> : null}
           tooltip={
             isDeclaredLightCombat
               ? hideTitle ? <TechnicalCombatWhyTooltip day={day} declared /> : null
@@ -1550,7 +1622,7 @@ export function SessionCard({
           {showDetails || planLayout ? (
             <ExerciseSessionScope date={occurrenceDate ?? day?.date} session={session}>
               <div id={detailsId} className="sp-blocks ex-rows">
-                {blocks.map((block, index) => (
+                {groupBlockRows(blocks, (block, index) => (
                   <ExerciseRow
                     key={cleanText(block.block_id) || `block-${index}`}
                     block={block}
@@ -1579,7 +1651,7 @@ export function SessionCard({
 
 export function TodayCard({ day }: { day: StructuredDay }) {
   const card = day.today_card;
-  const headline = cleanText(card?.headline);
+  const headline = humanizeIfRawEnum(cleanText(card?.headline));
   const readiness = cleanText(card?.readiness_status);
   const warning = cleanText(card?.primary_warning);
   const nutrition = cleanText(card?.nutrition_summary);
@@ -1675,7 +1747,7 @@ export function SessionlessDayCard({
       {boxed ? (
         <CoachDayBox
           tag={displayTag}
-          heading={!hideTitle ? <h3 className="sp-session-title">{sparring?.title ?? (isConverted ? TECHNICAL_COMBAT_TITLE : displayTitle)}{kind === "light_combat" || kind === "technical" ? <TechnicalCombatWhyTooltip day={day} declared={!isConverted} /> : null}</h3> : null}
+          heading={!hideTitle ? <h3 className="sp-session-title">{sparring?.title ?? displayTitle}{kind === "light_combat" || kind === "technical" ? <TechnicalCombatWhyTooltip day={day} declared={!isConverted} /> : null}</h3> : null}
           tooltip={hideTitle && (kind === "light_combat" || kind === "technical") ? <TechnicalCombatWhyTooltip day={day} declared={!isConverted} /> : null}
         >
           <SparringCaution text={sparring?.caution ?? null} />
@@ -2056,6 +2128,12 @@ function RestDayRow({
   );
 }
 
+function customDaySessionHref(day: StructuredDay, customPlanId?: string | null): string | null {
+  if (!customPlanId || !["rest", "recovery"].includes(day.day_type ?? "")) return null;
+  const weekday = CALENDAR_WEEKDAYS.find(value => value.toLowerCase() === (cleanText(day.weekday) || weekdayLabel(day.date ?? null))?.slice(0, 3).toLowerCase());
+  return weekday ? `/plans/custom?plan=${encodeURIComponent(customPlanId)}&addSession=${weekday}` : null;
+}
+
 function CompletionTag({ completion }: { completion: Completion }) {
   if (completion.total === 0) {
     return null;
@@ -2125,7 +2203,8 @@ function CalendarDayPanel({
   onLogSession,
   openOngoing,
   weekNumber,
-}: DayCompletionOptions & { day: StructuredDay; openOngoing: boolean; weekNumber: number }) {
+  addSessionHref,
+}: DayCompletionOptions & { day: StructuredDay; openOngoing: boolean; weekNumber: number; addSessionHref?: string | null }) {
   const rehabLabelPolicy = useContext(RehabLabelContext);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const sessions = getSessions(day);
@@ -2139,12 +2218,13 @@ function CalendarDayPanel({
   // coach-led contact block beside app work gets its own row ahead of it.
   const sessionless = sessions.length === 0 ? classifySessionlessDay(day) : null;
   const contact = sessions.length > 0 ? getCoachLedContactView(day) : null;
-  const coachTitle = sessionless?.title ?? contact?.title ?? null;
+  const restOnly = sessions.length === 0 && sessionless?.kind === "rest";
+  const coachTitle = restOnly ? null : sessionless?.title ?? contact?.title ?? null;
   type Item = { key: string; title: string; detail: string | null; glyph: ExerciseGlyphName; session?: StructuredSession };
   const items: Item[] = [
     ...(coachTitle ? [{ key: "coach", title: coachTitle, detail: null, glyph: "strength" as const }] : []),
     ...sessions.map((session, index): Item => {
-      const title = stripLeadingWeekday(cleanText(session.title) || titleize(cleanText(session.session_type) || "Session"));
+      const title = humanizeIfRawEnum(stripLeadingWeekday(cleanText(session.title) || titleize(cleanText(session.session_type) || "Session")));
       const duration = formatMeasured(session.planned_duration);
       const status = sessionCompletionInfo(day, session, completionOptions)?.display.label;
       const blocks = getBlocks(session);
@@ -2163,7 +2243,7 @@ function CalendarDayPanel({
     }),
   ];
   const opened = items.find(item => item.key === openKey) ?? null;
-  const coachOnly = sessions.length === 0;
+  const coachOnly = sessions.length === 0 && !restOnly;
 
   return (
     <section className="sp-card cm-cal-day" aria-label={`${heading} sessions`}>
@@ -2172,7 +2252,9 @@ function CalendarDayPanel({
           {heading}
           {countdown ? <span className="cm-cal-day-countdown">{countdown}</span> : null}
         </h3>
-        {coachOnly ? (
+        {restOnly ? (
+          <span className="cm-cal-day-kind"><span className="cm-cal-dot" data-state="rest" aria-hidden="true" />{day.day_type === "recovery" ? "Recovery day" : "Rest day"}</span>
+        ) : coachOnly ? (
           <span className="cm-cal-day-kind"><span className="cm-cal-dot" data-state="coach" aria-hidden="true" />Coach / gym day</span>
         ) : completion.total > 0 ? <CompletionTag completion={completion} /> : null}
       </header>
@@ -2191,6 +2273,7 @@ function CalendarDayPanel({
           </li>
         ))}
       </ul>
+      {addSessionHref ? <Link className="secondary-button" href={addSessionHref}>+ Add session</Link> : null}
       {opened ? (
         <InjuryDetailSheet title={opened.title} onClose={() => setOpenKey(null)}>
           <div className="injury-sheet-body cm-cal-day-sheet">
@@ -2236,6 +2319,7 @@ export function CampDayCard({
   onLogSession,
   dayIndex,
   openRequest,
+  addSessionHref,
 }: {
   day: StructuredDay;
   /** Truthful calendar date for a recurring weekday match. The stored projected
@@ -2263,6 +2347,7 @@ export function CampDayCard({
   dayIndex?: number;
   /** Explicit calendar/Today navigation reopens even a manually closed day. */
   openRequest?: object;
+  addSessionHref?: string | null;
 }) {
   const [open, setOpen] = useState<boolean>(Boolean(defaultOpen));
   const userToggledOpen = useRef(false);
@@ -2361,6 +2446,7 @@ export function CampDayCard({
         ) : (
           <SessionlessDayCard day={day} showDayLabels={false} />
         )}
+        {addSessionHref ? <Link className="secondary-button" href={addSessionHref}>+ Add session</Link> : null}
       </div>
     </details>
   );
@@ -2847,6 +2933,7 @@ export function StructuredPlanRenderer({
   rehabLabelPolicy,
   exerciseMedia,
   accessToken,
+  customPlanId,
 }: {
   plan: StructuredPlan;
   /** Renewable four-week plan without a scheduled fight date. */
@@ -2891,6 +2978,8 @@ export function StructuredPlanRenderer({
   /** Curated demo videos keyed by block display_name (PlanOutputs.exercise_media). */
   exerciseMedia?: Record<string, ExerciseMedia> | null;
   accessToken?: string | null;
+  /** Only the owning athlete's custom plan may add recurring sessions here. */
+  customPlanId?: string | null;
 }) {
   const weeks = getWeeks(plan);
   const completionIndex = useMemo(
@@ -3146,7 +3235,7 @@ export function StructuredPlanRenderer({
   const calendarDaySelection = useMemo(() => {
     if (view !== "calendar") return null;
     const cells = calendarRows.flatMap(row => row.cells)
-      .filter(cell => cell.weekPos !== null && cell.dayIndex !== null && cell.state !== "rest" && cell.state !== "outside");
+      .filter(cell => cell.weekPos !== null && cell.dayIndex !== null && cell.state !== "outside" && (customPlanId || cell.state !== "rest"));
     const pick = (weekPos: number | null | undefined, dayIndex: number | null | undefined) =>
       cells.find(cell => cell.weekPos === weekPos && cell.dayIndex === dayIndex);
     const cell = (calendarSelection && pick(calendarSelection.weekPos, calendarSelection.dayIndex))
@@ -3156,7 +3245,7 @@ export function StructuredPlanRenderer({
       || (calendarTodayIso ? cells.find(candidate => candidate.iso !== null && candidate.iso > calendarTodayIso) : undefined)
       || cells[0];
     return cell ? { weekPos: cell.weekPos as number, dayIndex: cell.dayIndex as number } : null;
-  }, [view, calendarRows, calendarSelection, focusProgress.currentWeekPos, focusProgress.currentDayPos, calendarTodayIso]);
+  }, [view, calendarRows, calendarSelection, focusProgress.currentWeekPos, focusProgress.currentDayPos, calendarTodayIso, customPlanId]);
   const calendarSelectedDay = calendarDaySelection
     ? getDays(weeks[calendarDaySelection.weekPos])[calendarDaySelection.dayIndex] ?? null
     : null;
@@ -3198,6 +3287,7 @@ export function StructuredPlanRenderer({
                 phaseFor={openOngoing ? undefined : (weekPos) =>
                   glossaryEntry(resolvedWeekPhase(weeks[weekPos]))?.term ?? weekPhaseLabel(weeks[weekPos])}
                 onSelectDay={selectCalendarDay}
+                allowRestSelection={Boolean(customPlanId)}
               />
               {calendarSelectedDay && calendarDaySelection ? (
                 <CalendarDayPanel
@@ -3209,6 +3299,7 @@ export function StructuredPlanRenderer({
                   currentTrainingDayIso={currentTrainingDayIso}
                   planStartIso={planStartIso}
                   onLogSession={onLogSession}
+                  addSessionHref={customDaySessionHref(calendarSelectedDay, customPlanId)}
                 />
               ) : null}
             </>
@@ -3284,7 +3375,7 @@ export function StructuredPlanRenderer({
 
                 // A pure rest day renders identically to a synthesized gap row,
                 // so real and filled-in rest days read as one continuous line.
-                if (isPlainRestDay(day)) {
+                if (isPlainRestDay(day) && !customPlanId) {
                   const restDate = cleanText(day.date);
                   const displayDay = isCurrent && focusProgress.matchType === "weekday"
                     ? { ...day, date: focusProgress.trainingDayISO } : day;
@@ -3294,7 +3385,7 @@ export function StructuredPlanRenderer({
                       dayIndex={index}
                       countdown={formatCountdownLabel(day.countdown_label)}
                       weekday={openOngoing ? openTimelineDayLabel(displayDay, safePos + 1, `Training day ${index + 1}`) : weekdayLabel(restDate)}
-                      label={cleanText(day.today_card?.headline) || "Rest"}
+                      label={humanizeIfRawEnum(cleanText(day.today_card?.headline)) || "Rest"}
                       isCurrent={isCurrent}
                       currentLabel={calendarProgress.currentWeekPos != null ? "Today" : focusLabel}
                     />
@@ -3326,6 +3417,7 @@ export function StructuredPlanRenderer({
                     currentTrainingDayIso={currentTrainingDayIso}
                     planStartIso={planStartIso}
                     onLogSession={onLogSession}
+                    addSessionHref={customDaySessionHref(day, customPlanId)}
                   />
                 );
               })

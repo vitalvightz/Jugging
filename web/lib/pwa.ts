@@ -2,6 +2,7 @@ export const PWA_DISPLAY_MODE_QUERY = "(display-mode: standalone)";
 export const PWA_INSTALL_GUIDE_DISMISSED_KEY = "unlxck.pwaInstallGuideDismissedAt";
 // Separate from the Settings dismissal so existing users still get one offer.
 export const PWA_INSTALL_PROMPT_SEEN_KEY = "unlxck.pwaInstallPromptSeenAt";
+export const PWA_INSTAGRAM_EXIT_SEEN_KEY = "unlxck.pwaInstagramExitSeen";
 
 export type PwaInstallAvailability =
   | "checking"
@@ -39,12 +40,14 @@ export function resolvePwaInstallAvailability({
 
 export type IosInstallBrowser = "safari" | "safari-legacy" | "chrome" | "other" | "unsupported";
 
+export const isInstagramBrowser = (userAgent: string): boolean => /Instagram/i.test(userAgent);
+
 /** Which Add to Home Screen route this iOS browser offers. Safari 26 moved
  * Share under the toolbar's ••• menu; Chrome and other browsers reach the
  * same system sheet through their own Share action from iOS 16.4. In-app web
  * views (no Safari token, or a known app marker) cannot add to Home Screen. */
 export function resolveIosInstallBrowser(userAgent: string): IosInstallBrowser {
-  if (!/Safari\//.test(userAgent) || /FBAN|FBAV|Instagram|LinkedInApp|Snapchat|TikTok|musical_ly|Line\/|GSA\//.test(userAgent)) {
+  if (!/Safari\//.test(userAgent) || /FBAN|FBAV|LinkedInApp|Snapchat|TikTok|musical_ly|Line\/|GSA\//.test(userAgent) || isInstagramBrowser(userAgent)) {
     return "unsupported";
   }
   if (/CriOS\/|FxiOS\/|EdgiOS\/|OPiOS\/|OPT\/|DuckDuckGo\/|YaBrowser\//.test(userAgent)) {

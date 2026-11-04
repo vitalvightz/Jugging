@@ -18,6 +18,7 @@ FEATURES = (
     "feedback",
 )
 EVENT_FEATURES = {
+    "app_opened": "onboarding",
     "plan_opened": "plans",
     "plan_editor_opened": "plans",
     "plan_edited": "plans",
@@ -76,6 +77,34 @@ def summarize(
             first[aid] = min(first.get(aid, f["first_at"]), f["first_at"])
             last[aid] = max(last.get(aid, f["last_at"]), f["last_at"])
 
+    # Browser opens are not the only evidence of use. A page view or persisted
+    # user action also proves a visit; generated plans and errors do not.
+    visit_facts = [
+        f
+        for f in facts
+        if f["meaningful"] or f["action"] in (*EVENT_FEATURES, "page_viewed")
+    ]
+    seen, latest_action = {}, {}
+    visit_days = defaultdict(set)
+    for f in visit_facts:
+        aid = str(f["athlete_id"])
+        visit_days[aid].add(f["day"])
+        if aid not in seen or parse_utc_datetime(f["last_at"]) > parse_utc_datetime(
+            seen[aid]
+        ):
+            seen[aid] = f["last_at"]
+            latest_action[aid] = {"feature": f["feature"], "action": f["action"]}
+
+    def visitors(n):
+        since = (today - timedelta(days=n - 1)).isoformat()
+        return len({str(f["athlete_id"]) for f in visit_facts if f["day"] >= since})
+
+    browser_facts = [
+        f
+        for f in facts
+        if f["action"] in (*EVENT_FEATURES, "page_viewed", "frontend_error")
+    ]
+
     def active_users(since, until=today):
         return {
             aid
@@ -120,7 +149,8 @@ def summarize(
     event_ids = {
         str(f["athlete_id"])
         for f in selected
-        if f["action"] in (*EVENT_FEATURES, "frontend_error", "operation_failed")
+        if f["action"]
+        in (*EVENT_FEATURES, "page_viewed", "frontend_error", "operation_failed")
     }
     event_ids.update(
         str(t["athlete_id"])
@@ -333,9 +363,10 @@ def summarize(
                         str(f["athlete_id"])
                         for f in rows
                         if f["action"].endswith("_opened")
+                        or f["action"] == "page_viewed"
                     }
                 )
-                if optional_available and feature in ("plans", "history", "nutrition")
+                if optional_available
                 else None,
                 "actions": dict(actions),
             }
@@ -641,6 +672,25 @@ def summarize(
         return signals
 
     return {
+        "tracking_health": data.get("tracking_health"),
+        "tracking_since": data.get("tracking_since"),
+        "latest_browser_event": max(
+            (f["last_at"] for f in browser_facts), key=parse_utc_datetime, default=None
+        ),
+        "browser_reporting_athletes": len(
+            {
+                str(f["athlete_id"])
+                for f in browser_facts
+                if start.isoformat() <= f["day"]
+            }
+        ),
+        "seen_recently": sum(
+            parse_utc_datetime(t) >= now - timedelta(minutes=30) for t in seen.values()
+        ),
+        "no_visit_7d": len(athletes) - visitors(7),
+        "visitors_today": visitors(1),
+        "visitors_7d": visitors(7),
+        "visitors_30d": visitors(30),
         "friction_followup": friction_followup,
         "as_of": now.isoformat(),
         "coverage": coverage,
@@ -771,6 +821,16 @@ def summarize(
                 "full_name": (p.get("full_name") or "").strip() or None,
                 "email": (p.get("email") or "").strip() or None,
                 "registered_at": p["created_at"],
+                "last_seen": seen.get(str(p["id"])),
+                "latest_action": latest_action.get(str(p["id"])),
+                "visit_days_7": sum(
+                    d >= (today - timedelta(days=6)).isoformat()
+                    for d in visit_days[str(p["id"])]
+                ),
+                "visit_days_30": sum(
+                    d >= (today - timedelta(days=29)).isoformat()
+                    for d in visit_days[str(p["id"])]
+                ),
                 "signals": athlete_signals(str(p["id"])),
                 "first_activity": first.get(str(p["id"])),
                 "last_activity": last.get(str(p["id"])),

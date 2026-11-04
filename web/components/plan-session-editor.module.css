@@ -1,0 +1,5 @@
+.limit { margin: 0; font-size: 13px; color: var(--text-muted); }
+.scale { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 4px; }
+.notesLabel { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.notes { width: 100%; min-height: 48px; box-sizing: border-box; padding: 12px 14px; border: 1px solid var(--border-default); border-radius: 10px; background: var(--bg-panel); color: var(--text-primary); font: inherit; font-size: 16px; resize: vertical; }
+.notes:focus-visible { outline: 2px solid var(--brand-red); outline-offset: 1px; }

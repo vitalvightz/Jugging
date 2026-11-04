@@ -63,3 +63,13 @@ test("protected route redirects unauthenticated users to login", async ({ page, 
   await page.waitForURL("**/login", { timeout: 15_000 });
   expect(page.url()).toContain("/login");
 });
+
+test("emailed plan links keep their destination through login", async ({ page, baseURL }) => {
+  await isolateFromNetwork(page, baseURL ?? BASE_URL);
+  const planId = "11111111-2222-4333-8444-555555555555";
+  await page.goto(`/plans/${planId}`, { waitUntil: "domcontentloaded" });
+  await page.waitForURL((url) =>
+    url.pathname === "/login" && url.searchParams.get("next") === `/plans/${planId}`,
+    { timeout: 15_000 },
+  );
+});

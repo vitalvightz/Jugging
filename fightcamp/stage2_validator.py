@@ -349,6 +349,8 @@ _LATE_FIGHT_ANNOTATION_LABEL = re.compile(
     r"notes?|coach(?:ing)?\s+(?:note|cue)s?|coach\s+calls?|cues?|"
     r"duration|prescriptions?|intensity|"
     r"stop\s+rule|easier|"
+    # A Swap is a text suggestion beside the scheduled exercise, not membership.
+    r"swaps?|substitutions?|"
     # "progression / regression / stop" style labels in any order or combination
     # (e.g. "Progression/regression/stop:", "Regression/stop:", "Stop/regress -").
     r"(?:progress(?:ion)?s?|regress(?:ion)?s?|stop)"
@@ -401,7 +403,8 @@ _LIST_BULLET_PREFIX = re.compile(r"^\s*(?:[-*\u2022]\s*)?(?:\*\*?)?\s*")
 
 def _late_fight_line_is_annotation_or_task(line: str) -> bool:
     """True for descriptive annotation labels and non-exercise tactical tasks."""
-    stripped = _LIST_BULLET_PREFIX.sub("", (line or "").strip())
+    # "**Easier:**" is the same label the coaching parser reads as "Easier:".
+    stripped = _LIST_BULLET_PREFIX.sub("", (line or "").replace("**", "").strip())
     if not stripped:
         return False
     if _LATE_FIGHT_ANNOTATION_LABEL.match(stripped):
@@ -3185,7 +3188,7 @@ _AMBIGUOUS_WORKING_DOSE = re.compile(
     re.IGNORECASE,
 )
 _OPTIONAL_DOSE_LINE = re.compile(
-    r"^(?:easier|alternative|regression|stop|safety|red flags?|warning|limit|cap)\s*:",
+    r"^(?:easier|alternative|regression|swaps?|substitutions?|stop|safety|red flags?|warning|limit|cap)\s*:",
     re.IGNORECASE,
 )
 

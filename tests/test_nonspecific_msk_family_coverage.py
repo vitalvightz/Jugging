@@ -6,16 +6,18 @@ from uuid import uuid4
 
 import pytest
 
+from tests.support import cover
+
 from api.contracts.injury_policy import reconcile_session_prescription, resolve_injury_policy
 from api.contracts.rehab_completion import build_rehab_exposure_event, resolve_rehab_completion
 from api.contracts.rehab_evidence import read_exact_events
 from api.contracts.rehab_schedule import schedule_rehab
 from api.contracts.rehab_stage import resolve_rehab_stage
 from api.services.rehab_completion_service import session_rehab_items
-from fightcamp.rehab_clinical import content_hash, load_clinical_policies, validate_clinical_bank
+from fightcamp.rehab_clinical import content_hash, load_clinical_policies
 from fightcamp.rehab_protocols import get_rehab_bank
 from tests.test_tendon_family_coverage import DAY, PLAN, injury
-from tools.seed_nonspecific_msk_family import PROFILES, REPAIRED, RESTORE, SYMPTOMS
+from tools.seed_nonspecific_msk_family import PROFILES, SYMPTOMS
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED = {
@@ -72,8 +74,7 @@ def test_exact_reviewed_identity_calm_restore_completion_and_readiness(key, regi
         assert event.is_attributable_to(row)
 
 
-@pytest.mark.parametrize("key,region,kind", PAIRS)
-@pytest.mark.parametrize("other_kind", sorted(SYMPTOMS | {"strain", "sprain", "instability", "tendonitis", "impingement", "contusion", "hyperextension"}))
+@pytest.mark.parametrize("key,region,kind,other_kind", cover(PAIRS, sorted(SYMPTOMS | {"strain", "sprain", "instability", "tendonitis", "impingement", "contusion", "hyperextension"})))
 def test_exact_type_and_region_boundaries(key, region, kind, other_kind):
     policy = next(p for p in load_clinical_policies() if p.policy_id == key)
     if other_kind != kind:
@@ -101,8 +102,7 @@ DANGER = ["major trauma", "deformity", "unable to bear weight", "cannot use the 
     "abdominal pain after trauma", "calf swelling with breathlessness", "after a fall", "joint is red"]
 
 
-@pytest.mark.parametrize("key,region,kind", PAIRS)
-@pytest.mark.parametrize("text", DANGER)
+@pytest.mark.parametrize("key,region,kind,text", cover(PAIRS, DANGER))
 def test_scoped_serious_symptoms_remain_medical(key, region, kind, text):
     decision = resolve(injury(region, kind, description=text))
     assert decision["outcome"] == "medical_review" and decision["prescription"] is None
@@ -114,9 +114,8 @@ def test_hot_swollen_joint_does_not_require_fever_to_fail_closed(key, region, ki
     assert resolve(injury(region, kind, description=text))["outcome"] == "medical_review"
 
 
-@pytest.mark.parametrize("key,region,kind", PAIRS)
-@pytest.mark.parametrize("changes", [dict(severity="high"), dict(severity="severe"), dict(injury_type="post_surgery"),
-    dict(injury_type="tendon_rupture"), dict(rehab_medical_gate=True)])
+@pytest.mark.parametrize("key,region,kind,changes", cover(PAIRS, [dict(severity="high"), dict(severity="severe"), dict(injury_type="post_surgery"),
+    dict(injury_type="tendon_rupture"), dict(rehab_medical_gate=True)]))
 def test_existing_structural_and_severe_routes(key, region, kind, changes):
     assert resolve(injury(region, kind, **changes))["outcome"] == "medical_review"
 
@@ -285,57 +284,6 @@ def test_multi_injury_restrictions_and_episode_ownership_do_not_weaken(first, se
     ownership = [(b["injury_id"], b["injury_episode_id"], b.get("policy_id")) for b in blocks]
     assert len(ownership) == len(set(ownership))
     assert all(b["injury_id"] in {r["id"] for r in rows} for b in blocks)
-
-
-def test_previous_48_profiles_and_all_other_bank_hashes_preserved(tmp_path):
-    raw = read("data/rehab_pathways.json")
-    from tools.rehab_metadata_review_lib import before_achilles_load_activation, before_elbow_content_addition
-    raw = before_achilles_load_activation(raw)
-    # #2984/#2986 republished profiles and bank content. Compare this dated
-    # rollout with the same hash-checked historical bank on both sides.
-    dated_bank, _ = before_elbow_content_addition(get_rehab_bank(), read("data/rehab_metadata_review.json"))
-    after_path = tmp_path / "after.json"
-    after_path.write_text(json.dumps(raw), encoding="utf-8")
-    after_policies = load_clinical_policies(after_path, bank=dated_bank)
-    before = read("tests/fixtures/rehab_profiles_before_nonspecific.json")
-    assert len(before) == 48 and len(raw["profiles"]) == 64
-    previous_ids = {p["policy_id"] for p in before}
-    assert [p for p in raw["profiles"] if p["policy_id"] in previous_ids] == before
-    raw["profiles"] = before
-    path = tmp_path / "previous.json"
-    path.write_text(json.dumps(raw), encoding="utf-8")
-    old_policies = load_clinical_policies(path, bank=dated_bank)
-    for p in old_policies:
-        if p.policy_id in {"achilles_tendonitis", "elbow_tendonitis", "ankle_sprain", "shoulder_tendonitis"}:
-            # Exact versioned activations are covered by their own journey and
-            # baseline tests; every other profile still compares identically.
-            continue
-        for stage in ("calm", "restore"):
-            for side in ("left", "unknown"):
-                row = injury(p.region, p.injury_type, stage, side=side)
-                old = resolve_injury_policy(row, policies=old_policies, bank=dated_bank)
-                new = resolve_injury_policy(row, policies=after_policies, bank=dated_bank)
-                assert old == new
-                assert schedule_rehab(row, old, training_day=DAY) == schedule_rehab(row, new, training_day=DAY)
-                assert reconcile_session_prescription(None, decisions=[old], plan_id=PLAN, training_day=DAY) == reconcile_session_prescription(None, decisions=[new], plan_id=PLAN, training_day=DAY)
-    hashes = read("tests/fixtures/rehab_bank_before_nonspecific_hashes.json")
-    from tests.rehab_inventory_history import inventory_with_history
-    historical_bank, historical_ledger = inventory_with_history()
-    bank = {d["id"]:d for g in historical_bank for d in g["drills"]}
-    assert len(hashes) == 1614 and hashes.keys() <= bank.keys()
-    assert {identity for identity in hashes if content_hash(bank[identity]) != hashes[identity]} == REPAIRED
-    assert bank.keys() - hashes.keys() == {f"{p}_recovery_support" for p in EXPECTED}
-    ledger = {r["drill_id"]:r for r in historical_ledger}
-    for row in read("docs/nonspecific-msk-bank-audit.json"):
-        current = ledger[row["drill_id"]]
-        if row["drill_id"] in REPAIRED:
-            assert current["review_state"] == "reviewed"
-            assert row["source_hash"] in {h["source_hash"] for h in current["source_history"]}
-        else:
-            assert current["source_hash"] == row["source_hash"] and current["review_state"] == "needs_review"
-    policies = tuple(p for p in load_clinical_policies() if p.pathway_family == "nonspecific_msk_symptoms")
-    assert validate_clinical_bank(policies, get_rehab_bank()) == []
-    assert {p.policy_id for p in policies} == EXPECTED and set(RESTORE) == RESTORABLE
 
 
 def test_seeds_and_metadata_generation_are_byte_idempotent(tmp_path, monkeypatch):

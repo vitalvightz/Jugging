@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import math
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
+
+from pydantic import ValidationError
 
 from api.bodyweight_trend import daily_readings, seven_day_average, smoothed_trend, weekly_pace
 from api.datetimes import parse_calendar_date
@@ -11,7 +14,12 @@ from fightcamp.mindset_module import classify_mental_block
 from fightcamp.sports import planning_format
 from fightcamp.stage2_payload import _derive_readiness_flags, _is_high_pressure_weight_cut
 from fightcamp.stage2_payload_late_fight import _fight_week_override_band
-from fightcamp.weight_cut import compute_weight_cut_pct, weight_cut_risk_band, weight_cut_supervision_required
+from fightcamp.weight_cut import (
+    compute_weight_cut_pct,
+    escalation_cut_pct,
+    weight_cut_risk_band,
+    weight_cut_supervision_required,
+)
 
 from .models import (
     AdminAthleteRecord,
@@ -407,6 +415,16 @@ def _build_shared_camp_context(
     if target_weight_kg is None:
         target_weight_kg = _coerce_optional_float(raw_shared.get("target_weight_kg"))
 
+    recorded_frequency = raw_shared.get("weekly_training_frequency")
+    if recorded_frequency is None:
+        recorded_frequency = raw_payload.get("weekly_training_frequency")
+    try:
+        training_days = NutritionSharedCampContext(weekly_training_frequency=recorded_frequency).weekly_training_frequency
+    except ValidationError:
+        # Older session-based records cannot be converted into training days without user input.
+        # Only the read model is left unset; the saved intake is unchanged.
+        training_days = None
+
     shared = NutritionSharedCampContext.model_validate(
         {
             "fight_date": _coerce_optional_str(raw_shared.get("fight_date"))
@@ -425,9 +443,7 @@ def _build_shared_camp_context(
             "phase_override": _coerce_optional_str(raw_shared.get("phase_override")),
             "fatigue_level": _coerce_optional_str(raw_shared.get("fatigue_level"))
             or _coerce_optional_str(raw_payload.get("fatigue_level")),
-            "weekly_training_frequency": raw_shared.get("weekly_training_frequency")
-            if raw_shared.get("weekly_training_frequency") is not None
-            else raw_payload.get("weekly_training_frequency"),
+            "weekly_training_frequency": training_days,
             "training_availability": raw_shared.get("training_availability")
             or raw_payload.get("training_availability")
             or [],
@@ -626,30 +642,74 @@ def _foundation_status(
     return "sufficient"
 
 
+def _weight_cut_status(
+    *,
+    current_weight_kg: float | None,
+    target_weight_kg: float | None,
+    days_until_fight: int | None,
+    risk_band: str,
+) -> tuple[str, float | None, float | None]:
+    """(status, kg to target, kg behind) for an adult's dated camp.
+
+    Reads the canonical risk band, recomputed from today's camp weight and
+    days-out, so a lighter weigh-in moves the status back. "behind" says how
+    much lighter the camp weight would need to be for the remaining cut to sit
+    at :func:`fightcamp.weight_cut.escalation_cut_pct`. Never a prescription.
+    """
+    if current_weight_kg is None or target_weight_kg is None or days_until_fight is None or days_until_fight < 0:
+        return "none", None, None
+    to_target = round(max(0.0, current_weight_kg - target_weight_kg), 1)
+    if current_weight_kg <= target_weight_kg:
+        return "on_target", 0.0, None
+    if risk_band == "severe":
+        return "too_aggressive", to_target, None
+    if risk_band == "high":
+        on_pace_weight = target_weight_kg / (1 - escalation_cut_pct(days_until_fight) / 100)
+        return "behind", to_target, max(0.1, round(current_weight_kg - on_pace_weight, 1))
+    return "on_track", to_target, None
+
+
+def _workspace_payload(
+    onboarding_draft: Any,
+    latest_intake_row: dict[str, Any] | None,
+) -> tuple[str, str | None, dict[str, Any]]:
+    """(source, intake id, raw payload) the workspace reads: an active
+    onboarding draft first, else the latest intake."""
+    draft_payload = onboarding_draft if isinstance(onboarding_draft, dict) else None
+    if _has_active_workspace_data(draft_payload):
+        return "draft", None, draft_payload or {}
+    if isinstance(latest_intake_row, dict) and isinstance(latest_intake_row.get("intake"), dict):
+        return "intake", str(latest_intake_row.get("id") or "") or None, latest_intake_row["intake"]
+    return "default", None, {}
+
+
+def current_target_weight_kg(
+    *,
+    onboarding_draft: Any,
+    latest_intake_row: dict[str, Any] | None,
+) -> float | None:
+    """The athlete's current target weight: the one the weight tracker shows,
+    from the same payload and precedence as :func:`build_nutrition_workspace`.
+    No age check here: callers gate it for under-18s."""
+    _, _, raw_payload = _workspace_payload(onboarding_draft, latest_intake_row)
+
+    def _read(section: str) -> float | None:
+        raw = _coerce_dict(raw_payload.get(section)).get("target_weight_kg")
+        # A boolean is not a weight (float(True) would read as 1 kg).
+        return None if isinstance(raw, bool) else _coerce_optional_float(raw)
+
+    target = _read("athlete")
+    if target is None:
+        target = _read("shared_camp_context")
+    return target if target is not None and math.isfinite(target) and target > 0 else None
+
+
 def build_nutrition_workspace(
     *,
     profile: ProfileRecord | AdminAthleteRecord,
     latest_intake_row: dict[str, Any] | None = None,
 ) -> NutritionWorkspaceState:
-    draft_payload = profile.onboarding_draft if isinstance(profile.onboarding_draft, dict) else None
-    latest_intake_payload = (
-        latest_intake_row.get("intake")
-        if isinstance(latest_intake_row, dict) and isinstance(latest_intake_row.get("intake"), dict)
-        else None
-    )
-
-    if _has_active_workspace_data(draft_payload):
-        source = "draft"
-        intake_id = None
-        raw_payload = draft_payload or {}
-    elif latest_intake_payload is not None:
-        source = "intake"
-        intake_id = str(latest_intake_row.get("id") or "") or None
-        raw_payload = latest_intake_payload
-    else:
-        source = "default"
-        intake_id = None
-        raw_payload = {}
+    source, intake_id, raw_payload = _workspace_payload(profile.onboarding_draft, latest_intake_row)
 
     monitoring = _build_monitoring(raw_payload)
     shared_camp_context = _build_shared_camp_context(raw_payload, monitoring)
@@ -666,6 +726,17 @@ def build_nutrition_workspace(
     weight_cut_pct = compute_weight_cut_pct(shared_camp_context.current_weight_kg or 0.0, shared_camp_context.target_weight_kg or 0.0)
     weight_cut_risk = weight_cut_pct >= 3.0
     is_minor = bool(getattr(profile, "is_minor", False))
+    risk_band = "none" if is_minor else weight_cut_risk_band(weight_cut_risk, weight_cut_pct, days_until_fight)
+    cut_status, kg_to_target, behind_kg = (
+        ("none", None, None)
+        if is_minor
+        else _weight_cut_status(
+            current_weight_kg=shared_camp_context.current_weight_kg,
+            target_weight_kg=shared_camp_context.target_weight_kg,
+            days_until_fight=days_until_fight,
+            risk_band=risk_band,
+        )
+    )
     reference_day = athlete_today(profile)
     # Same future-date rule as camp weight: a day that has begun nowhere is ignored.
     readings = [reading for reading in daily_readings(monitoring.daily_bodyweight_log) if reading[0] <= latest_calendar_day()]
@@ -720,10 +791,13 @@ def build_nutrition_workspace(
         readiness_flags=readiness_flags,
         fight_week_override_band=_fight_week_override_band(days_until_fight),
         current_phase_effective=effective_phase,
-        weight_cut_risk_band="none" if is_minor else weight_cut_risk_band(weight_cut_risk, weight_cut_pct, days_until_fight),
+        weight_cut_risk_band=risk_band,
         weight_cut_supervision_required=(
             False if is_minor else weight_cut_supervision_required(weight_cut_risk, weight_cut_pct, days_until_fight)
         ),
+        weight_cut_status=cut_status,
+        kg_to_target=kg_to_target,
+        weight_cut_behind_kg=behind_kg,
         rolling_7_day_average_weight=average_weight,
         rolling_7_day_weigh_in_days=average_days,
         weekly_pace_kg=weekly_pace(readings, reference_day),
@@ -791,7 +865,9 @@ def merge_workspace_into_payload(
             if weight_from_log and shared.current_weight_kg is not None
             else athlete_weight_kg if athlete_weight_kg is not None else shared.current_weight_kg
         ),
-        "target_weight_kg": athlete_target_weight_kg if athlete_target_weight_kg is not None else shared.target_weight_kg,
+        # The newest target wins: a target saved from the workspace (weight
+        # tracker, Camp Setup) replaces the one the intake started with.
+        "target_weight_kg": shared.target_weight_kg if shared.target_weight_kg is not None else athlete_target_weight_kg,
         "height_cm": athlete_height_cm if athlete_height_cm is not None else workspace.nutrition_profile.height_cm,
         "technical_style": raw_athlete.get("technical_style") or list(profile.technical_style),
         "tactical_style": raw_athlete.get("tactical_style") or list(profile.tactical_style),

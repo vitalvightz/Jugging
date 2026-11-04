@@ -1538,6 +1538,7 @@ def _select_gap_footwork_drill(
         "style_tactical": tactical,
         "style_technical": technical,
         "weaknesses": clean_list(athlete_model.get("weaknesses")),
+        "competitive_maturity": athlete_model.get("competitive_maturity") or "",
         # Reaching this function means the gap-fill engine has already selected
         # `footwork_walkthrough` as the best legal filler. Treat that role choice
         # as contextual footwork relevance for this local bank lookup only, so a

@@ -367,7 +367,7 @@ def session_is_today(view: Any) -> bool:
     return str(getattr(today, "session_scope", "") or "") == "today"
 
 
-_PLAN_IDENTITY_FIELDS = ("status", "phase", "fight_date", "camp_type")
+_PLAN_IDENTITY_FIELDS = ("status", "phase", "fight_date", "camp_type", "event_name", "target_weight_kg")
 
 
 def _plan_identity(plan: Mapping[str, Any] | None) -> dict[str, Any]:

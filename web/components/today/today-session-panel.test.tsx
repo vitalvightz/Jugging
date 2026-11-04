@@ -932,7 +932,7 @@ function reviewedSessionState(held: boolean): TodayCommandView {
       session_scope: "today", session_label: "Today's session", completion_status: held ? "started" : "not_started",
     },
     live_prescription: {
-      revision: "a".repeat(64), safety_hold: held, frozen: held, changes: [{ action: "held" }],
+      revision: "a".repeat(64), safety_hold: held, frozen: held, rehab_only: true, changes: [{ action: "held" }],
       session: { session_id: "rehab-2026-08-01", title: "Today's rehab", session_type: "rehab",
         blocks: [{ block_id: "reviewed-1", block_type: "rehab", display_name: "Reviewed test rehab" }] },
     },
@@ -1122,7 +1122,7 @@ test("one live rehab session renders every reviewed bundle drill", () => {
   };
   state.live_prescription = {
     revision: "a".repeat(64),
-    safety_hold: false, frozen: false, changes: [],
+    safety_hold: false, frozen: false, rehab_only: true, changes: [],
     session: {
       session_id: "rehab-2026-09-25", title: "Today's rehab", session_type: "rehab",
       blocks: [
@@ -1137,6 +1137,21 @@ test("one live rehab session renders every reviewed bundle drill", () => {
   assert.match(html, /Reviewed supported balance/);
   assert.match(html, /Reviewed heel lowering/);
   assert.equal((html.match(/>Completed</g) ?? []).length, 1);
+});
+
+test("a planned mobility session typed rehab does not ask whether rehab was completed", () => {
+  // The plan types mobility support (Joint Prep) as "rehab". On a rehab
+  // recovery day the live prescription is that planned session, not rehab.
+  const state = contactDayState("green");
+  state.today.next_session = { session_id: "2026-09-25-joint-prep", title: "Joint Prep", session_relation: "today" };
+  state.live_prescription = {
+    revision: "a".repeat(64), safety_hold: false, frozen: false, rehab_only: false, changes: [],
+    session: { session_id: "2026-09-25-joint-prep", title: "Joint Prep", session_type: "rehab",
+      blocks: [{ block_id: "joint-prep", block_type: "mobility_activation", display_name: "Joint Prep" }] },
+  };
+  const html = renderPanel(state);
+  assert.doesNotMatch(html, /Did you complete your rehab/);
+  assert.doesNotMatch(html, /Did you follow the guidance/);
 });
 
 test("contact actions respect live holds and reviewed rehab replacements", () => {
@@ -1594,4 +1609,138 @@ test("a previewed session says when it opens and that an injury may still change
     previewUnlockCopy("2026-10-29", "2026-10-28", true),
     "Available tomorrow after check-in. It may be adjusted for your injury.",
   );
+});
+
+test("YOUR FOCUS stays on the card and each UNLXCK CUE sits under its own exercise", async () => {
+  const plan = {
+    weeks: [{
+      week_index: 1,
+      days: [{
+        date: "2026-10-10",
+        weekday: "Sat",
+        sessions: [
+          // Athlete-built technical session (manual plan) and generated strength work, same day.
+          { session_id: "tech", title: "Technical Combat", session_type: "skill", prescription_source: "athlete", blocks: [] },
+          { session_id: "str", title: "Strength", session_type: "strength_power",
+            blocks: [
+              { block_id: "pistol", block_type: "strength", display_name: "Assisted Pistol Squat", sets: 3, reps: "8" },
+              { block_id: "goblet", block_type: "strength", display_name: "Goblet Squat", sets: 3, reps: "8" },
+              { block_id: "bench", block_type: "strength", display_name: "Bench Press", sets: 3, reps: "5" },
+            ] },
+        ],
+      }],
+    }],
+  } as StructuredPlan;
+  const state: TodayCommandView = {
+    active_plan: { id: "plan-1", name: "Fight camp", phase: "GPP", fight_date: "2026-11-05" },
+    today: {
+      training_day: "2026-10-09", recommendation_state: "train_as_planned", decision_tier: "green", warnings: [],
+      next_session: { session_id: "tech", title: "Technical Combat", calendar_date: "2026-10-10", session_relation: "next" },
+      session_scope: "next", session_label: "Next session", completion_status: "done",
+    },
+    risk_watch: [], open_injuries: [], week_summary: {}, quick_actions: [],
+  };
+  const item = (fields: Record<string, unknown>) => ({ training_day: "2026-10-08", sport: null, scope: null, category: null,
+    exercise_targets: [], movement_patterns: [], ...fields });
+  const focus = { focus: "Need to get in pockets", training_day: "2026-10-08", sport: null, items: [
+    item({ id: "jab", origin: "inferred", focus: "Return the jab to guard.", scope: "sport_technique", sport: "boxing" }),
+    item({ id: "log-1", origin: "athlete", focus: "Need to get in pockets" }),
+    item({ id: "pistol-cue", origin: "inferred", focus: "Keep your foot planted and control the descent.",
+      scope: "specific_exercise", exercise_targets: ["pistol squat"] }),
+    item({ id: "squat-cue", origin: "inferred", focus: "Sit between your heels.", scope: "movement_pattern",
+      movement_patterns: ["squat"] }),
+  ] };
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify(focus), { status: 200 })) as typeof fetch;
+  const container = domWindow.document.createElement("div");
+  domWindow.document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(<AuthProvider><ToastProvider>
+        <TodaySessionPanel state={state} structuredPlan={plan} token="token" painReasonAllowed athleteSports={["boxing"]}
+          onRefresh={async () => {}} />
+      </ToastProvider></AuthProvider>);
+    });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    // The fighter's words keep the session slot even though a newer cue fits; the technique cue sits beside it.
+    const lines = [...container.querySelectorAll(".today-session-focus")].map((line) => line.textContent);
+    assert.deepEqual(lines, ["Your focusNeed to get in pockets", "UNLXCK CUEReturn the jab to guard.Dismiss"]);
+    assert.ok(container.querySelector(".today-session-focus svg"), "target icon");
+    assert.doesNotMatch(container.textContent ?? "", /Keep your foot planted|Last training focus/);
+
+    const preview = [...container.querySelectorAll("button")].find((button) => button.textContent === "Preview session");
+    await act(async () => { preview!.dispatchEvent(new domWindow.MouseEvent("click", { bubbles: true })); });
+    const screen = domWindow.document.querySelector('[role="dialog"][data-variant="screen"]')!;
+    const cueOf = (name: string) => [...screen.querySelectorAll(".ex-row")]
+      .find((row) => row.querySelector(".ex-row-title")?.textContent === name)?.querySelector(".ex-row-cue")?.textContent ?? null;
+    assert.equal(cueOf("Assisted Pistol Squat"), "UNLXCK CUEKeep your foot planted and control the descent.Dismiss");
+    assert.equal(cueOf("Goblet Squat"), "UNLXCK CUESit between your heels.Dismiss");
+    assert.equal(cueOf("Bench Press"), null);
+    assert.equal(screen.querySelectorAll(".ex-row-cue").length, 2);
+  } finally {
+    globalThis.fetch = original;
+    act(() => root.unmount());
+    container.remove();
+    domWindow.document.querySelectorAll('[role="dialog"]').forEach((dialog) => dialog.remove());
+  }
+});
+
+test("UNLXCK CUE rows render only where Today provides cues", () => {
+  const plan = { weeks: [{ week_index: 1, days: [{ date: "2026-06-13", weekday: "Sat", sessions: [{ session_id: "s", title: "Strength",
+    blocks: [{ block_id: "pistol", block_type: "strength", display_name: "Assisted Pistol Squat", sets: 3, reps: "8" }] }] }] }] } as StructuredPlan;
+  const current = resolveCurrentDay(plan, new Date(2026, 5, 13));
+  const cue = { id: "c", text: "Keep your foot planted and control the descent.", origin: "inferred" as const };
+  assert.match(renderToStaticMarkup(<TodaySessionBlocks current={current} exerciseCues={{ cues: { pistol: cue } }} />),
+    /class="ex-row-cue"><span class="sp-stat-label">UNLXCK CUE<\/span>Keep your foot planted and control the descent.<\/p>/);
+  assert.doesNotMatch(renderToStaticMarkup(<TodaySessionBlocks current={current} />), /ex-row-cue|UNLXCK CUE/);
+});
+
+test("UNLXCK CUE reaches Today's exercises when no next_session is reported, and leaves once logged", async () => {
+  // The panel resolves the athlete's training day (03:00 rollover), so the plan is dated to it.
+  const day = toISODate(resolveTrainingDay(new Date()));
+  const plan = { weeks: [{ week_index: 1, days: [{ date: day, sessions: [{ session_id: "str", title: "Strength",
+    session_type: "strength_power", blocks: [
+      { block_id: "pistol", block_type: "strength", display_name: "Assisted Pistol Squat", sets: 3, reps: "8" },
+      { block_id: "bench", block_type: "strength", display_name: "Bench Press", sets: 3, reps: "5" },
+    ] }] }] }] } as StructuredPlan;
+  const stateFor = (completion_status: TodayCommandView["today"]["completion_status"]): TodayCommandView => ({
+    active_plan: { id: "plan-1", name: "Fight camp", phase: "GPP", fight_date: "2026-11-05" },
+    today: { training_day: day, recommendation_state: "train_as_planned", decision_tier: "green", warnings: [],
+      next_session: {}, session_scope: "today", session_label: "Today's session", completion_status },
+    risk_watch: [], open_injuries: [], week_summary: {}, quick_actions: [],
+  } as TodayCommandView);
+  const focus = { focus: null, training_day: null, sport: null, items: [{ id: "pistol-cue", origin: "inferred",
+    focus: "Keep your foot planted and control the descent.", training_day: "2026-10-08", sport: null,
+    scope: "specific_exercise", category: "strength", exercise_targets: ["pistol squat"], movement_patterns: [] }] };
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify(focus), { status: 200 })) as typeof fetch;
+  const container = domWindow.document.createElement("div");
+  domWindow.document.body.append(container);
+  const root = createRoot(container);
+  const render = async (state: TodayCommandView) => {
+    await act(async () => {
+      root.render(<AuthProvider><ToastProvider>
+        <TodaySessionPanel state={state} structuredPlan={plan} token="token" painReasonAllowed onRefresh={async () => {}} />
+      </ToastProvider></AuthProvider>);
+    });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  };
+  const cueOf = (name: string) => [...container.querySelectorAll(".ex-row")]
+    .find((row) => row.querySelector(".ex-row-title")?.textContent === name)?.querySelector(".ex-row-cue")?.textContent ?? null;
+  try {
+    await render(stateFor("not_started"));
+    // The no-session branch: the date headline, the day's exercises, no session focus line.
+    assert.equal(container.querySelector(".today-session-head"), null);
+    assert.ok(container.querySelector(".ex-row"), "today's exercises are listed");
+    assert.equal(cueOf("Assisted Pistol Squat"), "UNLXCK CUEKeep your foot planted and control the descent.Dismiss");
+    assert.equal(cueOf("Bench Press"), null);
+    assert.equal(container.querySelector(".today-session-focus"), null);
+    await render(stateFor("done"));
+    assert.equal(container.querySelectorAll(".ex-row-cue").length, 0);
+  } finally {
+    globalThis.fetch = original;
+    act(() => root.unmount());
+    container.remove();
+  }
 });

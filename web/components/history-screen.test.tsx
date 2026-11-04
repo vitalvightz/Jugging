@@ -182,7 +182,7 @@ test("Sessions shows the training summary, takeaways, linked sparring reports an
 
     await act(async () => button("Load earlier sessions")!.click());
     assert.ok(requests.some(url => url.includes("before_day=2026-01-10")));
-    assert.match(container.textContent ?? "", /Roadwork/);
+    assert.match(container.textContent ?? "", /Running/);
     assert.equal(button("Load earlier sessions"), undefined);
   } finally {
     act(() => root.unmount());

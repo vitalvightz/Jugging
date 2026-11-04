@@ -46,6 +46,11 @@
 .customDuration { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; font-size: 13px; color: var(--text-muted); }
 .customDuration input { width: 100px; min-width: 0; min-height: 44px; box-sizing: border-box; padding: 8px; border: 1px solid var(--border-default); border-radius: 8px; background: var(--bg-panel); color: var(--text-primary); font: inherit; font-size: 16px; color-scheme: dark; }
 .customDuration input[type="date"] { width: 155px; }
+/* Roadwork distance: a custom value with a km / mi switch beside it. */
+.runCustom { display: flex; align-items: flex-end; gap: 8px; }
+.runCustom .customDuration { flex: 1; }
+.unitToggle { display: grid; grid-template-columns: repeat(2, 48px); gap: 4px; }
+.runMinutes { margin: 0; font-size: 13px; color: var(--text-muted); }
 .dateChoice { border-top: 1px solid var(--border-subtle); color: var(--text-muted); font-size: 12px; }
 .dateChoice summary { min-height: 44px; align-content: center; cursor: pointer; }
 .resetDate { min-height: 44px; padding: 0; border: 0; background: transparent; color: var(--text-primary); font: inherit; cursor: pointer; }

@@ -25,24 +25,24 @@ export function getAvailabilityConsistency(
   weeklyTrainingFrequency: number | null | undefined,
 ): AvailabilityConsistency {
   const availableDays = trainingAvailability.length;
-  const sessionsPerWeek = weeklyTrainingFrequency ?? 0;
-  const unusedDays = Math.max(availableDays - sessionsPerWeek, 0);
+  const plannedDays = weeklyTrainingFrequency ?? 0;
+  const unusedDays = Math.max(availableDays - plannedDays, 0);
 
-  if (!availableDays || !sessionsPerWeek) {
+  if (!availableDays || !plannedDays) {
     return { hardError: null, softWarning: null };
   }
 
-  if (sessionsPerWeek > availableDays * 2) {
+  if (plannedDays > availableDays) {
     return {
-      hardError: `You selected ${availableDays} available day${availableDays === 1 ? "" : "s"} but planned ${sessionsPerWeek} weekly sessions. Allow up to two sessions per available day.`,
+      hardError: `You selected ${availableDays} available day${availableDays === 1 ? "" : "s"} but planned ${plannedDays} training days per week.`,
       softWarning: null,
     };
   }
 
-  if (unusedDays >= 3 && sessionsPerWeek <= 3) {
+  if (unusedDays >= 3 && plannedDays <= 3) {
     return {
       hardError: null,
-      softWarning: `You have ${availableDays} days available but only ${sessionsPerWeek} planned weekly session${sessionsPerWeek === 1 ? "" : "s"}. That's fine if some days are optional.`,
+      softWarning: `You have ${availableDays} days available but only ${plannedDays} planned training day${plannedDays === 1 ? "" : "s"}. That's fine if some days are optional.`,
     };
   }
 
@@ -96,12 +96,11 @@ export function getSparringConsistency(
     };
   }
 
-  // Each combat day is one session, so the stated weekly total cannot be lower.
-  // Don't auto-raise the total: the athlete may have picked the wrong days instead.
-  const combatSessions = new Set([...hardSparringDays, ...supportWorkDays]).size;
-  if (weeklyTrainingFrequency && combatSessions > weeklyTrainingFrequency) {
+  // Count distinct combat days, not multiple workouts on the same day.
+  const combatDays = new Set([...hardSparringDays, ...supportWorkDays]).size;
+  if (weeklyTrainingFrequency && combatDays > weeklyTrainingFrequency) {
     return {
-      hardError: `Your schedule doesn't add up: you selected ${combatSessions} combat session${combatSessions === 1 ? "" : "s"} but entered ${weeklyTrainingFrequency} total weekly session${weeklyTrainingFrequency === 1 ? "" : "s"}. Update your total or adjust your combat days.`,
+      hardError: `Your schedule doesn't add up: you selected ${combatDays} combat day${combatDays === 1 ? "" : "s"} but entered ${weeklyTrainingFrequency} training day${weeklyTrainingFrequency === 1 ? "" : "s"} per week. Update your total or adjust your combat days.`,
       softWarning: null,
     };
   }
@@ -121,8 +120,8 @@ export function getHardSparringWarning(
   weeklyTrainingFrequency: number | null | undefined,
 ): HardSparringWarning {
   const normalizedHardSparringDays = getSortedUniqueDays(hardSparringDays);
-  const sessionsPerWeek = weeklyTrainingFrequency ?? 0;
-  const acknowledgementContextKey = `hard-sparring:${sessionsPerWeek}:${normalizedHardSparringDays.join("|")}`;
+  const plannedDays = weeklyTrainingFrequency ?? 0;
+  const acknowledgementContextKey = `hard-sparring:${plannedDays}:${normalizedHardSparringDays.join("|")}`;
 
   if (normalizedHardSparringDays.length < 3) {
     return {
@@ -132,13 +131,13 @@ export function getHardSparringWarning(
     };
   }
 
-  const sessionLabel = sessionsPerWeek
-    ? `${sessionsPerWeek} weekly session${sessionsPerWeek === 1 ? "" : "s"}`
-    : "the current weekly session plan";
+  const trainingLabel = plannedDays
+    ? `${plannedDays} planned training day${plannedDays === 1 ? "" : "s"} per week`
+    : "the current weekly training plan";
 
   return {
     acknowledgementContextKey,
-    message: `You selected ${normalizedHardSparringDays.length} hard sparring days inside ${sessionLabel}. Confirm recovery planning before continuing.`,
+    message: `You selected ${normalizedHardSparringDays.length} hard sparring days inside ${trainingLabel}. Confirm recovery planning before continuing.`,
     requiresAcknowledgement: true,
   };
 }

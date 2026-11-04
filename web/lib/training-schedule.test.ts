@@ -7,16 +7,16 @@ import {
   getSparringConsistency,
 } from "./training-schedule.ts";
 
-test("accepts double days without equating availability with sessions", () => {
-  assert.equal(getAvailabilityConsistency(["Monday", "Wednesday"], 3).hardError, null);
-  assert.equal(getAvailabilityConsistency(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"], 9).hardError, null);
+test("counts distinct training days rather than double sessions", () => {
+  assert.equal(getAvailabilityConsistency(["Monday", "Wednesday"], 2).hardError, null);
+  assert.equal(getAvailabilityConsistency(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], 7).hardError, null);
 });
 
-test("flags sessions exceeding double-day capacity", () => {
+test("flags days exceeding training availability", () => {
   assert.deepStrictEqual(
-    getAvailabilityConsistency(["Monday", "Wednesday"], 5),
+    getAvailabilityConsistency(["Monday", "Wednesday"], 3),
     {
-      hardError: "You selected 2 available days but planned 5 weekly sessions. Allow up to two sessions per available day.",
+      hardError: "You selected 2 available days but planned 3 training days per week.",
       softWarning: null,
     },
   );
@@ -92,7 +92,7 @@ test("warns when hard sparring reaches three or more days", () => {
     {
       acknowledgementContextKey: "hard-sparring:5:Friday|Monday|Wednesday",
       message:
-        "You selected 3 hard sparring days inside 5 weekly sessions. Confirm recovery planning before continuing.",
+        "You selected 3 hard sparring days inside 5 planned training days per week. Confirm recovery planning before continuing.",
       requiresAcknowledgement: true,
     },
   );
@@ -112,12 +112,12 @@ test("changes the acknowledgement reset key when hard days or session count chan
   );
 });
 
-test("flags more combat sessions than the stated weekly total", () => {
+test("flags more combat days than planned training days", () => {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
   assert.deepStrictEqual(
     getSparringConsistency(days, ["Monday", "Wednesday", "Friday"], ["Tuesday", "Thursday"], true, 4),
     {
-      hardError: "Your schedule doesn't add up: you selected 5 combat sessions but entered 4 total weekly sessions. Update your total or adjust your combat days.",
+      hardError: "Your schedule doesn't add up: you selected 5 combat days but entered 4 training days per week. Update your total or adjust your combat days.",
       softWarning: null,
     },
   );

@@ -1,4 +1,5 @@
 import { completeApiMeasurement, measuredApiFetch } from "./api-measurements";
+import { announceSessionLogged } from "./history-hint";
 import { beginSharedReadWrite, sharedRead } from "./shared-reads";
 import {
   OFFLINE_NETWORK_MESSAGE,
@@ -62,6 +63,7 @@ import type {
   PendingRehabResponsesResponse,
   SparringLogRequest,
   SparringLogHistoryResponse,
+  TrainingFocus,
   SparringLogResponse,
   TodaySessionCompletionRequest,
   TodaySessionCompletionResponse,
@@ -343,6 +345,8 @@ async function executeRequest(path: string, init?: ApiRequestInit): Promise<Exec
 }
 
 async function sendRequest(path: string, method: string, init?: ApiRequestInit): Promise<ExecutedRequest> {
+  // Telemetry delivery is not evidence that training/API connectivity is degraded.
+  const backgroundAnalytics = path === "/api/analytics/events";
   const headers = new Headers(init?.headers ?? {});
   if (init?.body && !(typeof FormData !== "undefined" && init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
@@ -410,7 +414,7 @@ async function sendRequest(path: string, method: string, init?: ApiRequestInit):
             : networkError,
       });
     }
-    reportNetworkFailure();
+    if (!backgroundAnalytics) reportNetworkFailure();
     throw new Error(isBrowserOffline() ? OFFLINE_NETWORK_MESSAGE : RETRYABLE_NETWORK_MESSAGE, {
       cause: networkError,
     });
@@ -425,8 +429,8 @@ async function sendRequest(path: string, method: string, init?: ApiRequestInit):
   const durationMs = Date.now() - startedAt;
   const contentType = response.headers.get("content-type") ?? "";
   const requestId = response.headers.get("x-request-id");
-  // A gateway error means the edge answered but the plan service did not.
-  if (RETRYABLE_GATEWAY_STATUSES.has(response.status)) {
+  // Foreground gateway failures activate the shared connection recovery flow.
+  if (!backgroundAnalytics && RETRYABLE_GATEWAY_STATUSES.has(response.status)) {
     reportNetworkFailure();
   }
 
@@ -604,7 +608,7 @@ export function getManualTrainingHistory(token: string): Promise<{ sessions: Tra
 
 export function logExternalTraining(token: string, body: ExternalTrainingFields & { client_request_id: string; training_day?: string }): Promise<TrainingHistorySession> {
   return readJson<TrainingHistorySession>("/api/training/sessions", { method: "POST", token, body: JSON.stringify(body) })
-    .then(row => { requestXpRefresh(); return row; });
+    .then(row => { requestXpRefresh(); announceSessionLogged(); return row; });
 }
 
 export function editExternalTraining(token: string, id: string, body: ExternalTrainingFields): Promise<TrainingHistorySession> {
@@ -634,6 +638,19 @@ export function deleteManualExercise(token: string, sessionId: string, entryId: 
   // A tombstone answers a repeated delete.
   return withTransientRetries(() => requestVoid(`/api/training/sessions/${encodeURIComponent(sessionId)}/exercises/${encodeURIComponent(entryId)}`,
     { method: "DELETE", token }));
+}
+
+export type PlanCompletionEdit = { session_rpe?: number | null; pain_after?: number | null; notes?: string };
+
+export function editPlanCompletion(token: string, id: string, body: PlanCompletionEdit): Promise<TrainingHistorySession> {
+  const payload = JSON.stringify(body);
+  // Replacing the same three fields again is safe after a lost response.
+  return withTransientRetries(() => readJson(`/api/training/history/unlxck/${encodeURIComponent(id)}`, { method: "PATCH", token, body: payload }));
+}
+
+export function deletePlanCompletion(token: string, id: string): Promise<void> {
+  // Marks the plan session not done; a repeated delete is a success.
+  return withTransientRetries(() => requestVoid(`/api/training/history/unlxck/${encodeURIComponent(id)}`, { method: "DELETE", token }));
 }
 
 export function deleteExternalTraining(token: string, id: string): Promise<void> {
@@ -771,8 +788,10 @@ export function saveOnboardingDraft(
   });
 }
 
+/** Shared while in flight, so Home, Today and the tracker opening together read once. */
 export function getNutritionCurrent(token: string): Promise<NutritionWorkspaceState> {
-  return readJson<NutritionWorkspaceState>("/api/nutrition/current", { token });
+  return sharedRead(token, "/api/nutrition/current", signal =>
+    readJson<NutritionWorkspaceState>("/api/nutrition/current", { token, signal }));
 }
 
 export function updateNutritionCurrent(
@@ -1434,6 +1453,9 @@ export function submitTodaySessionCompletion(
     method: "POST",
     token,
     body: JSON.stringify(payload),
+  }).then((response) => {
+    if (response.completion_status === "done" || response.completion_status === "modified") announceSessionLogged();
+    return response;
   });
 }
 
@@ -1526,6 +1548,16 @@ export function listSessionCompletionHistory(
       token,
     }),
   );
+}
+
+/** The last sparring focus, shown as "Your focus" before relevant sessions. */
+export function getTrainingFocus(token: string, signal?: AbortSignal): Promise<TrainingFocus> {
+  return readJson<TrainingFocus>("/api/today/training-focus", { token, signal });
+}
+
+/** Hide one AI-inferred focus for good; the note it came from is kept. */
+export function dismissTrainingFocus(token: string, id: string): Promise<void> {
+  return withTransientRetries(() => requestVoid(`/api/today/training-focus/${encodeURIComponent(id)}`, { method: "DELETE", token }));
 }
 
 /** The athlete's sparring log and its 7- and 28-day totals (History). */
@@ -1698,26 +1730,20 @@ export function reportCommunityExercise(token: string, revision: string, reason:
   return requestVoid(`/api/community-exercises/revisions/${revision}/report`, { token, method: 'POST', body: JSON.stringify({ reason }) });
 }
 
-// Optional first-party interaction measurement. Preference is account scoped,
-// held only in memory and never presumed enabled when it cannot be loaded.
-const analyticsPreferences = new Map<string, { enabled: boolean; expires: number }>();
-export async function getAnalyticsPreference(token: string): Promise<{ enabled: boolean }> {
-  const cached = analyticsPreferences.get(token);
-  if (cached && cached.expires > Date.now()) return { enabled: cached.enabled };
-  const result = await readJson<{ enabled: boolean }>("/api/analytics/preference", { token });
-  analyticsPreferences.set(token, { ...result, expires: Date.now() + 30_000 });
-  return result;
-}
-export async function setAnalyticsPreference(token: string, enabled: boolean) {
-  const result = await readJson<{ enabled: boolean }>("/api/analytics/preference", { token, method: "PUT", body: JSON.stringify({ enabled }) });
-  analyticsPreferences.clear();
-  analyticsPreferences.set(token, { ...result, expires: Date.now() + 30_000 });
-  return result;
-}
+// First-party beta telemetry retries independently of app connectivity.
 export async function trackProductEvent(token: string, event_name: string, feature: string, request_id?: string, flow_id?: string) {
   try {
-    if (analyticsPreferences.get(token)?.enabled !== true) return;
-    await readJson("/api/analytics/events", { token, method: "POST", body: JSON.stringify({ event_name, feature, request_id: request_id ?? crypto.randomUUID(), flow_id }) });
+    const body = JSON.stringify({ event_name, feature, request_id: request_id ?? crypto.randomUUID(), flow_id });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const result = await readJson<{ accepted: boolean }>("/api/analytics/events", { token, method: "POST", body, keepalive: true });
+        return result.accepted;
+      } catch (error) {
+        if (error instanceof ApiError && error.status < 500 && error.status !== 429) return false;
+        if (attempt === 2) return false;
+        await new Promise(resolve => setTimeout(resolve, 250 * 2 ** attempt));
+      }
+    }
   } catch { /* Analytics must never prevent training or replace Sentry. */ }
 }
 

@@ -207,7 +207,7 @@ export default function ProgressPage() {
                 {xp.progress.currentWeek.complete
                   ? xp.progress.currentWeek.weekXpEarned
                     ? "+100 XP earned for the completed week."
-                    : "Week complete. XP reconciliation is pending."
+                    : "Week complete. Updating your XP…"
                   : `${xp.progress.currentWeek.remainingSessions} card${
                       xp.progress.currentWeek.remainingSessions === 1 ? "" : "s"
                     } remaining. +100 XP when complete.`}
@@ -264,7 +264,7 @@ export default function ProgressPage() {
             ))}
           </div>
         ) : (
-          <p className="xp-page-empty">Complete your first action to start the ledger.</p>
+          <p className="xp-page-empty">Earn XP to see your activity here.</p>
         )}
       </section>
 

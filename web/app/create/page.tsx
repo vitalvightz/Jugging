@@ -14,7 +14,7 @@ import styles from "./create.module.css";
 const OPTIONS = [
   { href: "/quick-build", title: "Quick Build", body: "A personalised programme in minutes." },
   { href: "/onboarding", title: "Full Camp Setup", body: "A detailed programme around your fight and schedule." },
-  { href: "/plans/custom", title: "Build Your Own", body: "Create and customise your own training programme." },
+  { href: "/plans/custom", title: "Build Your Own", body: "Create a programme or add the one you already follow." },
 ] as const;
 
 export default function CreatePage() {

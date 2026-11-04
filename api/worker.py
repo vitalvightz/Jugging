@@ -34,7 +34,14 @@ def _worker_shutdown_grace_seconds() -> int:
 
 
 def _worker_recovery_sweep_interval_seconds() -> int:
-    return env_int("UNLXCK_GENERATION_WORKER_RECOVERY_SWEEP_SECONDS", 15, minimum=5)
+    # A job only counts as stale after generation_job_stale_after_seconds
+    # (300 s by default), so a 15 s sweep re-listed running jobs ~20 times per
+    # stale window. Once a minute still recovers within 20% of that window.
+    return env_int("UNLXCK_GENERATION_WORKER_RECOVERY_SWEEP_SECONDS", 60, minimum=5)
+
+
+def _contribution_xp_replay_idle_seconds() -> int:
+    return env_int("UNLXCK_CONTRIBUTION_XP_REPLAY_IDLE_SECONDS", 900, minimum=60)
 
 
 def _morning_push_sweep_interval_seconds() -> int:
@@ -87,6 +94,30 @@ async def _run_morning_push_sweep_if_due(
 _MORNING_PUSH_SWEEP_TASK: dict[str, asyncio.Task[None] | None] = {"task": None}
 
 
+_PLAN_READY_EMAIL_TASK: dict[str, asyncio.Task[None] | None] = {"task": None}
+
+
+async def _run_plan_ready_email_sweep_if_due(
+    *, store: AppStore, state: dict[str, float], shutdown_event: asyncio.Event,
+) -> None:
+    """Deliver queued plan-ready emails independently of generation jobs."""
+    if shutdown_event.is_set() or time.monotonic() - state.get("last_sweep_at", 0.0) < 30:
+        return
+    running = _PLAN_READY_EMAIL_TASK["task"]
+    if running is not None and not running.done():
+        return
+    state["last_sweep_at"] = time.monotonic()
+
+    async def _sweep() -> None:
+        try:
+            from .services.plan_ready_email import deliver_pending_plan_ready_emails
+            await asyncio.to_thread(deliver_pending_plan_ready_emails, store)
+        except Exception:  # noqa: BLE001 - email must never affect job processing
+            logger.exception("[worker] plan-ready email sweep failed")
+
+    _PLAN_READY_EMAIL_TASK["task"] = asyncio.create_task(_sweep())
+
+
 class ContributionReplayState(TypedDict, total=False):
     last_sweep_at: float
     after_id: str | None
@@ -97,14 +128,24 @@ _CONTRIBUTION_XP_REPLAY_TASK: dict[str, asyncio.Task[None] | None] = {"task": No
 
 async def _run_contribution_xp_replay_if_due(
     *, store: AppStore, state: ContributionReplayState,
-    interval_seconds: int = 60, shutdown_event: asyncio.Event | None = None,
+    interval_seconds: int = 60, idle_interval_seconds: int = 900,
+    shutdown_event: asyncio.Event | None = None,
 ) -> None:
-    """Retry missed approvals without holding up generation or requiring push."""
+    """Retry missed approvals without holding up generation or requiring push.
+
+    Mid-walk (a cursor is held) batches follow ``interval_seconds`` so a
+    backlog drains quickly. A pass that wrapped with nothing left to reward
+    (cursor ``None``) waits ``idle_interval_seconds``: approvals reconcile
+    inline, so the replay only catches rare misses and its discovery query
+    cannot use an index.
+    """
     if shutdown_event is not None and shutdown_event.is_set():
         return
     now = time.monotonic()
     last = state.get("last_sweep_at")
-    if last is not None and now - last < interval_seconds:
+    caught_up = "after_id" in state and state["after_id"] is None
+    wait = max(interval_seconds, idle_interval_seconds) if caught_up else interval_seconds
+    if last is not None and now - last < wait:
         return
     running = _CONTRIBUTION_XP_REPLAY_TASK.get("task")
     if running is not None and not running.done():
@@ -331,7 +372,7 @@ async def _tick(
     stale_after_seconds: int,
     max_concurrent_jobs: int,
     recovery_state: dict[str, float] | None = None,
-    recovery_interval_seconds: int = 15,
+    recovery_interval_seconds: int = 60,
 ) -> None:
     recovery_state = recovery_state if recovery_state is not None else {}
     await _run_generation_recovery_sweep_if_due(
@@ -441,8 +482,10 @@ async def run_worker() -> None:
 
     recovery_sweep_state: dict[str, float] = {}
     morning_sweep_state: dict[str, float] = {}
+    plan_ready_email_sweep_state: dict[str, float] = {}
     morning_sweep_interval = _morning_push_sweep_interval_seconds()
     contribution_replay_state: ContributionReplayState = {}
+    contribution_replay_idle_seconds = _contribution_xp_replay_idle_seconds()
     media_sweep_state: dict[str, float] = {}
     media_sweep_interval = _exercise_media_sweep_interval_seconds()
 
@@ -457,6 +500,9 @@ async def run_worker() -> None:
                 recovery_state=recovery_sweep_state,
                 recovery_interval_seconds=recovery_interval_seconds,
             )
+            await _run_plan_ready_email_sweep_if_due(
+                store=store, state=plan_ready_email_sweep_state, shutdown_event=shutdown_event,
+            )
             await _run_morning_push_sweep_if_due(
                 store=store,
                 state=morning_sweep_state,
@@ -464,7 +510,9 @@ async def run_worker() -> None:
                 shutdown_event=shutdown_event,
             )
             await _run_contribution_xp_replay_if_due(
-                store=store, state=contribution_replay_state, shutdown_event=shutdown_event,
+                store=store, state=contribution_replay_state,
+                idle_interval_seconds=contribution_replay_idle_seconds,
+                shutdown_event=shutdown_event,
             )
             await _run_exercise_media_sweep_if_due(
                 store=store,

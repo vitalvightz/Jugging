@@ -153,7 +153,8 @@ def _active_plan(
     if not plan_id:
         return None
     try:
-        row = store.get_plan_for_athlete(plan_id, athlete_id)
+        # Progress only reads the calendar, never Stage-2 blobs.
+        row = store.get_training_plan_for_athlete(plan_id, athlete_id)
         return row if isinstance(row, Mapping) else None
     except Exception:  # noqa: BLE001 - progress fails closed
         logger.exception(

@@ -140,3 +140,18 @@ test("a save arriving during dialog opening cannot queue a second offer", async 
     assert.equal(window.localStorage.getItem("unlxck:push-prompt:v1:athlete-1"), "seen");
   } finally { await app.cleanup(); }
 });
+
+test("does not offer push permissions inside Instagram's browser", async () => {
+  const original = Object.getOwnPropertyDescriptor(navigator, "userAgent");
+  Object.defineProperty(navigator, "userAgent", { configurable: true, value: "Mozilla/5.0 (Linux; Android 15) Instagram 400.0.0" });
+  const app = await mount();
+  try {
+    await saved();
+    assert.equal(app.container.querySelector("dialog"), null);
+    assert.equal(app.requests(), 0);
+  } finally {
+    await app.cleanup();
+    if (original) Object.defineProperty(navigator, "userAgent", original);
+    else Reflect.deleteProperty(navigator, "userAgent");
+  }
+});

@@ -141,15 +141,14 @@ test("returning after several suspended rounds catches up without ringing old be
 
 // Planned timers deliberately use persisted session start/completion evidence,
 // not the free-round-timer event stream.
-test("free timer transitions are measured with consent; planned timer transitions stay separate", async () => {
+test("free timer transitions are measured automatically in beta; planned timer transitions stay separate", async () => {
   const { AppSessionContext } = await import("../auth-provider");
-  const { setAnalyticsPreference } = await import("@/lib/api");
   const original = globalThis.fetch;
   const events: { event_name: string; feature: string; flow_id: string }[] = [];
   globalThis.fetch = async (input, init) => {
     const path = String(input);
     if (path.endsWith("/events")) events.push(JSON.parse(String(init?.body)));
-    return new Response(JSON.stringify(path.endsWith("/preference") ? { enabled: true } : { accepted: true }), { status: 200 });
+    return new Response(JSON.stringify({ accepted: true }), { status: 200 });
   };
   const context = { isReady: true, isMeHydrated: true, hasTransientMeError: false, session: { access_token: "timer-measurement" }, me: null,
     previewAppearanceMode: () => {}, refreshMe: async () => {}, replaceMe: () => {}, signOut: async () => {} };
@@ -160,7 +159,6 @@ test("free timer transitions are measured with consent; planned timer transition
   }
   const root = createRoot(document.createElement("div"));
   try {
-    await setAnalyticsPreference("timer-measurement", true);
     for (const key of ["unlxck.session-timer.free", "unlxck.session-timer.planned:synthetic"]) {
       await act(async () => root.render(<AppSessionContext.Provider value={context}><Probe key={key} storageKey={key} /></AppSessionContext.Provider>));
       await act(async () => { controller.run(startItem); await new Promise(resolve => setTimeout(resolve, 30)); });

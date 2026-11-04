@@ -478,7 +478,7 @@ export function resolveTodayDecision(state: TodayCommandView): ResolvedTodayDeci
         )
       : null;
   const prescription = sessionIsToday ? state.live_prescription : null;
-  const reviewedRehabAllowed = prescription?.session.session_type === "rehab" && !prescription.safety_hold
+  const reviewedRehabAllowed = prescription?.rehab_only === true && !prescription.safety_hold
     && authoritativeTier !== "stop" && authoritativeTier !== "not_checked_in";
   const useSafeReplacement =
     authoritativeTier === "stop" && hasSession && sessionIsToday && !prescription;

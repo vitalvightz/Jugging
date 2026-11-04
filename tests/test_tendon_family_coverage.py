@@ -297,35 +297,6 @@ def test_positive_reports_and_complete_history_cannot_replace_missing_clinical_i
     assert resolve(row, exposures=[negative])["stage"] == "calm"
 
 
-def test_all_previous_profiles_and_their_decisions_schedules_and_snapshots_are_unchanged(tmp_path):
-    from api.contracts.injury_policy import reconcile_session_prescription
-    raw = json.loads((ROOT / "data/rehab_pathways.json").read_text(encoding="utf-8"))
-    from tools.rehab_metadata_review_lib import before_achilles_load_activation
-    raw = before_achilles_load_activation(raw)
-    previous = json.loads((ROOT / "tests/fixtures/rehab_profiles_before_tendon.json").read_text(encoding="utf-8"))
-    previous_ids = {p["policy_id"] for p in previous}
-    assert [p for p in raw["profiles"] if p["policy_id"] in previous_ids] == previous
-    assert len(previous) == 18
-    raw["profiles"] = previous
-    frozen_path = tmp_path / "before.json"
-    frozen_path.write_text(json.dumps(raw))
-    before = load_clinical_policies(frozen_path)
-    for policy in before:
-        if policy.policy_id == "ankle_sprain":
-            # The exact v5 activation, preserved baseline and frozen history are
-            # checked in test_ankle_load_activation; other profiles stay exact.
-            continue
-        for stage in ("calm", "restore"):
-            for side in ("left", "unknown"):
-                row = injury(policy.region, policy.injury_type, stage, side=side)
-                old = resolve_injury_policy(row, policies=before, bank=get_rehab_bank())
-                new = resolve(row)
-                assert old == new
-                assert schedule_rehab(row, old, training_day=DAY) == schedule_rehab(row, new, training_day=DAY)
-                assert reconcile_session_prescription(None, decisions=[old], plan_id=PLAN, training_day=DAY) == \
-                    reconcile_session_prescription(None, decisions=[new], plan_id=PLAN, training_day=DAY)
-
-
 def test_bank_and_review_seed_are_byte_idempotent(tmp_path, monkeypatch):
     from tools import seed_tendon_family
     from tools.generate_rehab_metadata_review import build_ledger

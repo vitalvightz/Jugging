@@ -2884,23 +2884,31 @@ html[data-theme="light"] .overview-session-state-pill {
   color: var(--text-secondary);
 }
 
+/* Two facts per row (Plan | Camp day, Phase | Fight date) on every width. */
 .overview-operational-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 18px;
-  padding-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding-top: 4px;
 }
 
+/* Hairline dividers between the rows and between the two columns. */
 .overview-operational-item {
   display: grid;
+  align-content: start;
   gap: 4px;
-  padding-right: 18px;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  min-width: 0;
+  padding: 12px 16px 12px 0;
+  overflow-wrap: anywhere;
 }
 
-.overview-operational-item:last-child {
+.overview-operational-item:nth-child(2n) {
   padding-right: 0;
-  border-right: 0;
+  padding-left: 16px;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.overview-operational-item:not(:nth-last-child(-n + 2)) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .overview-operational-label {
@@ -3329,6 +3337,56 @@ html[data-theme="light"] .today-safe-list[data-kind="blocked"] li::before {
   color: var(--text-primary);
 }
 
+/* Weight surfaces (Home's tracker shortcut, Today's weigh-in card) wear the plan's
+   optional mental-support styling (Tactical Watch): the same purple surface,
+   lavender text and slow sweep. */
+html:root .weigh-in-surface {
+  position: relative;
+  overflow: hidden;
+  border-color: #393244;
+  background: #1b1926;
+  color: #c8b7ef;
+}
+
+html:root .weigh-in-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, #ad93e510 50%, transparent 65%);
+  transform: translateX(-120%);
+  animation: sp-optional-sweep 10s ease-in-out infinite;
+}
+
+html:root a.weigh-in-surface:hover,
+html:root a.weigh-in-surface:focus-visible {
+  border-color: #4a3f5c;
+  background: #221f30;
+  color: #ddd0f7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:root .weigh-in-surface::after { animation: none; }
+}
+
+/* Light theme: the brand red instead of purple, same sweep. */
+html[data-theme="light"]:root .weigh-in-surface {
+  border-color: rgba(189, 16, 32, 0.22);
+  background: rgba(189, 16, 32, 0.06);
+  color: var(--brand-red, #bd1020);
+}
+
+html[data-theme="light"]:root .weigh-in-surface::after {
+  background: linear-gradient(105deg, transparent 35%, rgba(189, 16, 32, 0.1) 50%, transparent 65%);
+}
+
+html[data-theme="light"]:root a.weigh-in-surface:hover,
+html[data-theme="light"]:root a.weigh-in-surface:focus-visible {
+  border-color: rgba(189, 16, 32, 0.36);
+  background: rgba(189, 16, 32, 0.1);
+  color: var(--brand-red, #bd1020);
+}
+
 /* Deduped decision copy: an ALL-CAPS command title with a calm two-line body,
    the title clearly separated from the reason + action. */
 .overview-decision-title {
@@ -3614,6 +3672,7 @@ html[data-theme="light"] .today-safe-list[data-kind="blocked"] li::before {
    change. On load the bar sweeps in while the day count ticks down to today
    (see FightCountdown); both are off under reduced motion. */
 .fight-countdown {
+  container-type: inline-size;
   display: grid;
   gap: 14px;
   min-width: 0;
@@ -3626,12 +3685,137 @@ html[data-theme="light"] .today-safe-list[data-kind="blocked"] li::before {
     var(--bg-surface);
 }
 
+.overview-primary-session > .fight-countdown {
+  align-self: start;
+  margin-top: 0;
+  border-radius: var(--radius-card);
+}
+
 .fight-countdown-head {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 6px 16px;
+}
+
+/* Upcoming-fight heading: kicker above the event name. Its own class because
+   .fight-countdown-head is shared with the tracking cards on Home. */
+.fight-countdown-heading {
+  min-width: 0;
+}
+
+/* Event name: prominent, wraps (never overflows) and clamps to two lines. */
+.fight-countdown-event {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: clamp(22px, 4.6vw, 28px);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* No fight weight: the event name sits right of the countdown instead. */
+.fight-countdown-count:has(+ .fight-countdown-event-side) {
+  flex: none;
+}
+
+.fight-countdown-event.fight-countdown-event-side {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: clamp(16px, 6.5cqi, 24px);
+  text-align: right;
+}
+
+/* Countdown on the left, target fight weight on the right behind a hairline,
+   always on one row: type scales with the card's width (container units) so
+   phone-width cards stay compact instead of wrapping. */
+.fight-countdown-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(6px, 3cqi, 16px);
+  min-width: 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--progress-gold-border);
+}
+
+.fight-countdown-count {
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 2.5cqi, 12px);
+  min-width: 0;
+}
+
+.fight-countdown-count-copy {
+  min-width: 0;
+}
+
+.fight-countdown-weight {
+  display: flex;
+  align-items: center;
+  gap: clamp(5px, 2cqi, 10px);
+  flex: none;
+  padding-left: clamp(8px, 3cqi, 16px);
+  border-left: 1px solid var(--progress-gold-border);
+}
+
+/* Fight weight on its own (no fight scheduled): one row, no divider. */
+.fight-weight-card .fight-countdown-stats {
+  flex-direction: row;
+  align-items: center;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.fight-weight-card .fight-countdown-weight {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.fight-countdown-weight-icon {
+  display: grid;
+  color: var(--text-secondary);
+}
+
+.fight-countdown-weight-icon svg {
+  width: clamp(16px, 8cqi, 22px);
+  height: auto;
+}
+
+.fight-countdown-weight-label {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: clamp(10.5px, 4.5cqi, 14px);
+  white-space: nowrap;
+}
+
+.fight-countdown-weight-value {
+  margin: 2px 0 0;
+  color: var(--text-primary);
+  font-size: clamp(14px, 6.5cqi, 20px);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Only the smallest phones stack the weight under the countdown. */
+@container (max-width: 210px) {
+  .fight-countdown .fight-countdown-stats {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .fight-countdown .fight-countdown-weight {
+    padding-left: 0;
+    border-left: 0;
+  }
 }
 
 .fight-countdown-kicker {
@@ -3669,7 +3853,31 @@ html[data-theme="light"] .today-safe-list[data-kind="blocked"] li::before {
   font-size: var(--type-body-sm);
 }
 
+/* The upcoming-fight countdown row only (the tracking cards reuse the classes
+   above): single-line copy whose type scales with the card's width. */
+.fight-countdown-count .fight-countdown-number {
+  font-size: clamp(32px, 16cqi, 64px);
+}
+
+.fight-countdown-count-copy .fight-countdown-days,
+.fight-countdown-count-copy .fight-countdown-date {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.fight-countdown-count-copy .fight-countdown-days {
+  font-size: clamp(11px, 5cqi, 18px);
+  line-height: 1.25;
+}
+
+.fight-countdown-count-copy .fight-countdown-date {
+  margin-top: 4px;
+  font-size: clamp(10.5px, 4.5cqi, 14px);
+}
+
 .fight-countdown-meta {
+  margin: 0;
   color: var(--progress-gold);
   font-family: var(--font-mono), monospace;
   font-size: var(--type-meta);
@@ -3724,6 +3932,21 @@ html[data-theme="light"] .today-safe-list[data-kind="blocked"] li::before {
   animation: fight-countdown-fill-in 1100ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Rows that held shimmer while the calendar loaded fade up into place. */
+.fight-countdown[data-arrived="true"] .fight-countdown-meta,
+.fight-countdown[data-arrived="true"] .fight-countdown-next {
+  animation: fight-countdown-row-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.fight-countdown[data-arrived="true"] .fight-countdown-next {
+  animation-delay: 120ms;
+}
+
+@keyframes fight-countdown-row-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
 @keyframes fight-countdown-fill-in {
   from { transform: scaleX(0); }
   to { transform: scaleX(1); }
@@ -3738,6 +3961,11 @@ html[data-theme="light"] .today-safe-list[data-kind="blocked"] li::before {
 
   .fight-countdown[data-pending="true"] .fight-countdown-number {
     visibility: visible;
+  }
+
+  .fight-countdown[data-arrived="true"] .fight-countdown-meta,
+  .fight-countdown[data-arrived="true"] .fight-countdown-next {
+    animation: none;
   }
 }
 
@@ -10826,23 +11054,6 @@ html[data-theme="light"] .today-injury-other-warning {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .overview-operational-strip {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .overview-operational-item {
-    padding-right: 0;
-    padding-bottom: 10px;
-    border-right: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  }
-
-  .overview-operational-item:last-child {
-    padding-bottom: 0;
-    border-bottom: 0;
-  }
 
   .step-progress {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -16234,7 +16445,7 @@ html[data-theme="light"] .overview-command-shell::before {
 }
 
 html[data-theme="light"] .overview-operational-item {
-  border-right-color: rgba(80, 81, 84, 0.08);
+  border-color: rgba(80, 81, 84, 0.1);
 }
 
 html[data-theme="light"] .overview-next-action {
@@ -19518,6 +19729,46 @@ html[data-theme="light"] .loading-operational-item {
 .ex-rows {
   gap: 8px;
 }
+/* A planner group (Core Development): one quiet collapsible header over its
+   member rows. Members keep their own row, controls and logging. */
+.ex-group {
+  display: grid;
+  gap: inherit; /* follow the row list's own spacing in every layout */
+}
+.ex-group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 2px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  cursor: pointer;
+  list-style: none;
+}
+.ex-group-head::-webkit-details-marker {
+  display: none;
+}
+.ex-group-head::after {
+  content: "⌄";
+  font-size: 1rem;
+  transition: transform 0.2s ease;
+}
+.ex-group[open] > .ex-group-head::after {
+  transform: rotate(180deg);
+}
+.ex-group-count {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.ex-group-rows {
+  display: grid;
+  gap: inherit;
+}
 .ex-row {
   background: var(--bg-stat);
   border: 1px solid var(--border-subtle);
@@ -22563,7 +22814,8 @@ button.injury-progress:hover > svg { color: var(--text-primary); }
 .today-injury-card .today-injury-status-label { font: 500 15px/1.5 var(--font-sans); color: var(--text-secondary); letter-spacing: 0; text-transform: none; }
 .today-injury-card .today-injury-status-row { gap: 8px; }
 .today-injury-card .today-injury-status-row .today-segment { min-height: 48px; border-radius: 12px; background: transparent; border: 1px solid var(--border-strong); font: 550 14px/1.4 var(--font-sans); }
-.today-injury-card .today-injury-status-row .today-segment-active { background: var(--brand-red-soft); border-color: var(--brand-red); }
+/* The soft fill needs dark text: the shared selected style is white on a solid red. */
+.today-injury-card .today-injury-status-row .today-segment-active { background: var(--brand-red-soft); border-color: var(--brand-red); color: var(--text-primary); }
 .injury-clearance { border-top: 1px solid var(--border-default); padding-top: 4px; }
 .injury-clearance-value { margin-left: auto; color: var(--text-muted); font-size: 12px; text-align: right; }
 .today-injury-card .injury-resolve-link { align-self: flex-start; min-height: 32px; padding: 0; border: 0; background: transparent; font: inherit; font-size: 11px; color: var(--text-muted); cursor: pointer; }
@@ -22846,4 +23098,150 @@ a, button, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 }
 @media (prefers-reduced-motion: reduce) {
   .sp-optional-disclosure::details-content { transition: none; }
+}
+
+/* One-time coach-mark pill (shared look with the round timer's .st-hint). */
+.once-hint {
+  position: relative;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px 7px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--text-primary);
+  color: var(--bg-panel);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  animation: once-hint-in 260ms ease-out 400ms both;
+}
+
+.once-hint::before {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  transform: rotate(45deg);
+  border-radius: 2px;
+}
+
+.once-hint span {
+  font-size: 15px;
+  line-height: 1;
+  opacity: 0.45;
+}
+
+/* Above the History tab in the mobile tab bar, caret pointing down at it. */
+.mobile-tab-bar-hint-anchor {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  width: 0;
+  height: 0;
+}
+
+.once-hint-above {
+  position: absolute;
+  bottom: 0;
+  right: -36px;
+}
+
+.once-hint-above::before {
+  bottom: -5px;
+  right: 31px;
+}
+
+/* Under the History link in the sidebar, caret pointing up at it. */
+.once-hint-below {
+  margin: 6px 0 4px 12px;
+  align-self: flex-start;
+  justify-self: start;
+}
+
+.once-hint-below::before {
+  top: -5px;
+  left: 18px;
+}
+
+@keyframes once-hint-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .once-hint { animation: none; }
+}
+
+/* "Your focus" (the fighter's own words) and a technique UNLXCK cue, under
+   the session title before relevant work. The fighter's focus reads first. */
+.today-session-focus {
+  margin: 10px 0 0;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.today-session-focus .today-detail-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.today-session-focus .today-tool-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--brand-red);
+}
+
+.today-session-cue {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 400;
+}
+
+/* An UNLXCK cue under the exercise it is about: one muted line, no card. */
+.ex-row-cue {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.ex-row-cue .sp-stat-label {
+  margin-inline-end: 6px;
+}
+
+/* Above the row toggle's overlay, so Dismiss is its own tap. */
+.ex-row-cue .today-session-focus-dismiss {
+  z-index: 1;
+}
+
+.today-session-focus-dismiss {
+  position: relative;
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* A 32px-tall hit area around the inline link, without moving the text. */
+.today-session-focus-dismiss::after {
+  content: "";
+  position: absolute;
+  inset: -8px -6px;
 }

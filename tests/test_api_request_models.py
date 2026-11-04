@@ -27,7 +27,7 @@ def test_plan_request_to_payload_uses_existing_parser_labels():
     assert "When is your next fight?" in labels
     assert "Training Availability" in labels
     assert "Athlete Time Zone" in labels
-    assert "Sessions per Week" in labels
+    assert "Training Days per Week" in labels
 
 
 def test_plan_request_to_payload_keeps_list_backed_fields_as_lists_when_empty():
@@ -1061,16 +1061,21 @@ def test_open_camp_weeks_rejects_non_numeric():
 
 def test_weekly_training_frequency_accepts_bounds():
     assert _freq_request(1).weekly_training_frequency == 1
-    assert _freq_request(6).weekly_training_frequency == 6
-    assert _freq_request(9).weekly_training_frequency == 9
-    assert _freq_request(14).weekly_training_frequency == 14
+    assert _freq_request(7).weekly_training_frequency == 7
+    assert _freq_request("7.0").weekly_training_frequency == 7
     assert _freq_request(None).weekly_training_frequency is None
 
 
 def test_weekly_training_frequency_rejects_out_of_range_instead_of_clamping():
-    for bad in (0, 15, 999, -3):
-        with pytest.raises(ValidationError, match="between 1 and 14"):
+    for bad in (0, 8, 10, 14, 999, -3):
+        with pytest.raises(ValidationError, match="between 1 and 7"):
             _freq_request(bad)
+
+
+@pytest.mark.parametrize("bad", [5.4, "5.4", 7.5, "2.2"])
+def test_weekly_training_frequency_rejects_fractional_values(bad):
+    with pytest.raises(ValidationError, match="whole number"):
+        _freq_request(bad)
 
 
 def test_weekly_training_frequency_rejects_non_numeric():

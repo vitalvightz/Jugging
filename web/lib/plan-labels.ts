@@ -27,6 +27,7 @@ const LABEL_OVERRIDES: Record<string, string> = {
   mixed: "Mixed session",
   primer: "Primer",
   fight_or_match: "Fight day",
+  technical_combat: "Technical Combat",
 
   preparation: "Preparation",
   mobility_activation: "Mobility",
@@ -127,5 +128,5 @@ export function stripLeadingWeekday(title: string): string {
 
 /** A session or day title as the athlete sees it. */
 export function athleteFacingSessionTitle(title: string): string {
-  return isDeclaredLightCombatTitle(title) ? DECLARED_LIGHT_COMBAT_TITLE : stripLeadingWeekday(title);
+  return isDeclaredLightCombatTitle(title) ? DECLARED_LIGHT_COMBAT_TITLE : stripLeadingWeekday(humanizeIfRawEnum(title));
 }

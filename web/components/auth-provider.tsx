@@ -2,11 +2,12 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 
-import { checkSignupAccess } from "@/app/signup/access-check";
-import { ApiError, getAnalyticsPreference, getMe } from "@/lib/api";
+import { usePathname } from "next/navigation";
+import { ApiError, trackProductEvent, getMe } from "@/lib/api";
+import { observeUsage } from "@/lib/usage-tracking";
 import { clearSharedReads } from "@/lib/shared-reads";
-import { INVITE_PENDING_FLAG, INVITE_REQUIRED_HREF, needsInviteCheck } from "@/lib/signup-invite-guard";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { hasSignupAdmission } from "@/lib/signup-invite-guard";
 import { APPEARANCE_STORAGE_KEY, type AppearanceMode, type MeResponse } from "@/lib/types";
 
 const ME_RETRY_ATTEMPTS = 3;
@@ -20,9 +21,6 @@ type AppSession = {
   access_token: string;
   email?: string | null;
   user_id?: string | null;
-  // Read by the invite guard (lib/signup-invite-guard.ts) on the first load.
-  created_at?: string | null;
-  invite_pending?: boolean;
 };
 
 type LoadMe = (
@@ -65,17 +63,29 @@ function applyAppearanceMode(mode: AppearanceMode) {
 }
 
 export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
-  // Load the optional choice once per authenticated account/token. Interaction
-  // hooks stay silent until an explicit opt-in has been loaded.
+  const pathname = usePathname();
   const [isReady, setIsReady] = useState(false);
   const [isMeHydrated, setIsMeHydrated] = useState(false);
   const [session, setSession] = useState<AppSession | null>(null);
   const [me, setMe] = useState<MeResponse | null>(null);
+  const analyticsTokenRef = useRef<string | null>(null);
+  const analyticsPathRef = useRef("");
+  const usageObserverRef = useRef<ReturnType<typeof observeUsage> | null>(null);
+  const analyticsActor = session?.access_token && me?.profile.role === "athlete" ? me.profile.athlete_id : null;
   useEffect(() => {
-    if (session?.access_token && me?.profile.role === "athlete" && !me.profile.is_minor) {
-      void getAnalyticsPreference(session.access_token).catch(() => {});
-    }
-  }, [session?.access_token, me?.profile.role, me?.profile.is_minor]);
+    analyticsTokenRef.current = session?.access_token ?? null;
+    analyticsPathRef.current = pathname ?? "";
+  }, [session?.access_token, pathname]);
+  useEffect(() => {
+    if (!analyticsActor) return;
+    const observer = observeUsage(document, () => analyticsPathRef.current, (event, feature) => {
+      const token = analyticsTokenRef.current;
+      if (token) void trackProductEvent(token, event, feature);
+    });
+    usageObserverRef.current = observer;
+    return () => { observer.dispose(); usageObserverRef.current = null; };
+  }, [analyticsActor]);
+  useEffect(() => { usageObserverRef.current?.pageChanged(); }, [pathname]);
   const [hasTransientMeError, setHasTransientMeError] = useState(false);
   const [appearancePreview, setAppearancePreview] = useState<AppearanceMode | null>(null);
   const handledAccessTokenRef = useRef<string | null>(null);
@@ -84,7 +94,6 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestMeRef = useRef<MeResponse | null>(me);
   const loadMeRef = useRef<LoadMe | null>(null);
-  const inviteCheckedRef = useRef(new Set<string>());
 
   useEffect(() => {
     latestMeRef.current = me;
@@ -109,11 +118,11 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     const currentLoadId = loadGenerationRef.current + 1;
     loadGenerationRef.current = currentLoadId;
     let shouldHoldHydration = false;
+    let admissionChecked = false;
 
     if (!nextSession?.access_token) {
-      // Signed out: the next sign-in is checked afresh.
-      inviteCheckedRef.current.clear();
       if (loadGenerationRef.current === currentLoadId) {
+        setSession(null);
         clearRetryTimer();
         setHasTransientMeError(false);
         setAppearancePreview(null);
@@ -125,67 +134,34 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       return;
     }
 
-    // Invite-only signup: a brand-new account (Google sign-in on /login can
-    // create one) or one turned away before must come from a browser that
-    // entered the access code, before /api/me creates its profile. Checked
-    // once per account and session; a check that cannot run lets the visitor
-    // through this time (rather than locking out a real member) but is not
-    // remembered, so the next load checks again.
-    const inviteUserId = nextSession.user_id ?? null;
-    if (inviteUserId && !inviteCheckedRef.current.has(inviteUserId) && needsInviteCheck(nextSession)) {
-      let checkFailed = false;
-      const allowed = await checkSignupAccess().catch(() => {
-        checkFailed = true;
-        return true;
-      });
-      if (loadGenerationRef.current !== currentLoadId) {
-        return;
-      }
-      if (!allowed) {
+    // Only pause the workspace when there is no profile for this user yet.
+    const hasCurrentProfile = Boolean(nextSession.user_id && latestMeRef.current?.profile.athlete_id === nextSession.user_id);
+    if (!hasCurrentProfile) setIsReady(false);
+    try {
+      const admitted = await hasSignupAdmission(nextSession.user_id);
+      admissionChecked = true;
+      if (!admitted) {
+        if (loadGenerationRef.current !== currentLoadId) return;
         clearRetryTimer();
-        setHasTransientMeError(false);
         setSession(null);
         setMe(null);
         hydratedAccessTokenRef.current = null;
-        const client = getSupabaseBrowserClient();
-        try {
-          // Remembered on the account, so trying again later is checked too.
-          await client.auth.updateUser({ data: { [INVITE_PENDING_FLAG]: true } });
-        } catch {
-          // Still turned away now; the account is new enough to be checked again soon.
-        }
-        try {
-          await client.auth.signOut();
-        } catch {
-          // The redirect below still leaves the app.
-        }
-        window.location.assign(INVITE_REQUIRED_HREF);
+        setIsMeHydrated(true);
+        try { await getSupabaseBrowserClient().auth.signOut(); } catch { /* Redirect regardless. */ }
+        window.location.assign("/signup?invite=required");
         return;
       }
-      if (!checkFailed) {
-        inviteCheckedRef.current.add(inviteUserId);
+      if (loadGenerationRef.current !== currentLoadId) return;
+      setSession(nextSession);
+      setIsReady(true);
+
+      if (!force && hydratedAccessTokenRef.current === nextSession.access_token && latestMeRef.current) {
+        setIsMeHydrated(true);
+        return;
       }
-      if (nextSession.invite_pending) {
-        void getSupabaseBrowserClient()
-          .auth.updateUser({ data: { [INVITE_PENDING_FLAG]: null } })
-          .catch(() => undefined);
-      }
-    }
+      if (hydratedAccessTokenRef.current !== nextSession.access_token && !hasCurrentProfile) setMe(null);
+      setIsMeHydrated(false);
 
-    setSession(nextSession);
-    setIsReady(true);
-
-    if (!force && hydratedAccessTokenRef.current === nextSession.access_token && latestMeRef.current) {
-      setIsMeHydrated(true);
-      return;
-    }
-
-    if (hydratedAccessTokenRef.current !== nextSession.access_token) {
-      setMe(null);
-    }
-    setIsMeHydrated(false);
-
-    try {
       let nextMe: MeResponse | null = null;
       let lastError: unknown = null;
 
@@ -300,7 +276,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       }, ME_RETRY_DELAY_MS);
     } finally {
       if (loadGenerationRef.current === currentLoadId) {
-        setIsReady(true);
+        setIsReady(admissionChecked || hasCurrentProfile);
         if (!shouldHoldHydration) {
           setIsMeHydrated(true);
         }
@@ -337,12 +313,9 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
               access_token: data.session.access_token,
               email: data.session.user.email ?? null,
               user_id: data.session.user.id ?? null,
-              created_at: data.session.user.created_at ?? null,
-              invite_pending: data.session.user.user_metadata?.[INVITE_PENDING_FLAG] === true,
             }
           : null;
         handledAccessTokenRef.current = nextSession?.access_token ?? null;
-        setSession(nextSession);
         void loadMe(nextSession);
       })
       .catch(async () => {
@@ -374,8 +347,6 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
             access_token: nextSession.access_token,
             email: nextSession.user.email ?? null,
             user_id: nextSession.user.id ?? null,
-            created_at: nextSession.user.created_at ?? null,
-            invite_pending: nextSession.user.user_metadata?.[INVITE_PENDING_FLAG] === true,
           }
         : null;
       const nextToken = mappedSession?.access_token ?? null;
@@ -385,7 +356,6 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       handledAccessTokenRef.current = nextToken;
       // Reads are keyed by token already; this just drops the old session's.
       clearSharedReads();
-      setSession(mappedSession);
       void loadMe(mappedSession);
     });
     subscription = authState.data.subscription;

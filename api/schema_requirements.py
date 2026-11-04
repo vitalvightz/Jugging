@@ -33,7 +33,7 @@ from typing import Iterable, Mapping, Sequence
 INTAKES_TABLE = "athlete_intakes"
 
 REQUIRED_TABLES: tuple[str, ...] = (
-    "product_events", "product_analytics_preferences", "product_analytics_excluded_emails",
+    "product_events", "product_analytics_preferences", "product_analytics_excluded_emails", "product_analytics_rollout",
     "profiles",
     "plans",
     "generation_jobs",
@@ -72,6 +72,9 @@ REQUIRED_TABLES: tuple[str, ...] = (
     # movement names (PUT /api/training/sessions/{id}/exercises/{entry_id}).
     "manual_exercise_entries",
     "personal_exercises",
+    # Inferred training focus and its per-day model-call budget.
+    "training_focus_inferences",
+    "training_focus_call_budget",
     "custom_training_plans",
     "private_video_assets",
     "private_exercise_media",
@@ -385,6 +388,8 @@ REQUIRED_SPARRING_LOGS_COLUMNS: tuple[str, ...] = (
     "external_session_id",
     "detail_revision",
     "admin_review_id",
+    # "One thing to work on next time" (plain update after the RPC).
+    "focus",
 )
 
 REQUIRED_EXERCISE_LOGS_COLUMNS: tuple[str, ...] = (
@@ -406,7 +411,8 @@ REQUIRED_EXERCISE_LOGS_COLUMNS: tuple[str, ...] = (
 
 REQUIRED_EXTERNAL_TRAINING_COLUMNS: tuple[str, ...] = (
     "id", "athlete_id", "client_request_id", "request_fingerprint", "training_day",
-    "activity", "sport", "session_type", "duration_minutes", "effort", "takeaway", "deleted_at", "created_at", "updated_at",
+    "activity", "sport", "session_type", "duration_minutes", "effort", "takeaway", "distance_value", "distance_unit", "duration_seconds", "run_type",
+    "deleted_at", "created_at", "updated_at",
 )
 
 REQUIRED_MANUAL_EXERCISE_ENTRIES_COLUMNS: tuple[str, ...] = (
@@ -512,6 +518,7 @@ REQUIRED_NOTIFICATION_EVALUATIONS_COLUMNS: tuple[str, ...] = (
 REQUIRED_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "product_analytics_excluded_emails": ("email",),
     "product_events": ("id", "athlete_id", "event_name", "feature", "request_id", "flow_id", "created_at"),
+    "product_analytics_rollout": ("singleton", "started_at"),
     "product_analytics_preferences": ("athlete_id", "enabled", "consent_version", "updated_at"),
     "product_activity": ("id", "athlete_id", "occurred_at", "feature", "action", "meaningful", "flow_id"),
     "admin_athlete_rollups": ("last_meaningful_activity_at",),
@@ -534,6 +541,12 @@ REQUIRED_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "sparring_log_requests": ("athlete_id", "client_request_id", "sparring_log_id", "created_at"),
     "exercise_logs": REQUIRED_EXERCISE_LOGS_COLUMNS,
     "external_training_sessions": REQUIRED_EXTERNAL_TRAINING_COLUMNS,
+    # Inferred focus from existing notes (api/services/training_focus_inference.py).
+    "training_focus_inferences": ("id", "athlete_id", "source_kind", "source_id", "training_day", "source_revision",
+                                  "status", "reason", "focus", "scope", "category", "sport", "exercise_targets",
+                                  "movement_patterns", "context_revision", "model", "input_tokens", "output_tokens",
+                                  "generated_at", "dismissed_at", "created_at", "updated_at"),
+    "training_focus_call_budget": ("athlete_id", "usage_day", "calls"),
     "manual_exercise_entries": REQUIRED_MANUAL_EXERCISE_ENTRIES_COLUMNS,
     "personal_exercises": ("id", "athlete_id", "name", "name_key", "created_at", "updated_at"),
     "custom_training_plans": ("id", "athlete_id", "name", "kind", "sessions", "incomplete", "created_at", "updated_at"),
@@ -608,6 +621,9 @@ REQUIRED_FUNCTIONS: tuple[str, ...] = (
     "public.invalidate_notification_action",
     # Atomic sparring log + rocked/dropped admin review (api/store.py::record_sparring_log).
     "public.record_sparring_log",
+    # Claims one note revision for focus inference (api/store.py::claim_training_focus_inference).
+    "public.claim_training_focus_inference",
+    "public.reserve_training_focus_call",
     # Plan-free daily check-in upsert (api/store.py::upsert_today_checkin).
     "public.upsert_plan_free_today_checkin",
     "public.record_rehab_exposure",
@@ -725,6 +741,9 @@ INDEX_REQUIREMENTS: tuple[IndexRequirement, ...] = (
     ),
     IndexRequirement(label="external training request uniqueness", accepted_names=("external_training_sessions_request_key",)),
     IndexRequirement(label="external training athlete/day index", accepted_names=("external_training_sessions_athlete_day_idx",)),
+    # ON CONFLICT targets of claim_training_focus_inference and reserve_training_focus_call.
+    IndexRequirement(label="training focus one row per source", accepted_names=("training_focus_inferences_source_key",)),
+    IndexRequirement(label="training focus call budget per athlete/day", accepted_names=("training_focus_call_budget_pkey",)),
     # ON CONFLICT target: a retried exercise save never adds a second occurrence.
     IndexRequirement(label="manual exercise retry uniqueness", accepted_names=("manual_exercise_entries_request_key",)),
     IndexRequirement(label="personal exercise name uniqueness", accepted_names=("personal_exercises_name_key",)),
@@ -765,7 +784,7 @@ INDEX_REQUIREMENTS: tuple[IndexRequirement, ...] = (
 # ---------------------------------------------------------------------------
 
 RLS_REQUIRED_TABLES: tuple[str, ...] = (
-    "product_events", "product_analytics_preferences", "product_analytics_excluded_emails",
+    "product_events", "product_analytics_preferences", "product_analytics_excluded_emails", "product_analytics_rollout",
     "private_video_assets",
     "private_exercise_media",
     "private_media_budget",
@@ -791,6 +810,8 @@ RLS_REQUIRED_TABLES: tuple[str, ...] = (
     "sparring_log_requests",
     "exercise_logs",
     "external_training_sessions",
+    "training_focus_inferences",
+    "training_focus_call_budget",
     "xp_accounts",
     "xp_awards",
     "beta_feedback",

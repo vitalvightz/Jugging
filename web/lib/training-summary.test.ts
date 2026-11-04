@@ -39,7 +39,7 @@ test("plan sessions keep their own bucket and missing durations are never estima
   assert.equal(summary.sessions, 2);
   assert.equal(summary.minutes, 30);
   assert.equal(summary.untimed, 1);
-  assert.deepEqual(summary.mix.map(item => item.label), ["Roadwork", "Unlxck plan"]);
+  assert.deepEqual(summary.mix.map(item => item.label), ["Running", "Unlxck plan"]);
 });
 
 test("a recorded sport decides the bucket; older records keep theirs", () => {

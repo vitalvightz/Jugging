@@ -53,22 +53,38 @@ async function mountSchedule() {
   } };
 }
 
-test("quick build permits nine weekly sessions and preserves frequency when availability changes", async () => {
+test("quick build never offers more than selected training days", async () => {
   const ui = await mountSchedule();
   try {
     const frequency = ui.host.querySelector<HTMLButtonElement>("#qb-weekly-frequency");
     assert.ok(frequency);
     await act(async () => frequency.click());
-    const nine = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find(option => option.textContent?.trim() === "9");
-    assert.ok(nine, "nine sessions must be selectable across six days");
-    await act(async () => nine.click());
-    assert.equal(frequency.textContent?.trim(), "9");
+    const choices = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]'));
+    assert.ok(choices.some(option => option.textContent?.trim() === "6"));
+    assert.equal(choices.some(option => option.textContent?.trim() === "7"), false);
+    assert.equal(choices.some(option => option.textContent?.trim() === "12"), false);
+    const six = choices.find(option => option.textContent?.trim() === "6");
+    assert.ok(six);
+    await act(async () => six.click());
+    assert.equal(frequency.textContent?.trim(), "6");
     const label = Array.from(ui.host.querySelectorAll(".checkbox-group-label")).find(entry => entry.textContent === "Days you can train");
     assert.ok(label?.parentElement);
     const saturday = Array.from(label.parentElement.querySelectorAll("label")).find(entry => entry.textContent?.trim() === "Saturday")?.querySelector<HTMLInputElement>("input");
     assert.ok(saturday);
     await act(async () => saturday.click());
     assert.equal(saturday.checked, false);
-    assert.equal(frequency.textContent?.trim(), "9", "availability changes must not silently rewrite session frequency");
+    await act(async () => frequency.click());
+    assert.equal(Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).some(option => option.textContent?.trim() === "6"), false);
+  } finally { await ui.cleanup(); }
+});
+
+
+test("quick build disables the shared weight cut goal", async () => {
+  const ui = await mountSchedule();
+  try {
+    const card = Array.from(ui.host.querySelectorAll<HTMLLabelElement>("label.checkbox-card"))
+      .find(label => label.textContent?.includes("Weight Cut"));
+    assert.ok(card);
+    assert.equal(card.querySelector("input")?.disabled, true);
   } finally { await ui.cleanup(); }
 });

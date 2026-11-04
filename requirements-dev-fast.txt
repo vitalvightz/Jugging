@@ -10,6 +10,8 @@ fastapi==0.136.1
 uvicorn==0.46.0
 rapidfuzz==3.14.5
 supabase==2.29.0
+# Local verification of Supabase access tokens against the project JWKS.
+PyJWT[crypto]==2.15.1
 gotrue==2.12.4
 markdown2==2.5.5
 openai==2.32.0

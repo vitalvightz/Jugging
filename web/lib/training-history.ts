@@ -11,7 +11,16 @@ export type ExternalTrainingFields = {
   /** Optional; omitted, never guessed, when the athlete does not choose one. */
   sport?: TrainingSport | null;
   session_type?: TrainingSessionType | null;
+  /** Optional run detail, roadwork only. Minutes stay ceil(seconds / 60). */
+  distance_value?: number | null;
+  distance_unit?: DistanceUnit | null;
+  duration_seconds?: number | null;
+  /** Optional, roadwork only: what kind of run it was. */
+  run_type?: RunType | null;
 };
+export type DistanceUnit = "km" | "miles";
+export const RUN_TYPES = ["easy", "tempo", "intervals", "sprints", "long", "race"] as const;
+export type RunType = (typeof RUN_TYPES)[number];
 export type TrainingHistorySession = {
   id: string;
   source: "unlxck" | "external";
@@ -24,6 +33,10 @@ export type TrainingHistorySession = {
   sport?: TrainingSport | null;
   session_type?: TrainingSessionType | null;
   duration_minutes: number | null;
+  distance_value?: number | null;
+  distance_unit?: DistanceUnit | null;
+  duration_seconds?: number | null;
+  run_type?: RunType | null;
   effort: TrainingEffort | null;
   plan_id: string | null;
   session_rpe?: number | null;
@@ -34,6 +47,8 @@ export type TrainingHistorySession = {
   takeaway?: string;
   /** Live exercise entries on a manual session; null/absent when not counted. */
   exercise_count?: number | null;
+  /** A plan session History may edit (RPE, pain, notes) or remove. */
+  history_editable?: boolean;
 };
 
 /** One page of whole training days; pass `next_before_day` back for older ones. */

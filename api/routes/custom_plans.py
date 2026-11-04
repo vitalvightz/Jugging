@@ -54,6 +54,12 @@ def build_custom_plans_router(*, require_profile, get_store):
         })
         fields = plan_fields(store, body, row, athlete_id=profile.athlete_id)
         published = publish_custom_plan(store, {**row, **fields}, profile)
+        from api.services.active_plan import resolve_active_plan
+        from api.contracts.training_day import current_training_day
+        resolve_active_plan(
+            store, profile.athlete_id,
+            current_training_day=current_training_day(athlete_timezone=profile.athlete_timezone),
+        )
         from api.services.tracking_xp import reconcile_training_xp
 
         reconcile_training_xp(store, profile.athlete_id, athlete_timezone=profile.athlete_timezone)

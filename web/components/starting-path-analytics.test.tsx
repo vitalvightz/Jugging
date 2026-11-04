@@ -17,7 +17,7 @@ const me = {
   latest_intake: null,
 };
 
-test("the optional analytics choice is reachable before a starting path leaves the screen", () => {
+test("the starting path asks for no analytics opt-in and shows no analytics notice", () => {
   const html = renderToStaticMarkup(
     <AppRouterContext.Provider value={router as never}>
       <AppSessionContext.Provider value={{ session: { access_token: "t" }, me, isMeHydrated: true, hasTransientMeError: false } as never}>
@@ -25,10 +25,8 @@ test("the optional analytics choice is reachable before a starting path leaves t
       </AppSessionContext.Provider>
     </AppRouterContext.Provider>,
   );
-  const consent = html.indexOf("Allow optional feature analytics");
-  // Each starting-path choice saves and navigates at once; the choice must come first and be visible.
-  assert.ok(consent > 0 && consent < html.indexOf("Generate my S&amp;C plan"));
-  assert.match(html, /<details open=""><summary>Optional product analytics/);
-  // Still default-off: never checked before the athlete chooses.
-  assert.doesNotMatch(html, /type="checkbox"[^>]*checked/);
+  // The beta notice lives in Settings; onboarding has neither notice nor opt-in (see e2e/beta-usage-analytics.spec.ts).
+  assert.doesNotMatch(html, /Private beta usage analytics/);
+  assert.doesNotMatch(html, /Allow optional feature analytics/);
+  assert.doesNotMatch(html, /type="checkbox"/);
 });

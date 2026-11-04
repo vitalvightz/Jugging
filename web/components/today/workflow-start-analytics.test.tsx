@@ -7,7 +7,6 @@ import { createRoot } from "react-dom/client";
 
 import { AppSessionContext } from "@/components/auth-provider";
 import { ToastProvider } from "@/components/toast-provider";
-import { getAnalyticsPreference, setAnalyticsPreference } from "@/lib/api";
 import type { SparringLogRecord } from "@/lib/types";
 
 import { SparringLogPrompt, type SparringDraft } from "./sparring-log-prompt";
@@ -23,17 +22,12 @@ const DRAFT: SparringDraft = {
   roundSeconds: 180,
 };
 
-/** Records event requests; the preference endpoint answers with `enabled`. */
-async function withApi(enabled: Record<string, boolean>, run: (events: unknown[]) => Promise<void>) {
+/** Records beta event requests without any preference setup. */
+async function withApi(run: (events: unknown[]) => Promise<void>) {
   const original = globalThis.fetch;
   const events: unknown[] = [];
   globalThis.fetch = async (input, init) => {
     const path = String(input);
-    const token = String(new Headers(init?.headers).get("Authorization")).replace("Bearer ", "");
-    if (path.endsWith("/api/analytics/preference")) {
-      if (init?.method === "PUT") enabled[token] = JSON.parse(String(init.body)).enabled;
-      return new Response(JSON.stringify({ enabled: enabled[token] ?? false }), { status: 200 });
-    }
     if (path.endsWith("/api/analytics/events")) {
       events.push(JSON.parse(String(init?.body)));
       return new Response(JSON.stringify({ accepted: true }), { status: 202 });
@@ -71,8 +65,7 @@ async function mount(node: React.ReactNode) {
 const flush = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
 test("a check-in's first answer records one start without any answer values", async () => {
-  await withApi({ "checkin-on": true }, async (events) => {
-    await getAnalyticsPreference("checkin-on");
+  await withApi( async (events) => {
     const view = await mount(<TodayReadinessForm token="checkin-on" onRefresh={async () => {}} />);
     try {
       assert.equal(events.length, 0, "showing the form is not a start");
@@ -94,12 +87,9 @@ test("a check-in's first answer records one start without any answer values", as
   });
 });
 
-test("a check-in sends nothing when consent was declined or withdrawn", async () => {
-  await withApi({}, async (events) => {
-    await getAnalyticsPreference("checkin-declined");
-    await setAnalyticsPreference("checkin-withdrawn", true);
-    await setAnalyticsPreference("checkin-withdrawn", false);
-    for (const token of ["checkin-declined", "checkin-withdrawn", "checkin-unloaded"]) {
+test("beta check-in starts record without an optional choice", async () => {
+  await withApi( async (events) => {
+    for (const token of ["beta-one", "beta-two", "beta-three"]) {
       const view = await mount(<TodayReadinessForm token={token} onRefresh={async () => {}} />);
       try {
         const poor = [...view.container.querySelectorAll("button")].find((b) => b.textContent === "Poor")!;
@@ -109,13 +99,12 @@ test("a check-in sends nothing when consent was declined or withdrawn", async ()
         view.unmount();
       }
     }
-    assert.equal(events.length, 0);
+    assert.equal(events.length, 3);
   });
 });
 
 test("a new sparring log records a start; reopening a saved one does not", async () => {
-  await withApi({ "spar-on": true }, async (events) => {
-    await getAnalyticsPreference("spar-on");
+  await withApi( async (events) => {
     const opened = await mount(<SparringLogPrompt token="spar-on" draft={DRAFT} onDismiss={() => {}} />);
     await flush();
     opened.unmount();

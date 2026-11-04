@@ -11,11 +11,13 @@ import { consentCopyForBand, hasHealthDataConsent } from "@/lib/compliance";
 import { PRIVACY_HREF } from "@/lib/legal-documents";
 import { formatAppDate } from "@/lib/date-format";
 import {
-  TRAINING_EFFORTS, canRepeatTraining, latestRepeatableTraining,
-  type TrainingActivity, type TrainingEffort, type TrainingHistorySession,
+  RUN_TYPES, TRAINING_EFFORTS, canRepeatTraining, latestRepeatableTraining,
+  type DistanceUnit, type RunType, type TrainingActivity, type TrainingEffort, type TrainingHistorySession,
 } from "@/lib/training-history";
+import { DISTANCE_LIMITS, distanceUnitLabel, formatRunTime, parseRunTime } from "@/lib/run-time";
+import { RUN_TYPE_LABELS } from "@/lib/run-insights";
 import {
-  athleteSport, fitsPicks, sportLabel, TRAINING_SPORTS, trainingLabel, trainingPicks, type TrainingPick, type TrainingSessionType, type TrainingSport,
+  athleteSport, fitsPicks, sportLabel, TRAINING_SPORTS, trainingLabel, trainingPicks, trainingTitle, type TrainingPick, type TrainingSessionType, type TrainingSport,
 } from "@/lib/training-disciplines";
 import styles from "./log-training.module.css";
 import { TrainingActionContent } from "./training-action-tile";
@@ -31,6 +33,8 @@ import type { SparringIntensity } from "@/lib/types";
 const SHEET_EXIT_MS = 200;
 
 const DURATION_PICKS = [30, 45, 60, 90];
+/** Common race distances for roadwork, in km. */
+const DISTANCE_PICKS = [{ label: "5k", km: 5 }, { label: "10k", km: 10 }, { label: "Half", km: 21.1 }];
 
 const label = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
@@ -50,13 +54,15 @@ export function manualSparringDraft(row: TrainingHistorySession): SparringDraft 
   };
 }
 
-type Props = { accessToken: string | null; entry?: TrainingHistorySession; repeatEntry?: TrainingHistorySession; recent?: boolean; history?: TrainingHistorySession[]; quickSession?: { activity: TrainingActivity; sport?: TrainingSport | null; session_type?: TrainingSessionType | null; duration_minutes: number; title: string; effort?: TrainingEffort | null }; onSaved?: (row: TrainingHistorySession) => void; onSparringReported?: () => void; variant?: "compact" | "tile" | "primary" };
+type Props = { accessToken: string | null; entry?: TrainingHistorySession; repeatEntry?: TrainingHistorySession; recent?: boolean; history?: TrainingHistorySession[]; quickSession?: { activity: TrainingActivity; sport?: TrainingSport | null; session_type?: TrainingSessionType | null; duration_minutes: number; title: string; effort?: TrainingEffort | null }; onSaved?: (row: TrainingHistorySession) => void; onSparringReported?: () => void; variant?: "compact" | "tile" | "primary";
+  /** With `entry`: open its edit sheet at once, with no trigger button, and report when it closes. */
+  autoOpen?: boolean; onClosed?: () => void };
 
 export function LogTraining(props: Props) {
   return props.accessToken ? <LogTrainingContent key={props.accessToken} {...props} accessToken={props.accessToken} /> : null;
 }
 
-function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, history, quickSession, onSaved, onSparringReported, variant = "compact" }: Props & { accessToken: string }) {
+function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, history, quickSession, onSaved, onSparringReported, variant = "compact", autoOpen = false, onClosed }: Props & { accessToken: string }) {
   const [open, setOpen] = useState(false);
   // The sheet slides away before it unmounts, rather than vanishing in a frame.
   const [closing, setClosing] = useState(false);
@@ -101,6 +107,12 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
   // A per-session switch; the saved profile sport never changes here.
   const [sportMenu, setSportMenu] = useState(false);
   const [duration, setDuration] = useState("");
+  // Optional roadwork detail: distance and an exact time ("24:35").
+  const [distance, setDistance] = useState("");
+  const [distanceUnit, setDistanceUnit] = useState<DistanceUnit>("km");
+  const [customDistance, setCustomDistance] = useState(false);
+  const [runTime, setRunTime] = useState("");
+  const [runType, setRunType] = useState<RunType | null>(null);
   const [effort, setEffort] = useState<TrainingEffort | "">("");
   const [trainingDay, setTrainingDay] = useState("");
   const [busy, setBusy] = useState(false);
@@ -204,6 +216,13 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
     setSessionType(row?.sport ? row.session_type ?? null : null);
     setGridSport(row?.sport ?? (row?.activity && !fitsPicks(row, mySport) ? null : mySport));
     setDuration(row?.duration_minutes?.toString() ?? "");
+    const storedDistance = row?.distance_value != null && row.distance_unit ? row.distance_value : null;
+    setDistance(storedDistance != null ? String(storedDistance) : "");
+    setDistanceUnit(row?.distance_unit ?? "km");
+    setCustomDistance(storedDistance != null && !(row?.distance_unit === "km" && DISTANCE_PICKS.some(pick => pick.km === storedDistance)));
+    // A repeated run keeps its distance; the time is today's to enter.
+    setRunTime(!repeat && row?.duration_seconds ? formatRunTime(row.duration_seconds) : "");
+    setRunType(row?.run_type ?? null);
     setEffort(repeat ? "" : row?.effort ?? "");
     setTrainingDay("");
     requestId.current = null;
@@ -219,6 +238,22 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
     setOpen(true);
   }
 
+  // An auto-opened edit sheet starts open once, then reports its close.
+  const autoStarted = useRef(false);
+  const onClosedRef = useRef(onClosed);
+  useEffect(() => { onClosedRef.current = onClosed; }, [onClosed]);
+  useEffect(() => {
+    if (!autoOpen || !entry || autoStarted.current) return;
+    autoStarted.current = true;
+    startEdit(entry);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
+  }, []);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (autoStarted.current && wasOpen.current && !open) onClosedRef.current?.();
+    wasOpen.current = open;
+  }, [open]);
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!accessToken || saving.current) return;
@@ -228,7 +263,17 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
       dialog.current?.querySelector<HTMLButtonElement>(!activity ? '[data-activity]' : '[data-effort]')?.focus();
       return;
     }
-    const minutes = Number(duration);
+    const isRun = activity === "roadwork";
+    const runSeconds = isRun && runTime.trim() ? parseRunTime(runTime) : null;
+    if (isRun && runTime.trim() && runSeconds === null) {
+      setError("Enter the time as mm:ss or h:mm:ss, up to 10 hours."); return;
+    }
+    const distanceValue = isRun && distance.trim() ? Number(distance) : null;
+    if (distanceValue !== null && !(distanceValue > 0 && distanceValue <= DISTANCE_LIMITS[distanceUnit])) {
+      setError(`Enter a distance above 0 and up to ${DISTANCE_LIMITS[distanceUnit]} ${distanceUnitLabel(distanceUnit)}.`); return;
+    }
+    // An exact time sets the minutes, so workload always reads whole minutes.
+    const minutes = runSeconds !== null ? Math.ceil(runSeconds / 60) : Number(duration);
     if (!Number.isInteger(minutes) || minutes < 1 || minutes > 600) {
       setError("Enter a whole number from 1 to 600 minutes."); return;
     }
@@ -237,7 +282,10 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
     setBusy(true);
     setError(null);
     try {
-      const body = { activity, duration_minutes: minutes, effort, ...(sport ? { sport } : {}), ...(sport && sessionType ? { session_type: sessionType } : {}) };
+      const body = { activity, duration_minutes: minutes, effort, ...(sport ? { sport } : {}), ...(sport && sessionType ? { session_type: sessionType } : {}),
+        ...(distanceValue !== null ? { distance_value: distanceValue, distance_unit: distanceUnit } : {}),
+        ...(runSeconds !== null ? { duration_seconds: runSeconds } : {}),
+        ...(isRun && runType ? { run_type: runType } : {}) };
       const row = editing
         ? await editExternalTraining(token, editing, body)
         : await logExternalTraining(token, { ...body, ...(trainingDay ? { training_day: trainingDay } : {}), client_request_id: requestId.current ??= crypto.randomUUID() });
@@ -248,7 +296,7 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
       closeSheet();
       if (!editing) offerPushNotifications(token);
       if (!entry && !repeatEntry && row.source === "external" && row.activity !== "sparring") setTakeawayRow(row);
-      else setSaved(`${row.title} logged successfully. Saved to Training History.`);
+      else setSaved(`${trainingTitle(row)} logged successfully. Saved to Training History.`);
       if (!editing && row.source === "external" && row.activity === "sparring") setSparringDraft(manualSparringDraft(row));
     } catch (reason) {
       if (currentToken.current === token && reason instanceof ApiError && reason.code === "health_data_consent_required") {
@@ -286,6 +334,37 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
           onClick={() => choose(pick)}>{pick.label}</button>)}
       </div>
     </fieldset>
+    {activity === "roadwork" ? <fieldset className={styles.fieldset} disabled={busy} aria-label="Run type">
+      <legend>Run type <span className={styles.unit}>Optional</span></legend>
+      <div className={styles.effortGrid}>
+        {RUN_TYPES.map(value => <button key={value} type="button" aria-pressed={runType === value}
+          onClick={() => { setRunType(current => current === value ? null : value); requestId.current = null; }}>{RUN_TYPE_LABELS[value]}</button>)}
+      </div>
+    </fieldset> : null}
+    {activity === "roadwork" ? <fieldset className={styles.fieldset} disabled={busy} aria-label="Run distance and time">
+      <legend>Distance <span className={styles.unit}>Optional</span></legend>
+      <div className={styles.durationGrid}>
+        {DISTANCE_PICKS.map(pick => <button key={pick.label} type="button" aria-pressed={!customDistance && distanceUnit === "km" && distance === String(pick.km)}
+          onClick={() => { setCustomDistance(false); setDistanceUnit("km"); setDistance(current => current === String(pick.km) && !customDistance ? "" : String(pick.km)); requestId.current = null; }}>{pick.label}</button>)}
+        <button type="button" aria-pressed={customDistance} aria-expanded={customDistance} aria-controls={`${fieldId}-distance`}
+          onClick={() => { setCustomDistance(true); requestId.current = null; }}>Custom</button>
+      </div>
+      {customDistance ? <div className={styles.runCustom}>
+        <label className={styles.customDuration}>Distance ({distanceUnitLabel(distanceUnit)})
+          <input id={`${fieldId}-distance`} type="number" inputMode="decimal" min={0.01} max={DISTANCE_LIMITS[distanceUnit]} step={0.01} value={distance}
+            onChange={event => { setDistance(event.target.value); requestId.current = null; }} />
+        </label>
+        <div className={styles.unitToggle} role="group" aria-label="Distance unit">
+          {(["km", "miles"] as const).map(unit => <button key={unit} type="button" aria-pressed={distanceUnit === unit}
+            onClick={() => { setDistanceUnit(unit); requestId.current = null; }}>{distanceUnitLabel(unit)}</button>)}
+        </div>
+      </div> : null}
+      <label className={styles.customDuration}>Time (mm:ss or h:mm:ss, optional)
+        <input type="text" inputMode="decimal" placeholder="24:35" autoComplete="off" value={runTime}
+          onChange={event => { setRunTime(event.target.value); requestId.current = null; }} />
+      </label>
+    </fieldset> : null}
+    {activity === "roadwork" && parseRunTime(runTime) !== null ? <p className={styles.runMinutes}>Duration: {Math.ceil(parseRunTime(runTime)! / 60)} min from your time</p> :
     <fieldset className={styles.fieldset} disabled={busy} aria-label="Duration">
       <legend>Duration <span className={styles.unit}>min</span></legend>
       <div className={styles.durationGrid}>
@@ -298,7 +377,7 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
         <input id={`${fieldId}-duration`} ref={durationInput} type="number" inputMode="numeric" required min={1} max={600} step={1} value={duration}
           onChange={event => { setDuration(event.target.value); requestId.current = null; }} />
       </label> : null}
-    </fieldset>
+    </fieldset>}
   </>;
   const dateChoice = !editing ? <details className={styles.dateChoice}>
     <summary>Training date · {formatAppDate(trainingDay || today)}</summary>
@@ -311,21 +390,21 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
   </details> : null;
 
   return (
-    <div className={entry || repeatEntry ? styles.editControl : styles.training} role={entry || repeatEntry ? undefined : "region"} aria-label={entry ? `Manage ${entry.title}` : "Log session"}>
+    <div className={entry || repeatEntry ? styles.editControl : styles.training} role={entry || repeatEntry ? undefined : "region"} aria-label={entry ? `Manage ${trainingTitle(entry)}` : "Log session"}>
       {/* Appears once a session is logged (or history arrives): eased, not popped. */}
       <Collapse show={Boolean(quickSession || repeatSource)}>
       {quickSession ? <button className={styles.actionRow} type="button" onClick={() => startEdit(quickSession, true, quickSession.title)} aria-haspopup="dialog" aria-label={quickSession.title} aria-describedby={`${fieldId}-quick`}>
         <span><strong>{quickSession.title}</strong><span className="muted" id={`${fieldId}-quick`}>{trainingLabel(quickSession)} · {quickSession.duration_minutes} min</span></span>
         <svg className={styles.chevron} viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 5 7 7-7 7" /></svg>
-      </button> : repeatSource ? <button className={repeatEntry ? styles.repeatButton : styles.actionRow} type="button" onClick={() => startEdit(repeatSource, true)} aria-haspopup="dialog" aria-label={repeatEntry ? `Repeat ${repeatSource.title}` : "Repeat last session"} aria-describedby={!repeatEntry ? `${fieldId}-recent` : undefined}>
+      </button> : repeatSource ? <button className={repeatEntry ? styles.repeatButton : styles.actionRow} type="button" onClick={() => startEdit(repeatSource, true)} aria-haspopup="dialog" aria-label={repeatEntry ? `Repeat ${trainingTitle(repeatSource)}` : "Repeat last session"} aria-describedby={!repeatEntry ? `${fieldId}-recent` : undefined}>
         {repeatEntry ? "Repeat" : <><span><strong>Repeat last session</strong><span className="muted" id={`${fieldId}-recent`}>{trainingLabel(repeatSource)} · {repeatSource.duration_minutes} min</span></span><svg className={styles.chevron} viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 5 7 7-7 7" /></svg></>}
       </button> : null}
       </Collapse>
-      {repeatEntry ? null : entry ? <button className={styles.editButton} type="button" onClick={() => startEdit(entry)} aria-haspopup="dialog" aria-label={`Edit ${entry.title}`} title="Edit session">
+      {repeatEntry || autoOpen ? null : entry ? <button className={styles.editButton} type="button" onClick={() => startEdit(entry)} aria-haspopup="dialog" aria-label={`Edit ${trainingTitle(entry)}`} title="Edit session">
         <svg className="ex-log-edit-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M4 20h4L18.5 9.5a2.12 2.12 0 0 0-3-3L5 17v3Z" /><path d="m14.5 7.5 3 3" /></svg>
       </button> :
         <button className={variant === "primary" ? `cta ${styles.primary}` : variant === "tile" ? `${tileStyles.tile} ${tileStyles.log}` : styles.actionRow} type="button" onClick={() => startEdit()} aria-haspopup="dialog" aria-label="Log session">
-          {variant === "primary" ? <><span aria-hidden="true">+</span> Log session</> : variant === "tile" ? <TrainingActionContent kind="log" /> : <><span><strong>{recent && (repeatSource || quickSession) ? "Log another session" : "Log session"}</strong><span className="muted">{mySport ? `${sportLabel(mySport)}, strength, conditioning and more.` : "Sparring, boxing, roadwork, strength and more."}</span></span><span aria-hidden="true">+</span></>}
+          {variant === "primary" ? <><span aria-hidden="true">+</span> Log session</> : variant === "tile" ? <TrainingActionContent kind="log" /> : <><span><strong>{recent && (repeatSource || quickSession) ? "Log another session" : "Log session"}</strong><span className="muted">{mySport ? `${sportLabel(mySport)}, strength, conditioning and more.` : "Sparring, boxing, running, strength and more."}</span></span><span aria-hidden="true">+</span></>}
         </button>}
       {open ? (
         <dialog ref={dialog} className={styles.dialog} aria-label={editing ? "Edit session" : "Log session"} data-closing={closing || undefined} onCancel={event => { event.preventDefault(); if (!busy) closeSheet(); }}>

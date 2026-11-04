@@ -248,6 +248,23 @@ def test_two_genuinely_prescribed_blocks_are_not_silently_collapsed():
     assert len(session["blocks"]) == 2
 
 
+
+def test_identical_tactical_blocks_are_collapsed_without_changing_distinct_work():
+    from api.structured_plan_generation import _normalize_session
+
+    tactical = {"display_name": "Opponent Pattern Scan", "block_type": "mindset",
+                "duration": {"value": 10, "unit": "minutes"},
+                "coaching_cues": ["Identify repeated patterns."]}
+    session = _normalize_session({"blocks": [
+        {"block_id": "a", **tactical},
+        {"block_id": "b", **tactical},
+        {"block_id": "c", **tactical, "duration": {"value": 5, "unit": "minutes"}},
+        {"block_id": "d", "display_name": "Plank", "block_type": "strength", "sets": 2, "reps": 6},
+        {"block_id": "e", "display_name": "Plank", "block_type": "strength", "sets": 2, "reps": 6},
+    ]})
+    assert [block["block_id"] for block in session["blocks"]] == ["a", "c", "d", "e"]
+
+
 # --------------------------------------------------------------------------- #
 # Deterministic conditioning dose must survive Stage 2 verbatim.
 # --------------------------------------------------------------------------- #

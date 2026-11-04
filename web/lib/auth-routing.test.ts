@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getAuthenticatedLandingHref, needsStartingPath } from "./auth-routing";
+import { getAuthenticatedLandingHref, getSafePlanReturnHref, needsStartingPath } from "./auth-routing";
 import type { MeResponse } from "./types";
 
 function account(overrides: Record<string, unknown> = {}): MeResponse {
@@ -34,4 +34,19 @@ test("mandatory consent and staff routing precede starting choices", () => {
     me.profile.role = role;
     assert.equal(getAuthenticatedLandingHref(me), destination);
   }
+});
+
+test("plan-ready email survives sign-in without opening arbitrary redirect targets", () => {
+  const id = "11111111-2222-4333-8444-555555555555";
+  const plan = `/plans/${id}`;
+  assert.equal(getSafePlanReturnHref(plan), plan);
+  assert.equal(getAuthenticatedLandingHref(account(), plan), plan);
+  for (const unsafe of ["//evil.example", "https://evil.example", "/admin", "/plans/other", `${plan}?x=1`]) {
+    assert.equal(getSafePlanReturnHref(unsafe), null);
+    assert.equal(getAuthenticatedLandingHref(account(), unsafe), "/get-started");
+  }
+  const unconsented = account(); unconsented.profile.terms_accepted = false;
+  assert.equal(getAuthenticatedLandingHref(unconsented, plan), "/consent");
+  const staff = account(); staff.profile.role = "admin";
+  assert.equal(getAuthenticatedLandingHref(staff, plan), "/admin");
 });

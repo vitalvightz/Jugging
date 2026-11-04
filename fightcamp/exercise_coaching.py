@@ -226,11 +226,11 @@ def coaching_lines(fields: dict[str, Any]) -> list[str]:
 
 
 def easier_rejection(text: str, assignment: dict, role: dict, athlete: dict, *, brief: dict | None = None, current_dose: dict | None = None) -> str | None:
-    """Check an AI Easier option against this movement and its restrictions.
+    """Reject only an Easier line that is unsafe or contradicts the dose.
 
-    Reductions are optional execution adjustments, never edits to the scheduled
-    prescription. Unknown quantities, equipment and movement substitutions fail
-    closed. Clinical restriction evaluation uses the existing safety guard.
+    Easier is optional AI advice, never an edit to the scheduled prescription.
+    Its wording is the model's; only stop-rule overrides, clinical restrictions
+    and numbers above the prescribed dose are rejected.
     """
     from .exercise_progression import effective_exercise_prescription, measured_dose
     value = normalise_measures(text)
@@ -239,25 +239,6 @@ def easier_rejection(text: str, assignment: dict, role: dict, athlete: dict, *, 
         return "stop_condition_override"
     if clinical_coaching_rejection(text, brief or {}):
         return "clinical_restriction"
-    if not re.search(r"\b(?:use|reduce|lower|ease|slow|shorten|take|keep|relax|simplify|limit|less|fewer|lighter|shallower|smaller|support|stop|omit|skip)\b", value, re.I):
-        return "unactionable_easier"
-    evidence = " ".join(str(assignment.get(k) or "") for k in ("name", "equipment", "equipment_required"))
-    equipment = athlete.get("equipment_profile") or athlete.get("equipment") or []
-    if isinstance(equipment, str):
-        equipment = [equipment]
-    evidence += " " + " ".join(str(e) for e in equipment)
-    for token in (r"barbell|training bar", r"dumbbells?", r"kettlebells?", r"bands?", r"TRX|straps?", r"sled", r"(?:medicine|med) ball", r"bike", r"pool", r"bench", r"box"):
-        if re.search(r"\b(?:" + token + r")\b", value, re.I) and not re.search(r"\b(?:" + token + r")\b", evidence, re.I):
-            return "unavailable_equipment"
-    # A named replacement is a selection/safety decision, not Easier authoring.
-    if re.search(r"\b(?:switch|replace|swap|substitute)\b|\binstead\b(?!\s+of\s+\d)", value, re.I):
-        return "changed_movement"
-    name = str(assignment.get("name") or "")
-    for movement in ("squat", "deadlift", "press", "row", "sprint", "jump", "swim(?:ming)?", "run(?:ning)?", "burpee", "lunge", "push-up", "pull-up", "swing", "throw", "punch", "carry"):
-        if re.search(r"\b" + movement + r"s?\b", value, re.I) and not re.search(r"\b" + movement + r"s?\b", name, re.I):
-            return "changed_movement"
-    if re.search(r"\b(?:add|increase|heavier|harder|faster|extra|deeper|shorten rest|shorter rest)\b|\bmore\s+(?:load|weight|resistance|reps|sets|rounds|effort|speed|distance|duration|force|intensity)\b", value, re.I):
-        return "increased_workload"
     if re.search(r"\d", value):
         current = current_dose if current_dose is not None else measured_dose(effective_exercise_prescription(role, assignment), assignment)
         proposed = measured_dose(value)

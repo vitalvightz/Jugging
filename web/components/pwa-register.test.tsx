@@ -184,7 +184,7 @@ test("inline install variant gives iPhone Chrome its own steps", async () => {
   }
 });
 
-test("an in-app iPhone browser is sent to Safari instead of shown steps it cannot follow", async () => {
+test("an in-app iPhone browser shows Instagram exit steps instead of Safari install steps", async () => {
   setMatchMedia(false);
   const userAgentDescriptor = Object.getOwnPropertyDescriptor(navigator, "userAgent");
   Object.defineProperty(navigator, "userAgent", {
@@ -196,11 +196,12 @@ test("an in-app iPhone browser is sent to Safari instead of shown steps it canno
     await act(async () => renderInstallSurface(root));
     await settle();
     const trigger = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
-      (button) => button.textContent === "View iPhone steps",
+      (button) => button.textContent === "View browser steps",
     );
     assert.ok(trigger);
     await act(async () => trigger.click());
-    assert.match(document.querySelector('[role="dialog"]')?.textContent ?? "", /Open UNLXCK in Safari/);
+    assert.match(document.querySelector('[role="dialog"]')?.textContent ?? "", /Open UNLXCK in your phone’s browser/);
+    assert.match(document.querySelector('[role="dialog"]')?.textContent ?? "", /Choose Open in external browser/);
   } finally {
     cleanup(container, root);
     if (userAgentDescriptor) Object.defineProperty(navigator, "userAgent", userAgentDescriptor);
@@ -264,5 +265,43 @@ test("a rejected native prompt hides the panel instead of inventing manual steps
     assert.equal(document.querySelector('[role="dialog"]'), null);
   } finally {
     cleanup(container, root);
+  }
+});
+
+test("Android Instagram Settings keeps a manual exit route and working Copy link", async () => {
+  setMatchMedia(false);
+  const userAgent = Object.getOwnPropertyDescriptor(navigator, "userAgent");
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  Object.defineProperty(navigator, "userAgent", { configurable: true,
+    value: "Mozilla/5.0 (Linux; Android 15) Chrome/141.0 Mobile Safari/537.36 Instagram 400.0.0" });
+  let copied = "";
+  Object.defineProperty(navigator, "clipboard", { configurable: true,
+    value: { writeText: async (value: string) => { copied = value; } } });
+  const { container, root } = mount();
+  try {
+    await act(async () => renderInstallSurface(root));
+    await settle();
+    const trigger = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent === "View browser steps",
+    );
+    assert.ok(trigger, "Android Instagram must offer Settings guidance without native install support");
+    await act(async () => trigger.click());
+    const sheet = document.querySelector<HTMLElement>('[role="dialog"]');
+    assert.ok(sheet);
+    assert.match(sheet.textContent ?? "", /Choose Open in external browser/);
+    assert.doesNotMatch(sheet.textContent ?? "", /Tap Add to Home Screen/);
+    const copy = Array.from(sheet.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent === "Copy link",
+    );
+    assert.ok(copy);
+    await act(async () => copy.click());
+    assert.equal(copied, "http://localhost/");
+    assert.match(sheet.querySelector('[role="status"]')?.textContent ?? "", /Paste it into your phone/);
+  } finally {
+    cleanup(container, root);
+    if (userAgent) Object.defineProperty(navigator, "userAgent", userAgent);
+    else Reflect.deleteProperty(navigator, "userAgent");
+    if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+    else Reflect.deleteProperty(navigator, "clipboard");
   }
 });

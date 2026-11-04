@@ -70,7 +70,7 @@ import {
 } from "@/lib/recommended-setup";
 import { useFadeNavigate } from "@/components/fade-through";
 
-const WEEKLY_FREQUENCY_OPTIONS: IntakeOption[] = Array.from({ length: 14 }, (_, index) => ({
+const WEEKLY_FREQUENCY_OPTIONS: IntakeOption[] = Array.from({ length: 7 }, (_, index) => ({
   label: String(index + 1),
   value: String(index + 1),
 }));
@@ -165,10 +165,10 @@ function ChipMultiSelect({
         {options.map((option) => {
           const checked = selectedValues.includes(option.value);
           const optionDisabledReason = getOptionDisabledReason?.(option, checked) ?? null;
-          const valueDisabled = !checked && (Boolean(optionDisabledReason) || disabledValueSet?.has(option.value) === true);
+          const valueDisabled = !checked && (Boolean(option.disabled) || Boolean(optionDisabledReason) || disabledValueSet?.has(option.value) === true);
           const capDisabled = !valueDisabled && disableAdditionalSelections && !checked;
           const disabled = valueDisabled || capDisabled;
-          const reason = valueDisabled ? optionDisabledReason ?? disabledValueReason : capDisabled ? capDisabledReason : undefined;
+          const reason = valueDisabled ? (option.disabled ? "Coming soon" : optionDisabledReason ?? disabledValueReason) : capDisabled ? capDisabledReason : undefined;
           return (
             <label
               key={option.value}
@@ -380,7 +380,7 @@ function QuickBuildFormInner() {
     }),
     [focusPresetLimits, input.fight_date, input.no_scheduled_fight],
   );
-  const maxWeeklySessions = input.training_availability.length * 2;
+  const maxWeeklySessions = input.training_availability.length;
   const sessionsSelectDisabled = maxWeeklySessions === 0;
   const weeklyFrequencyOptions = useMemo(
     () => (maxWeeklySessions > 0 ? WEEKLY_FREQUENCY_OPTIONS.slice(0, maxWeeklySessions) : []),
@@ -439,7 +439,7 @@ function QuickBuildFormInner() {
     return [
       { key: "profile", label: "Profile", detail: "Name and style", complete: profileComplete },
       { key: "fight", label: "Fight", detail: "Date or open camp", complete: fightComplete },
-      { key: "schedule", label: "Schedule", detail: "Days, sessions, kit", complete: scheduleComplete },
+      { key: "schedule", label: "Schedule", detail: "Training days, kit", complete: scheduleComplete },
       { key: "focus", label: "Focus", detail: "Goals selected", complete: focusComplete },
       { key: "generate", label: "Generate", detail: "Ready to build", complete: generateComplete },
     ];
@@ -821,7 +821,7 @@ function QuickBuildFormInner() {
     <form onSubmit={handleSubmit} className="onboarding-form quick-build-form">
       <section className="hero-panel">
         <p className="eyebrow">Quick Build</p>
-        <h1 className="hero-title">Generate a plan in about two minutes.</h1>
+        <h1 className="hero-title">Generate your plan in 5–10 minutes.</h1>
         <p className="muted">
           Safe defaults for fatigue, sparring and goals. Refine later in Camp Setup.
         </p>
@@ -929,6 +929,8 @@ function QuickBuildFormInner() {
                   ...current,
                   no_scheduled_fight: event.target.checked,
                   fight_date: event.target.checked ? "" : current.fight_date,
+                  event_name: event.target.checked ? "" : current.event_name,
+                  target_weight_kg: event.target.checked ? null : current.target_weight_kg,
                 }));
               }}
             />
@@ -948,6 +950,39 @@ function QuickBuildFormInner() {
               onChange={(event) => patch("fight_date", event.target.value)}
             />
             <FieldError message={visibleError("fight_date")} />
+          </div>
+        ) : null}
+        {!input.no_scheduled_fight ? (
+          <div className="field">
+            <label htmlFor="qb-event-name">Event name (optional)</label>
+            <input
+              id="qb-event-name"
+              type="text"
+              maxLength={80}
+              autoComplete="off"
+              placeholder="e.g. London Regionals"
+              value={input.event_name ?? ""}
+              onChange={(event) => patch("event_name", event.target.value)}
+            />
+          </div>
+        ) : null}
+        {/* Fight weight for the countdown card and weight tracker. Not asked of
+            under-18s (no weight-cut feature) or without health-data consent;
+            the backend strips it for minors too. */}
+        {!input.no_scheduled_fight && !me?.profile.is_minor && healthConsentGranted ? (
+          <div className="field">
+            <label htmlFor="qb-target-weight">Target weight (kg, optional)</label>
+            <input
+              id="qb-target-weight"
+              type="number"
+              min="0"
+              step="0.1"
+              inputMode="decimal"
+              value={input.target_weight_kg ?? ""}
+              onChange={(event) => patch("target_weight_kg", event.target.value.trim() === "" ? null : Number(event.target.value))}
+            />
+            <p className="muted">Your realistic fight-week target.</p>
+            <FieldError message={visibleError("target_weight_kg")} />
           </div>
         ) : null}
 
@@ -1041,7 +1076,7 @@ function QuickBuildFormInner() {
               className="secondary-button"
               onClick={() => {
                 setSubmitError(null);
-                setInput((current) => ({ ...current, no_scheduled_fight: true, fight_date: "" }));
+                setInput((current) => ({ ...current, no_scheduled_fight: true, fight_date: "", event_name: "", target_weight_kg: null }));
                 setMessage("Open Plan selected. Continue with your available training schedule.");
               }}
             >
@@ -1050,16 +1085,21 @@ function QuickBuildFormInner() {
           </div>
         ) : null}
         <div className="field">
-          <label htmlFor="qb-weekly-frequency">Sessions per week</label>
+          <label htmlFor="qb-weekly-frequency">Training days per week</label>
           <CustomSelect
             id="qb-weekly-frequency"
             value={sessionsSelectDisabled ? "" : String(input.weekly_training_frequency)}
             options={weeklyFrequencyOptions}
-            placeholder={sessionsSelectDisabled ? "Choose training days first" : "Sessions"}
+            placeholder={sessionsSelectDisabled ? "Choose training days first" : "Days"}
             disabled={sessionsSelectDisabled}
             onChange={(value) => patch("weekly_training_frequency", Number(value) || 1)}
           />
-          <p className="muted">Total training sessions per week: sparring, technical boxing, strength and conditioning. Count two sessions on the same day as two.</p>
+          <p className="muted">Count each training day once, even if you do multiple sessions that day.</p>
+          {input.weekly_training_frequency > 7 ? (
+            <p className="quick-build-field-error" role="alert">
+              Previous value: {input.weekly_training_frequency} sessions/week. Select your actual training days (1–7); your saved plan has not changed.
+            </p>
+          ) : null}
           <FieldError message={visibleError("weekly_training_frequency")} />
           <FieldError message={visibleError("training_availability")} />
         </div>

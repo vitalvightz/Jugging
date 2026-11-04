@@ -1,5 +1,4 @@
 "use client";
-import { AnalyticsPreference } from "@/components/analytics-preference";
 
 import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -70,7 +69,7 @@ export function StartingPathScreen() {
     }}>{isSigningOut ? "Signing out…" : "Sign out"}</button></header>
     <div className={styles.intro}>
       <h1 id="starting-heading">How would you like to start?</h1>
-      <p>Pick your sport, then how you&apos;ll use UNLXCK.</p>
+      <p>Choose your sport and how you want to train.</p>
     </div>
     <p className={styles.label} id={`${hintId}-sport`}>Your sport</p>
     <div className={styles.sports} role="group" aria-labelledby={`${hintId}-sport`} ref={sportGroup}>
@@ -78,17 +77,14 @@ export function StartingPathScreen() {
         aria-pressed={sport === value} disabled={Boolean(saving) || isSigningOut}
         onClick={() => { setPicked(value); setError(null); }}>{value === "other" ? "Other" : sportLabel(value)}</button>)}
     </div>
-    {/* Before the choices: each choice saves and leaves this screen at once.
-        Still default-off and freely skippable; it never blocks a choice. */}
-    <details open><summary>Optional product analytics</summary><AnalyticsPreference /></details>
     <p className={styles.label}>Start with</p>
     <div className={styles.choices} aria-busy={Boolean(saving)}>
       <button className={styles.choice} type="button" disabled={Boolean(saving) || isSigningOut} onClick={() => void choose("plan_first")}>
-        <span className={styles.copy}><strong>Generate my S&amp;C plan</strong><span>Personalised S&amp;C around your sport, schedule and goals.</span></span>
+        <span className={styles.copy}><strong>Generate my S&amp;C plan</strong><span>Build a personalised plan around your sport, schedule and goals.</span></span>
         <span className={styles.action} aria-hidden="true">{saving === "plan_first" ? "Saving…" : "›"}</span>
       </button>
       <button className={styles.choice} type="button" disabled={Boolean(saving) || isSigningOut} onClick={() => void choose("tracking_first")}>
-        <span className={styles.copy}><strong>I already have a coach or plan</strong><span>Track your training without building a programme.</span></span>
+        <span className={styles.copy}><strong>Track my training</strong><span>Already have a coach or programme? Log training, sparring and recovery.</span></span>
         <span className={styles.action} aria-hidden="true">{saving === "tracking_first" ? "Saving…" : "›"}</span>
       </button>
     </div>

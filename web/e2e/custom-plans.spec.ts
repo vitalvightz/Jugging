@@ -12,25 +12,35 @@ for (const width of [320, 390, 1280, 1600]) {
     await page.goto("/create");
     await page.getByRole("link", { name: /^Build Your Own/ }).click();
     await page.getByLabel("Plan name", { exact: true }).fill(`Weekly strength ${width}`);
-    await page.getByRole("button", { name: "+ Add Session", exact: true }).click();
-    await page.getByRole("button", { name: "Edit session 1", exact: true }).click();
-    await page.getByLabel("Session name", { exact: true }).fill("Strength");
-    await page.getByLabel("Day", { exact: true }).selectOption("Monday");
-    await page.getByRole("button", { name: "Done", exact: true }).click();
-    await page.getByRole("button", { name: "Add exercise to Strength", exact: true }).click();
-    await page.getByRole("button", { name: "Add from library", exact: true }).click();
-    await page.getByLabel("Search drills", { exact: true }).fill(entries[0].name);
-    await page
-      .getByRole("list", { name: "Drill results" })
-      .getByRole("button")
-      .filter({ hasText: entries[0].name })
-      .click();
-    await page.getByRole("button", { name: "Add to Session", exact: true }).click();
-    await expect(page.getByLabel("Sets", { exact: true })).toHaveCount(0);
-    if (!process.env.CUSTOM_PLAN_TEST_API) {
-      // Adding from the library applies the source's format in the background; wait for it before editing.
-      await expect(page.getByRole("region", { name: "Session 1", exact: true })).toContainText("5 × 5 min");
+    await page.getByRole("button", { name: /^Monday,/ }).click();
+    await page.getByRole("button", { name: "Add session on Monday", exact: true }).click();
+    const newSession = page.getByRole("dialog", { name: "New session", exact: true });
+    await expect(newSession.getByLabel("Day", { exact: true })).toHaveValue("Monday");
+    await newSession.getByRole("button", { name: "Strength / power", exact: true }).click();
+    await newSession.getByLabel("Session name", { exact: true }).fill("Strength");
+    await newSession.getByRole("button", { name: "Add session", exact: true }).click();
+    // The new workout opens straight onto adding exercises: search, tap +, repeat, all in one sheet.
+    const add = page.getByRole("dialog", { name: "Add to Strength", exact: true });
+    for (const entry of entries) {
+      await add.getByLabel("Search exercises", { exact: true }).fill(entry.name);
+      await add.getByRole("button", { name: `Add ${entry.name}`, exact: true }).click();
     }
+    await expect(add.getByRole("group")).toHaveCount(entries.length);
+    if (!process.env.CUSTOM_PLAN_TEST_API) {
+      // Each added exercise starts from the library's format, shown and editable in place.
+      // Earlier additions collapse to one summary line; tap to open the dose.
+      const first = add.getByRole("group", { name: entries[0].name, exact: true });
+      await expect(first).toContainText("5 × 5 min · rest 30s");
+      await first.getByRole("button", { expanded: false }).click();
+      await expect(first.getByLabel("Rounds", { exact: true })).toHaveValue("5");
+      await expect(first).toContainText("Library format");
+      await add.getByRole("group", { name: entries[1].name, exact: true }).getByRole("button", { expanded: false }).click();
+    }
+    expect(await add.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    if (process.env.CUSTOM_QA_DIR) await page.screenshot({ path: `${process.env.CUSTOM_QA_DIR}/custom-add-${width}.png` });
+    await add.getByRole("button", { name: `Remove ${entries[1].name}`, exact: true }).click();
+    await add.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Session 1", exact: true }).getByRole("listitem")).toHaveCount(1);
     await page
       .getByRole("button", {
         name: `Edit dose for ${entries[0].name}`,
@@ -66,16 +76,17 @@ for (const width of [320, 390, 1280, 1600]) {
     if (process.env.CUSTOM_QA_DIR) await page.screenshot({ path: `${process.env.CUSTOM_QA_DIR}/custom-dose-${width}.png` });
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Add exercise to Strength", exact: true }).click();
-    await page.getByRole("button", { name: "Create my exercise", exact: true }).click();
+    await page.getByRole("button", { name: "+ Create my exercise", exact: true }).click();
     await page.getByLabel("Exercise name", { exact: true }).fill("My bag rounds");
-    await page.getByLabel("equipment (optional)", { exact: true }).fill("Heavy bag");
-    await page.getByLabel("notes (optional)", { exact: true }).fill("My own practice");
+    await expect(page.getByLabel("equipment (optional)", { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel("notes (optional)", { exact: true })).toHaveCount(0);
     await page.getByLabel("Dose format").selectOption("intervals");
     await page.getByLabel("Rounds", { exact: true }).fill("5");
     await page.getByLabel("Work duration unit").selectOption("60");
     await page.getByLabel("Work duration", { exact: true }).fill("5");
     await page.getByLabel("Rest between (sec)").fill("30");
     await page.getByRole("button", { name: "Add exercise", exact: true }).click();
+    await page.getByRole("dialog", { name: "Add to Strength", exact: true }).getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Edit dose for My bag rounds", exact: true }).click();
     await page.getByLabel("Position in session").selectOption("0");
     await page.getByRole("button", { name: "Done", exact: true }).click();
@@ -142,8 +153,9 @@ for (const width of [320, 390, 1280, 1600]) {
         .getByRole("link")
         .filter({ hasText: `Weekly strength ${width}` }),
     ).toHaveCount(0);
+    // XP and product analytics are side channels; every plan write goes through custom plans.
     expect(
-      mutations.filter((path) => path !== "/api/xp/activity").every((path) => path.startsWith("/api/custom-plans")),
+      mutations.filter((path) => path !== "/api/xp/activity" && path !== "/api/analytics/events").every((path) => path.startsWith("/api/custom-plans")),
     ).toBe(true);
     expect(errors).toEqual([]);
   });
@@ -181,10 +193,12 @@ for (const width of [320, 390, 1280, 1600]) {
       }}; window.onYouTubeIframeAPIReady?.();
     ` }));
     await page.goto("/plans/custom");
-    await page.getByRole("button", { name: "+ Add Session", exact: true }).click();
-    await page.getByRole("button", { name: "Add exercise to Training", exact: true }).click();
-    await page.getByRole("button", { name: "Create my exercise", exact: true }).click();
+    await page.getByRole("button", { name: "Add session on Monday", exact: true }).click();
+    await page.getByRole("button", { name: "Add session", exact: true }).click();
+    await page.getByRole("button", { name: "+ Create my exercise", exact: true }).click();
     await page.getByLabel("Exercise name", { exact: true }).fill("My defensive drill");
+    // Video and sharing are optional, folded under the exercise details.
+    await page.getByText("Video & sharing", { exact: true }).click();
     await page.getByRole("button", { name: "Add YouTube demo (optional)", exact: true }).click();
     const sheet = page.getByRole("dialog", { name: "Demonstration video", exact: true });
     await expect(sheet.getByRole("button", { name: "Upload video" })).toHaveCount(0);
@@ -216,8 +230,11 @@ for (const width of [320, 390, 1280, 1600]) {
     await page.screenshot({ path: `${process.env.TEMP ?? "/tmp"}/unlxck-private-video-${width}.png`, fullPage: false });
     await sheet.getByRole("button", { name: "Use video", exact: true }).click();
     await page.getByRole("button", { name: "Add exercise", exact: true }).click();
+    await page.getByRole("dialog", { name: "Add to Training", exact: true }).getByRole("button", { name: "Done", exact: true }).click();
     if (width >= 1024) {
-      await page.getByRole("button", { name: "+ Add Session", exact: true }).click();
+      await page.getByRole("button", { name: "Add another session on Monday", exact: true }).click();
+      await page.getByRole("button", { name: "Add session", exact: true }).click();
+      await page.getByRole("dialog", { name: "Add to Training", exact: true }).getByRole("button", { name: "Done", exact: true }).click();
       const first = await page.getByRole("region", { name: "Session 1", exact: true }).boundingBox();
       const second = await page.getByRole("region", { name: "Session 2", exact: true }).boundingBox();
       if (width >= 1600) {
@@ -233,6 +250,8 @@ for (const width of [320, 390, 1280, 1600]) {
     expect([...saved.values()][0].sessions[0].exercises[0]).toMatchObject({ origin: "manual", media_id: media.id });
     await page.reload();
     await page.getByRole("button", { name: "Edit dose for My defensive drill", exact: true }).click();
+    await expect(page.getByText("Video & sharing", { exact: true }).locator("..")).toContainText("Video · Private");
+    await page.getByText("Video & sharing", { exact: true }).click();
     await expect(page.getByRole("button", { name: "Replace video", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Remove video", exact: true }).click();
     await expect(page.getByRole("button", { name: "Add YouTube demo (optional)", exact: true })).toBeVisible();
@@ -296,22 +315,23 @@ for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 844 });
     const { saved } = await setup(page, baseURL!);
     await page.goto('/plans/custom');
-    const days = ['Sunday', 'Friday', 'Monday', 'Wednesday', 'Tuesday', 'Thursday', 'Saturday', 'Monday', null];
+    // New sessions always start on the day being viewed, so every one has a day.
+    const days = ['Sunday', 'Friday', 'Monday', 'Wednesday', 'Tuesday', 'Thursday', 'Saturday', 'Monday'];
     for (const [index, day] of days.entries()) {
-      await page.getByRole('button', { name: '+ Add Session', exact: true }).click();
-      await page.getByRole('button', { name: `Edit session ${index + 1}`, exact: true }).click();
-      await page.getByLabel('Session name', { exact: true }).fill(`Day ${index}`);
-      await page.getByLabel('Day', { exact: true }).selectOption(day ?? '');
-      await page.getByRole('button', { name: 'Done', exact: true }).click();
+      await page.getByRole('button', { name: new RegExp(`^${day},`) }).click();
+      await page.getByRole('button', { name: new RegExp(`^Add (another )?session on ${day}$`) }).click();
+      const sheet = page.getByRole('dialog', { name: 'New session', exact: true });
+      await expect(sheet.getByLabel('Day', { exact: true })).toHaveValue(day);
+      await sheet.getByLabel('Session name', { exact: true }).fill(`Day ${index}`);
+      await sheet.getByRole('button', { name: 'Add session', exact: true }).click();
+      await page.getByRole('dialog', { name: `Add to Day ${index}`, exact: true }).getByRole('button', { name: 'Done', exact: true }).click();
     }
-    const expected = ['Day 2', 'Day 7', 'Day 4', 'Day 3', 'Day 5', 'Day 1', 'Day 6', 'Day 0', 'Day 8'];
-    // One day is shown at a time, so check the week through the day strip plus the unassigned group.
+    const expected = ['Day 2', 'Day 7', 'Day 4', 'Day 3', 'Day 5', 'Day 1', 'Day 6', 'Day 0'];
+    // One day is shown at a time, so check the week through the day strip.
     const tiles = ['Monday, Day 2 / Day 7', 'Tuesday, Day 4', 'Wednesday, Day 3', 'Thursday, Day 5', 'Friday, Day 1', 'Saturday, Day 6', 'Sunday, Day 0'];
     const week = page.getByRole('group', { name: 'Weekly training calendar' }).getByRole('button');
-    const unassigned = page.getByRole('group', { name: 'Unassigned sessions' }).getByRole('heading', { level: 2 });
     const checkWeek = async () => {
       for (const [index, name] of tiles.entries()) await expect(week.nth(index)).toHaveAccessibleName(name);
-      await expect(unassigned).toHaveText(['Day 8']);
     };
     await checkWeek();
     await page.getByRole('button', { name: 'Save draft', exact: true }).click();

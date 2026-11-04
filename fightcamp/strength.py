@@ -1415,8 +1415,15 @@ def score_exercise(
 
     return round(score, 4), reasons
 
-def is_banned_exercise(name: str, tags: list[str], fight_format: str, details: str = "") -> bool:
-    """Return True if the exercise should be removed for the given sport."""
+def is_banned_exercise(
+    name: str, tags: list[str], fight_format: str, details: str = "", *, whole_words: bool = False,
+) -> bool:
+    """Return True if the exercise should be removed for the given sport.
+
+    ``whole_words`` matches each term as a word ("knee" bans a knee strike, not
+    a half-kneeling drill). Only the late-only core maintenance list uses it;
+    ordinary selection keeps its substring matching unchanged.
+    """
     name = name.lower()
     tags = normalize_tags(tags)
     details = details.lower()
@@ -1433,14 +1440,22 @@ def is_banned_exercise(name: str, tags: list[str], fight_format: str, details: s
         "sprawling",
     }
 
+    def hit(term: str) -> bool:
+        if term in tags:
+            return True
+        if whole_words:
+            pattern = rf"\b{re.escape(term)}\b"
+            return bool(re.search(pattern, name) or re.search(pattern, details))
+        return term in name or term in details
+
     if fight_format in {"boxing", "kickboxing"}:
         for term in grappling_terms:
-            if term in name or term in tags or term in details:
+            if hit(term):
                 return True
 
     if fight_format == "boxing":
         for term in ["kick", "knee", "clinch knee strike"]:
-            if term in name or term in tags or term in details:
+            if hit(term):
                 return True
 
     return False
@@ -1913,6 +1928,41 @@ def _build_strength_candidate_reservoir(
     return dict(reservoirs)
 
 
+_CORE_DEVELOPMENT_PER_FUNCTION = 2
+
+
+def _core_development_candidates(weighted_exercises: list[tuple[dict, float, dict]], *, is_safe=None) -> list[dict]:
+    """Trunk-targeted candidates for a Core Development Block, per trunk function.
+
+    The per-movement reservoir keeps only the top few items of each role, so a
+    phase whose scoring favours power (SPP) can drop every non-explosive trunk
+    option. This keeps the best ``_CORE_DEVELOPMENT_PER_FUNCTION`` of each trunk
+    function from the SAME phase-, equipment- and safety-filtered, scored list,
+    in score order. Selection-only: nothing here is scheduled unless the
+    planner composes a block from it.
+    """
+    from .strength_session_quality import trunk_function
+
+    kept: list[dict] = []
+    per_function: dict[str, int] = defaultdict(int)
+    for exercise, score, reasons in weighted_exercises:
+        function = trunk_function(exercise)
+        if not function or not exercise.get("name") or per_function[function] >= _CORE_DEVELOPMENT_PER_FUNCTION:
+            continue
+        if is_safe is not None and not is_safe(exercise):
+            continue
+        per_function[function] += 1
+        kept.append({
+            "exercise": exercise.copy(),
+            "score": score,
+            "reasons": (reasons or {}).copy(),
+            "explanation": _strength_explanation(reasons or {}),
+            "score_evidence": build_score_evidence(score=score, reasons=reasons or {}),
+            "trunk_function": function,
+        })
+    return kept
+
+
 def format_strength_block(phase: str, fatigue: str, exercises: list[dict]) -> str:
     """Return the formatted strength block for the given phase."""
     phase = phase.upper()
@@ -2319,10 +2369,16 @@ def generate_strength_block(*, flags: dict, weaknesses=None):
             -order_idx,
         )
 
+    # Late-only trunk items never enter this phase's selection, but they pass
+    # the same gates below into their own list: the late-fight tail's core
+    # maintenance (D-13..D-7) may draw on them, never the phase's sessions.
+    from .strength_session_quality import trunk_function
+    late_core_weighted = []
     for ex in exercise_bank:
         tags = ex.get("tags", [])
         tags_lower = set(normalize_tags(tags))
-        if _exercise_late_windows(ex) and not active_late_window:
+        late_only = bool(_exercise_late_windows(ex)) and not active_late_window
+        if late_only and not trunk_function(ex):
             continue
         details = " ".join(
             [
@@ -2339,7 +2395,7 @@ def generate_strength_block(*, flags: dict, weaknesses=None):
                 ex.get("notes", ""),
             ]
         )
-        if is_banned_exercise(ex.get("name", ""), tags, fight_format, details):
+        if is_banned_exercise(ex.get("name", ""), tags, fight_format, details, whole_words=late_only):
             continue
         ex_equipment = _required_strength_equipment(ex)
         if legacy_taper_gate:
@@ -2496,7 +2552,11 @@ def generate_strength_block(*, flags: dict, weaknesses=None):
 
         # No additional fatigue or equipment adjustments; handled in score_exercise
 
-        if score >= 0:
+        if late_only:
+            # Every hard gate above already passed; the relevance cut-off below
+            # ranks main selection and does not apply to this side list.
+            late_core_weighted.append((ex, score, breakdown))
+        elif score >= 0:
             weighted_exercises.append((ex, score, breakdown))
 
     weighted_candidates = [
@@ -3567,7 +3627,25 @@ def generate_strength_block(*, flags: dict, weaknesses=None):
             log_fail_safe_degrade(module="strength", phase=phase, reason="candidate_reservoir_capped", target=len(metadata_safe), actual=len(capped_weighted))
         elif source_candidate_count > 500:
             log_fail_safe_degrade(module="strength", phase=phase, reason="candidate_reservoir_capped", target=source_candidate_count, actual=len(capped_weighted))
-        return _build_strength_candidate_reservoir(capped_weighted)
+        reservoir = _build_strength_candidate_reservoir(capped_weighted)
+        reservoir["__core_development__"] = _core_development_candidates(
+            capped_weighted, is_safe=lambda ex: _cached_guarded_decision(ex).action != "exclude"
+        )
+        # Late-fight core maintenance (D-13..D-7) may only use items the bank
+        # opts into those countdown windows. Same filtered, scored list; kept
+        # apart so the development block's candidates are unchanged.
+        # Only dedicated core items can serve (#3167), so others never take a
+        # per-function place from them.
+        from .late_selector_windows import late_window_allowed
+        from .session_composition import _DEDICATED_CORE_QUALITY
+        reservoir["__core_maintenance__"] = _core_development_candidates(
+            sorted((entry for entry in [*late_core_weighted, *capped_weighted]
+                    if (late_window_allowed([entry[0]], offset=13) or late_window_allowed([entry[0]], offset=7))
+                    and classify_strength_item(entry[0])["quality_class"] in _DEDICATED_CORE_QUALITY),
+                   key=lambda entry: -entry[1]),
+            is_safe=lambda ex: _cached_guarded_decision(ex).action != "exclude",
+        )
+        return reservoir
     candidate_reservoir = _run_real_poststep("candidate_reservoir_build", _build_capped_candidate_reservoir)
     deduped_late_blocks = {
         (

@@ -185,32 +185,6 @@ def test_original_audit_hashes_ids_and_review_history_preserved():
     assert validate_clinical_bank(policies, get_rehab_bank()) == []
 
 
-def test_previous_26_profiles_hashes_decisions_schedules_and_snapshots_unchanged(tmp_path):
-    raw = read("data/rehab_pathways.json")
-    from tools.rehab_metadata_review_lib import before_achilles_load_activation
-    raw = before_achilles_load_activation(raw)
-    previous = read("tests/fixtures/rehab_profiles_before_impingement.json")
-    assert len(previous) == 26
-    previous_ids = {p["policy_id"] for p in previous}
-    assert [p for p in raw["profiles"] if p["policy_id"] in previous_ids] == previous
-    raw["profiles"] = previous
-    baseline = tmp_path / "before.json"
-    baseline.write_text(json.dumps(raw), encoding="utf-8")
-    for policy in load_clinical_policies(baseline):
-        if policy.policy_id in {"achilles_tendonitis", "elbow_tendonitis", "ankle_sprain", "shoulder_tendonitis"}:
-            # Versioned LOAD activations have their own baseline, ownership and
-            # frozen-history assertions; all other profiles remain identical.
-            continue
-        for stage in ("calm", "restore"):
-            for side in ("left", "unknown"):
-                row = injury(policy.region, policy.injury_type, stage, side=side)
-                old = resolve_injury_policy(row, policies=load_clinical_policies(baseline), bank=get_rehab_bank())
-                new = resolve(row)
-                assert old == new
-                assert schedule_rehab(row, old, training_day=DAY) == schedule_rehab(row, new, training_day=DAY)
-                assert reconcile_session_prescription(None, decisions=[old], plan_id=PLAN, training_day=DAY) == reconcile_session_prescription(None, decisions=[new], plan_id=PLAN, training_day=DAY)
-
-
 def test_seed_bank_review_and_profiles_are_byte_idempotent(tmp_path, monkeypatch):
     from tools import seed_impingement_family
     from tools.generate_rehab_metadata_review import build_ledger

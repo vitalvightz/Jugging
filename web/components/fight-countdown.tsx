@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { getFightCountdown } from "@/lib/fight-countdown";
+import { formatWeight } from "@/lib/nutrition-bodyweight";
 import { formatPlanFightDate } from "@/lib/plan-format";
 import type { StructuredPlan } from "@/lib/types";
 
@@ -75,22 +77,77 @@ function useCountdownTick(target: number, from: number | null, revealed: boolean
   return target;
 }
 
+/** Shown when the athlete gave no event name in camp setup. */
+export const FIGHT_EVENT_FALLBACK = "Fight Camp";
+
+function WeightGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9.5 7.5a2.5 2.5 0 1 1 5 0" />
+      <path d="M6.6 7.5h10.8a1 1 0 0 1 1 .8l2 11a1 1 0 0 1-1 1.2H4.6a1 1 0 0 1-1-1.2l2-11a1 1 0 0 1 1-.8Z" />
+      <path d="m10 13 2 2.5 2-2.5M12 15.5V18" />
+    </svg>
+  );
+}
+
+const shownWeight = (kg: number | null | undefined) => kg != null && Number.isFinite(kg) && kg > 0 ? formatWeight(kg) : null;
+
+function FightWeight({ value }: { value: string }) {
+  return (
+    <div className="fight-countdown-weight">
+      <span className="fight-countdown-weight-icon"><WeightGlyph /></span>
+      <div>
+        <p className="fight-countdown-weight-label">Fight weight</p>
+        <p className="fight-countdown-weight-value">{value}</p>
+      </div>
+    </div>
+  );
+}
+
 /**
- * Overview fight-camp countdown: days to fight night, a gold camp-progress bar
- * with the current week and phase, and the next phase change. Renders nothing
- * without a fight date (open plans) or after fight day, so the caller can drop
- * it in unconditionally.
+ * Home's fight weight when no fight is scheduled (an open plan): the same
+ * weight block as the countdown card, linking to the weight tracker. Renders
+ * nothing without a target.
+ */
+export function FightWeightCard({ targetWeightKg }: { targetWeightKg: number | null | undefined }) {
+  const value = shownWeight(targetWeightKg);
+  if (!value) return null;
+  return (
+    <section className="fight-countdown fight-weight-card" aria-label={`Fight weight ${value}`}>
+      <div className="fight-countdown-stats">
+        <FightWeight value={value} />
+        <Link href="/nutrition" className="fight-countdown-next-label">Weight tracker</Link>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Overview fight-camp countdown: the event, days to fight night, the target
+ * fight weight, a gold camp-progress bar with the current week and phase, and
+ * the next phase change. Renders nothing without a fight date (open plans) or
+ * after fight day, so the caller can drop it in unconditionally.
  */
 export function FightCountdown({
   fightDate,
   trainingDay,
   phase,
   plan,
+  eventName,
+  targetWeightKg,
+  calendarPending = false,
 }: {
   fightDate: string | null | undefined;
   trainingDay: string | null | undefined;
   phase?: string | null;
   plan?: StructuredPlan | null;
+  /** Event/competition name from camp setup; falls back to "Fight Camp". */
+  eventName?: string | null;
+  /** Target fight weight in kg (never current bodyweight); hidden when unset. */
+  targetWeightKg?: number | null;
+  /** True while the plan calendar is still loading: the week line, bar and
+   * next line hold their space as shimmer instead of popping in later. */
+  calendarPending?: boolean;
 }) {
   const countdown = getFightCountdown({ fightDate, trainingDay, phase, plan });
   // If the date arrived before the calendar, keep its already-visible count
@@ -98,6 +155,9 @@ export function FightCountdown({
   const [initialCampDays] = useState(countdown?.campDays ?? null);
   const [ref, revealed] = useRevealed<HTMLElement>(countdown?.pct != null);
   const shown = useCountdownTick(countdown?.daysOut ?? 0, initialCampDays, revealed);
+  // Only a card that showed placeholders fades its rows in; a cached calendar
+  // renders straight away with nothing to settle.
+  const [startedPending] = useState(calendarPending);
   if (!countdown) {
     return null;
   }
@@ -106,6 +166,8 @@ export function FightCountdown({
   const fightDay = daysOut === 0;
   const meta = [weekLabel, phaseLabel].filter(Boolean).join(" · ");
   const label = fightDay ? "Fight day" : `${daysOut} ${daysOut === 1 ? "day" : "days"} to fight night`;
+  const event = eventName?.trim() || FIGHT_EVENT_FALLBACK;
+  const fightWeight = shownWeight(targetWeightKg);
 
   return (
     <section
@@ -113,26 +175,40 @@ export function FightCountdown({
       className="fight-countdown"
       data-revealed={revealed ? "true" : undefined}
       data-pending={initialCampDays !== null && pct !== null && !revealed ? "true" : undefined}
+      data-arrived={startedPending && !calendarPending ? "true" : undefined}
+      aria-busy={calendarPending || undefined}
       aria-label={`Fight countdown: ${label}`}
     >
-      <div className="fight-countdown-head">
-        <div>
-          <p className="fight-countdown-kicker">Fight countdown</p>
-          <p className="fight-countdown-days" aria-hidden="true">
-            {fightDay ? (
-              "Fight day"
-            ) : (
-              <>
-                <span className="fight-countdown-number">{shown}</span>{" "}
-                {daysOut === 1 ? "day" : "days"} to fight night
-              </>
-            )}
-          </p>
-          <p className="fight-countdown-date">{formatPlanFightDate(fightDateISO)}</p>
-        </div>
-        {meta ? <span className="fight-countdown-meta">{meta}</span> : null}
+      <div className="fight-countdown-heading">
+        <p className="fight-countdown-kicker">Upcoming fight</p>
+        {/* Without a fight weight the event name takes the weight's slot on
+            the countdown row, so the card stays compact. */}
+        {fightWeight ? <h2 className="fight-countdown-event">{event}</h2> : null}
       </div>
-      {pct !== null ? (
+      <div className="fight-countdown-stats">
+        <div className="fight-countdown-count">
+          {fightDay ? null : <span className="fight-countdown-number" aria-hidden="true">{shown}</span>}
+          <div className="fight-countdown-count-copy">
+            <p className="fight-countdown-days" aria-hidden="true">
+              {fightDay ? "Fight day" : `${daysOut === 1 ? "day" : "days"} to fight`}
+            </p>
+            {/* "22 Nov 2026": the card drops the weekday to stay uncluttered. */}
+            <p className="fight-countdown-date">{formatPlanFightDate(fightDateISO).replace(/^[A-Za-z]{3}\s+/, "")}</p>
+          </div>
+        </div>
+        {fightWeight ? <FightWeight value={fightWeight} /> : (
+          <h2 className="fight-countdown-event fight-countdown-event-side">{event}</h2>
+        )}
+      </div>
+      {calendarPending ? (
+        <>
+          <p className="fight-countdown-meta" aria-hidden="true"><Bone>Week 0 of 0 · General prep</Bone></p>
+          <div className="overview-progress-track fight-countdown-track" aria-hidden="true" />
+          <p className="fight-countdown-next" aria-hidden="true"><Bone>Next Specific prep starts in 00 days</Bone></p>
+        </>
+      ) : null}
+      {!calendarPending && meta ? <p className="fight-countdown-meta">{meta}</p> : null}
+      {!calendarPending && pct !== null ? (
         <div
           className="overview-progress-track fight-countdown-track"
           role="progressbar"
@@ -144,7 +220,7 @@ export function FightCountdown({
           <span className="overview-progress-fill fight-countdown-fill" style={{ width: `${pct}%` }} />
         </div>
       ) : null}
-      {nextLabel ? (
+      {!calendarPending && nextLabel ? (
         <p className="fight-countdown-next">
           <span className="fight-countdown-next-label">Next</span> {nextLabel}
         </p>
@@ -165,16 +241,20 @@ function Bone({ children }: { children: string }) {
 export function FightCountdownSkeleton() {
   return (
     <section className="fight-countdown fight-countdown-skeleton" aria-busy="true" aria-label="Fight countdown loading">
-      <div className="fight-countdown-head">
-        <div>
-          <p className="fight-countdown-kicker"><Bone>Fight countdown</Bone></p>
-          <p className="fight-countdown-days">
-            <span className="fight-countdown-number"><Bone>00</Bone></span> <Bone>days to fight night</Bone>
-          </p>
-          <p className="fight-countdown-date"><Bone>Sat 00 Nov 0000</Bone></p>
-        </div>
-        <span className="fight-countdown-meta"><Bone>Week 0 of 0 · General prep</Bone></span>
+      <div className="fight-countdown-heading">
+        <p className="fight-countdown-kicker"><Bone>Upcoming fight</Bone></p>
+        <p className="fight-countdown-event"><Bone>Fight Camp</Bone></p>
       </div>
+      <div className="fight-countdown-stats">
+        <div className="fight-countdown-count">
+          <span className="fight-countdown-number"><Bone>00</Bone></span>
+          <div className="fight-countdown-count-copy">
+            <p className="fight-countdown-days"><Bone>days to fight</Bone></p>
+            <p className="fight-countdown-date"><Bone>00 Nov 0000</Bone></p>
+          </div>
+        </div>
+      </div>
+      <p className="fight-countdown-meta"><Bone>Week 0 of 0 · General prep</Bone></p>
       <div className="overview-progress-track fight-countdown-track" aria-hidden="true" />
       <p className="fight-countdown-next"><Bone>Next Specific prep starts in 00 days</Bone></p>
     </section>

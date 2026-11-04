@@ -314,6 +314,7 @@ def test_admin_can_list_and_open_flagged_plan_for_resolution():
             {
                 "equipment_access": ["bands", "bodyweight"],
                 "training_availability": ["Tuesday", "Thursday", "Saturday"],
+                "weekly_training_frequency": 3,
             }
         ),
     )

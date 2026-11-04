@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   createPwaWorkerUrl,
   hasSeenInstallPrompt,
+  isInstagramBrowser,
   isIosDevice,
   isStandaloneDisplay,
   PWA_INSTALL_GUIDE_DISMISSED_KEY,
@@ -14,6 +15,13 @@ import {
   resolvePwaInstallAvailability,
   shouldRegisterServiceWorker,
 } from "./pwa";
+
+test("Instagram detection covers iPhone and Android without matching standard browsers", () => {
+  assert.equal(isInstagramBrowser("Mozilla/5.0 (iPhone) Mobile/15E148 Instagram 400.0.0"), true);
+  assert.equal(isInstagramBrowser("Mozilla/5.0 (Linux; Android 15) Chrome/141 Mobile Safari/537.36 Instagram 400.0.0"), true);
+  assert.equal(isInstagramBrowser("Mozilla/5.0 (iPhone) Version/26.0 Mobile Safari/604.1"), false);
+  assert.equal(isInstagramBrowser("Mozilla/5.0 (Linux; Android 15) Chrome/141 Mobile Safari/537.36"), false);
+});
 
 test("service-worker URL changes with the production deployment fingerprint", () => {
   const first = createPwaWorkerUrl("commit-a1");

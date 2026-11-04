@@ -28,7 +28,7 @@ from api.services.today_readiness_boundary import (
     reuse_today_command_views,
 )
 from support import FakeStore
-from api.store import SupabaseAppStore
+from api.store import TRAINING_PLAN_SELECT, SupabaseAppStore
 
 ATHLETE = "athlete-1"
 PLAN = "11111111-1111-1111-1111-111111111111"
@@ -614,3 +614,101 @@ def test_mutation_cache_keeps_exact_ownership_scopes_and_invalidates_even_failed
         cache.update_injury_flag("flag", {"status": "resolved"})
     assert cache.get_training_plan_for_athlete(PLAN, ATHLETE)
     assert store.reads["get_training_plan_for_athlete"] == 3
+
+
+class _ProjectionOnlyStore(CountingStore):
+    """Serves the projection without going through the full-row read, so a
+    count of ``get_plan_for_athlete`` means a real ``select("*")`` on plans."""
+
+    def get_training_plan_for_athlete(self, plan_id, athlete_id):
+        row = self.plans.get(plan_id)
+        if not row or str(row.get("athlete_id")) != athlete_id:
+            return None
+        return {key: row[key] for key in TRAINING_PLAN_SELECT.split(",") if key in row}
+
+
+# Columns that make a plan row megabytes wide. None of them is read on the Today path.
+_HEAVY_PLAN_COLUMNS = {"stage2_payload", "stage2_handoff_text", "stage2_result", "stage2_validator_report"}
+
+
+def test_today_build_never_reads_the_full_plan_row():
+    store = _ProjectionOnlyStore()
+    _add_camp(store, athlete_id=ATHLETE, plan_id=PLAN, weeks=4)
+    store.plans[PLAN].update({column: "x" * 100_000 for column in _HEAVY_PLAN_COLUMNS})
+    store.reads.clear()
+
+    build_today_command_view(store, athlete_id=ATHLETE, athlete_timezone="UTC", now=NOW)
+
+    assert store.reads["get_plan_for_athlete"] == 0
+    assert store.reads["get_training_plan_for_athlete"] == 1
+
+
+def test_the_training_projection_leaves_out_the_stage2_blobs():
+    assert not _HEAVY_PLAN_COLUMNS & set(TRAINING_PLAN_SELECT.split(","))
+
+
+def test_progress_side_reads_use_the_training_projection():
+    from api.services import streaks, training_focus_inference, week_progress, xp_progress
+
+    store = _ProjectionOnlyStore()
+    _add_camp(store, athlete_id=ATHLETE, plan_id=PLAN, weeks=4)
+    _log(store, session_id="2026-06-01-strength", training_day="2026-06-01")
+    store.reads.clear()
+
+    streaks.qualifying_training_days(store, athlete_id=ATHLETE, today=NOW.date())
+    training_focus_inference._plan_sport(store, ATHLETE, PLAN)
+    xp_progress._active_plan(store, athlete_id=ATHLETE, command=SimpleNamespace(active_plan={"id": PLAN}))
+    week_progress.try_award_completed_week_for_completion(
+        store, athlete_id=ATHLETE, athlete_timezone="UTC",
+        completion={"plan_id": PLAN, "training_day": "2026-06-01"},
+    )
+
+    assert store.reads["get_plan_for_athlete"] == 0
+    assert store.reads["get_training_plan_for_athlete"] >= 3
+
+
+_CONSENT = {
+    "date_of_birth": "1995-01-01", "terms_version": "v1", "terms_accepted_at": "2026-01-01T00:00:00+00:00",
+    "health_data_consent": True, "health_consent_at": "2026-01-01T00:00:00+00:00",
+    "health_consent_withdrawn_at": None, "health_consent_version": "v1",
+}
+
+
+class _SeparateProfileReadsStore(_ProjectionOnlyStore):
+    """Counts the consent read as its own round trip, as production does."""
+
+    def get_profile_compliance(self, athlete_id):
+        row = self.profiles.get(athlete_id)
+        return {key: row[key] for key in _CONSENT if key in row} if row else None
+
+
+def test_today_build_takes_consent_from_the_profile_row_it_already_read():
+    store = _SeparateProfileReadsStore()
+    _add_camp(store, athlete_id=ATHLETE, plan_id=PLAN, weeks=4)
+    store.profiles[ATHLETE] = {"id": ATHLETE, "onboarding_draft": {}, **_CONSENT}
+    store.reads.clear()
+
+    build_today_command_view(store, athlete_id=ATHLETE, athlete_timezone="UTC", now=NOW)
+
+    assert store.reads["get_profile"] == 1
+    assert store.reads["get_profile_compliance"] == 0
+
+
+def test_consent_is_read_again_after_a_write_and_without_a_full_row():
+    store = _SeparateProfileReadsStore()
+    store.profiles[ATHLETE] = {"id": ATHLETE, **_CONSENT}
+    cache = _BuildReadCache(store)
+
+    # No full row yet: the real consent read runs.
+    assert cache.get_profile_compliance(ATHLETE)["health_data_consent"] is True
+    assert store.reads["get_profile_compliance"] == 1
+
+    cache.get_profile(ATHLETE)
+    assert cache.get_profile_compliance(ATHLETE)["health_data_consent"] is True
+    assert store.reads["get_profile_compliance"] == 1
+
+    # A write in the same operation drops the shared row; consent is re-read.
+    store.profiles[ATHLETE]["health_data_consent"] = False
+    cache.set_active_plan_id(ATHLETE, PLAN)
+    assert cache.get_profile_compliance(ATHLETE)["health_data_consent"] is False
+    assert store.reads["get_profile_compliance"] == 2

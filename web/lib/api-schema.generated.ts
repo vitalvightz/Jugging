@@ -1049,6 +1049,10 @@ export type ExternalTrainingCreate = {
   effort: "easy" | "hard" | "moderate";
   sport?: "bjj" | "boxing" | "kickboxing" | "mma" | "muay_thai" | "wrestling" | null;
   session_type?: "bag" | "clinch" | "drilling" | "grappling" | "integrated" | "live" | "pads" | "positional" | "rolling" | "shadowboxing" | "sparring" | "striking" | "technical" | "wrestling" | null;
+  distance_value?: number | null;
+  distance_unit?: "km" | "miles" | null;
+  duration_seconds?: number | null;
+  run_type?: "easy" | "intervals" | "long" | "race" | "sprints" | "tempo" | null;
   client_request_id: string;
   training_day?: string | null;
 };
@@ -1059,6 +1063,10 @@ export type ExternalTrainingFields = {
   effort: "easy" | "hard" | "moderate";
   sport?: "bjj" | "boxing" | "kickboxing" | "mma" | "muay_thai" | "wrestling" | null;
   session_type?: "bag" | "clinch" | "drilling" | "grappling" | "integrated" | "live" | "pads" | "positional" | "rolling" | "shadowboxing" | "sparring" | "striking" | "technical" | "wrestling" | null;
+  distance_value?: number | null;
+  distance_unit?: "km" | "miles" | null;
+  duration_seconds?: number | null;
+  run_type?: "easy" | "intervals" | "long" | "race" | "sprints" | "tempo" | null;
 };
 
 export type ExternalTrainingTakeaway = {
@@ -1156,6 +1164,17 @@ export type GuidedInjuryInputRequest = {
 
 export type HTTPValidationError = {
   detail: ValidationError[];
+};
+
+/**
+ * The few fields of a finished plan session that History may change.
+ *
+ * Status, reason, plan, day and exercise results stay as logged.
+ */
+export type HistoryCompletionEdit = {
+  session_rpe?: number | null;
+  pain_after?: number | null;
+  notes?: string;
 };
 
 export type InjuryEpisodeObservation = {
@@ -1509,6 +1528,9 @@ export type NutritionDerivedState = {
   weight_cut_risk: boolean;
   weight_cut_risk_band: "high" | "moderate" | "none" | "severe";
   weight_cut_supervision_required: boolean;
+  kg_to_target: number | null;
+  weight_cut_status: "behind" | "none" | "on_target" | "on_track" | "too_aggressive";
+  weight_cut_behind_kg: number | null;
   aggressive_weight_cut: boolean;
   high_pressure_weight_cut: boolean;
   short_notice: boolean;
@@ -1831,6 +1853,7 @@ export type PlanRenameRequest = {
 export type PlanRequest = {
   athlete: AthleteProfileInput;
   fight_date?: string;
+  event_name?: string;
   no_scheduled_fight?: boolean;
   open_camp_weeks?: number;
   rounds_format?: string;
@@ -2394,6 +2417,18 @@ export type SessionDetailBlock = {
   responses: ExposureResponse[];
 };
 
+/** One of the athlete's logged runs, enough to compare a run against. */
+export type SessionDetailRun = {
+  id: string;
+  training_day: string;
+  created_at: string | null;
+  duration_minutes: number;
+  duration_seconds: number | null;
+  distance_value: number | null;
+  distance_unit: "km" | "miles" | null;
+  run_type: "easy" | "intervals" | "long" | "race" | "sprints" | "tempo" | null;
+};
+
 export type SessionDetailSparring = {
   intensity: string;
   rounds_completed: number;
@@ -2409,6 +2444,7 @@ export type SessionDetails = {
   prescription_source: "exercise_logs" | "manual" | "snapshot" | "unavailable";
   message: string | null;
   sparring: SessionDetailSparring | null;
+  runs: SessionDetailRun[] | null;
 };
 
 /** The athlete's own sparring log, newest first, with recent exposure. */
@@ -2437,6 +2473,7 @@ export type SparringLogRecord = {
   head_contact: "heavy" | "light" | "none";
   rocked: boolean;
   notes: string;
+  focus: string;
   created_at: string;
 };
 
@@ -2461,6 +2498,7 @@ export type SparringLogRequest = {
   head_contact: "heavy" | "light" | "none";
   rocked?: boolean;
   notes?: string;
+  focus?: string;
 };
 
 export type SparringLogResponse = {
@@ -2622,6 +2660,39 @@ export type TodayInjuryDeclaration = {
   friction_or_contact_problem?: "no" | "unknown" | "yes" | null;
 };
 
+/**
+ * One candidate focus. ``athlete``: written by the fighter after sparring.
+ * ``inferred``: drawn by AI from a note they wrote, shown only before work its
+ * ``scope``, ``exercise_targets`` and ``movement_patterns`` match.
+ */
+export type TrainingFocusItem = {
+  id: string;
+  origin: "athlete" | "inferred";
+  focus: string;
+  training_day: string;
+  sport: string | null;
+  scope: "general_quality" | "movement_pattern" | "specific_exercise" | "sport_technique" | null;
+  category: string | null;
+  exercise_targets: string[];
+  movement_patterns: string[];
+};
+
+/**
+ * The athlete's latest recorded sparring focus, for the next relevant session.
+ *
+ * ``focus`` is None when there is nothing recent to show. ``sport`` is the
+ * sport it was recorded for when known (a manual session's sport), else None.
+ * ``items`` holds the recent candidates (up to 30 of each kind within the
+ * 28-day window), explicit and inferred, newest first; none are cut after
+ * merging, so a client can pick the first that fits.
+ */
+export type TrainingFocusResponse = {
+  focus: string | null;
+  training_day: string | null;
+  sport: string | null;
+  items: TrainingFocusItem[];
+};
+
 export type TrainingHabitDecision = {
   weekday: number;
   activity: "boxing" | "conditioning" | "other" | "roadwork" | "sparring" | "strength";
@@ -2668,6 +2739,10 @@ export type TrainingHistorySession = {
   sport: "bjj" | "boxing" | "kickboxing" | "mma" | "muay_thai" | "wrestling" | null;
   session_type: "bag" | "clinch" | "drilling" | "grappling" | "integrated" | "live" | "pads" | "positional" | "rolling" | "shadowboxing" | "sparring" | "striking" | "technical" | "wrestling" | null;
   duration_minutes: number | null;
+  distance_value: number | null;
+  distance_unit: "km" | "miles" | null;
+  duration_seconds: number | null;
+  run_type: "easy" | "intervals" | "long" | "race" | "sprints" | "tempo" | null;
   effort: "easy" | "hard" | "moderate" | null;
   plan_id: string | null;
   session_rpe: number | null;
@@ -2676,6 +2751,7 @@ export type TrainingHistorySession = {
   notes: string | null;
   takeaway: string;
   exercise_count: number | null;
+  history_editable: boolean;
 };
 
 export type UploadInput = {

@@ -1,6 +1,6 @@
 import disciplines from "../../shared/training-disciplines.json";
 import type { TrainingHistorySession as ApiTrainingHistorySession } from "./api-schema.generated";
-import type { TrainingActivity } from "./training-history";
+import type { TrainingActivity, TrainingHistorySession } from "./training-history";
 
 /** Optional detail on manual training. `activity` stays the stored high-level kind. */
 export const TRAINING_SPORTS = ["boxing", "muay_thai", "kickboxing", "mma", "bjj", "wrestling"] as const;
@@ -37,11 +37,17 @@ export function activityFor(sport: TrainingSport, sessionType?: TrainingSessionT
 }
 
 const capitalise = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+const activityLabel = (activity: TrainingActivity) => activity === "roadwork" ? "Running" : capitalise(activity);
+
+/** Present the existing roadwork activity as Running without changing stored records. */
+export function trainingTitle(row: TrainingHistorySession): string {
+  return row.source === "external" && row.activity === "roadwork" ? "Running" : row.title;
+}
 
 /** "Muay Thai · Clinch"; older records without a sport keep their activity label. */
 export function trainingLabel(row: TrainingClassification): string {
   const entry = row.sport ? SPORTS.get(row.sport) : undefined;
-  if (!entry) return row.activity ? capitalise(row.activity) : "Session";
+  if (!entry) return row.activity ? activityLabel(row.activity) : "Session";
   const kind = row.session_type ? entry.session_types.find(item => item.id === row.session_type) : undefined;
   return kind ? `${entry.label} · ${kind.label}` : entry.label;
 }
@@ -65,10 +71,10 @@ export type TrainingPick = {
 
 // Shared by every athlete; stored exactly as before, without a sport.
 const GENERAL_PICKS: TrainingPick[] = (["strength", "conditioning", "roadwork", "other"] as const)
-  .map(activity => ({ label: capitalise(activity), activity, sport: null, session_type: null }));
+  .map(activity => ({ label: activityLabel(activity), activity, sport: null, session_type: null }));
 // Athletes without a known sport keep the original six choices.
 const LEGACY_PICKS: TrainingPick[] = (["boxing", "sparring", "strength", "conditioning", "roadwork", "other"] as const)
-  .map(activity => ({ label: capitalise(activity), activity, sport: null, session_type: null }));
+  .map(activity => ({ label: activityLabel(activity), activity, sport: null, session_type: null }));
 
 /** The Activity choices: the sport's own session types, then S&C, roadwork and other. */
 export function trainingPicks(sport: TrainingSport | null): TrainingPick[] {

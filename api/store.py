@@ -9,7 +9,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable
 from uuid import uuid4
 from api.private_media_store import PrivateMediaStoreMixin
@@ -1901,7 +1901,7 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
         self,
         *,
         athlete_id: str,
-        intake_id: str,
+        intake_id: str | None,
         request: PlanRequest,
         result: dict[str, Any],
         plan_id: str | None = None,
@@ -2190,6 +2190,30 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
                 ) from exc
             self._raise_operation_http_error(
                 operation=f"set_active_plan_id athlete_id={athlete_id}",
+                detail="failed to set active plan",
+                exc=exc,
+            )
+
+
+    @_invalidates_profile_cache()
+    def try_set_active_plan_id(
+        self, athlete_id: str, plan_id: str, expected_id: str | None,
+        current_training_day: date | str | None = None,
+    ) -> bool:
+        """Compare the pointer, eligible candidate and sole-plan count atomically."""
+        try:
+            response = self._run_with_transient_retry(
+                operation=f"try_set_active_plan_id athlete_id={athlete_id}",
+                fn=lambda: self.client.rpc("try_activate_only_unarchived_plan", {
+                    "p_athlete_id": athlete_id, "p_plan_id": plan_id,
+                    "p_expected_id": expected_id,
+                    "p_training_day": str(current_training_day or date.today()),
+                }).execute(),
+            )
+            return getattr(response, "data", None) is True
+        except _STORE_CLIENT_ERRORS as exc:
+            self._raise_operation_http_error(
+                operation=f"try_set_active_plan_id athlete_id={athlete_id}",
                 detail="failed to set active plan",
                 exc=exc,
             )
@@ -4562,6 +4586,35 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
         return self._select_first(self.client.table("session_completions").select("*")
             .eq("athlete_id", athlete_id).eq("id", completion_id))
 
+    def update_session_completion_fields(self, athlete_id: str, completion_id: str,
+                                         fields: dict[str, Any]) -> dict[str, Any] | None:
+        """History's limited edit: RPE, pain after and notes only."""
+        response = (self.client.table("session_completions")
+            .update({key: fields[key] for key in ("session_rpe", "pain_after", "notes") if key in fields})
+            .eq("athlete_id", athlete_id).eq("id", completion_id).execute())
+        return (getattr(response, "data", None) or [None])[0]
+
+    def reset_history_plan_session(self, athlete_id: str, completion_id: str) -> dict[str, Any] | None:
+        """Remove a finished plan session from History (public.reset_history_plan_session).
+
+        One transaction: its exercise results are deleted and the completion is
+        marked not started, or neither happens. The row and its id stay. None
+        when the completion is not the athlete's.
+        """
+        operation = f"reset_history_plan_session athlete_id={athlete_id}"
+        try:
+            response = self.client.rpc(
+                "reset_history_plan_session", {"p_athlete_id": athlete_id, "p_completion_id": completion_id},
+            ).execute()
+        except _STORE_CLIENT_ERRORS as exc:
+            if "rehab_exposure_cannot_be_reset" in str(exc):
+                raise HTTPException(status_code=409, detail="This session can't be changed from History.") from exc
+            self._raise_operation_http_error(operation=operation, detail="failed to remove session", exc=exc)
+        payload = getattr(response, "data", None)
+        if isinstance(payload, list):
+            payload = payload[0] if payload else None
+        return payload if isinstance(payload, dict) else None
+
     def list_session_detail_exercise_logs(self, athlete_id: str, *, plan_id: str,
                                          training_day: str, session_ids: list[str]) -> list[dict[str, Any]]:
         response = (self.client.table("exercise_logs").select("*")
@@ -4665,6 +4718,24 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
         response = query.order("training_day", desc=True).order("created_at", desc=True).limit(limit).execute()
         return _readiness_history_rows(response)
 
+    def list_external_runs(self, athlete_id: str, *, through_day: str) -> list[dict[str, Any]]:
+        """Every live run (roadwork) on or before ``through_day``, oldest first,
+        paged so a long history is never cut short."""
+        rows, offset = [], 0
+        while True:
+            response = (self.client.table("external_training_sessions")
+                .select("id,athlete_id,activity,training_day,created_at,duration_minutes,duration_seconds,"
+                        "distance_value,distance_unit,run_type,deleted_at")
+                .eq("athlete_id", athlete_id).eq("activity", "roadwork").is_("deleted_at", "null")
+                .lte("training_day", through_day)
+                .order("training_day").order("created_at").order("id")
+                .range(offset, offset + 499).execute())
+            page = getattr(response, "data", None) or []
+            rows.extend(page)
+            if len(page) < 500:
+                return rows
+            offset += 500
+
     def get_external_training_session(self, athlete_id: str, entry_id: str) -> dict[str, Any] | None:
         """One live manual session, owner-scoped."""
         return self._select_first(self.client.table("external_training_sessions").select("*")
@@ -4672,7 +4743,8 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
 
     def update_external_training_session(self, athlete_id: str, entry_id: str, fields: dict[str, Any]) -> dict[str, Any] | None:
         response = (self.client.table("external_training_sessions")
-            .update({key: fields.get(key) for key in ("activity", "duration_minutes", "effort", "sport", "session_type")})
+            .update({key: fields.get(key) for key in ("activity", "duration_minutes", "effort", "sport", "session_type",
+                                                      "distance_value", "distance_unit", "duration_seconds", "run_type")})
             .eq("athlete_id", athlete_id).eq("id", entry_id).is_("deleted_at", "null").execute())
         return (getattr(response, "data", None) or [None])[0]
 
@@ -5615,14 +5687,27 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
             )
         return payload
 
+    def set_sparring_log_focus(self, athlete_id: str, log_id: str, focus: str, *, revision: int) -> dict[str, Any] | None:
+        """Owner-scoped write of the optional focus only; never the safety fields.
+
+        Conditional on ``revision`` in the same statement, so a request whose
+        answers a newer correction replaced in the meantime writes nothing.
+        """
+        response = (self.client.table("sparring_logs").update({"focus": focus})
+            .eq("athlete_id", athlete_id).eq("id", log_id).eq("detail_revision", revision).execute())
+        return (getattr(response, "data", None) or [None])[0]
+
     def list_sparring_logs(
-        self, athlete_id: str, *, limit: int = 60, from_day: str | None = None
+        self, athlete_id: str, *, limit: int = 60, from_day: str | None = None, with_focus: bool = False
     ) -> list[dict[str, Any]]:
         """The athlete's sparring logs, newest training day first (served by
         ``sparring_logs_athlete_day_idx``), optionally only on/after ``from_day``."""
         query = self.client.table("sparring_logs").select("*").eq("athlete_id", athlete_id)
         if from_day:
             query = query.gte("training_day", from_day)
+        if with_focus:
+            # Filtered before the limit, so blank rows never crowd out a focus.
+            query = query.neq("focus", "")
         response = (
             query.order("training_day", desc=True)
             .order("created_at", desc=True)
@@ -5630,6 +5715,74 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
             .execute()
         )
         return getattr(response, "data", None) or []
+
+    # -- Inferred training focus (public.training_focus_inferences) -----------
+    # One row per note; see api/services/training_focus_inference.py.
+
+    def claim_training_focus_inference(self, athlete_id: str, source_kind: str, source_id: str, *,
+                                       training_day: str, source_revision: str) -> bool:
+        """Atomically claim this note revision for one model call (False: already
+        generated or in flight)."""
+        response = self.client.rpc("claim_training_focus_inference", {
+            "p_athlete_id": athlete_id, "p_source_kind": source_kind, "p_source_id": source_id,
+            "p_training_day": training_day, "p_source_revision": source_revision}).execute()
+        payload = getattr(response, "data", None)
+        if isinstance(payload, list):
+            payload = payload[0] if payload else None
+        return payload is True
+
+    def finish_training_focus_inference(self, athlete_id: str, source_kind: str, source_id: str, *,
+                                        source_revision: str, fields: dict[str, Any]) -> bool:
+        """Write the result only while the row is still pending for this revision."""
+        values = {key: fields[key] for key in ("status", "reason", "focus", "scope", "category", "sport",
+                                               "exercise_targets", "movement_patterns", "model",
+                                               "input_tokens", "output_tokens", "context_revision") if key in fields}
+        if fields.get("generated"):
+            values["generated_at"] = datetime.now(timezone.utc).isoformat()
+        response = (self.client.table("training_focus_inferences").update(values)
+            .eq("athlete_id", athlete_id).eq("source_kind", source_kind).eq("source_id", source_id)
+            .eq("source_revision", source_revision).eq("status", "pending").execute())
+        return bool(getattr(response, "data", None))
+
+    def list_training_focus_inferences(self, athlete_id: str, *, from_day: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Ready, undismissed inferences on or after ``from_day``, newest day first."""
+        response = (self.client.table("training_focus_inferences").select("*")
+            .eq("athlete_id", athlete_id).eq("status", "ready").is_("dismissed_at", "null")
+            .gte("training_day", from_day).order("training_day", desc=True).order("updated_at", desc=True)
+            .limit(limit).execute())
+        return getattr(response, "data", None) or []
+
+    def dismiss_training_focus_inference(self, athlete_id: str, inference_id: str) -> bool:
+        response = (self.client.table("training_focus_inferences")
+            .update({"dismissed_at": datetime.now(timezone.utc).isoformat()})
+            .eq("athlete_id", athlete_id).eq("id", inference_id).execute())
+        return bool(getattr(response, "data", None))
+
+    def list_training_focus_inferences_for_day(self, athlete_id: str, training_day: str) -> list[dict[str, Any]]:
+        """Ready, undismissed inferences for one training day (the refresh after its record changes)."""
+        response = (self.client.table("training_focus_inferences").select("*")
+            .eq("athlete_id", athlete_id).eq("training_day", training_day).eq("status", "ready")
+            .is_("dismissed_at", "null").limit(50).execute())
+        return getattr(response, "data", None) or []
+
+    def restamp_training_focus_inference(self, athlete_id: str, inference_id: str, *, source_revision: str,
+                                         context_revision: str | None, fields: dict[str, Any]) -> bool:
+        """Re-stamp or withdraw a ready inference, only while it still holds the
+        note and context revisions it was checked against."""
+        values = {key: fields[key] for key in ("context_revision", "status", "reason") if key in fields}
+        query = (self.client.table("training_focus_inferences").update(values)
+            .eq("athlete_id", athlete_id).eq("id", inference_id).eq("source_revision", source_revision)
+            .eq("status", "ready"))
+        query = query.is_("context_revision", "null") if context_revision is None else query.eq("context_revision", context_revision)
+        return bool(getattr(query.execute(), "data", None))
+
+    def reserve_training_focus_call(self, athlete_id: str, *, limit: int) -> bool:
+        """Atomically count one model call against today's (UTC) cap; False when it is spent."""
+        response = self.client.rpc("reserve_training_focus_call", {"p_athlete_id": athlete_id, "p_limit": limit}).execute()
+        payload = getattr(response, "data", None)
+        if isinstance(payload, list):
+            payload = payload[0] if payload else None
+        return payload is True
 
     def latest_sparring_log_day(
         self, athlete_id: str, *, hard: bool = False, rocked: bool = False

@@ -60,15 +60,20 @@ def test_exact_new_coverage_and_no_other_facet_or_category_changes(index):
     # Rows added after the baseline take Goal facets from existing source rules;
     # this pins only the reviewed changes to baseline rows.
     baseline_records = [r for r in index.records if r["entry"]["catalogue_id"] in base["original_facets"]]
-    # No baseline row may drop out of the comparison unnoticed.
-    assert len(baseline_records) == len(base["original_facets"]) == 2855
+    # No baseline row may drop out of the comparison unnoticed: a row retired
+    # from its bank since the baseline is named here, and must really be gone.
+    retired = {"exercise_bank.json:c9ce3822-c17f-4177-b43d-ffc7ba92fb4e"}  # Staggered Stance Hold
+    assert retired <= base["original_facets"].keys()
+    assert not retired & {r["entry"]["catalogue_id"] for r in index.records}
+    assert len(baseline_records) == len(base["original_facets"]) - len(retired) == 2854
     added = [r for r in index.records if r["entry"]["catalogue_id"] not in base["original_facets"]]
     # Added rows carry no unreviewed explicit goals.
     assert added and not [r["entry"]["catalogue_id"] for r in added if r["entry"]["raw"].get("goals")]
     changed = {r["entry"]["catalogue_id"] for r in baseline_records if sorted(r["facets"]["goal"]) != base["original_facets"][r["entry"]["catalogue_id"]]["goal"]}
     assert changed == {r["catalogue_id"] for r in REVIEWS}
     assert len(changed) == 56
-    assert sum(bool(r["facets"]["goal"]) for r in baseline_records if r["summary"]["category"] == "training") == 278
+    # 277: the retired Staggered Stance Hold carried a Goal facet.
+    assert sum(bool(r["facets"]["goal"]) for r in baseline_records if r["summary"]["category"] == "training") == 277
 
 
 @pytest.mark.parametrize("raw", [

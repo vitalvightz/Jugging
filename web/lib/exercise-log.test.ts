@@ -336,3 +336,35 @@ test("history displays recorded measurement units without relabelling them", () 
   assert.match(performanceSummary(previous), /175 lb/);
   assert.equal(performanceSummary(previous).includes("175 kg"), false);
 });
+
+const fiveK: StructuredBlock = { block_id: "run-1", block_type: "conditioning", display_name: "Easy run", distance: { value: 5, unit: "km" } };
+
+test("a continuous run offers its distance and an optional clock time", () => {
+  assert.deepEqual(keys(fiveK), ["distance", "duration", "effort"]);
+  const time = logFieldsForBlock(fiveK).find((field) => field.key === "duration")!;
+  assert.equal(time.label, "Time");
+  assert.equal(time.clock, true);
+  // Sprints, intervals and runs with a prescribed time are unchanged.
+  assert.deepEqual(keys({ block_type: "speed", sets: 4, distance: { value: 20, unit: "meters" } }), ["sets", "distance", "effort"]);
+  assert.deepEqual(keys({ block_type: "conditioning", distance: { value: 200, unit: "meters" } }), ["distance", "effort"]);
+  assert.deepEqual(keys({ ...fiveK, duration: { value: 30, unit: "minutes" } }), ["duration", "distance", "effort"]);
+});
+
+test("a run time is recorded in seconds without counting as a change", () => {
+  const fields = logFieldsForBlock(fiveK);
+  const entry = buildLogEntry(fields, { duration: "24:35" });
+  assert.equal(entry.status, "as_prescribed");
+  assert.deepEqual(entry.actual, { duration: { value: 1475, unit: "seconds" } });
+  assert.deepEqual(buildLogEntry(fields, { duration: "24.35" }).actual, { duration: { value: 1475, unit: "seconds" } });
+  assert.deepEqual(buildLogEntry(fields, { duration: "24.5" }).invalid, ["duration"]);
+  // A changed distance is a change, as for any exercise.
+  assert.equal(buildLogEntry(fields, { distance: "6", duration: "30:10" }).status, "modified");
+});
+
+test("a saved run time reads back as a clock", () => {
+  const saved = log(fiveK, { actual: { distance: { value: 5, unit: "km" }, duration: { value: 1475, unit: "seconds" } } });
+  const fields = logFieldsForBlock(fiveK);
+  assert.equal(draftFromLog(fields, saved).duration, "24:35");
+  assert.equal(logSummary(fields, saved), "Done · 5 km · 24:35");
+  assert.equal(performanceSummary(saved), "5 km · 24:35");
+});

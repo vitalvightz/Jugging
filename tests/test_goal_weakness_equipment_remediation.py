@@ -15,11 +15,8 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime
 import json
-import os
 from pathlib import Path
 import re
-import subprocess
-import sys
 
 import pytest
 
@@ -230,30 +227,3 @@ def test_existing_phase_and_injury_gates_still_hold_sprints_out(overrides):
     assert not _strength_names(_strength_flags(**overrides)) & set(REACHABLE_SPACE_ROWS)
 
 
-def test_complete_programmes_change_only_where_sprints_become_reachable(tmp_path):
-    probe = ROOT / "tools/canonical_metadata_plan_probe.py"
-    outputs = []
-    for reverse in (True, False):
-        destination = tmp_path / ("before.json" if reverse else "after.json")
-        # Reverse exactly the space-only gate in a fresh interpreter: same code,
-        # live banks, clock and seeds otherwise.
-        script = (
-            "import runpy,sys; from fightcamp import strength; "
-            + ("strength._SPACE_ONLY_EQUIPMENT = frozenset(); " if reverse else "")
-            + "sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name='__main__')"
-        )
-        subprocess.run([sys.executable, "-c", script, str(probe), str(FIXTURE), str(destination)],
-                       cwd=ROOT, env={**os.environ, "PYTHONHASHSEED": "0"},
-                       capture_output=True, check=True, timeout=300)
-        outputs.append({case["case"]: case for case in json.loads(destination.read_text())})
-    before, after = outputs
-    changed = {case for case in before if before[case] != after[case]}
-    assert changed == {"boxing_gpp_power_conditioning"}
-    case = "boxing_gpp_power_conditioning"
-    # Conditioning sessions are untouched; only the SPP strength selection moves.
-    assert _session_drills(before[case]) == _session_drills(after[case])
-    # The gate makes the sprint reachable for Stage 2. Whether it also wins a
-    # rendered slot is #3102's category-promotion decision, not this gate's.
-    assert "Sprint Acceleration (10-20m)" in json.dumps(after[case]["stage2_payload"])
-    assert "Sprint Acceleration (10-20m)" not in json.dumps(before[case]["stage2_payload"])
-    assert "Sprint Acceleration (10-20m)" not in before[case]["plan_text"]

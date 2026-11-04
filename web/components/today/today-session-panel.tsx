@@ -20,6 +20,7 @@ import {
   ExerciseRationaleProvider,
   RehabLabelProvider,
   SessionCard as StructuredSessionCard,
+  type ExerciseCues,
   SessionlessDayCard,
 } from "@/components/structured-plan-renderer";
 import { formatTrainingDay } from "@/components/today/format";
@@ -36,8 +37,10 @@ import { clearSavedRun, hasSavedRun } from "@/components/session-timer/use-sessi
 import { SessionReview } from "@/components/today/session-review";
 import { SparringLogPrompt, type SparringDraft } from "@/components/today/sparring-log-prompt";
 import { useTodayExerciseLogs } from "@/components/today/use-exercise-logs";
+import { useTrainingFocus } from "@/components/today/use-training-focus";
+import { announceTrainingFocusChanged, exerciseCues, focusSessionFor, relevantFocusItem, upcomingSport } from "@/lib/training-focus";
 import { useToast } from "@/components/toast-provider";
-import { submitTodaySessionCompletion } from "@/lib/api";
+import { dismissTrainingFocus, submitTodaySessionCompletion } from "@/lib/api";
 import { offerPushNotifications } from "@/lib/push-prompt";
 import { timerAudio } from "@/lib/session-timer/audio";
 import {
@@ -218,7 +221,7 @@ const PLANNED_SPARRING_INTENSITY: Record<ContactTimerTarget["kind"], SparringPla
   coach_led: "contact",
 };
 
-type ToolIconName = "bell" | "timer" | "lock" | "check" | "adjust" | "skip" | "voice" | "play" | "shield" | "clock" | "load" | "exercises";
+type ToolIconName = "bell" | "timer" | "lock" | "check" | "adjust" | "skip" | "voice" | "play" | "shield" | "clock" | "load" | "exercises" | "target";
 
 const TOOL_ICON_PATHS: Record<ToolIconName, ReactNode> = {
   // A ring bell: sparring rounds.
@@ -238,6 +241,8 @@ const TOOL_ICON_PATHS: Record<ToolIconName, ReactNode> = {
   load: <path d="M6 19v-4M12 19V10M18 19V5" />,
   // A dumbbell: the number of exercises.
   exercises: <path d="M3 12h18M6 8v8M9 6v12M15 6v12M18 8v8" />,
+  // Rings: the fighter's own focus for the session.
+  target: <path d="M12 21a9 9 0 100-18 9 9 0 000 18zM12 16a4 4 0 100-8 4 4 0 000 8zM12 12h.01" />,
 };
 
 function ToolIcon({ name }: { name: ToolIconName }) {
@@ -348,8 +353,11 @@ export function TodaySessionBlocks({
   exerciseLogging = null,
   accessToken,
   exerciseCustomisation = null,
+  exerciseCues = null,
 }: {
   planId?: string;
+  /** UNLXCK cues shown under the exercise each is about; null hides them. */
+  exerciseCues?: ExerciseCues | null;
   current: CurrentDayResolution;
   /** Swap / add / remove on the shown workout; null where it can't change. */
   exerciseCustomisation?: ExerciseCustomisation | null;
@@ -400,7 +408,7 @@ export function TodaySessionBlocks({
     <RehabLabelProvider policy={rehabLabelPolicy}>
     <PrivateExerciseMediaProvider token={accessToken}>
     <ExerciseMediaProvider media={exerciseMedia}>
-    <ExerciseRationaleProvider>
+    <ExerciseRationaleProvider cues={exerciseCues}>
     <ExerciseLogProvider logging={exerciseLogging}>
     <ExerciseCustomisationProvider value={exerciseCustomisation}>
       <div className="today-blocks today-blocks-sessions">
@@ -457,8 +465,11 @@ export function TodaySessionPanel({
   commandUnavailable = false,
   presentationPending = false,
   onPlanSessionChanged,
+  athleteSports,
 }: {
   state: TodayCommandView;
+  /** The athlete's own sports (profile technical_style): a focus from another sport stays hidden. */
+  athleteSports?: readonly string[] | null;
   /** Applies an athlete's exercise change to the shown plan (see useTodayCommand). */
   onPlanSessionChanged?: (date: string, session: StructuredSession | null) => void;
   /** From the athlete's profile: the guided visualisation says their first name. */
@@ -484,6 +495,9 @@ export function TodaySessionPanel({
 }) {
   const { showToast } = useToast();
   const fadeThrough = useFadeThrough();
+  // Sparring focus is health-adjacent: read only with consent (the server checks too).
+  const trainingFocus = useTrainingFocus(token, painReasonAllowed);
+  const [dismissedFocusIds, setDismissedFocusIds] = useState<readonly string[]>([]);
   const [intent, setIntent] = useState<CompletionIntent>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [rehabCheckOff, setRehabCheckOff] = useState<{ value: "done" | "modified" | "skipped"; label: string; saved?: boolean } | null>(null);
@@ -586,7 +600,9 @@ export function TodaySessionPanel({
   const sessionHasRehab = Boolean(livePrescription?.session.blocks?.some(block =>
     block.block_type === "rehab" && !isGuidanceOnlyRehabBlock(block)));
   const rehabChoiceRequired = (intent === "done" || reviewOpen) && sessionHasRehab;
-  const rehabOnlyPrescription = livePrescription?.session.session_type === "rehab";
+  // Only the server's standalone rehab occurrence is a rehab day. A planned
+  // mobility session (Joint Prep) is also typed "rehab" but is not rehab.
+  const rehabOnlyPrescription = livePrescription?.rehab_only === true;
   const sessionHasGuidanceRehab = Boolean(livePrescription?.session.blocks?.some(isGuidanceOnlyRehabBlock));
   // Followed guidance is all there is to report: no amount to choose.
   const guidanceOnlyRehab = sessionHasGuidanceRehab && !sessionHasRehab;
@@ -1240,6 +1256,23 @@ export function TodaySessionPanel({
     );
   }
 
+  const visibleFocus = trainingFocus?.items
+    ? { ...trainingFocus, items: trainingFocus.items.filter((item) => !dismissedFocusIds.includes(item.id)) }
+    : trainingFocus;
+  const dismissShownFocus = (id: string) => {
+    setDismissedFocusIds((ids) => [...ids, id]);
+    // Hidden at once; the server keeps it hidden. A failed write shows it again.
+    void dismissTrainingFocus(token, id)
+      .catch(() => setDismissedFocusIds((ids) => ids.filter((dismissedId) => dismissedId !== id)))
+      .finally(announceTrainingFocusChanged);
+  };
+  // Exercise cues stay with their exercise while it is trained, gone once logged.
+  // With no reported session the tier reads "preview", but the rows are today's.
+  const shownExerciseCues: ExerciseCues | null = !safeSession
+    && ((hasSession && isSessionPreview) || status === "not_started" || status === "started")
+    ? { cues: exerciseCues(visibleFocus, current.sessions.flatMap((item) => item.blocks ?? [])), onDismiss: dismissShownFocus }
+    : null;
+
   if (!hasSession) {
     return (
       <section
@@ -1271,6 +1304,7 @@ export function TodaySessionPanel({
             exerciseLogging={exerciseLogging}
             accessToken={token}
             exerciseCustomisation={exerciseCustomisation}
+            exerciseCues={shownExerciseCues}
           />
         ) : (
           <p className="muted">No plan session today. Use View plan to find the next one.</p>
@@ -1363,6 +1397,32 @@ export function TodaySessionPanel({
   // A different session taking the card (today's logged, next one up) fades
   // in as a handoff rather than swapping in one frame.
   const cardKey = `${session.session_id ?? ""}:${session.calendar_date ?? ""}:${isSessionPreview ? "preview" : "today"}`;
+  // "Your focus" (the fighter's own words) and a technique UNLXCK cue: before
+  // relevant work only, never during or after it. Matched to the session this
+  // card shows (not any session that day), or to the declared contact when the
+  // card leads with it. Exercise cues sit under their exercise instead.
+  // Only the session this card shows: today's live (safety-adjusted) blocks
+  // narrowed to it, or a preview's planned blocks; never the whole day.
+  const focusSession = focusSessionFor({
+    sessionId: session.session_id,
+    sessionType: session.session_type,
+    planned: storedCurrent.sessions.find((item) => item.session_id === session.session_id),
+    cardBlocks: session.blocks,
+    liveBlocks: !isSessionPreview && livePrescription ? livePrescription.session.blocks ?? [] : undefined,
+    plannedSessionCount: storedCurrent.sessions.length,
+  });
+  const focusTarget = {
+    session: focusSession,
+    contactLeads: contactLeads || Boolean(previewContactTarget),
+    sport: upcomingSport(structuredPlan?.plan_metadata?.sport, athleteSports),
+  };
+  const focusBeforeWork = !safeSession && (isSessionPreview || status === "not_started");
+  const yourFocus = focusBeforeWork
+    ? relevantFocusItem(visibleFocus, focusTarget, (item) => item.origin === "athlete")
+    : null;
+  const sessionCue = focusBeforeWork
+    ? relevantFocusItem(visibleFocus, focusTarget, (item) => item.origin === "inferred" && item.scope === "sport_technique")
+    : null;
 
   return (
     <section
@@ -1388,6 +1448,28 @@ export function TodaySessionPanel({
             ) : null}
             {summaryChips.length > 0 ? (
               <SummaryChipList chips={summaryChips} />
+            ) : null}
+            {yourFocus ? (
+              <p className="today-session-focus today-fade-in">
+                <span className="today-detail-label"><ToolIcon name="target" />Your focus</span>
+                {yourFocus.text}
+              </p>
+            ) : null}
+            {sessionCue ? (
+              <p className="today-session-focus today-session-cue today-fade-in">
+                <span className="today-detail-label">UNLXCK CUE</span>
+                {sessionCue.text}
+                {sessionCue.id ? (
+                  <button
+                    type="button"
+                    className="today-session-focus-dismiss"
+                    aria-label="Dismiss this UNLXCK cue"
+                    onClick={() => dismissShownFocus(sessionCue.id!)}
+                  >
+                    Dismiss
+                  </button>
+                ) : null}
+              </p>
             ) : null}
           </div>
         </div>
@@ -1477,6 +1559,7 @@ export function TodaySessionPanel({
                     exerciseLogging={exerciseLogging}
                     accessToken={token}
                     exerciseCustomisation={exerciseCustomisation}
+                    exerciseCues={shownExerciseCues}
                   />
                   <p className="today-pending-line">
                     <span className="today-pending-pill">Pending</span>
@@ -1496,6 +1579,7 @@ export function TodaySessionPanel({
               exerciseLogging={exerciseLogging}
               accessToken={token}
               exerciseCustomisation={exerciseCustomisation}
+              exerciseCues={shownExerciseCues}
             />
           )
         ) : presentationPending ? (

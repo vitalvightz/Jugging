@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, Mapping, Sequence
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 CompletionStatus = Literal[
     "not_started",
@@ -75,6 +75,27 @@ class SessionCompletionRecord(BaseModel):
     def key(self) -> tuple[str, str, str]:
         """The uniqueness key for this completion record."""
         return (self.user_id, self.session_id, self.training_day)
+
+
+# Same cap as the completion request's notes.
+HISTORY_NOTE_MAX_CHARS = 2000
+
+
+class HistoryCompletionEdit(BaseModel):
+    """The few fields of a finished plan session that History may change.
+
+    Status, reason, plan, day and exercise results stay as logged.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    session_rpe: int | None = Field(default=None, ge=1, le=10)
+    pain_after: int | None = Field(default=None, ge=0, le=10)
+    notes: str = Field(default="", max_length=HISTORY_NOTE_MAX_CHARS)
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def _clean_notes(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
 
 
 def completion_status_of(completion: SessionCompletionRecord | Mapping[str, Any] | None) -> CompletionStatus:

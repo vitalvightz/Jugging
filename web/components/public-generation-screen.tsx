@@ -119,7 +119,7 @@ export function PublicGenerationScreen({ phase, error = null, failureKind = null
             Fight camp build
           </p>
           <h1>YOUR CAMP IS TAKING SHAPE</h1>
-          <p className="public-build-estimate">Usually 3–10 minutes</p>
+          <p className="public-build-estimate">Usually 5–10 minutes</p>
         </header>
         <div className="public-build-mark" aria-hidden="true"><span className="public-build-ring public-build-ring-one"/><span className="public-build-ring public-build-ring-two"/><span className="public-build-core">U</span></div>
         {/* Keys replay the fade-in on each new stage; the live region itself stays mounted so the change is announced. */}
