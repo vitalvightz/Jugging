@@ -15,8 +15,12 @@ export type ExternalTrainingFields = {
   distance_value?: number | null;
   distance_unit?: DistanceUnit | null;
   duration_seconds?: number | null;
+  /** Optional, roadwork only: what kind of run it was. */
+  run_type?: RunType | null;
 };
 export type DistanceUnit = "km" | "miles";
+export const RUN_TYPES = ["easy", "tempo", "intervals", "sprints", "long", "race"] as const;
+export type RunType = (typeof RUN_TYPES)[number];
 export type TrainingHistorySession = {
   id: string;
   source: "unlxck" | "external";
@@ -32,6 +36,7 @@ export type TrainingHistorySession = {
   distance_value?: number | null;
   distance_unit?: DistanceUnit | null;
   duration_seconds?: number | null;
+  run_type?: RunType | null;
   effort: TrainingEffort | null;
   plan_id: string | null;
   session_rpe?: number | null;

@@ -158,7 +158,7 @@ export function TrainingRhythm(props: Props) {
         </> : <Loading complete={false} loading={loading} error={error} onLoadMore={onLoadMore} />}
       </div>
     </dialog> : null}
-    {session ? <SessionDetails key={`${session.source}:${session.id}`} row={session} token={token} cache={detailsCache} onDismiss={() => setSession(null)} restoreFocus={false} /> : null}
+    {session ? <SessionDetails key={`${session.source}:${session.id}`} row={session} token={token} cache={detailsCache} onDismiss={() => setSession(null)} restoreFocus={false} runs={rows} /> : null}
   </>;
 }
 

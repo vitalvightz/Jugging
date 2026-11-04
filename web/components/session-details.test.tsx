@@ -96,3 +96,42 @@ test("a hand-logged session shows effort and duration worded like an Unlxck one"
     assert.doesNotMatch(container.textContent!, /min recorded/);
   } finally { act(() => root.unmount()); container.remove(); globalThis.fetch = fetch; }
 });
+
+test("a run reads as distance, time, pace and effort, compared with earlier runs", async () => {
+  const fetch = globalThis.fetch;
+  const earlier: TrainingHistorySession = { ...row, id: "earlier", source: "external", activity: "roadwork", training_day: "2026-10-05",
+    duration_minutes: 25, duration_seconds: 1500, distance_value: 5, distance_unit: "km", effort: "easy" };
+  const run: TrainingHistorySession = { ...earlier, id: "run", training_day: "2026-10-10", duration_minutes: 28, duration_seconds: 1650,
+    distance_value: 6, distance_unit: "km", effort: "moderate", run_type: "tempo" };
+  globalThis.fetch = async () => new Response(JSON.stringify({ ...payload, session: run, blocks: [] }));
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<SessionDetails row={run} token="token" cache={new Map()} onDismiss={() => {}} runs={[earlier, run]} />));
+    const facts = [...container.querySelectorAll("dl > div")].map(fact => `${fact.querySelector("dt")?.textContent}: ${fact.querySelector("dd")?.textContent}`);
+    assert.deepEqual(facts, ["Time: 27:30", "Avg pace: 4:35/km", "Effort: Moderate", "Avg speed: 13.1 km/h"]);
+    const text = container.textContent!;
+    assert.match(text, /6 km/);
+    assert.match(text, /Tempo/);
+    assert.match(text, /Longest run/);
+    assert.match(text, /0:25\/km faster than your previous run/);
+    assert.equal(container.querySelectorAll('[aria-label="Distance of your recent runs"] > li').length, 2);
+    assert.doesNotMatch(text, /No exercises recorded/);
+  } finally { act(() => root.unmount()); container.remove(); globalThis.fetch = fetch; }
+});
+
+test("a run without distance or time asks for them and hands off to its edit sheet", async () => {
+  const fetch = globalThis.fetch;
+  const run: TrainingHistorySession = { ...row, id: "bare", source: "external", activity: "roadwork", duration_minutes: 26, effort: "moderate" };
+  globalThis.fetch = async () => new Response(JSON.stringify({ ...payload, session: run, blocks: [] }));
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  let edited: TrainingHistorySession | null = null;
+  try {
+    await act(async () => root.render(<SessionDetails row={run} token="token" cache={new Map()} onDismiss={() => {}} onEditRun={value => { edited = value; }} />));
+    assert.match(container.textContent!, /Add your distance and exact time/);
+    const button = [...container.querySelectorAll("button")].find(item => item.textContent === "Add run details")!;
+    await act(async () => button.click());
+    assert.equal(edited!.id, "bare");
+  } finally { act(() => root.unmount()); container.remove(); globalThis.fetch = fetch; }
+});

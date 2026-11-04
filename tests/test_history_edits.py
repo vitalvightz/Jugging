@@ -109,10 +109,27 @@ def test_run_distance_and_time_are_logged_and_edited(api):
     {"duration_seconds": 0},
     {"activity": "strength", "distance_value": None, "distance_unit": None},
     {"distance_value": 0.001},
+    {"activity": "strength", "distance_value": None, "distance_unit": None, "duration_seconds": None, "run_type": "easy"},
+    {"run_type": "jog"},
 ])
 def test_invalid_run_detail_is_rejected(changes):
     with pytest.raises(ValidationError):
         ExternalTrainingFields(**run(**changes))
+
+
+def test_run_type_is_logged_edited_and_cleared(api):
+    client, _ = api
+    response = client.post("/api/training/sessions", headers=AUTH,
+                           json={**run(run_type="tempo"), "client_request_id": str(uuid4())})
+    assert response.status_code == 201, response.text
+    row = response.json()
+    assert row["run_type"] == "tempo"
+    edited = client.patch(f"/api/training/sessions/{row['id']}", headers=AUTH, json=run(run_type="long"))
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["run_type"] == "long"
+    cleared = client.patch(f"/api/training/sessions/{row['id']}", headers=AUTH, json=run())
+    assert cleared.json()["run_type"] is None
+    assert [item["run_type"] for item in history_rows(client)] == [None]
 
 
 def test_sessions_without_run_detail_still_validate():

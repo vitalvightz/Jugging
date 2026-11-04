@@ -20,6 +20,8 @@ import type { ExerciseSetResult } from "@/lib/types";
 import { useSheetExit } from "@/lib/use-sheet-exit";
 import { Skeleton } from "./skeleton";
 import { AutoHeight } from "./today/auto-height";
+import { formatPace, formatRunTime } from "@/lib/run-time";
+import { describeDistanceDelta, describePaceDelta, formatSpeed, isRun, RUN_TYPE_LABELS, runInsights } from "@/lib/run-insights";
 
 /** The session's own status as an icon tone. */
 function sessionTone(status: string): RecordStatus {
@@ -151,12 +153,78 @@ function sessionEffort(record: { session_rpe?: number | null; effort?: string | 
   return record.effort.charAt(0).toUpperCase() + record.effort.slice(1);
 }
 
-export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = true, onEditExercises }: {
+const shortDay = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+
+/**
+ * A run reads like a run, not an empty exercise list: distance first, then
+ * time, pace and effort, any bests it set, and how it compares with the
+ * athlete's other logged runs.
+ */
+function RunRecord({ run, runs, onEditRun }: { run: TrainingHistorySession; runs: readonly TrainingHistorySession[]; onEditRun?: () => void }) {
+  const unit = run.distance_unit ?? "km";
+  const distance = run.distance_value && run.distance_unit ? run.distance_value : null;
+  const pace = distance && run.duration_seconds ? formatPace(run.duration_seconds, distance, unit) : null;
+  const time = run.duration_seconds ? formatRunTime(run.duration_seconds) : run.duration_minutes != null ? `${run.duration_minutes} min` : null;
+  const insights = runInsights(run, runs);
+  const effort = sessionEffort(run);
+  const missing = [!distance && "distance", !run.duration_seconds && "exact time"].filter(Boolean) as string[];
+  const maxKm = Math.max(...insights.trend.map(point => point.km), 0.01);
+  const compared = [
+    insights.paceDelta ? describePaceDelta(insights.paceDelta, unit) : null,
+    insights.distanceDelta ? describeDistanceDelta(insights.distanceDelta, unit) : null,
+  ].filter(Boolean) as string[];
+  return <>
+    <section className={styles.runHero} aria-label="Run summary">
+      <p className={styles.runDistance}>{distance ? <><strong>{Number(distance.toFixed(2))}</strong> <span>{unit === "km" ? "km" : "miles"}</span></>
+        : <span className={styles.runNoDistance}>No distance logged</span>}</p>
+      {run.run_type || insights.records.length ? <ul className={styles.runTags} aria-label="Run tags">
+        {run.run_type ? <li>{RUN_TYPE_LABELS[run.run_type]}</li> : null}
+        {insights.records.map(record => <li key={record} data-record>★ {record}</li>)}
+      </ul> : null}
+      <dl className={styles.runStats}>
+        <div><dt>Time</dt><dd>{time ?? "—"}</dd></div>
+        <div><dt>Avg pace</dt><dd>{pace ?? "—"}</dd></div>
+        <div><dt>Effort</dt><dd>{effort ?? "—"}</dd></div>
+        {formatSpeed(run) ? <div><dt>Avg speed</dt><dd>{formatSpeed(run)}</dd></div> : null}
+      </dl>
+      <p className={styles.runSource}>Added by you</p>
+    </section>
+    {missing.length ? <div className={styles.runPrompt}>
+      <p>Add your {missing.join(" and ")} to see pace, personal bests and how this run compares.</p>
+      {onEditRun ? <button type="button" className="secondary-button" aria-haspopup="dialog" onClick={onEditRun}>Add run details</button> : null}
+    </div> : null}
+    {compared.length || insights.week.runs > 1 || insights.trend.length > 1 ? <section className={styles.section} aria-label="Compared with your runs">
+      <h3>How it compares</h3>
+      {compared.length ? <ul className={styles.runCompare}>{compared.map(line => <li key={line}>{line}</li>)}</ul> : null}
+      <p className={styles.quiet}>Week of this run: {insights.week.runs} {insights.week.runs === 1 ? "run" : "runs"}
+        {insights.week.distance > 0 ? ` · ${Number(insights.week.distance.toFixed(1))} ${unit === "km" ? "km" : "mi"}` : ""}
+        {insights.week.timed > 0 ? ` · ${formatRunTime(insights.week.timed)}` : ""}</p>
+      {insights.trend.length > 1 ? <figure className={styles.runTrend}>
+        <figcaption>Distance, last {insights.trend.length} runs</figcaption>
+        <ol aria-label="Distance of your recent runs">{insights.trend.map(point => {
+          const value = Number((unit === "km" ? point.km : point.km / 1.609344).toFixed(1));
+          const label = `${shortDay(point.day)}: ${value} ${unit === "km" ? "km" : "mi"}${point.current ? " (this run)" : ""}`;
+          return <li key={point.id} data-current={point.current || undefined} aria-label={label} title={label}>
+            {point.current ? <span className={styles.runTrendValue}>{value}</span> : null}
+            <span className={styles.runTrendBar} style={{ height: `${Math.max(6, point.km / maxKm * 80)}%` }} />
+            <span className={styles.runTrendDay} aria-hidden="true">{shortDay(point.day)}</span>
+          </li>;
+        })}</ol>
+      </figure> : null}
+    </section> : null}
+  </>;
+}
+
+export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = true, onEditExercises, runs = [], onEditRun }: {
   row: TrainingHistorySession; token: string; cache: SessionDetailsCache; onDismiss: () => void;
   /** A suspended parent sheet owns focus restoration during a modal handoff. */
   restoreFocus?: boolean;
   /** Hands off to the exercise logger; this sheet closes first so only one modal is open. */
   onEditExercises?: (row: TrainingHistorySession) => void;
+  /** Loaded History rows; a run compares itself with the other runs among them. */
+  runs?: readonly TrainingHistorySession[];
+  /** Hands off to the run's edit sheet; this sheet closes first. */
+  onEditRun?: (row: TrainingHistorySession) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const heading = useId();
@@ -190,6 +258,7 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
   }, [row.id, row.source, token, cache, attempt]);
   const record = details?.session;
   const [open, setOpen] = useState<ReadonlySet<number> | null>(null);
+  const run = record && isRun(record) ? { ...row, ...record } : null;
   const expanded = open ?? new Set(details?.blocks.flatMap((block, index) => opensByDefault(block, details.blocks.length) ? [index] : []) ?? []);
   return <dialog ref={dialog} className={`${styles.dialog} ${styles.workspace}`} aria-labelledby={heading} data-closing={closing || undefined}
     onCancel={event => { event.preventDefault(); dismiss(); }}
@@ -208,7 +277,23 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
       <AutoHeight swapKey={details ? "loaded" : error ? "error" : "loading"} swapMotion="fade">
         {!details && !error ? <SessionRecordSkeleton /> : null}
         {error ? <div role="alert"><p>Unable to load session details. Try again.</p><button type="button" className="secondary-button" onClick={() => { setError(false); setAttempt(value => value + 1); }}>Retry</button></div> : null}
-        {details && record ? <div className={styles.sessionLayout}>
+        {details && record && run ? <div className={styles.recordContent}>
+          <RunRecord run={run} runs={runs} onEditRun={onEditRun ? () => onEditRun(run) : undefined} />
+          {details.blocks.length ? <section className={styles.section}>
+            <div className={styles.manualHead}><h3>Drills & exercises</h3>
+              {onEditExercises ? <button type="button" className={styles.manualAction} aria-haspopup="dialog"
+                onClick={() => onEditExercises(run)}>Edit exercises</button> : null}</div>
+            <ol className={styles.manualList}>{details.blocks.map((block, index) => <li key={index}>
+              <span className={styles.manualName}>{block.name}</span>
+              {block.actual.set_entries?.length ? <SetResults entries={block.actual.set_entries} completed={block.actual.sets} /> : <span className={styles.manualValues}>{summarise(block.actual, block.format) || NO_MEASUREMENTS}</span>}
+              {block.notes ? <p className={styles.note}>{block.notes}</p> : null}
+            </li>)}</ol>
+          </section> : null}
+          {record.notes || record.takeaway ? <section className={styles.section}><h3>Notes</h3>
+            {record.notes ? <p className={styles.note}>{record.notes}</p> : null}
+            {record.takeaway ? <p className={styles.note}>Takeaway: {record.takeaway}</p> : null}</section> : null}
+        </div> : null}
+        {details && record && !run ? <div className={styles.sessionLayout}>
           <section className={styles.sessionSummary} aria-label="Session overview">
             <dl className={styles.sessionFacts}>
               <div><TileIcon name="source" /><dt>Source</dt><dd>{record.source === "external" ? "Added by you" : "Unlxck"}</dd></div>

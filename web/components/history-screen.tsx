@@ -54,6 +54,7 @@ import { LogTraining, manualSparringDraft } from "./log-training";
 import { TakeawayEditor } from "./session-takeaway";
 import { PlanSessionEditor } from "./plan-session-editor";
 import { runSummary } from "@/lib/run-time";
+import { RUN_TYPE_LABELS } from "@/lib/run-insights";
 import { markHistoryHintSeen } from "@/lib/history-hint";
 import { SparringLogPrompt, type SparringDraft } from "./today/sparring-log-prompt";
 import { TrainingSummaryCard } from "./training-summary-card";
@@ -198,6 +199,8 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
   const [search, setSearch] = useState("");
   const [sparringDraft, setSparringDraft] = useState<SparringDraft | null>(null);
   const [selected, setSelected] = useState<TrainingHistorySession | null>(null);
+  // A run's edit sheet opened from its details, which reopen once it closes.
+  const [editRun, setEditRun] = useState<TrainingHistorySession | null>(null);
   async function remove(row: TrainingHistorySession) {
     if (deleting) return;
     // A plan session goes back to not done on the plan, so confirm first.
@@ -276,6 +279,7 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
               <RowDate day={row.training_day} today={today} />
               <span>{row.source === "external" ? "Added by you" : "Unlxck"}</span>
               {row.source === "unlxck" && row.completion_origin == null ? <span>Legacy completion · workout identity unverified</span> : null}
+              {row.run_type ? <span>{RUN_TYPE_LABELS[row.run_type]}</span> : null}
               {runSummary(row) ? <span>{runSummary(row)}</span> : row.duration_minutes ? <span>{row.duration_minutes} min</span> : null}
               {row.source === "external" && row.exercise_count ? <span>{plural(row.exercise_count, "exercise")}</span> : null}
               {row.effort ? <span>{row.effort.charAt(0).toUpperCase() + row.effort.slice(1)}</span> : null}
@@ -323,8 +327,12 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
       {sparringDraft && token ? <SparringLogPrompt key={sparringDraft.externalSessionId} token={token} draft={sparringDraft}
         onSaved={onSparringSaved} onDismiss={() => setSparringDraft(null)} /> : null}
       {selected && token ? <SessionDetails key={`${selected.source}:${selected.id}`} row={selected} token={token}
-        cache={detailsCache} onDismiss={() => setSelected(null)}
+        cache={detailsCache} onDismiss={() => setSelected(null)} runs={rows}
+        onEditRun={row => { setEditRun(row); setSelected(null); }}
         onEditExercises={selected.source === "external" ? row => { setExercisesFor({ row, reopenDetails: true }); setSelected(null); } : undefined} /> : null}
+      {editRun && token ? <LogTraining key={`edit-${editRun.id}`} accessToken={token} entry={editRun} autoOpen
+        onSaved={updated => { detailsCache.delete(`external:${updated.id}`); onUpdate(updated); setEditRun(updated); }}
+        onClosed={() => { setSelected(editRun); setEditRun(null); }} /> : null}
       {exercisesFor && token ? <ManualExerciseLogger key={exercisesFor.row.id} token={token} session={exercisesFor.row} reference={exercisesFor.reference}
         onClose={entries => {
           const target = exercisesFor;

@@ -1052,6 +1052,7 @@ export type ExternalTrainingCreate = {
   distance_value?: number | null;
   distance_unit?: "km" | "miles" | null;
   duration_seconds?: number | null;
+  run_type?: "easy" | "intervals" | "long" | "race" | "sprints" | "tempo" | null;
   client_request_id: string;
   training_day?: string | null;
 };
@@ -1065,6 +1066,7 @@ export type ExternalTrainingFields = {
   distance_value?: number | null;
   distance_unit?: "km" | "miles" | null;
   duration_seconds?: number | null;
+  run_type?: "easy" | "intervals" | "long" | "race" | "sprints" | "tempo" | null;
 };
 
 export type ExternalTrainingTakeaway = {
@@ -2727,6 +2729,7 @@ export type TrainingHistorySession = {
   distance_value: number | null;
   distance_unit: "km" | "miles" | null;
   duration_seconds: number | null;
+  run_type: "easy" | "intervals" | "long" | "race" | "sprints" | "tempo" | null;
   effort: "easy" | "hard" | "moderate" | null;
   plan_id: string | null;
   session_rpe: number | null;
