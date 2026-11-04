@@ -5,6 +5,7 @@ import { type FormEvent, type RefObject, useEffect, useId, useRef, useState } fr
 import { ApiError, saveTrainingTakeaway } from "@/lib/api";
 import { lockOverlayScroll } from "@/lib/overlay-scroll-lock";
 import { TAKEAWAY_MAX_CHARS, type TrainingHistorySession } from "@/lib/training-history";
+import { trainingTitle } from "@/lib/training-disciplines";
 import sheet from "./log-training.module.css";
 import styles from "./session-takeaway.module.css";
 import { useToast } from "./toast-provider";
@@ -14,7 +15,7 @@ const PLACEHOLDER = "e.g. Keep my right hand up after the jab";
 const label = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
 export function sessionMeta(row: TrainingHistorySession): string {
-  return [row.title, row.duration_minutes ? `${row.duration_minutes} minutes` : null, row.effort ? label(row.effort) : null]
+  return [trainingTitle(row), row.duration_minutes ? `${row.duration_minutes} minutes` : null, row.effort ? label(row.effort) : null]
     .filter(Boolean).join(" · ");
 }
 
@@ -88,7 +89,7 @@ export function SessionTakeawayPrompt({ token, row, onSaved, onDismiss, sheet: a
       <div className={styles.saved} role="status">
         <div>
           <p className={styles.savedTitle}>Session saved</p>
-          <span className="sr-only">{row.title} logged successfully. Saved to Training History.</span>
+          <span className="sr-only">{trainingTitle(row)} logged successfully. Saved to Training History.</span>
           <p className={styles.meta}>{sessionMeta(row)}</p>
         </div>
         <svg className={styles.check} viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" /><path d="m8 12.5 2.6 2.5L16 9.5" /></svg>
@@ -128,7 +129,7 @@ export function TakeawayEditor({ token, row, onSaved }: {
   const has = Boolean(row.takeaway?.trim());
   return <>
     <button className="history-session-delete" type="button" aria-haspopup="dialog"
-      aria-label={`${has ? "Edit" : "Add"} takeaway for ${row.title}`} onClick={() => setOpen(true)}>
+      aria-label={`${has ? "Edit" : "Add"} takeaway for ${trainingTitle(row)}`} onClick={() => setOpen(true)}>
       {has ? "Edit takeaway" : "Add takeaway"}
     </button>
     {open ? <TakeawaySheet token={token} row={row} onClose={() => setOpen(false)}

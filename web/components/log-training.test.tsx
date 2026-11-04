@@ -68,9 +68,9 @@ test("without a known sport the original six activities and payload are unchange
   const ui = await mount([]);
   try {
     await ui.click("Log session");
-    assert.deepEqual(labels(ui), ["Boxing", "Sparring", "Strength", "Conditioning", "Roadwork", "Other"]);
+    assert.deepEqual(labels(ui), ["Boxing", "Sparring", "Strength", "Conditioning", "Running", "Other"]);
     assert.deepEqual(ui.pressed("Activity"), []);
-    await ui.pick("Activity", "Roadwork");
+    await ui.pick("Activity", "Running");
     await ui.pick("Duration", "45");
     await ui.pick("Effort", "Easy");
     await ui.save();
@@ -82,7 +82,7 @@ test("a boxer sees boxing session types in the same single grid, with nothing pr
   const ui = await mount(["boxing"]);
   try {
     await ui.click("Log session");
-    assert.deepEqual(labels(ui), ["Pads", "Bag work", "Shadowboxing", "Technical drills", "Sparring", "Strength", "Conditioning", "Roadwork", "Other"]);
+    assert.deepEqual(labels(ui), ["Pads", "Bag work", "Shadowboxing", "Technical drills", "Sparring", "Strength", "Conditioning", "Running", "Other"]);
     assert.deepEqual(ui.pressed("Activity"), []);
     assert.equal(ui.group("Sport"), null);
     assert.equal(ui.group("Session type"), null);
@@ -181,7 +181,7 @@ test("an older Sparring record edits in the original grid and is saved unchanged
   const ui = await mount(["boxing"], { entry: legacy }, call => new Response(JSON.stringify({ ...legacy, ...call.body }), { status: 200 }));
   try {
     await ui.click("Edit Sparring");
-    assert.deepEqual(labels(ui), ["Boxing", "Sparring", "Strength", "Conditioning", "Roadwork", "Other"]);
+    assert.deepEqual(labels(ui), ["Boxing", "Sparring", "Strength", "Conditioning", "Running", "Other"]);
     assert.deepEqual(ui.pressed("Activity"), ["Sparring"]);
     await ui.pick("Duration", "60");
     await ui.save();
@@ -226,7 +226,7 @@ test("Change sport switches the choices for this session only, then defaults bac
     // The menu closes; the grid is BJJ's and the toggle says so.
     assert.equal(ui.group("Sport for this session"), null);
     assert.equal(toggle.textContent, "BJJ · Change");
-    assert.deepEqual(labels(ui), ["Drilling", "Positional", "Rolling", "Strength", "Conditioning", "Roadwork", "Other"]);
+    assert.deepEqual(labels(ui), ["Drilling", "Positional", "Rolling", "Strength", "Conditioning", "Running", "Other"]);
     await ui.pick("Activity", "Rolling");
     await ui.pick("Duration", "90");
     await ui.pick("Effort", "Hard");
@@ -253,7 +253,7 @@ test("switching sport clears a session type that no longer fits, but keeps Stren
     await act(async () => toggle().click());
     await ui.pick("Sport for this session", "No sport");
     assert.equal(toggle().textContent, "No sport · Change");
-    assert.deepEqual(labels(ui), ["Boxing", "Sparring", "Strength", "Conditioning", "Roadwork", "Other"]);
+    assert.deepEqual(labels(ui), ["Boxing", "Sparring", "Strength", "Conditioning", "Running", "Other"]);
     assert.deepEqual(ui.pressed("Activity"), ["Strength"]);
   } finally { ui.cleanup(); }
 });

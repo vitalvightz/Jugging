@@ -21,7 +21,7 @@ const DISCIPLINE: Record<TrainingActivity, { key: string; label: string }> = {
   sparring: { key: "sparring", label: "Sparring" },
   strength: { key: "sc", label: "S&C" },
   conditioning: { key: "sc", label: "S&C" },
-  roadwork: { key: "roadwork", label: "Roadwork" },
+  roadwork: { key: "roadwork", label: "Running" },
   other: { key: "other", label: "Other" },
 };
 // Boxing shares the activity bucket above; it is the same discipline.

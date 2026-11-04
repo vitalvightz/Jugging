@@ -11,7 +11,7 @@ import { lockOverlayScroll } from "@/lib/overlay-scroll-lock";
 import { comparisonRows, detailMeasurements, matchesPrescription, splitLoad, type ComparisonRow } from "@/lib/session-details";
 import { recordStatus, StatusIcon, TileIcon, type RecordStatus } from "./record-icons";
 import { NO_MEASUREMENTS, summarise } from "@/lib/manual-exercises";
-import { sessionTypes, sportLabel } from "@/lib/training-disciplines";
+import { sessionTypes, sportLabel, trainingTitle } from "@/lib/training-disciplines";
 import type { TrainingHistorySession } from "@/lib/training-history";
 import styles from "./session-details.module.css";
 import { countOnlySetSummary } from "@/lib/set-entries";
@@ -198,7 +198,7 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
       if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dismiss();
     } }}>
     <header className={styles.header}><div><p className={styles.eyebrow}>Session details</p>
-      <h2 id={heading}>{record?.title || row.title}</h2>
+      <h2 id={heading}>{row.source === "external" && row.activity === "roadwork" ? trainingTitle(row) : record?.title || row.title}</h2>
       <p className={styles.quiet}>{formatAppDate(record?.training_day || row.training_day)}
         {record ? <span className={styles.sessionStatus} data-status={sessionTone(record.status)}><StatusIcon status={sessionTone(record.status)} />{sessionStatusLabel(record.status)}</span> : null}</p></div>
       <button type="button" className={styles.close} aria-label="Close session details" onClick={() => dismiss()}>×</button></header>

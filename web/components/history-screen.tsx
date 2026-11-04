@@ -59,6 +59,7 @@ import { SparringLogPrompt, type SparringDraft } from "./today/sparring-log-prom
 import { TrainingSummaryCard } from "./training-summary-card";
 import { TrainingRhythm } from "./training-rhythm";
 import { filterTakeaways } from "@/lib/training-summary";
+import { trainingTitle } from "@/lib/training-disciplines";
 import { canRepeatTraining, sortTrainingHistory, type TrainingHistorySession } from "@/lib/training-history";
 import { useTrainingDay } from "@/lib/use-training-day";
 import { SessionDetails, type SessionDetailsCache } from "./session-details";
@@ -265,10 +266,10 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
         {shown.map((row) => (
           <li key={`${row.source}-${row.id}`} className="history-row history-session-row" data-tone={sessionStatusTone(row.status)}>
             <button type="button" className="history-session-open" aria-haspopup="dialog"
-              aria-label={`View ${row.title || "session"} details for ${formatAppDate(row.training_day)}`}
+              aria-label={`View ${trainingTitle(row) || "session"} details for ${formatAppDate(row.training_day)}`}
               onClick={() => setSelected(row)} />
             <div className="history-row-head">
-              <span className="history-row-title">{row.title?.trim() || "Session"}</span>
+              <span className="history-row-title">{trainingTitle(row)?.trim() || "Session"}</span>
               <StatusBadge tone={sessionStatusTone(row.status)} label={sessionStatusLabel(row.status)} />
             </div>
             <div className="history-row-meta">
@@ -299,13 +300,13 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
                   {log ? "Update report" : "Add details"}
                 </button>;
               })() : null}
-              {canRepeatTraining(row) ? <LogTraining accessToken={token} repeatEntry={row} onSaved={created => { onUpdate(created); setRepeated({ row: created, source: row }); setSaved(`${created.title} logged successfully. Saved to Training History.`); }} /> : null}
+              {canRepeatTraining(row) ? <LogTraining accessToken={token} repeatEntry={row} onSaved={created => { onUpdate(created); setRepeated({ row: created, source: row }); setSaved(`${trainingTitle(created)} logged successfully. Saved to Training History.`); }} /> : null}
               <LogTraining accessToken={token} entry={row} onSaved={onUpdate} />
               {token ? <TakeawayEditor token={token} row={row} onSaved={onUpdate} /> : null}
-              <button className="history-session-delete" type="button" disabled={deleting !== null} aria-label={`Delete ${row.title}`} onClick={() => void remove(row)}>{deleting === row.id ? "Deleting…" : "Delete"}</button>
+              <button className="history-session-delete" type="button" disabled={deleting !== null} aria-label={`Delete ${trainingTitle(row)}`} onClick={() => void remove(row)}>{deleting === row.id ? "Deleting…" : "Delete"}</button>
             </div> : row.source === "unlxck" && row.history_editable && token ? <div className="history-session-actions">
               <PlanSessionEditor token={token} row={row} onSaved={onUpdate} />
-              <button className="history-session-delete" type="button" disabled={deleting !== null} aria-label={`Delete ${row.title}`} onClick={() => void remove(row)}>{deleting === row.id ? "Deleting…" : "Delete"}</button>
+              <button className="history-session-delete" type="button" disabled={deleting !== null} aria-label={`Delete ${trainingTitle(row)}`} onClick={() => void remove(row)}>{deleting === row.id ? "Deleting…" : "Delete"}</button>
             </div> : null}
             {row.modification_reason ? (
               <p className="muted history-row-note">Reason: {row.modification_reason}</p>
