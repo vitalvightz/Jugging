@@ -162,5 +162,15 @@
         "removed_names": []
       }
     }
-  }
+  },
+  "additional_test_alignments": [
+    {
+      "test": "tests/test_mechanical_metadata_corrections.py::test_exact_seven_source_deltas_preserve_every_identity_and_other_row",
+      "decision": "#3181 adds three technical footwork rows; the independently recounted 2906 IDs are still compared in full, with exactly seven mechanical row deltas."
+    },
+    {
+      "test": "tests/test_injury_policy_journey.py::test_no_contact_alone_does_not_hold_fitness_or_support_without_contact_metadata[cooldown_recovery]",
+      "decision": "#3166 explicitly inserts published rehab before the closing cooldown. Assert the unchanged cooldown at the final position; preserve no-hold, no-rehab-only and no-changes assertions."
+    }
+  ]
 }

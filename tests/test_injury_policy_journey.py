@@ -759,7 +759,10 @@ def test_no_contact_alone_does_not_hold_fitness_or_support_without_contact_metad
     session = {"session_id": "s", "session_type": "strength", "blocks": [block]}
     snapshot = reconcile_session_prescription(session, decisions=[decision], plan_id=PLAN, training_day=DAY)
     assert snapshot["session"]["session_id"] == "s"
-    assert snapshot["session"]["blocks"][0] == block
+    # #3166 puts added published rehab before the closing cooldown. The
+    # original training block remains intact and unheld in either position.
+    work_index = -1 if block_type == "cooldown_recovery" else 0
+    assert snapshot["session"]["blocks"][work_index] == block
     assert not snapshot["safety_hold"] and not snapshot["rehab_only"]
     assert not snapshot["changes"]
 
