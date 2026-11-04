@@ -89,8 +89,9 @@ def expand_bank_prescriptions(policy: ClinicalPolicy, bank: list[dict]) -> Clini
     prescriptions = list(policy.prescriptions)
     existing = {p.drill_id for p in prescriptions}
     sources = list(policy.evidence_sources)
+    region = canonicalize_location_from_registry(policy.region)
     for group in bank:
-        if canonicalize_location_from_registry(group.get("location")) != canonicalize_location_from_registry(policy.region):
+        if canonicalize_location_from_registry(group.get("location")) != region:
             continue
         for drill in group.get("drills", []):
             if (drill.get("id") in existing or counts[drill.get("id")] != 1
