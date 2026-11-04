@@ -7,6 +7,8 @@ spacy==3.8.14
 negspacy==1.1.0
 en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 supabase==2.29.0
+# Local verification of Supabase access tokens against the project JWKS.
+PyJWT[crypto]==2.15.1
 gotrue==2.12.4
 markdown2==2.5.5
 openai==2.32.0

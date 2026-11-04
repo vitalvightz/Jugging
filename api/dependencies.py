@@ -13,6 +13,7 @@ from typing import Any, Callable
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from . import server_timing
 from .auth import AuthService, AuthenticatedUser, is_auth_api_error
 from .models import ProfileRecord
 from .plan_mappers import _is_admin_archived_hidden_from_athlete, _map_profile_row
@@ -152,7 +153,8 @@ def require_profile(
 ) -> ProfileRecord:
     request_id = getattr(request.state, "request_id", "")
     try:
-        profile = _map_profile_row(store.ensure_profile(user))
+        with server_timing.measure("profile"):
+            profile = _map_profile_row(store.ensure_profile(user))
         request.state.athlete_id = profile.athlete_id
         logger.debug(
             "[auth] profile_resolved request_id=%s athlete_id=%s auth_event=%s status=%s",
