@@ -362,7 +362,7 @@ def try_award_completed_week_for_completion(
         return None
 
     try:
-        plan = store.get_plan_for_athlete(plan_id, athlete_id)
+        plan = store.get_training_plan_for_athlete(plan_id, athlete_id)
         if not isinstance(plan, Mapping):
             return None
         return award_completed_week(

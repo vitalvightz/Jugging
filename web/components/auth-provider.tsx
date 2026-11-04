@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 
 import { usePathname } from "next/navigation";
 import { ApiError, trackProductEvent, getMe } from "@/lib/api";
+import { observeUsage } from "@/lib/usage-tracking";
 import { clearSharedReads } from "@/lib/shared-reads";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { hasSignupAdmission } from "@/lib/signup-invite-guard";
@@ -67,23 +68,24 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [isMeHydrated, setIsMeHydrated] = useState(false);
   const [session, setSession] = useState<AppSession | null>(null);
   const [me, setMe] = useState<MeResponse | null>(null);
+  const analyticsTokenRef = useRef<string | null>(null);
+  const analyticsPathRef = useRef("");
+  const usageObserverRef = useRef<ReturnType<typeof observeUsage> | null>(null);
+  const analyticsActor = session?.access_token && me?.profile.role === "athlete" ? me.profile.athlete_id : null;
   useEffect(() => {
-    if (!session?.access_token || me?.profile.role !== "athlete") return;
-    const token = session.access_token;
-    const recordVisit = () => {
-      if (document.visibilityState === "visible") void trackProductEvent(token, "app_opened", "onboarding");
-    };
-    recordVisit();
-    document.addEventListener("visibilitychange", recordVisit);
-    return () => document.removeEventListener("visibilitychange", recordVisit);
-  }, [session?.access_token, me?.profile.role]);
+    analyticsTokenRef.current = session?.access_token ?? null;
+    analyticsPathRef.current = pathname ?? "";
+  }, [session?.access_token, pathname]);
   useEffect(() => {
-    if (!session?.access_token || me?.profile.role !== "athlete") return;
-    // Only categorical names leave the browser. Never send URLs, queries or IDs.
-    const section = pathname?.split("/")[1] ?? "";
-    const features: Record<string, string> = { plan: "plans", plans: "plans", today: "recovery", timer: "timer", history: "history", nutrition: "nutrition", strength: "strength", sparring: "sparring" };
-    void trackProductEvent(session.access_token, "page_viewed", features[section] ?? "onboarding");
-  }, [pathname, session?.access_token, me?.profile.role]);
+    if (!analyticsActor) return;
+    const observer = observeUsage(document, () => analyticsPathRef.current, (event, feature) => {
+      const token = analyticsTokenRef.current;
+      if (token) void trackProductEvent(token, event, feature);
+    });
+    usageObserverRef.current = observer;
+    return () => { observer.dispose(); usageObserverRef.current = null; };
+  }, [analyticsActor]);
+  useEffect(() => { usageObserverRef.current?.pageChanged(); }, [pathname]);
   const [hasTransientMeError, setHasTransientMeError] = useState(false);
   const [appearancePreview, setAppearancePreview] = useState<AppearanceMode | null>(null);
   const handledAccessTokenRef = useRef<string | null>(null);

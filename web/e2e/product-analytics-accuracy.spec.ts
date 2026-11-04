@@ -56,9 +56,18 @@ for (const width of [390, 1280]) {
         });
       if (url.pathname === "/api/admin/product-analytics") {
         requests.push(url.search);
-        const data = { ...structuredClone(fixture), tracking_health: { healthy: true }, tracking_since: "2026-10-30T00:00:00Z", visitors_today: 2, visitors_7d: 3, visitors_30d: 4 };
+        const data = { ...structuredClone(fixture), tracking_health: { healthy: true }, tracking_since: "2026-10-30T00:00:00Z", visitors_today: 2, visitors_7d: 3, visitors_30d: 4,
+          latest_browser_event: "2026-11-04T16:00:00Z", browser_reporting_athletes: 3, seen_recently: 1, no_visit_7d: 24,
+          athletes: fixture.athletes.map((p, i) => ({ ...p, last_seen: i === 0 ? "2026-11-04T16:00:00Z" : null,
+            latest_action: i === 0 ? { feature: "history", action: "page_viewed" } : null,
+            visit_days_7: i === 0 ? 2 : 0, visit_days_30: i === 0 ? 3 : 0 })),
+        };
         const offset = Number(url.searchParams.get("offset") || 0);
-        data.athletes = data.athletes.slice(offset, offset + 25);
+        const query = url.searchParams.get("athlete_search")?.toLowerCase() ?? "";
+        const matches = data.athletes.filter(p => (!query || `${p.full_name} ${p.email}`.toLowerCase().includes(query))
+          && (url.searchParams.get("visit_filter") !== "never_seen" || !p.last_seen));
+        data.athlete_total = matches.length;
+        data.athletes = matches.slice(offset, offset + 25);
         data.offset = offset;
         if (partial) {
           data.coverage = {
@@ -99,6 +108,7 @@ for (const width of [390, 1280]) {
     ).toBeVisible();
     await expect(page.getByText("Tracking collector ready", { exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Visited today", exact: true })).toBeVisible();
+    await expect(page.locator("#analytics-4")).toContainText("history · Viewed a page");
     const history = page
       .locator("#analytics-2 details")
       .filter({ has: page.locator("summary span", { hasText: /^history$/ }) });
@@ -129,6 +139,8 @@ for (const width of [390, 1280]) {
     ).toBe(true);
     const shots = process.env.ANALYTICS_SCREENSHOTS;
     if (shots) {
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({ path: `${shots}/overview-${width}.png` });
       for (const [id, name] of [
         ["4", "athlete-directory"],
         ["2", "feature-adoption"],
@@ -152,6 +164,13 @@ for (const width of [390, 1280]) {
     await expect(timer.locator("summary")).toContainText("0 recorded athletes");
     await expect(timer.locator("summary")).toContainText("Partial coverage");
     await expect(page.locator("#analytics-2")).toContainText("1 / 27 athletes");
+    await page.getByRole("searchbox", { name: "Find an athlete" }).fill("fallback@example.test");
+    await page.getByRole("button", { name: "Search athletes", exact: true }).click();
+    await expect.poll(() => requests.at(-1)).toContain("athlete_search=fallback%40example.test");
+    await expect(page.getByRole("link", { name: "fallback@example.test", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Example Athlete", exact: true })).toHaveCount(0);
+    await page.getByRole("combobox", { name: "Visit history" }).selectOption("never_seen");
+    await expect.poll(() => requests.at(-1)).toContain("visit_filter=never_seen");
     expect(errors).toEqual([]);
   });
 }

@@ -1736,7 +1736,7 @@ export async function trackProductEvent(token: string, event_name: string, featu
     const body = JSON.stringify({ event_name, feature, request_id: request_id ?? crypto.randomUUID(), flow_id });
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const result = await readJson<{ accepted: boolean }>("/api/analytics/events", { token, method: "POST", body });
+        const result = await readJson<{ accepted: boolean }>("/api/analytics/events", { token, method: "POST", body, keepalive: true });
         return result.accepted;
       } catch (error) {
         if (error instanceof ApiError && error.status < 500 && error.status !== 429) return false;

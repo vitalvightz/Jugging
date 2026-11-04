@@ -144,7 +144,9 @@ def qualifying_training_days(
             continue
         plan_id = str(row.get("plan_id") or "")
         if plan_id not in plans:
-            plans[plan_id] = store.get_plan_for_athlete(plan_id, athlete_id) if plan_id else None
+            # One projected read per distinct plan: the schedule never needs
+            # the Stage-2 payload or prompt text that select("*") drags in.
+            plans[plan_id] = store.get_training_plan_for_athlete(plan_id, athlete_id) if plan_id else None
         plan = plans[plan_id]
         anchor = open_plan_anchor_date(plan) if plan and open_plan_spec(plan) else None
         block = max(0, (activity_day - anchor).days // 28) if anchor else 0
