@@ -44,11 +44,11 @@ test("the athlete's own sport decides the Activity choices", () => {
   assert.equal(athleteSport(["karate"]), null);
   assert.equal(athleteSport(undefined), null);
   const labels = (sport: Parameters<typeof trainingPicks>[0]) => trainingPicks(sport).map(pick => pick.label);
-  assert.deepEqual(labels("boxing"), ["Pads", "Bag work", "Shadowboxing", "Technical drills", "Sparring", "Strength", "Conditioning", "Roadwork", "Other"]);
-  assert.deepEqual(labels("bjj"), ["Drilling", "Positional", "Rolling", "Strength", "Conditioning", "Roadwork", "Other"]);
+  assert.deepEqual(labels("boxing"), ["Pads", "Bag work", "Shadowboxing", "Technical drills", "Sparring", "Strength", "Conditioning", "Running", "Other"]);
+  assert.deepEqual(labels("bjj"), ["Drilling", "Positional", "Rolling", "Strength", "Conditioning", "Running", "Other"]);
   assert.deepEqual(labels("muay_thai").slice(0, 5), ["Pads", "Bag work", "Clinch", "Technical drills", "Sparring"]);
   // No sport known: the original six, unchanged.
-  assert.deepEqual(labels(null), ["Boxing", "Sparring", "Strength", "Conditioning", "Roadwork", "Other"]);
+  assert.deepEqual(labels(null), ["Boxing", "Sparring", "Strength", "Conditioning", "Running", "Other"]);
   // Every choice is a valid stored classification; S&C keeps the existing activities without a sport.
   for (const sport of [...TRAINING_SPORTS, null]) assert.ok(trainingPicks(sport).every(pick => isValidClassification(pick)));
   assert.deepEqual(trainingPicks("bjj").find(pick => pick.label === "Strength"), { label: "Strength", activity: "strength", sport: null, session_type: null });
