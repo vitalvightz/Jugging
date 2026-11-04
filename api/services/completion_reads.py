@@ -3,7 +3,9 @@
 from copy import deepcopy
 from typing import Any
 
-from api.store import AppStore
+from api.store import TRAINING_PLAN_SELECT, AppStore
+
+_TRAINING_PLAN_COLUMNS = tuple(TRAINING_PLAN_SELECT.split(","))
 
 
 class CompletionReads:
@@ -28,9 +30,16 @@ class CompletionReads:
             # Preserve existing store-instance capability caches (XP rollout).
             setattr(self._store, name, value)
 
+    def get_training_plan_for_athlete(self, plan_id: str, athlete_id: str) -> Any:
+        # A full row this request already read answers the projection too.
+        full = self._reads.get(("get_plan_for_athlete", (plan_id, athlete_id), ()))
+        if isinstance(full, dict):
+            return {column: deepcopy(full[column]) for column in _TRAINING_PLAN_COLUMNS if column in full}
+        return self.__getattr__("get_training_plan_for_athlete")(plan_id, athlete_id)
+
     def __getattr__(self, name: str) -> Any:
         attr = getattr(self._store, name)
-        if callable(attr) and name in {"get_plan_for_athlete", "list_plan_session_completions"}:
+        if callable(attr) and name in {"get_plan_for_athlete", "get_training_plan_for_athlete", "list_plan_session_completions"}:
             def read(*args: Any, **kwargs: Any) -> Any:
                 key = (name, args, tuple(sorted(kwargs.items())))
                 if key not in self._reads:

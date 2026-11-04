@@ -904,7 +904,7 @@ def test_more_or_less_duration_and_rounds_are_workload(focus):
 
 def test_malformed_plan_metadata_does_not_break_inference():
     class Store:
-        def get_plan_for_athlete(self, plan_id, athlete_id):
+        def get_training_plan_for_athlete(self, plan_id, athlete_id):
             return {"structured_plan": {"plan_metadata": "not-a-dict"}}
     assert inference._plan_sport(Store(), ATHLETE_ID, "plan-1") == set()
 

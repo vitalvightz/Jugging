@@ -7,7 +7,9 @@ scope never reuses a readiness decision or a read from an earlier request.
 from copy import deepcopy
 from typing import Any
 
-from api.store import AppStore
+from api.store import PROFILE_COMPLIANCE_SELECT, AppStore
+
+_COMPLIANCE_COLUMNS = tuple(column.strip() for column in PROFILE_COMPLIANCE_SELECT.split(","))
 
 
 class _BuildReadCache:
@@ -32,7 +34,7 @@ class _BuildReadCache:
     def __getattr__(self, name: str) -> Any:
         attr = getattr(self._store, name)
         if callable(attr) and name in {"get_latest_intake", "list_today_checkins", "list_session_completions", "list_external_training_sessions",
-            "get_training_plan_for_athlete", "get_session_completion", "get_today_checkin"}:
+            "get_training_plan_for_athlete", "get_session_completion", "get_today_checkin", "get_profile"}:
             def read(*args: Any, **kwargs: Any) -> Any:
                 key = (name, args, tuple(sorted(kwargs.items())))
                 if key not in self._reads:
@@ -53,6 +55,16 @@ class _BuildReadCache:
 
     def get_plan_for_athlete(self, plan_id: str, athlete_id: str) -> Any:
         return self.get_training_plan_for_athlete(plan_id, athlete_id)
+
+    def get_profile_compliance(self, athlete_id: str) -> Any:
+        # The full profile row read earlier in this operation already carries
+        # every consent column; project it instead of another round trip.
+        # Writes clear the shared reads, so consent is never older than the
+        # operation's own last write.
+        row = self._reads.get(("get_profile", (athlete_id,), ()))
+        if isinstance(row, dict) and all(column in row for column in _COMPLIANCE_COLUMNS):
+            return {column: deepcopy(row[column]) for column in _COMPLIANCE_COLUMNS}
+        return self._store.get_profile_compliance(athlete_id)
 
     def get_intake(self, intake_id: str) -> Any:
         if intake_id not in self._intakes:

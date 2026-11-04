@@ -341,7 +341,7 @@ def _own_sports(values: Any) -> set[str]:
 def _plan_sport(store, athlete_id: str, plan_id: Any) -> set[str]:
     if not plan_id:
         return set()
-    plan = store.get_plan_for_athlete(str(plan_id), athlete_id) or {}
+    plan = store.get_training_plan_for_athlete(str(plan_id), athlete_id) or {}
     structured = plan.get("structured_plan")
     if isinstance(structured, str):
         try:
