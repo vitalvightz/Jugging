@@ -4718,6 +4718,24 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
         response = query.order("training_day", desc=True).order("created_at", desc=True).limit(limit).execute()
         return _readiness_history_rows(response)
 
+    def list_external_runs(self, athlete_id: str, *, through_day: str) -> list[dict[str, Any]]:
+        """Every live run (roadwork) on or before ``through_day``, oldest first,
+        paged so a long history is never cut short."""
+        rows, offset = [], 0
+        while True:
+            response = (self.client.table("external_training_sessions")
+                .select("id,athlete_id,activity,training_day,created_at,duration_minutes,duration_seconds,"
+                        "distance_value,distance_unit,run_type,deleted_at")
+                .eq("athlete_id", athlete_id).eq("activity", "roadwork").is_("deleted_at", "null")
+                .lte("training_day", through_day)
+                .order("training_day").order("created_at").order("id")
+                .range(offset, offset + 499).execute())
+            page = getattr(response, "data", None) or []
+            rows.extend(page)
+            if len(page) < 500:
+                return rows
+            offset += 500
+
     def get_external_training_session(self, athlete_id: str, entry_id: str) -> dict[str, Any] | None:
         """One live manual session, owner-scoped."""
         return self._select_first(self.client.table("external_training_sessions").select("*")
@@ -4726,7 +4744,7 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
     def update_external_training_session(self, athlete_id: str, entry_id: str, fields: dict[str, Any]) -> dict[str, Any] | None:
         response = (self.client.table("external_training_sessions")
             .update({key: fields.get(key) for key in ("activity", "duration_minutes", "effort", "sport", "session_type",
-                                                      "distance_value", "distance_unit", "duration_seconds")})
+                                                      "distance_value", "distance_unit", "duration_seconds", "run_type")})
             .eq("athlete_id", athlete_id).eq("id", entry_id).is_("deleted_at", "null").execute())
         return (getattr(response, "data", None) or [None])[0]
 

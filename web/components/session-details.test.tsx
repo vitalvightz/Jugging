@@ -96,3 +96,70 @@ test("a hand-logged session shows effort and duration worded like an Unlxck one"
     assert.doesNotMatch(container.textContent!, /min recorded/);
   } finally { act(() => root.unmount()); container.remove(); globalThis.fetch = fetch; }
 });
+
+test("a run reads as distance, time, pace and effort, compared with earlier runs", async () => {
+  const fetch = globalThis.fetch;
+  const earlier: TrainingHistorySession = { ...row, id: "earlier", source: "external", activity: "roadwork", training_day: "2026-10-05",
+    duration_minutes: 25, duration_seconds: 1500, distance_value: 5, distance_unit: "km", effort: "easy" };
+  const run: TrainingHistorySession = { ...earlier, id: "run", training_day: "2026-10-10", duration_minutes: 28, duration_seconds: 1650,
+    distance_value: 6, distance_unit: "km", effort: "moderate", run_type: "tempo" };
+  globalThis.fetch = async () => new Response(JSON.stringify({ ...payload, session: run, blocks: [], runs: [earlier, run] }));
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<SessionDetails row={run} token="token" cache={new Map()} onDismiss={() => {}} />));
+    const facts = [...container.querySelectorAll("dl > div")].map(fact => `${fact.querySelector("dt")?.textContent}: ${fact.querySelector("dd")?.textContent}`);
+    assert.deepEqual(facts, ["Time: 27:30", "Pace: 4:35/km", "Speed: 13.1km/h", "Runs: 2", "Distance: 11km", "Time: 52:30"]);
+    const text = container.textContent!;
+    assert.match(container.querySelector('[aria-label="Run summary"]')!.textContent!, /6km.*Tempo · Moderate/);
+    assert.match(text, /Longest run/);
+    const button = (label: string) => [...container.querySelectorAll("button")].find(item => item.textContent === label)!;
+    // Bars of distance first.
+    assert.equal(button("Bars").getAttribute("aria-pressed"), "true");
+    assert.match(text, /1 km further than your previous run/);
+    let slider = container.querySelector('[role="slider"]')!;
+    assert.equal(container.querySelectorAll('[role="slider"] > div').length, 2);
+    assert.match(slider.getAttribute("aria-valuetext")!, /6 km \(this run\)/);
+    await act(async () => slider.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
+    assert.match(container.textContent!, /1 km shorter than this run/);
+    await act(async () => button("Pace").click());
+    assert.match(container.textContent!, /0:25\/km faster than your previous run/);
+    await act(async () => button("Line").click());
+    slider = container.querySelector('[role="slider"]')!;
+    assert.ok(slider.querySelector("svg"));
+    assert.match(slider.getAttribute("aria-valuetext")!, /4:35\/km \(this run\)/);
+    assert.doesNotMatch(text, /No exercises recorded/);
+  } finally { act(() => root.unmount()); container.remove(); globalThis.fetch = fetch; }
+});
+
+test("a run without distance or time asks for them and hands off to its edit sheet", async () => {
+  const fetch = globalThis.fetch;
+  const run: TrainingHistorySession = { ...row, id: "bare", source: "external", activity: "roadwork", duration_minutes: 26, effort: "moderate" };
+  globalThis.fetch = async () => new Response(JSON.stringify({ ...payload, session: run, blocks: [] }));
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  let edited: TrainingHistorySession | null = null;
+  try {
+    await act(async () => root.render(<SessionDetails row={run} token="token" cache={new Map()} onDismiss={() => {}} onEditRun={value => { edited = value; }} />));
+    assert.match(container.textContent!, /Add your distance and exact time/);
+    const button = [...container.querySelectorAll("button")].find(item => item.textContent === "Add run details")!;
+    await act(async () => button.click());
+    assert.equal(edited!.id, "bare");
+  } finally { act(() => root.unmount()); container.remove(); globalThis.fetch = fetch; }
+});
+
+test("bests come from the server's complete run list, not the loaded History", async () => {
+  const fetch = globalThis.fetch;
+  const base: TrainingHistorySession = { ...row, source: "external", activity: "roadwork", effort: "easy", duration_minutes: 50 };
+  const old = { ...base, id: "old", training_day: "2021-03-01", distance_value: 30, distance_unit: "km" as const };
+  const run = { ...base, id: "run", training_day: "2026-10-10", distance_value: 12, distance_unit: "km" as const };
+  for (const [runs, longest] of [[[old, run], false], [[run], false], [null, false]] as const) {
+    globalThis.fetch = async () => new Response(JSON.stringify({ ...payload, session: run, blocks: [], runs }));
+    const container = document.createElement("div"); document.body.append(container);
+    const root = createRoot(container);
+    try {
+      await act(async () => root.render(<SessionDetails row={run} token="token" cache={new Map()} onDismiss={() => {}} />));
+      assert.equal(/Longest run/.test(container.textContent!), longest);
+    } finally { act(() => root.unmount()); container.remove(); globalThis.fetch = fetch; }
+  }
+});

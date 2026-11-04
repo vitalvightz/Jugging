@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { getSessionDetails } from "@/lib/api";
-import type { SessionDetailBlock, SessionDetails as Details } from "@/lib/api-schema.generated";
+import type { SessionDetailBlock, SessionDetailRun, SessionDetails as Details } from "@/lib/api-schema.generated";
 import { formatAppDate } from "@/lib/date-format";
 import { sessionStatusLabel } from "@/lib/history";
 import { EXERCISE_LOG_REASON_LABELS } from "@/lib/exercise-log";
@@ -20,6 +20,11 @@ import type { ExerciseSetResult } from "@/lib/types";
 import { useSheetExit } from "@/lib/use-sheet-exit";
 import { Skeleton } from "./skeleton";
 import { AutoHeight } from "./today/auto-height";
+import { formatRunTime } from "@/lib/run-time";
+import { describeDistanceDelta, describePaceDelta, fromKm, fromKmPace, isRun, RUN_TYPE_LABELS, runInsights } from "@/lib/run-insights";
+import { RunBarChart, RunTrendChart } from "./run-trend-chart";
+import progress from "./training-progress.module.css";
+import summary from "./training-summary.module.css";
 
 /** The session's own status as an icon tone. */
 function sessionTone(status: string): RecordStatus {
@@ -151,12 +156,143 @@ function sessionEffort(record: { session_rpe?: number | null; effort?: string | 
   return record.effort.charAt(0).toUpperCase() + record.effort.slice(1);
 }
 
-export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = true, onEditExercises }: {
+type RunMetric = "distance" | "pace";
+const DISTANCE_STEPS = [0.5, 1, 2, 5, 10, 20, 50];
+const PACE_STEPS = [5, 10, 15, 30, 60, 120, 300, 600];
+
+/**
+ * A run reads like a run, laid out like the weight tracker: a summary card
+ * with distance as the headline and time, pace and speed beneath, then a
+ * trend card to compare it with the athlete's other logged runs, and its week.
+ */
+function RunRecord({ run, history, onEditRun }: {
+  run: TrainingHistorySession;
+  /** Every run the athlete logged through this run's week, from the server; null when it was not sent. */
+  history: readonly SessionDetailRun[] | null;
+  onEditRun?: () => void;
+}) {
+  // Bests and comparisons come only from the complete list the server sends,
+  // never from a partly loaded History page.
+  const runs: TrainingHistorySession[] = (history ?? []).map(item => ({ ...item, source: "external", activity: "roadwork", status: "done",
+    title: "Running", plan_id: null, effort: null }));
+  const unit = run.distance_unit ?? "km";
+  const unitShort = unit === "km" ? "km" : "mi";
+  const distance = run.distance_value && run.distance_unit ? run.distance_value : null;
+  const pace = distance && run.duration_seconds ? formatRunTime(run.duration_seconds / distance) : null;
+  const speed = distance && run.duration_seconds ? (distance / (run.duration_seconds / 3600)).toFixed(1) : null;
+  const time = run.duration_seconds ? formatRunTime(run.duration_seconds) : null;
+  const insights = runInsights(run, runs);
+  const effort = sessionEffort(run);
+  const missing = [!distance && "distance", !run.duration_seconds && "exact time"].filter(Boolean) as string[];
+  // Units sit small beside the number so pace and speed fit three across a phone.
+  const tiles: { label: string; value: string | null; unit?: string }[] = distance ? [
+    { label: "Time", value: time ?? (run.duration_minutes != null ? String(run.duration_minutes) : null), unit: time ? undefined : "min" },
+    { label: "Pace", value: pace, unit: `/${unitShort}` },
+    { label: "Speed", value: speed, unit: unit === "km" ? "km/h" : "mph" },
+  ] : [
+    { label: "Distance", value: null },
+    { label: "Pace", value: null },
+    { label: "Speed", value: null },
+  ];
+
+  const paced = insights.trend.filter(point => point.paceSecondsPerKm !== null);
+  const [metric, setMetric] = useState<RunMetric>(insights.trend.length >= 2 || paced.length < 2 ? "distance" : "pace");
+  const [view, setView] = useState<"bars" | "line">("bars");
+  const points = (metric === "pace" ? paced : insights.trend).map(point => ({
+    id: point.id, day: point.day, current: point.current,
+    value: metric === "pace" ? fromKmPace(point.paceSecondsPerKm!, unit) : fromKm(point.km, unit),
+  }));
+  const currentIndex = points.findIndex(point => point.current);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const found = points.findIndex(point => point.id === selectedId);
+  const selectedIndex = found >= 0 ? found : currentIndex >= 0 ? currentIndex : points.length - 1;
+  const selected = points[selectedIndex];
+  const current = currentIndex >= 0 ? points[currentIndex] : null;
+  const tick = (value: number) => metric === "pace" ? formatRunTime(value) : `${Number(value.toFixed(1))}`;
+  const formatValue = (value: number) => metric === "pace" ? `${formatRunTime(value)}/${unitShort}` : `${Number(value.toFixed(2))} ${unitShort}`;
+  const change = !selected ? null : selected.current
+    ? metric === "pace" ? insights.paceDelta && describePaceDelta(insights.paceDelta, unit) : insights.distanceDelta && describeDistanceDelta(insights.distanceDelta, unit)
+    : current ? (() => {
+      const diff = selected.value - current.value;
+      if (metric === "pace") return Math.round(diff) === 0 ? "Same pace as this run" : `${formatRunTime(Math.abs(Math.round(diff)))}/${unitShort} ${diff < 0 ? "faster" : "slower"} than this run`;
+      return Math.abs(diff) < 0.05 ? "Same distance as this run" : `${Number(Math.abs(diff).toFixed(2))} ${unitShort} ${diff > 0 ? "further" : "shorter"} than this run`;
+    })() : null;
+  const selectedRow = selected ? runs.find(row => row.id === selected.id) ?? (selected.id === run.id ? run : null) : null;
+
+  return <div className={styles.runCards}>
+    <section className={`history-summary ${styles.runCard}`} aria-label="Run summary">
+      <div className={summary.head}>
+        <p className="history-summary-label">{distance ? "Distance" : "Time"}</p>
+        {onEditRun && !missing.length ? <button type="button" className={`${progress.textButton} ${styles.runEdit}`} aria-haspopup="dialog" onClick={onEditRun}>Edit run</button>
+          : <span className={styles.runMeta}>Added by you</span>}
+      </div>
+      <div className={styles.runHeadline}>
+        <strong>{distance ? Number(distance.toFixed(2)) : time ?? run.duration_minutes ?? "—"}</strong>
+        <span>{distance ? unit === "km" ? "km" : "miles" : time ? "time" : "min"}<br />{[run.run_type ? RUN_TYPE_LABELS[run.run_type] : "Run", effort].filter(Boolean).join(" · ")}</span>
+      </div>
+      {insights.records.length ? <p className={styles.runRecords}>{insights.records.map(record => <span key={record} className={progress.bestPill}>★ {record}</span>)}</p> : null}
+      <dl className={`history-summary-stats ${summary.stats} ${styles.runTiles}`} style={{ "--stat-count": 3 } as CSSProperties}>
+        {tiles.map(tile => <div key={tile.label}><dt>{tile.label}</dt><dd>{tile.value ?? "—"}{tile.value && tile.unit ? <small>{tile.unit}</small> : null}</dd></div>)}
+      </dl>
+      {missing.length ? <div className={styles.runPrompt}>
+        <p>Add your {missing.join(" and ")} to see pace, personal bests and trends.</p>
+        {onEditRun ? <button type="button" className="secondary-button" aria-haspopup="dialog" onClick={onEditRun}>Add run details</button> : null}
+      </div> : null}
+    </section>
+
+    {points.length >= 2 ? <section className={`history-summary ${styles.runCard}`} aria-label="Run trend">
+      <div className={styles.runTrendHead}>
+        <h3 className={styles.runSectionTitle}>Run trend</h3>
+        <div className={`${summary.toggle} ${styles.runToggle}`} role="group" aria-label="Trend measure">
+          {(["distance", "pace"] as const).map(value => <button key={value} type="button" aria-pressed={metric === value}
+            disabled={value === "pace" && paced.length < 2}
+            onClick={() => { setMetric(value); setSelectedId(null); }}>{value === "pace" ? "Pace" : "Distance"}</button>)}
+        </div>
+      </div>
+      {selected ? <div className={styles.runReadout} aria-live="polite">
+        <p><strong>{formatValue(selected.value)}</strong></p>
+        {change ? <p className={styles.runChange}>{change}</p> : null}
+        <p className={styles.runReadoutMeta}>{[formatAppDate(selected.day), selected.current ? "This run" : selectedRow?.run_type ? RUN_TYPE_LABELS[selectedRow.run_type] : null].filter(Boolean).join(" · ")}</p>
+      </div> : null}
+      {view === "bars" ? <RunBarChart points={points} label={metric === "pace" ? "Inspect pace of your recent runs" : "Inspect distance of your recent runs"}
+        format={formatValue} short={tick} height={value => metric === "pace" ? 1 / value : value}
+        selectedIndex={selectedIndex} onSelect={index => setSelectedId(points[index].id)} />
+        : <RunTrendChart points={points} label={metric === "pace" ? "Inspect pace of your recent runs" : "Inspect distance of your recent runs"}
+          steps={metric === "pace" ? PACE_STEPS : DISTANCE_STEPS} invert={metric === "pace"} format={formatValue} tick={tick}
+          selectedIndex={selectedIndex} onSelect={index => setSelectedId(points[index].id)} />}
+      <div className={styles.runChartFoot}>
+        <p className={progress.note}>Last {points.length} runs{metric === "pace" ? ` with an exact time · ${view === "bars" ? "faster is taller" : "faster is higher"}` : ` · ${unitShort}`}</p>
+        <div className={`${summary.toggle} ${styles.runToggle}`} role="group" aria-label="Chart view">
+          {(["bars", "line"] as const).map(value => <button key={value} type="button" aria-pressed={view === value}
+            onClick={() => setView(value)}>{value === "bars" ? "Bars" : "Line"}</button>)}
+        </div>
+      </div>
+    </section> : null}
+
+    {insights.week.runs ? <section className={`history-summary ${styles.runCard}`} aria-label="Week of this run">
+      <p className="history-summary-label">Week of this run</p>
+      <dl className={`history-summary-stats ${summary.stats} ${styles.runTiles}`} style={{ "--stat-count": 3 } as CSSProperties}>
+        <div><dt>Runs</dt><dd>{insights.week.runs}</dd></div>
+        <div><dt>Distance</dt><dd>{insights.week.distance > 0 ? <>{Number(insights.week.distance.toFixed(1))}<small>{unitShort}</small></> : "—"}</dd></div>
+        <div><dt>Time</dt><dd>{insights.week.timed > 0 ? formatRunTime(insights.week.timed) : "—"}</dd></div>
+      </dl>
+      <details className={progress.about}>
+        <summary>About these numbers</summary>
+        <p>Pace and speed use your exact time, so a run logged in whole minutes has no pace.</p>
+        <p>Comparisons and bests count every run you have logged up to this one, so an old run keeps the bests it set at the time.</p>
+      </details>
+    </section> : null}
+  </div>;
+}
+
+export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = true, onEditExercises, onEditRun }: {
   row: TrainingHistorySession; token: string; cache: SessionDetailsCache; onDismiss: () => void;
   /** A suspended parent sheet owns focus restoration during a modal handoff. */
   restoreFocus?: boolean;
   /** Hands off to the exercise logger; this sheet closes first so only one modal is open. */
   onEditExercises?: (row: TrainingHistorySession) => void;
+  /** Hands off to the run's edit sheet; this sheet closes first. */
+  onEditRun?: (row: TrainingHistorySession) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const heading = useId();
@@ -190,6 +326,7 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
   }, [row.id, row.source, token, cache, attempt]);
   const record = details?.session;
   const [open, setOpen] = useState<ReadonlySet<number> | null>(null);
+  const run = record && isRun(record) ? { ...row, ...record } : null;
   const expanded = open ?? new Set(details?.blocks.flatMap((block, index) => opensByDefault(block, details.blocks.length) ? [index] : []) ?? []);
   return <dialog ref={dialog} className={`${styles.dialog} ${styles.workspace}`} aria-labelledby={heading} data-closing={closing || undefined}
     onCancel={event => { event.preventDefault(); dismiss(); }}
@@ -208,7 +345,23 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
       <AutoHeight swapKey={details ? "loaded" : error ? "error" : "loading"} swapMotion="fade">
         {!details && !error ? <SessionRecordSkeleton /> : null}
         {error ? <div role="alert"><p>Unable to load session details. Try again.</p><button type="button" className="secondary-button" onClick={() => { setError(false); setAttempt(value => value + 1); }}>Retry</button></div> : null}
-        {details && record ? <div className={styles.sessionLayout}>
+        {details && record && run ? <div className={styles.recordContent}>
+          <RunRecord run={run} history={details.runs ?? null} onEditRun={onEditRun ? () => onEditRun(run) : undefined} />
+          {details.blocks.length ? <section className={styles.section}>
+            <div className={styles.manualHead}><h3>Drills & exercises</h3>
+              {onEditExercises ? <button type="button" className={styles.manualAction} aria-haspopup="dialog"
+                onClick={() => onEditExercises(run)}>Edit exercises</button> : null}</div>
+            <ol className={styles.manualList}>{details.blocks.map((block, index) => <li key={index}>
+              <span className={styles.manualName}>{block.name}</span>
+              {block.actual.set_entries?.length ? <SetResults entries={block.actual.set_entries} completed={block.actual.sets} /> : <span className={styles.manualValues}>{summarise(block.actual, block.format) || NO_MEASUREMENTS}</span>}
+              {block.notes ? <p className={styles.note}>{block.notes}</p> : null}
+            </li>)}</ol>
+          </section> : null}
+          {record.notes || record.takeaway ? <section className={styles.section}><h3>Notes</h3>
+            {record.notes ? <p className={styles.note}>{record.notes}</p> : null}
+            {record.takeaway ? <p className={styles.note}>Takeaway: {record.takeaway}</p> : null}</section> : null}
+        </div> : null}
+        {details && record && !run ? <div className={styles.sessionLayout}>
           <section className={styles.sessionSummary} aria-label="Session overview">
             <dl className={styles.sessionFacts}>
               <div><TileIcon name="source" /><dt>Source</dt><dd>{record.source === "external" ? "Added by you" : "Unlxck"}</dd></div>

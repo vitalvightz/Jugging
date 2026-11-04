@@ -2837,6 +2837,11 @@ create table if not exists public.external_training_sessions (
   constraint external_training_sessions_duration_seconds check (
     duration_seconds is null
     or (duration_seconds between 1 and 36000 and duration_minutes = ceil(duration_seconds / 60.0))),
+  -- Optional run type; see migrations/20261104120000_add_external_training_run_type.sql.
+  run_type text,
+  constraint external_training_sessions_run_type check (
+    run_type is null
+    or (activity = 'roadwork' and run_type in ('easy', 'tempo', 'intervals', 'sprints', 'long', 'race'))),
   deleted_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

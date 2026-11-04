@@ -15,6 +15,7 @@ MIGRATIONS = (
     "20261019150000_add_external_training_discipline.sql",
     "20261102010200_add_external_training_run_distance.sql",
     "20261102013439_history_removal_and_run_checks.sql",
+    "20261104120000_add_external_training_run_type.sql",
 )
 
 
@@ -152,3 +153,18 @@ def test_run_checks_reject_partial_distance_and_non_roadwork_time(dsn, activity,
                 " training_day, activity, duration_minutes, distance_value, distance_unit, duration_seconds, effort)"
                 " values (%s, gen_random_uuid(), repeat('a', 64), '2026-11-01', %s, 25, %s, %s, %s, 'easy')",
                 (athlete, activity, distance, unit, seconds))
+
+
+@pytest.mark.parametrize(("activity", "run_type"), [("strength", "easy"), ("roadwork", "jog")])
+def test_run_type_check_rejects_non_roadwork_and_unknown_types(dsn, activity, run_type):
+    import psycopg
+
+    athlete = str(uuid4())
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        conn.execute("insert into public.profiles values (%s)", (athlete,))
+        with pytest.raises(psycopg.errors.CheckViolation):
+            conn.execute(
+                "insert into public.external_training_sessions (athlete_id, client_request_id, request_fingerprint,"
+                " training_day, activity, duration_minutes, run_type, effort)"
+                " values (%s, gen_random_uuid(), repeat('a', 64), '2026-11-01', %s, 25, %s, 'easy')",
+                (athlete, activity, run_type))

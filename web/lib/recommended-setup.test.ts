@@ -55,7 +55,7 @@ test("every equipment preset value exists in EQUIPMENT_ACCESS_OPTIONS", () => {
 test("equipment groups contain every supported option exactly once", () => {
   const groupedValues = EQUIPMENT_ACCESS_GROUPS.flatMap((group) => group.options.map((option) => option.value));
   const expectedGroups = {
-    "Weights & strength": ["dumbbells", "kettlebells", "barbell", "trap_bar", "plate", "bench", "cable", "landmine", "log", "atlas_stone"],
+    "Weights & strength": ["dumbbells", "kettlebells", "barbell", "trap_bar", "plate", "bench", "back_extension_bench", "cable", "landmine", "log", "atlas_stone"],
     Conditioning: ["assault_bike", "rower", "treadmill", "step_mill", "pool", "sled", "battle_ropes", "tire", "sledgehammer", "weight_vest"],
     Combat: ["heavy_bag", "pads", "partner"],
     "Plyometrics & movement": ["box", "agility_ladder", "hurdles", "jump_rope"],

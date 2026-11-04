@@ -1016,8 +1016,9 @@ test("keeps calm lead notes out of Red Flags while retaining the safety disclaim
 
   const html = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} />);
 
-  assert.equal(countOccurrences(html, leadText), 1);
-  assert.equal(html.includes("Plan notes"), true);
+  // Plan notes are not shown in the plan view; Red Flags keeps the disclaimer.
+  assert.equal(countOccurrences(html, leadText), 0);
+  assert.equal(html.includes("Plan notes"), false);
   assert.equal(html.includes("Red flags - stop"), true);
   assert.equal(countOccurrences(html, 'class="safety-note '), 1);
 });
@@ -1745,7 +1746,7 @@ test("compresses the plan: dedupes safety, folds the disclaimer, trims the week 
   const count = (needle: string) => html.split(needle).length - 1;
 
   // Constraints and stop actions must be seen before the training prescription.
-  assert.ok(html.indexOf("Plan notes") < html.indexOf(">Lower<"));
+  assert.equal(html.includes("Plan notes"), false);
   assert.ok(html.indexOf("Red flags - stop") < html.indexOf(">Lower<"));
 
   // The medical disclaimer is folded into the Red Flags card — exactly one
@@ -1753,7 +1754,7 @@ test("compresses the plan: dedupes safety, folds the disclaimer, trims the week 
   assert.equal(count('class="safety-note '), 1);
   // The Active note that just restated the red flag is dropped; the contextual
   // injury note stays, and the escalation sentence renders once (in Red Flags).
-  assert.equal(html.includes("rehab drills included each session"), true);
+  assert.equal(html.includes("rehab drills included each session"), false);
   assert.equal(count("stop non-essential activity and escalate"), 1);
   // The week overview no longer prints a Phase stat row (phase lives in the
   // status chips and the week pill).
@@ -2146,7 +2147,7 @@ test("completed work is tagged with the calm success tone, never the brand red a
   assert.equal(/class="[^"]*sp-accent[^"]*"[^>]*>[^<]*1\/1/.test(html), false);
 });
 
-test("renders plan-level active notes as a standalone card", () => {
+test("the plan view does not render plan-level notes", () => {
   const plan = {
     schema_version: "1.0",
     plan_metadata: { title: "Fight Camp", sport: "boxing", plan_type: "fight_camp" },
@@ -2166,12 +2167,9 @@ test("renders plan-level active notes as a standalone card", () => {
 
   const html = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} />);
 
-  assert.equal(html.includes("Plan notes"), true);
-  assert.equal(html.includes("~5.7% target — protect freshness."), true);
-  assert.equal(html.includes("Small cut above the elbow — keep covered and dry."), true);
-  // Weight-cut / injury notes get the accent class.
-  assert.equal(html.includes("sp-note-weight_cut"), true);
-  assert.equal(html.includes("sp-note-injury"), true);
+  assert.equal(html.includes("Plan notes"), false);
+  assert.equal(html.includes("~5.7% target — protect freshness."), false);
+  assert.equal(html.includes("Small cut above the elbow — keep covered and dry."), false);
 });
 
 // --- open-plan development-block wave ---------------------------------------

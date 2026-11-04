@@ -1,0 +1,11 @@
+/* Run bars: one per run from a zero baseline, 2px apart, rounded data ends. */
+.bars { display: flex; align-items: stretch; gap: 2px; height: 168px; margin: 4px 0 0; touch-action: pan-y; cursor: pointer; border-radius: 6px; }
+.bars:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: 4px; }
+.barColumn { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding-bottom: 20px; }
+.bar { display: block; width: min(100%, 26px); border-radius: 4px 4px 0 0; background: color-mix(in srgb, var(--text-primary) 22%, transparent); transition: background 160ms ease; }
+.barColumn[data-current] .bar { background: var(--brand-red); }
+.barColumn[data-selected]:not([data-current]) .bar { background: color-mix(in srgb, var(--text-primary) 55%, transparent); }
+.barValue { margin-bottom: 4px; font-size: 11px; font-weight: 700; color: var(--text-primary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.barDay { position: absolute; bottom: 0; font-size: 10px; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.barColumn[data-current] .barDay { color: var(--text-primary); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .bar { transition: none; } }

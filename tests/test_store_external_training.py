@@ -26,11 +26,11 @@ def test_atomic_insert_does_not_overwrite_an_edit_or_trust_client_owner():
 def test_update_whitelist_cannot_move_date_owner_or_idempotency_key():
     store, query = store_query()
     fields = {"activity": "boxing", "duration_minutes": 45, "effort": "easy", "sport": "boxing", "session_type": "pads",
-              "distance_value": None, "distance_unit": None, "duration_seconds": None,
+              "distance_value": None, "distance_unit": None, "duration_seconds": None, "run_type": None,
               "athlete_id": "other", "training_day": "2027-01-01", "client_request_id": "changed", "takeaway": "lost"}
     store.update_external_training_session("owner", "entry", fields)
     query.update.assert_called_once_with({key: fields[key] for key in ("activity", "duration_minutes", "effort", "sport", "session_type",
-                                                                         "distance_value", "distance_unit", "duration_seconds")})
+                                                                         "distance_value", "distance_unit", "duration_seconds", "run_type")})
     assert [call.args for call in query.eq.call_args_list] == [("athlete_id", "owner"), ("id", "entry")]
     query.is_.assert_called_once_with("deleted_at", "null")
 
@@ -42,7 +42,8 @@ def test_update_without_discipline_clears_it_instead_of_keeping_a_stale_pair():
     store.update_external_training_session("owner", "entry", {"activity": "roadwork", "duration_minutes": 30, "effort": "easy"})
     query.update.assert_called_once_with({"activity": "roadwork", "duration_minutes": 30, "effort": "easy",
                                           "sport": None, "session_type": None,
-                                          "distance_value": None, "distance_unit": None, "duration_seconds": None})
+                                          "distance_value": None, "distance_unit": None, "duration_seconds": None,
+                                          "run_type": None})
 
 
 def test_list_excludes_tombstones_and_other_owners():
@@ -113,3 +114,18 @@ def test_manual_exercise_reads_are_owner_scoped_and_hide_tombstones():
     assert query.is_.call_count == 4
     assert all(call.args == ("deleted_at", "null") for call in query.is_.call_args_list)
     assert store.count_manual_exercises("owner", []) == {}
+
+
+def test_run_history_reads_every_page_owner_scoped_and_roadwork_only():
+    store, query = store_query()
+    for method in ("lte", "range"):
+        getattr(query, method).return_value = query
+    pages = [[{"id": str(i)} for i in range(500)], [{"id": "last"}]]
+    query.execute.side_effect = [SimpleNamespace(data=page) for page in pages]
+    rows = store.list_external_runs("owner", through_day="2026-11-08")
+    assert len(rows) == 501
+    assert [call.args for call in query.range.call_args_list] == [(0, 499), (500, 999)]
+    assert ("athlete_id", "owner") in [call.args for call in query.eq.call_args_list]
+    assert ("activity", "roadwork") in [call.args for call in query.eq.call_args_list]
+    query.is_.assert_called_with("deleted_at", "null")
+    query.lte.assert_called_with("training_day", "2026-11-08")
