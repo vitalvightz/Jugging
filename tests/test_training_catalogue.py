@@ -35,9 +35,9 @@ def _write(path, payload):
 def test_all_audited_entries_accounted_for_with_unique_source_scoped_ids(entries):
     baseline = audit(catalogue.DATA_DIR)
     assert tuple(catalogue.SOURCE_CLASSES) == SOURCES
-    # Recount real bank rows after #2913 (+10 runs), #3101 (+6 strength),
-    # and #2980/#2986 (+15 rehab), retaining all identity checks below.
-    assert len(entries) == baseline["total_entries"] == 2889
+    # Recount real rows: #3166 adds 15 core exercises and retires one stance
+    # hold; #3181 adds three technical footwork drills. Keep identity checks.
+    assert len(entries) == baseline["total_entries"] == 2906
     assert Counter(e["source"] for e in entries) == {
         bank["source"]: bank["entries"] for bank in baseline["banks"] if bank["entries"]
     }
@@ -147,7 +147,7 @@ def test_unknown_equipment_never_becomes_no_equipment(row, state):
 
 def test_classification_and_selection_boundaries(entries):
     assert Counter(e["content_class"] for e in entries) == {
-        "strength_power": 345, "conditioning": 601, "technical_coordination": 83,
+        "strength_power": 359, "conditioning": 601, "technical_coordination": 86,
         "rehabilitation": 1514, "care_instruction": 104,
         "tactical_educational": 183, "visualisation": 59,
     }
