@@ -1,0 +1,1124 @@
+{
+ "base_commit": "9f98b4b",
+ "harness": "scripts/replay_latency_server.py + scripts/replay_latency_client.py, 7 runs, Python 3.11, uvicorn --workers 1",
+ "before_40ms": {
+  "today_alone": {
+   "ms": 1507,
+   "store_calls": 33
+  },
+  "xp_alone": {
+   "ms": 1879,
+   "store_calls": 42
+  },
+  "app_open": {
+   "me": 131,
+   "plan": 651,
+   "today": 1712,
+   "xp": 2053,
+   "all": 2053,
+   "store_calls": 92
+  },
+  "app_open_plan_after": {
+   "me": 131,
+   "today": 1672,
+   "xp": 2006,
+   "plan": 2177,
+   "all": 2177,
+   "store_calls": 92
+  },
+  "today_plus_xp": {
+   "today": 1569,
+   "xp": 1953,
+   "store_calls": 75
+  },
+  "save_checkin": {
+   "ms": 853,
+   "store_calls": 20
+  },
+  "runs": {
+   "today_alone": [
+    {
+     "ms": 1528,
+     "store_calls": 33
+    },
+    {
+     "ms": 1508,
+     "store_calls": 33
+    },
+    {
+     "ms": 1496,
+     "store_calls": 33
+    },
+    {
+     "ms": 1492,
+     "store_calls": 33
+    },
+    {
+     "ms": 1637,
+     "store_calls": 33
+    },
+    {
+     "ms": 1507,
+     "store_calls": 33
+    },
+    {
+     "ms": 1502,
+     "store_calls": 33
+    }
+   ],
+   "xp_alone": [
+    {
+     "ms": 1879,
+     "store_calls": 42
+    },
+    {
+     "ms": 1864,
+     "store_calls": 42
+    },
+    {
+     "ms": 1871,
+     "store_calls": 42
+    },
+    {
+     "ms": 2020,
+     "store_calls": 42
+    },
+    {
+     "ms": 1881,
+     "store_calls": 42
+    },
+    {
+     "ms": 1864,
+     "store_calls": 42
+    },
+    {
+     "ms": 1888,
+     "store_calls": 42
+    }
+   ],
+   "app_open": [
+    {
+     "me": 253,
+     "plan": 802,
+     "today": 1822,
+     "xp": 2007,
+     "all": 2008,
+     "store_calls": 95
+    },
+    {
+     "me": 130,
+     "plan": 651,
+     "today": 1844,
+     "xp": 2158,
+     "all": 2158,
+     "store_calls": 92
+    },
+    {
+     "me": 130,
+     "plan": 646,
+     "today": 1712,
+     "xp": 2066,
+     "all": 2067,
+     "store_calls": 92
+    },
+    {
+     "me": 131,
+     "plan": 650,
+     "today": 1668,
+     "xp": 2000,
+     "all": 2000,
+     "store_calls": 92
+    },
+    {
+     "me": 130,
+     "plan": 649,
+     "today": 1685,
+     "xp": 2053,
+     "all": 2053,
+     "store_calls": 92
+    },
+    {
+     "me": 131,
+     "plan": 659,
+     "today": 1821,
+     "xp": 2150,
+     "all": 2150,
+     "store_calls": 92
+    },
+    {
+     "me": 131,
+     "plan": 653,
+     "today": 1657,
+     "xp": 1982,
+     "all": 1982,
+     "store_calls": 92
+    }
+   ],
+   "app_open_plan_after": [
+    {
+     "me": 130,
+     "today": 1687,
+     "xp": 2024,
+     "plan": 2194,
+     "all": 2195,
+     "store_calls": 92
+    },
+    {
+     "me": 130,
+     "today": 1650,
+     "xp": 1989,
+     "plan": 2164,
+     "all": 2164,
+     "store_calls": 92
+    },
+    {
+     "me": 132,
+     "today": 1874,
+     "xp": 2184,
+     "plan": 2377,
+     "all": 2378,
+     "store_calls": 92
+    },
+    {
+     "me": 131,
+     "today": 1658,
+     "xp": 1986,
+     "plan": 2166,
+     "all": 2166,
+     "store_calls": 92
+    },
+    {
+     "me": 132,
+     "today": 1657,
+     "xp": 1994,
+     "plan": 2160,
+     "all": 2160,
+     "store_calls": 92
+    },
+    {
+     "me": 130,
+     "today": 1811,
+     "xp": 2128,
+     "plan": 2315,
+     "all": 2315,
+     "store_calls": 92
+    },
+    {
+     "me": 132,
+     "today": 1672,
+     "xp": 2006,
+     "plan": 2177,
+     "all": 2177,
+     "store_calls": 92
+    }
+   ],
+   "today_plus_xp": [
+    {
+     "today": 1569,
+     "xp": 1941,
+     "store_calls": 75
+    },
+    {
+     "today": 1539,
+     "xp": 1928,
+     "store_calls": 75
+    },
+    {
+     "today": 1759,
+     "xp": 2090,
+     "store_calls": 75
+    },
+    {
+     "today": 1581,
+     "xp": 1953,
+     "store_calls": 75
+    },
+    {
+     "today": 1562,
+     "xp": 1958,
+     "store_calls": 75
+    },
+    {
+     "today": 1540,
+     "xp": 1927,
+     "store_calls": 75
+    },
+    {
+     "today": 1751,
+     "xp": 2157,
+     "store_calls": 75
+    }
+   ],
+   "save_checkin": [
+    {
+     "ms": 1021,
+     "store_calls": 20
+    },
+    {
+     "ms": 867,
+     "store_calls": 20
+    },
+    {
+     "ms": 852,
+     "store_calls": 20
+    },
+    {
+     "ms": 848,
+     "store_calls": 20
+    },
+    {
+     "ms": 866,
+     "store_calls": 20
+    },
+    {
+     "ms": 853,
+     "store_calls": 20
+    },
+    {
+     "ms": 850,
+     "store_calls": 20
+    }
+   ]
+  }
+ },
+ "after_40ms": {
+  "today_alone": {
+   "ms": 640,
+   "store_calls": 29
+  },
+  "xp_alone": {
+   "ms": 981,
+   "store_calls": 38
+  },
+  "app_open": {
+   "me": 131,
+   "plan": 742,
+   "today": 785,
+   "xp": 1037,
+   "all": 1037,
+   "store_calls": 56
+  },
+  "app_open_plan_after": {
+   "me": 131,
+   "today": 741,
+   "xp": 991,
+   "plan": 1248,
+   "all": 1248,
+   "store_calls": 56
+  },
+  "today_plus_xp": {
+   "today": 615,
+   "xp": 866,
+   "store_calls": 39
+  },
+  "save_checkin": {
+   "ms": 327,
+   "store_calls": 18
+  },
+  "runs": {
+   "today_alone": [
+    {
+     "ms": 644,
+     "store_calls": 29
+    },
+    {
+     "ms": 658,
+     "store_calls": 29
+    },
+    {
+     "ms": 640,
+     "store_calls": 29
+    },
+    {
+     "ms": 597,
+     "store_calls": 29
+    },
+    {
+     "ms": 632,
+     "store_calls": 29
+    },
+    {
+     "ms": 616,
+     "store_calls": 29
+    },
+    {
+     "ms": 782,
+     "store_calls": 29
+    }
+   ],
+   "xp_alone": [
+    {
+     "ms": 977,
+     "store_calls": 38
+    },
+    {
+     "ms": 981,
+     "store_calls": 38
+    },
+    {
+     "ms": 981,
+     "store_calls": 38
+    },
+    {
+     "ms": 975,
+     "store_calls": 38
+    },
+    {
+     "ms": 983,
+     "store_calls": 38
+    },
+    {
+     "ms": 976,
+     "store_calls": 38
+    },
+    {
+     "ms": 1130,
+     "store_calls": 38
+    }
+   ],
+   "app_open": [
+    {
+     "me": 255,
+     "plan": 951,
+     "today": 1055,
+     "xp": 1291,
+     "all": 1292,
+     "store_calls": 87
+    },
+    {
+     "me": 131,
+     "plan": 742,
+     "today": 785,
+     "xp": 1037,
+     "all": 1037,
+     "store_calls": 56
+    },
+    {
+     "me": 131,
+     "plan": 710,
+     "today": 767,
+     "xp": 1015,
+     "all": 1015,
+     "store_calls": 56
+    },
+    {
+     "me": 131,
+     "plan": 653,
+     "today": 771,
+     "xp": 1019,
+     "all": 1019,
+     "store_calls": 56
+    },
+    {
+     "me": 131,
+     "plan": 906,
+     "today": 940,
+     "xp": 1189,
+     "all": 1189,
+     "store_calls": 56
+    },
+    {
+     "me": 130,
+     "plan": 662,
+     "today": 789,
+     "xp": 1038,
+     "all": 1038,
+     "store_calls": 56
+    },
+    {
+     "me": 132,
+     "plan": 746,
+     "today": 777,
+     "xp": 1025,
+     "all": 1025,
+     "store_calls": 56
+    }
+   ],
+   "app_open_plan_after": [
+    {
+     "me": 133,
+     "today": 762,
+     "xp": 1012,
+     "plan": 1275,
+     "all": 1275,
+     "store_calls": 56
+    },
+    {
+     "me": 131,
+     "today": 716,
+     "xp": 967,
+     "plan": 1224,
+     "all": 1224,
+     "store_calls": 56
+    },
+    {
+     "me": 130,
+     "today": 742,
+     "xp": 991,
+     "plan": 1248,
+     "all": 1248,
+     "store_calls": 56
+    },
+    {
+     "me": 133,
+     "today": 741,
+     "xp": 1176,
+     "plan": 1432,
+     "all": 1432,
+     "store_calls": 56
+    },
+    {
+     "me": 131,
+     "today": 747,
+     "xp": 995,
+     "plan": 1253,
+     "all": 1253,
+     "store_calls": 56
+    },
+    {
+     "me": 132,
+     "today": 733,
+     "xp": 982,
+     "plan": 1238,
+     "all": 1238,
+     "store_calls": 56
+    },
+    {
+     "me": 131,
+     "today": 722,
+     "xp": 971,
+     "plan": 1229,
+     "all": 1231,
+     "store_calls": 56
+    }
+   ],
+   "today_plus_xp": [
+    {
+     "today": 587,
+     "xp": 839,
+     "store_calls": 39
+    },
+    {
+     "today": 609,
+     "xp": 857,
+     "store_calls": 39
+    },
+    {
+     "today": 618,
+     "xp": 866,
+     "store_calls": 39
+    },
+    {
+     "today": 615,
+     "xp": 871,
+     "store_calls": 39
+    },
+    {
+     "today": 778,
+     "xp": 1032,
+     "store_calls": 39
+    },
+    {
+     "today": 608,
+     "xp": 862,
+     "store_calls": 39
+    },
+    {
+     "today": 637,
+     "xp": 885,
+     "store_calls": 39
+    }
+   ],
+   "save_checkin": [
+    {
+     "ms": 488,
+     "store_calls": 18
+    },
+    {
+     "ms": 327,
+     "store_calls": 18
+    },
+    {
+     "ms": 322,
+     "store_calls": 18
+    },
+    {
+     "ms": 320,
+     "store_calls": 18
+    },
+    {
+     "ms": 320,
+     "store_calls": 18
+    },
+    {
+     "ms": 328,
+     "store_calls": 18
+    },
+    {
+     "ms": 327,
+     "store_calls": 18
+    }
+   ]
+  }
+ },
+ "before_60ms": {
+  "today_alone": {
+   "ms": 2160,
+   "store_calls": 33
+  },
+  "xp_alone": {
+   "ms": 2715,
+   "store_calls": 42
+  },
+  "app_open": {
+   "me": 192,
+   "plan": 951,
+   "today": 2384,
+   "xp": 2860,
+   "all": 2860,
+   "store_calls": 92
+  },
+  "app_open_plan_after": {
+   "me": 191,
+   "today": 2379,
+   "xp": 2850,
+   "plan": 3123,
+   "all": 3123,
+   "store_calls": 92
+  },
+  "today_plus_xp": {
+   "today": 2216,
+   "xp": 2785,
+   "store_calls": 75
+  },
+  "save_checkin": {
+   "ms": 1255,
+   "store_calls": 20
+  },
+  "runs": {
+   "today_alone": [
+    {
+     "ms": 2183,
+     "store_calls": 33
+    },
+    {
+     "ms": 2139,
+     "store_calls": 33
+    },
+    {
+     "ms": 2160,
+     "store_calls": 33
+    },
+    {
+     "ms": 2162,
+     "store_calls": 33
+    },
+    {
+     "ms": 2155,
+     "store_calls": 33
+    },
+    {
+     "ms": 2312,
+     "store_calls": 33
+    },
+    {
+     "ms": 2160,
+     "store_calls": 33
+    }
+   ],
+   "xp_alone": [
+    {
+     "ms": 2714,
+     "store_calls": 42
+    },
+    {
+     "ms": 2712,
+     "store_calls": 42
+    },
+    {
+     "ms": 2727,
+     "store_calls": 42
+    },
+    {
+     "ms": 2715,
+     "store_calls": 42
+    },
+    {
+     "ms": 2710,
+     "store_calls": 42
+    },
+    {
+     "ms": 2949,
+     "store_calls": 42
+    },
+    {
+     "ms": 2741,
+     "store_calls": 42
+    }
+   ],
+   "app_open": [
+    {
+     "me": 375,
+     "plan": 1166,
+     "today": 2557,
+     "xp": 2859,
+     "all": 2860,
+     "store_calls": 95
+    },
+    {
+     "me": 191,
+     "plan": 951,
+     "today": 2384,
+     "xp": 2878,
+     "all": 2878,
+     "store_calls": 92
+    },
+    {
+     "me": 192,
+     "plan": 955,
+     "today": 2540,
+     "xp": 3060,
+     "all": 3060,
+     "store_calls": 92
+    },
+    {
+     "me": 191,
+     "plan": 948,
+     "today": 2363,
+     "xp": 2836,
+     "all": 2836,
+     "store_calls": 92
+    },
+    {
+     "me": 193,
+     "plan": 958,
+     "today": 2371,
+     "xp": 2860,
+     "all": 2860,
+     "store_calls": 92
+    },
+    {
+     "me": 193,
+     "plan": 951,
+     "today": 2349,
+     "xp": 2835,
+     "all": 2835,
+     "store_calls": 92
+    },
+    {
+     "me": 191,
+     "plan": 949,
+     "today": 2525,
+     "xp": 3028,
+     "all": 3029,
+     "store_calls": 92
+    }
+   ],
+   "app_open_plan_after": [
+    {
+     "me": 191,
+     "today": 2360,
+     "xp": 2835,
+     "plan": 3107,
+     "all": 3107,
+     "store_calls": 92
+    },
+    {
+     "me": 191,
+     "today": 2356,
+     "xp": 2849,
+     "plan": 3102,
+     "all": 3102,
+     "store_calls": 92
+    },
+    {
+     "me": 191,
+     "today": 2361,
+     "xp": 2857,
+     "plan": 3109,
+     "all": 3109,
+     "store_calls": 92
+    },
+    {
+     "me": 192,
+     "today": 2508,
+     "xp": 3001,
+     "plan": 3253,
+     "all": 3254,
+     "store_calls": 92
+    },
+    {
+     "me": 191,
+     "today": 2439,
+     "xp": 2848,
+     "plan": 3210,
+     "all": 3210,
+     "store_calls": 92
+    },
+    {
+     "me": 191,
+     "today": 2379,
+     "xp": 2850,
+     "plan": 3123,
+     "all": 3123,
+     "store_calls": 92
+    },
+    {
+     "me": 191,
+     "today": 2523,
+     "xp": 3029,
+     "plan": 3268,
+     "all": 3268,
+     "store_calls": 92
+    }
+   ],
+   "today_plus_xp": [
+    {
+     "today": 2176,
+     "xp": 2747,
+     "store_calls": 75
+    },
+    {
+     "today": 2216,
+     "xp": 2793,
+     "store_calls": 75
+    },
+    {
+     "today": 2208,
+     "xp": 2785,
+     "store_calls": 75
+    },
+    {
+     "today": 2387,
+     "xp": 2885,
+     "store_calls": 75
+    },
+    {
+     "today": 2223,
+     "xp": 2777,
+     "store_calls": 75
+    },
+    {
+     "today": 2185,
+     "xp": 2774,
+     "store_calls": 75
+    },
+    {
+     "today": 2439,
+     "xp": 3041,
+     "store_calls": 75
+    }
+   ],
+   "save_checkin": [
+    {
+     "ms": 1453,
+     "store_calls": 20
+    },
+    {
+     "ms": 1248,
+     "store_calls": 20
+    },
+    {
+     "ms": 1253,
+     "store_calls": 20
+    },
+    {
+     "ms": 1258,
+     "store_calls": 20
+    },
+    {
+     "ms": 1255,
+     "store_calls": 20
+    },
+    {
+     "ms": 1254,
+     "store_calls": 20
+    },
+    {
+     "ms": 1255,
+     "store_calls": 20
+    }
+   ]
+  }
+ },
+ "after_60ms": {
+  "today_alone": {
+   "ms": 832,
+   "store_calls": 29
+  },
+  "xp_alone": {
+   "ms": 1388,
+   "store_calls": 38
+  },
+  "app_open": {
+   "me": 192,
+   "plan": 1048,
+   "today": 1055,
+   "xp": 1424,
+   "all": 1424,
+   "store_calls": 56
+  },
+  "app_open_plan_after": {
+   "me": 192,
+   "today": 1034,
+   "xp": 1405,
+   "plan": 1783,
+   "all": 1783,
+   "store_calls": 56
+  },
+  "today_plus_xp": {
+   "today": 842,
+   "xp": 1211,
+   "store_calls": 39
+  },
+  "save_checkin": {
+   "ms": 470,
+   "store_calls": 18
+  },
+  "runs": {
+   "today_alone": [
+    {
+     "ms": 832,
+     "store_calls": 29
+    },
+    {
+     "ms": 824,
+     "store_calls": 29
+    },
+    {
+     "ms": 832,
+     "store_calls": 29
+    },
+    {
+     "ms": 836,
+     "store_calls": 29
+    },
+    {
+     "ms": 819,
+     "store_calls": 29
+    },
+    {
+     "ms": 985,
+     "store_calls": 29
+    },
+    {
+     "ms": 830,
+     "store_calls": 29
+    }
+   ],
+   "xp_alone": [
+    {
+     "ms": 1371,
+     "store_calls": 38
+    },
+    {
+     "ms": 1384,
+     "store_calls": 38
+    },
+    {
+     "ms": 1390,
+     "store_calls": 38
+    },
+    {
+     "ms": 1404,
+     "store_calls": 38
+    },
+    {
+     "ms": 1366,
+     "store_calls": 38
+    },
+    {
+     "ms": 1533,
+     "store_calls": 38
+    },
+    {
+     "ms": 1388,
+     "store_calls": 38
+    }
+   ],
+   "app_open": [
+    {
+     "me": 378,
+     "plan": 1179,
+     "today": 1368,
+     "xp": 1555,
+     "all": 1555,
+     "store_calls": 87
+    },
+    {
+     "me": 191,
+     "plan": 1039,
+     "today": 1042,
+     "xp": 1412,
+     "all": 1412,
+     "store_calls": 56
+    },
+    {
+     "me": 195,
+     "plan": 1040,
+     "today": 1057,
+     "xp": 1426,
+     "all": 1426,
+     "store_calls": 56
+    },
+    {
+     "me": 192,
+     "plan": 1217,
+     "today": 1249,
+     "xp": 1618,
+     "all": 1619,
+     "store_calls": 56
+    },
+    {
+     "me": 192,
+     "plan": 1033,
+     "today": 1044,
+     "xp": 1413,
+     "all": 1413,
+     "store_calls": 56
+    },
+    {
+     "me": 191,
+     "plan": 1048,
+     "today": 1049,
+     "xp": 1420,
+     "all": 1420,
+     "store_calls": 56
+    },
+    {
+     "me": 193,
+     "plan": 1054,
+     "today": 1055,
+     "xp": 1424,
+     "all": 1424,
+     "store_calls": 56
+    }
+   ],
+   "app_open_plan_after": [
+    {
+     "me": 194,
+     "today": 1033,
+     "xp": 1401,
+     "plan": 1778,
+     "all": 1778,
+     "store_calls": 56
+    },
+    {
+     "me": 192,
+     "today": 1026,
+     "xp": 1394,
+     "plan": 1771,
+     "all": 1771,
+     "store_calls": 56
+    },
+    {
+     "me": 191,
+     "today": 1061,
+     "xp": 1431,
+     "plan": 1808,
+     "all": 1808,
+     "store_calls": 56
+    },
+    {
+     "me": 191,
+     "today": 1168,
+     "xp": 1539,
+     "plan": 1916,
+     "all": 1916,
+     "store_calls": 56
+    },
+    {
+     "me": 192,
+     "today": 1032,
+     "xp": 1402,
+     "plan": 1779,
+     "all": 1779,
+     "store_calls": 56
+    },
+    {
+     "me": 194,
+     "today": 1101,
+     "xp": 1471,
+     "plan": 1857,
+     "all": 1857,
+     "store_calls": 56
+    },
+    {
+     "me": 192,
+     "today": 1034,
+     "xp": 1405,
+     "plan": 1783,
+     "all": 1783,
+     "store_calls": 56
+    }
+   ],
+   "today_plus_xp": [
+    {
+     "today": 844,
+     "xp": 1213,
+     "store_calls": 39
+    },
+    {
+     "today": 837,
+     "xp": 1206,
+     "store_calls": 39
+    },
+    {
+     "today": 989,
+     "xp": 1362,
+     "store_calls": 39
+    },
+    {
+     "today": 842,
+     "xp": 1210,
+     "store_calls": 39
+    },
+    {
+     "today": 872,
+     "xp": 1244,
+     "store_calls": 39
+    },
+    {
+     "today": 842,
+     "xp": 1211,
+     "store_calls": 39
+    },
+    {
+     "today": 840,
+     "xp": 1209,
+     "store_calls": 39
+    }
+   ],
+   "save_checkin": [
+    {
+     "ms": 638,
+     "store_calls": 18
+    },
+    {
+     "ms": 469,
+     "store_calls": 18
+    },
+    {
+     "ms": 461,
+     "store_calls": 18
+    },
+    {
+     "ms": 470,
+     "store_calls": 18
+    },
+    {
+     "ms": 466,
+     "store_calls": 18
+    },
+    {
+     "ms": 484,
+     "store_calls": 18
+    },
+    {
+     "ms": 476,
+     "store_calls": 18
+    }
+   ]
+  }
+ }
+}

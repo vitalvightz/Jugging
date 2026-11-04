@@ -326,7 +326,50 @@ def _injury_flags_readable(store: AppStore, athlete_id: str) -> bool:
 # Check-in and landing: the canonical service already fails closed and emits the
 # typed signal, so the boundary is a straight pass-through (single authority).
 # ---------------------------------------------------------------------------
-submit_today_checkin = _today_service.submit_today_checkin
+def submit_today_checkin(
+    store: AppStore,
+    *,
+    athlete_id: str,
+    athlete_timezone: str | None,
+    payload: Mapping[str, Any],
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Persist a check-in, sharing its pre-write reads like the other Today writes.
+
+    The recommendation is evaluated from the same reads as before; they are
+    issued together up front instead of one after another. The save itself is
+    unchanged and any write clears the shared reads.
+    """
+    store = _BuildReadCache(store)
+    day = _today_service.resolve_training_day(athlete_timezone, now=now)
+    plan_id = str(payload.get("plan_id") or "")
+    try:
+        store.prefetch([
+            ("list_injury_flags", (athlete_id,), {"statuses": ("open", "monitoring"), "limit": 500}),
+            ("list_injury_flags", (athlete_id,), {"statuses": ("open", "monitoring")}),
+            ("list_session_completions", (athlete_id,), {"limit": 200}),
+            ("list_external_training_sessions", (athlete_id,), {"limit": 200}),
+            *([("get_training_plan_for_athlete", (plan_id, athlete_id), {})] if plan_id else []),
+            ("list_today_checkins_for_day", (athlete_id, day), {}),
+            ("latest_sparring_log_day", (athlete_id,), {"rocked": True}),
+            ("list_today_checkins", (athlete_id,), {"limit": 4}),
+        ])
+        flags = store.list_injury_flags(athlete_id, statuses=("open", "monitoring"))
+        plan = store.get_training_plan_for_athlete(plan_id, athlete_id) if plan_id else None
+        intake_id = str(plan.get("intake_id") or "") if isinstance(plan, Mapping) else ""
+        store.prefetch([
+            *([("get_intake", (intake_id,), {})] if intake_id else []),
+            *[("list_injury_episode_events", (athlete_id,),
+               {"injury_id": str(flag["id"]), "injury_episode_id": str(flag["episode_id"])})
+              for flag in flags if flag.get("id") and flag.get("episode_id")],
+        ])
+    except Exception:  # noqa: BLE001 - prefetch is an optimisation; the save reads for itself
+        logger.exception("[today] check-in read prefetch failed athlete_id=%s", athlete_id)
+    return _today_service.submit_today_checkin(
+        store, athlete_id=athlete_id, athlete_timezone=athlete_timezone, payload=payload, now=now
+    )
+
+
 resolve_today_landing = _today_service.resolve_today_landing
 
 

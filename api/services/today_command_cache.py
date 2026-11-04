@@ -11,21 +11,32 @@ otherwise. Any mutating request by the athlete drops the entry (see the
 ``invalidate_athlete_read_caches`` middleware in ``api.app``), so a check-in or
 completion is never answered from a pre-write view. Only derived read models
 use this; Today itself is never served from it.
+
+On app start the web app requests Today and XP progress together, so XP used
+to find nothing remembered and build a second full view alongside Today's. A
+read-only consumer may now wait for the athlete's Today build that is already
+running and reuse it. A write during that build moves the athlete's
+generation on, so the build's view is neither remembered nor handed to anyone
+waiting: they build their own.
 """
 
 from __future__ import annotations
 
 import os
 import time
-from threading import Lock
-from typing import Any
+from contextlib import contextmanager
+from threading import Event, Lock
+from typing import Any, Callable, Iterator
 
 from api.store import AppStore
 
 DEFAULT_TODAY_COMMAND_CACHE_TTL_SECONDS = 30.0
 _MAX_ENTRIES = 2000
 _REGISTRY_ATTR = "_unlxck_today_command_cache"
+_STATE_ATTR = "_unlxck_today_command_builds"
 _LOCK = Lock()
+# Longer than any healthy build; a waiter that gives up just builds its own.
+_INFLIGHT_WAIT_SECONDS = 15.0
 
 
 def _ttl_seconds() -> float:
@@ -53,6 +64,83 @@ def _registry(store: AppStore) -> dict[str, tuple[str, Any, float]] | None:
         except Exception:  # noqa: BLE001 - an uncacheable store just rebuilds
             return None
         return registry
+
+
+def _build_state(store: AppStore) -> dict[str, Any] | None:
+    """Per-store in-flight builds and athlete write generations."""
+    state = getattr(store, _STATE_ATTR, None)
+    if isinstance(state, dict):
+        return state
+    with _LOCK:
+        state = getattr(store, _STATE_ATTR, None)
+        if isinstance(state, dict):
+            return state
+        state = {"generation": {}, "inflight": {}}
+        try:
+            setattr(store, _STATE_ATTR, state)
+        except Exception:  # noqa: BLE001 - an unannotatable store just never shares builds
+            return None
+        return state
+
+
+@contextmanager
+def today_command_build(
+    store: AppStore,
+    *,
+    athlete_id: str,
+    athlete_timezone: str | None,
+) -> Iterator[Callable[[Any], None]]:
+    """Announce a fresh Today build; ``publish(view)`` remembers it.
+
+    The view is only remembered (and handed to waiters) when no write by the
+    athlete happened since the build began.
+    """
+    state = _build_state(store) if athlete_id and _ttl_seconds() > 0 else None
+    if state is None:
+        yield lambda view: None
+        return
+    done = Event()
+    with _LOCK:
+        generation = state["generation"].get(athlete_id, 0)
+        entry = {"timezone": str(athlete_timezone or ""), "event": done}
+        state["inflight"][athlete_id] = entry
+
+    def publish(view: Any) -> None:
+        with _LOCK:
+            current = state["generation"].get(athlete_id, 0) == generation
+        if current:
+            remember_today_command(store, athlete_id=athlete_id, athlete_timezone=athlete_timezone, view=view)
+
+    try:
+        yield publish
+    finally:
+        with _LOCK:
+            if state["inflight"].get(athlete_id) is entry:
+                state["inflight"].pop(athlete_id, None)
+        done.set()
+
+
+def await_today_command(
+    store: AppStore,
+    *,
+    athlete_id: str,
+    athlete_timezone: str | None,
+) -> Any | None:
+    """A recent view, else the one an in-flight build for this athlete publishes."""
+    recent = recent_today_command(store, athlete_id=athlete_id, athlete_timezone=athlete_timezone)
+    if recent is not None or not athlete_id:
+        return recent
+    state = getattr(store, _STATE_ATTR, None)
+    if not isinstance(state, dict):
+        return None
+    with _LOCK:
+        entry = state["inflight"].get(athlete_id)
+    if entry is None or entry["timezone"] != str(athlete_timezone or ""):
+        # A build may have finished between the two lookups.
+        return recent_today_command(store, athlete_id=athlete_id, athlete_timezone=athlete_timezone)
+    if not entry["event"].wait(_INFLIGHT_WAIT_SECONDS):
+        return None
+    return recent_today_command(store, athlete_id=athlete_id, athlete_timezone=athlete_timezone)
 
 
 def remember_today_command(
@@ -105,6 +193,11 @@ def recent_today_command(
 def forget_today_command(store: AppStore, athlete_id: str | None) -> None:
     if not athlete_id:
         return
+    state = getattr(store, _STATE_ATTR, None)
+    if isinstance(state, dict):
+        with _LOCK:
+            # Builds that began before this write must not be remembered.
+            state["generation"][athlete_id] = state["generation"].get(athlete_id, 0) + 1
     registry = getattr(store, _REGISTRY_ATTR, None)
     if not isinstance(registry, dict):
         return
@@ -113,7 +206,9 @@ def forget_today_command(store: AppStore, athlete_id: str | None) -> None:
 
 
 __all__ = [
+    "await_today_command",
     "forget_today_command",
     "recent_today_command",
     "remember_today_command",
+    "today_command_build",
 ]
