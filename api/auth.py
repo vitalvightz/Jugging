@@ -6,7 +6,7 @@ import os
 import warnings
 from dataclasses import dataclass
 from threading import RLock
-from time import monotonic, perf_counter
+from time import monotonic, perf_counter, time as wall_time
 from typing import Any, Callable, Protocol
 
 import httpx
@@ -77,6 +77,20 @@ def _token_cache_key(token: str) -> str:
 # outage fall back to the upstream ``auth.get_user`` check.
 _LOCAL_JWT_ALGORITHMS = frozenset({"ES256", "RS256"})
 _JWT_AUDIENCE = "authenticated"
+
+
+def _unverified_exp(token: str) -> float | None:
+    """``exp`` read without verification, used only to bound the cache.
+
+    Only consulted after the token passed local or upstream verification, so a
+    forged value cannot extend anything: it can only shorten the cache entry.
+    """
+    try:
+        claims = jwt.decode(token, options={"verify_signature": False})
+    except jwt.InvalidTokenError:
+        return None
+    exp = claims.get("exp") if isinstance(claims, dict) else None
+    return float(exp) if isinstance(exp, (int, float)) and not isinstance(exp, bool) else None
 
 
 class _LocalTokenRejected(Exception):
@@ -279,14 +293,17 @@ class SupabaseAuthService:
             server_timing.record("auth", (perf_counter() - started) * 1000, "cache")
             return cached_user
 
+        # The cache entry never outlives the token: both paths cap it at exp.
+        token_exp = _unverified_exp(token)
+
         local_user = self._verify_locally(token)
         if local_user is not None:
-            self._cache_user(cache_key, local_user)
+            self._cache_user(cache_key, local_user, token_exp=token_exp)
             server_timing.record("auth", (perf_counter() - started) * 1000, "local")
             return local_user
 
         authenticated_user = self._verify_upstream(token)
-        self._cache_user(cache_key, authenticated_user)
+        self._cache_user(cache_key, authenticated_user, token_exp=token_exp)
         server_timing.record("auth", (perf_counter() - started) * 1000, "upstream")
         return authenticated_user
 
@@ -380,11 +397,23 @@ class SupabaseAuthService:
 
             return user
 
-    def _cache_user(self, cache_key: str, user: AuthenticatedUser) -> None:
+    def _cache_user(
+        self,
+        cache_key: str,
+        user: AuthenticatedUser,
+        *,
+        token_exp: float | None = None,
+    ) -> None:
         now = monotonic()
+        ttl = float(self._cache_ttl_seconds)
+        if token_exp is not None:
+            # exp is wall-clock; convert the remaining lifetime to monotonic.
+            ttl = min(ttl, token_exp - wall_time())
+        if ttl <= 0:
+            return
 
         with self._cache_lock:
-            self._token_cache[cache_key] = (user, now + self._cache_ttl_seconds)
+            self._token_cache[cache_key] = (user, now + ttl)
             self._prune_cache(now)
 
     def _prune_cache(self, now: float) -> None:

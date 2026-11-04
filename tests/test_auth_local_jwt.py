@@ -234,3 +234,56 @@ def test_unauthenticated_response_still_carries_app_timing():
     response = client.get("/health")
 
     assert response.headers["server-timing"].startswith("app;dur=")
+
+
+def _cache_seconds_left(service) -> float:
+    import api.auth as auth_module
+
+    ((_, expires_at),) = service._token_cache.values()
+    return expires_at - auth_module.monotonic()
+
+
+def test_local_cache_entry_never_outlives_token_expiry():
+    private_key, public_jwk = _key_pair("k1")
+    service = _service(_Jwks(public_jwk))
+
+    service.get_user_from_token(_token(private_key, "k1", exp=int(time.time()) + 5))
+
+    assert 0 < _cache_seconds_left(service) <= 5
+
+
+def test_upstream_cache_entry_never_outlives_token_expiry(monkeypatch):
+    import api.auth as auth_module
+
+    client = _upstream_client()
+    service = _service(_Jwks(), client)
+    token = jwt.encode(
+        {"sub": "athlete-2", "aud": "authenticated", "iss": ISSUER, "exp": int(time.time()) + 5},
+        "legacy-secret-legacy-secret-legacy-secret",
+        algorithm="HS256",
+    )
+    clock = [1000.0]
+    monkeypatch.setattr(auth_module, "monotonic", lambda: clock[0])
+
+    service.get_user_from_token(token)
+    assert _cache_seconds_left(service) <= 5
+
+    # Past the token's exp but well inside the 60 s cache TTL: the cache must
+    # not answer; the token goes back to upstream verification.
+    clock[0] += 6
+    service.get_user_from_token(token)
+    assert client.auth.get_user.call_count == 2
+
+
+def test_token_already_expired_is_never_cached():
+    client = _upstream_client()  # upstream stub accepts anything
+    service = _service(_Jwks(), client)
+    token = jwt.encode(
+        {"sub": "athlete-2", "aud": "authenticated", "iss": ISSUER, "exp": int(time.time()) - 1},
+        "legacy-secret-legacy-secret-legacy-secret",
+        algorithm="HS256",
+    )
+
+    service.get_user_from_token(token)
+
+    assert service._token_cache == {}
