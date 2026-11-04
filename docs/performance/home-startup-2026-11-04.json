@@ -1,0 +1,86 @@
+{
+  "base_commit": "b898cbce",
+  "variant": "Home startup: admission deduplication and deferred global timer UI",
+  "environment": {
+    "frontend": "production Next build",
+    "browser": "system Chromium",
+    "viewport": [
+      390,
+      844
+    ],
+    "cpu_throttle": 4,
+    "api_response_delay_ms": 300,
+    "bandwidth": "local, unthrottled",
+    "runs": 3,
+    "motion": "reduced",
+    "backend": "mocked authenticated fixture"
+  },
+  "samples": {
+    "before": [
+      {
+        "home_ready_ms": 2480,
+        "history_to_home_ms": [
+          675,
+          770
+        ],
+        "admission_requests": 2,
+        "page_errors": []
+      },
+      {
+        "home_ready_ms": 2333,
+        "history_to_home_ms": [
+          645,
+          658
+        ],
+        "admission_requests": 2,
+        "page_errors": []
+      },
+      {
+        "home_ready_ms": 2365,
+        "history_to_home_ms": [
+          649,
+          607
+        ],
+        "admission_requests": 2,
+        "page_errors": []
+      }
+    ],
+    "before_loaded_js_source_bytes": 1251053,
+    "after": [
+      {
+        "home_ready_ms": 2242,
+        "history_to_home_ms": [
+          690,
+          608
+        ],
+        "admission_requests": 1,
+        "page_errors": []
+      },
+      {
+        "home_ready_ms": 2697,
+        "history_to_home_ms": [
+          679,
+          608
+        ],
+        "admission_requests": 1,
+        "page_errors": []
+      },
+      {
+        "home_ready_ms": 2297,
+        "history_to_home_ms": [
+          680,
+          682
+        ],
+        "admission_requests": 1,
+        "page_errors": []
+      }
+    ],
+    "after_loaded_js_source_bytes": 1210211
+  },
+  "limitations": [
+    "Three-run latency samples are inconclusive; no reliable wall-clock speedup claimed.",
+    "Loaded JavaScript source bytes from CDP coverage exclude inline scripts and are not compressed wire bytes.",
+    "No production API, SQL, server cold-start or mobile bandwidth measurement.",
+    "Concurrent regression/benchmark timing run discarded; reported after sample was run separately."
+  ]
+}

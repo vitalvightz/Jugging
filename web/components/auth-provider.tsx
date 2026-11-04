@@ -315,6 +315,9 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
               user_id: data.session.user.id ?? null,
             }
           : null;
+        // INITIAL_SESSION may have already started this load while getSession
+        // was resolving. Do not restart admission/profile hydration for it.
+        if (nextSession && handledAccessTokenRef.current === nextSession.access_token) return;
         handledAccessTokenRef.current = nextSession?.access_token ?? null;
         void loadMe(nextSession);
       })
