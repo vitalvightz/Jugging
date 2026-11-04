@@ -240,3 +240,37 @@ def test_store_failure_defaults_to_rehab() -> None:
     policy = resolve_rehab_label_policy(BrokenStore(), athlete_id=ATHLETE)
     assert policy.default_mode == "rehab"
     assert policy.active_regions == []
+
+
+def test_packaged_bank_locations_match_the_free_text_resolver() -> None:
+    """The fast taxonomy lookup preserves the old NLP result for every label."""
+    from fightcamp.injury_synonyms import LOCATION_MAP
+    from fightcamp.rehab_protocols import get_rehab_bank
+    from api.rehab_labels import _canonical_region, _fold_region
+
+    locations = {str(entry.get("location") or "").replace("_", " ") for entry in get_rehab_bank()}
+    for location in locations:
+        if location == "unspecified":
+            assert _canonical_region(location) is None
+            continue
+        assert location in LOCATION_MAP, location
+        assert _fold_region(LOCATION_MAP[location]) == _canonical_region(location), location
+
+
+def test_bank_labels_skip_nlp_but_unknown_labels_keep_the_fallback(monkeypatch) -> None:
+    from api import rehab_labels
+    from fightcamp import rehab_protocols
+
+    calls = []
+    def canonicalize(text):
+        calls.append(text)
+        return "hamstring"
+
+    monkeypatch.setattr(rehab_labels, "_canonical_region", canonicalize)
+    monkeypatch.setattr(rehab_protocols, "get_rehab_bank", lambda: [
+        {"location": "hamstrings", "drills": [{"name": "Nordic Curl"}]},
+        {"location": "future taxonomy label", "drills": [{"name": "New Curl"}]},
+        {"location": "unspecified", "drills": [{"name": "Unlocalized Drill"}]},
+    ])
+    assert rehab_labels._bank_drill_terms("hamstring", covered_by=set()) == ["new curl", "nordic curl"]
+    assert calls == ["future taxonomy label"]
