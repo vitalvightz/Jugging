@@ -1,13 +1,15 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, lazy, Suspense, useContext, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { useFadeFromBlack, useFadeThrough } from "@/components/fade-through";
-import { SessionTimer } from "@/components/session-timer/session-timer";
 import { clearSavedRun, hasSavedRun } from "@/components/session-timer/use-session-timer";
 import { resolveTrainingDay, toISODate } from "@/lib/camp-map";
 import { timerAudio } from "@/lib/session-timer/audio";
 import { freeRoundsItem } from "@/lib/session-timer/contact";
+
+// The global provider is on Home too; only an open or saved timer needs its UI.
+const SessionTimer = lazy(() => import("./session-timer").then(module => ({ default: module.SessionTimer })));
 
 /** One plain round timer for the whole app: not tied to a plan, day or page. */
 export const ROUND_TIMER_STORAGE_KEY = "unlxck.session-timer.free";
@@ -151,17 +153,19 @@ export function RoundTimerProvider({ children }: { children: ReactNode }) {
     <RoundTimerContext.Provider value={value}>
       {children}
       {shownMode ? (
-        <SessionTimer
-          items={items}
-          storageKey={ROUND_TIMER_STORAGE_KEY}
-          sessionTitle="Round timer"
-          visible={shownMode === "open"}
-          finishLabel="Done"
-          onMinimize={() => fadeThrough(() => setMode("minimized"))}
-          onExpand={value.open}
-          onClose={close}
-          onFinish={close}
-        />
+        <Suspense fallback={<div className="st-root" role="status">Opening timer…</div>}>
+          <SessionTimer
+            items={items}
+            storageKey={ROUND_TIMER_STORAGE_KEY}
+            sessionTitle="Round timer"
+            visible={shownMode === "open"}
+            finishLabel="Done"
+            onMinimize={() => fadeThrough(() => setMode("minimized"))}
+            onExpand={value.open}
+            onClose={close}
+            onFinish={close}
+          />
+        </Suspense>
       ) : null}
     </RoundTimerContext.Provider>
   );
