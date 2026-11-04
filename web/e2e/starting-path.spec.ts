@@ -517,7 +517,7 @@ for (const width of [320, 390, 1280]) {
     await page.getByRole("button", { name: "Log session", exact: true }).click();
     const form = page.getByRole("form", { name: "Log session", exact: true });
     const activity = form.getByRole("group", { name: "Activity", exact: true });
-    await expect(activity.locator("[data-activity]")).toHaveText(["Pads", "Bag work", "Clinch", "Technical drills", "Sparring", "Strength", "Conditioning", "Roadwork", "Other"]);
+    await expect(activity.locator("[data-activity]")).toHaveText(["Pads", "Bag work", "Clinch", "Technical drills", "Sparring", "Strength", "Conditioning", "Running", "Other"]);
     await activity.getByRole("button", { name: "Clinch", exact: true }).click();
     await form.getByRole("button", { name: "60", exact: true }).click();
     await form.getByRole("button", { name: "Hard", exact: true }).click();
@@ -542,7 +542,7 @@ test("Other sport keeps the original log choices and saves no sport", async ({ p
   expect(writes[0]).toEqual({ starting_path: "tracking_first" });
   await page.getByRole("button", { name: "Log session", exact: true }).click();
   await expect(page.getByRole("group", { name: "Activity", exact: true }).locator("[data-activity]"))
-    .toHaveText(["Boxing", "Sparring", "Strength", "Conditioning", "Roadwork", "Other"]);
+    .toHaveText(["Boxing", "Sparring", "Strength", "Conditioning", "Running", "Other"]);
 });
 
 test("a tracking athlete with nothing logged gets a first-session CTA on Home", async ({ page, baseURL }) => {
