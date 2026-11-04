@@ -35,6 +35,7 @@ The before/after benchmark uses fresh browser contexts but a warm local server, 
 - Targeted ESLint: zero errors, one existing `set-state-in-effect` warning in `AuthProvider`.
 - 13 timer-provider unit tests passed. Node's `--test-force-exit` was used after the original assertion-complete run retained environment/client handles.
 - Six browser regressions passed: existing central journey/request budgets, rename invalidation, failed-read retry; new delayed-admission gating, cross-tab account switch/new admission, and Home → Timer → Home → reload/resume.
+- The committed opt-in benchmark was also executed successfully across three fresh contexts.
 - Three additional browser checks passed: Home/countdown behaviour at mobile 390px and desktop 1280px, plus the simulated Safari native-media resume workflow in Chromium. This is not a real Safari device claim.
 - The first timer open, minimisation, stored-run restoration and audio gesture path are exercised; no writes are acknowledged early and no data freshness window was widened.
 
@@ -50,4 +51,4 @@ Run it separately on the base and final builds, with the same browser, machine a
 
 The largest initial cost still sits in the shared bootstrap: SDK/module evaluation and hydration precede the first data request. Loading 40 KB less code helps that work, but most of the loaded source remains. A real-device trace with production monitoring configuration is needed before changing auth SDK or error-monitoring initialization.
 
-Home deliberately retains a fresh Today read because the command view contains readiness/injury decisions. The existing shared cache still reuses plan presentation data, and every non-neutral write invalidates it. This change does not mask stale readiness with an old cached command view. The separate backend profile also identifies repeated static clinical-policy assembly inside fresh Today builds; that work is being investigated separately from these frontend changes.
+Home deliberately retains a fresh Today read because the command view contains readiness/injury decisions. The existing shared cache still reuses plan presentation data, and every non-neutral write invalidates it. This change does not mask stale readiness with an old cached command view. The separate backend profile also identified repeated policy-region normalisation inside fresh Today builds. [PR #3197](https://github.com/vitalvightz/Jugging/pull/3197) removes that repeated calculation, with exact serialized policy/Today equality checks; its local CPU reduction is modest and does not change this mocked-API browser result.
