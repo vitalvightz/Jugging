@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { TrainingHistorySession } from "@/lib/training-history";
+import { trainingTitle } from "@/lib/training-disciplines";
 import { formatAppDate } from "@/lib/date-format";
 import { sessionStatusLabel, sessionStatusTone } from "@/lib/history";
 import { formatTrainingDuration, summaryWindowLoaded, trainingDiscipline } from "@/lib/training-summary";
@@ -150,7 +151,7 @@ export function TrainingRhythm(props: Props) {
               scrollTop.current = body.current?.scrollTop ?? 0; returnSession.current = `${row.source}:${row.id}`;
               // Close synchronously before SessionDetails mounts; never two modals.
               dialog.current?.close(); setSession(row);
-            }}><span><strong>{row.title}</strong><span>{formatAppDate(row.training_day)} · {row.duration_minutes ? `${row.duration_minutes}m recorded` : "Duration not recorded"}</span></span>
+            }}><span><strong>{trainingTitle(row)}</strong><span>{formatAppDate(row.training_day)} · {row.duration_minutes ? `${row.duration_minutes}m recorded` : "Duration not recorded"}</span></span>
               <span className="badge history-status-badge" data-tone={sessionStatusTone(row.status)}>{sessionStatusLabel(row.status)}</span></button>
           </li>)}</ul>
           {!selected.sessions ? <p className={styles.note}>No sessions recorded.</p> : null}
