@@ -1301,9 +1301,12 @@ export function SessionCard({
   const isDeclaredLightCombat = isDeclaredLightCombatTitle(title);
   const isTechnicalSession = /^(?:D[-−]\d+\s*[—–:-]\s*)?Technical[ -]only combat$/i.test(title);
   const sessionType = cleanText(session.session_type);
-  const isOptional = session.optional === true || /^Optional\b/i.test(cleanText(session.objective) ?? "");
-  const supportCard = planLayout && (isOptional || mentalSessionCategory(session) !== null || isCompactPlanSupportSession(session)
-    || (getBlocks(session).length > 0 && getBlocks(session).every(block => block.block_type === "mindset")));
+  // Only the server marks a session optional (api/optional_sessions.py); prose saying
+  // "Optional" never makes real training skippable or reshapes its card.
+  const isOptional = session.optional === true;
+  // One rule decides the compact card, so protocols and safety instructions never fold away.
+  const supportCard = planLayout && (isOptional || isCompactPlanSupportSession(session))
+    && !cleanText(card?.primary_warning) && !cleanText(card?.weight_cut_warning);
   const rawObjective = formatSessionObjective(session.objective);
   const objective = supportCard ? rawObjective?.replace(/^Optional[.:]\s*/i, "") || null : rawObjective;
   // A rationale that is just the session title again ("Strength" / "Why
@@ -1554,7 +1557,7 @@ export function SessionCard({
       {isDeclaredLightCombat || isTechnicalSession ? (
         <CoachDayBox
           tag={isDeclaredLightCombat ? "Technical" : TECHNICAL_COMBAT_TAG}
-          heading={planLayout ? <h3 className="sp-session-title">{isDeclaredLightCombat ? DECLARED_LIGHT_COMBAT_TITLE : TECHNICAL_COMBAT_TITLE}<TechnicalCombatWhyTooltip day={day} declared={isDeclaredLightCombat} /></h3> : null}
+          heading={planLayout && !hideTitle ? <h3 className="sp-session-title">{isDeclaredLightCombat ? DECLARED_LIGHT_COMBAT_TITLE : TECHNICAL_COMBAT_TITLE}<TechnicalCombatWhyTooltip day={day} declared={isDeclaredLightCombat} /></h3> : null}
           tooltip={
             isDeclaredLightCombat
               ? hideTitle ? <TechnicalCombatWhyTooltip day={day} declared /> : null
@@ -1744,7 +1747,7 @@ export function SessionlessDayCard({
       {boxed ? (
         <CoachDayBox
           tag={displayTag}
-          heading={!hideTitle ? <h3 className="sp-session-title">{sparring?.title ?? (isConverted ? TECHNICAL_COMBAT_TITLE : displayTitle)}{kind === "light_combat" || kind === "technical" ? <TechnicalCombatWhyTooltip day={day} declared={!isConverted} /> : null}</h3> : null}
+          heading={!hideTitle ? <h3 className="sp-session-title">{sparring?.title ?? displayTitle}{kind === "light_combat" || kind === "technical" ? <TechnicalCombatWhyTooltip day={day} declared={!isConverted} /> : null}</h3> : null}
           tooltip={hideTitle && (kind === "light_combat" || kind === "technical") ? <TechnicalCombatWhyTooltip day={day} declared={!isConverted} /> : null}
         >
           <SparringCaution text={sparring?.caution ?? null} />

@@ -17,7 +17,7 @@ const me = {
   latest_intake: null,
 };
 
-test("the beta analytics notice is visible without an opt-in", () => {
+test("the starting path asks for no analytics opt-in and shows no analytics notice", () => {
   const html = renderToStaticMarkup(
     <AppRouterContext.Provider value={router as never}>
       <AppSessionContext.Provider value={{ session: { access_token: "t" }, me, isMeHydrated: true, hasTransientMeError: false } as never}>
@@ -25,7 +25,8 @@ test("the beta analytics notice is visible without an opt-in", () => {
       </AppSessionContext.Provider>
     </AppRouterContext.Provider>,
   );
-  assert.match(html, /Private beta usage analytics/);
+  // The beta notice lives in Settings; onboarding has neither notice nor opt-in (see e2e/beta-usage-analytics.spec.ts).
+  assert.doesNotMatch(html, /Private beta usage analytics/);
   assert.doesNotMatch(html, /Allow optional feature analytics/);
   assert.doesNotMatch(html, /type="checkbox"/);
 });

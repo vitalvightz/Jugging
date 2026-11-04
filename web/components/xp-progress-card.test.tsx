@@ -189,7 +189,7 @@ test("Progress route keeps the compact card, athlete identity and latest-three h
   assert.match(layout, /xp-interface\.css/);
   assert.match(layout, /xp-overview-card\.css/);
   assert.match(layout, /xp-progress-page\.css/);
-  assert.match(card, /<Link href="\/progress"/);
+  assert.match(card, /<Link\s+href="\/progress"/);
   assert.match(page, /<XpProgressCardView progress=\{xp\.progress\} mode="page" \/>/);
   assert.match(page, /profile\.full_name/);
   assert.match(page, /profile\.technical_style/);

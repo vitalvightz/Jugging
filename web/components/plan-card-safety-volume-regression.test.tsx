@@ -150,8 +150,8 @@ D-13 (Monday): Neural speed touch
   assert.equal(html.includes("any sharp pain at the left shoulder"), true);
   assert.equal(html.includes(">Wound irritation<"), false);
 
-  // Active Notes keeps condition/management while Safety Priority owns escalation.
-  assert.equal(html.includes("Keep the area clean and covered during training"), true);
+  // Plan notes are not shown in the plan view; Safety Priority owns escalation.
+  assert.equal(html.includes("Keep the area clean and covered during training"), false);
   assert.equal(countOccurrences(html, "stop and seek care if bleeding"), 0);
   assert.equal(countOccurrences(html, "Stop and seek care for bleeding"), 1);
 });
