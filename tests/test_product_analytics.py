@@ -836,7 +836,7 @@ def test_visits_are_unique_and_separate_from_training():
             fact("2026-10-25", aid="b"),
         ],
     )
-    assert (r["visitors_today"], r["visitors_7d"], r["visitors_30d"]) == (1, 1, 1)
+    assert (r["visitors_today"], r["visitors_7d"], r["visitors_30d"]) == (2, 2, 2)
     assert r["active"] == 1
     assert r["athletes"][0]["last_seen"] == "2026-10-25T12:00:00+00:00"
     assert r["athletes"][0]["last_activity"] is None
@@ -871,3 +871,75 @@ def test_browsing_counts_as_discovery_without_inflating_training():
     assert timer["athletes"] == 0
     assert timer["actions"] == {"page_viewed": 1}
     assert r["active"] == 0
+
+
+def test_page_views_and_saved_actions_prove_visits_without_app_open_event():
+    r = report(
+        [athlete(), athlete("b"), athlete("c")],
+        [
+            fact(
+                "2026-10-25",
+                action="page_viewed",
+                feature="history",
+                meaningful=False,
+                count=5,
+            ),
+            fact("2026-10-24", action="page_viewed", feature="plans", meaningful=False),
+            fact("2026-10-25", aid="b"),
+            fact("2026-10-25", aid="c", action="plan_generated", meaningful=False),
+            fact("2026-10-25", aid="c", action="operation_failed", meaningful=False),
+        ],
+    )
+    assert r["visitors_today"] == 2
+    assert r["no_visit_7d"] == 1
+    assert r["seen_recently"] == 2
+    assert r["browser_reporting_athletes"] == 1
+    assert r["latest_browser_event"] == "2026-10-25T12:00:00+00:00"
+    assert r["athletes"][0]["visit_days_7"] == 2
+    assert r["athletes"][0]["latest_action"] == {
+        "feature": "history",
+        "action": "page_viewed",
+    }
+    assert r["athletes"][2]["last_seen"] is None
+    assert r["active"] == 1
+
+
+def test_directory_search_before_pagination_leaves_headlines_unchanged():
+    c, store = api_client()
+    c.app.dependency_overrides[require_admin] = lambda: SimpleNamespace(
+        athlete_id="admin"
+    )
+    payload = dict(
+        athletes=[
+            athlete(str(n), full_name=f"Athlete {n}", email=f"tester{n}@example.test")
+            for n in range(40)
+        ],
+        facts=[],
+        optional_coverage=[],
+        training_records=[],
+        error_returns=[],
+        tracking_health={"healthy": True},
+        tracking_since="2026-10-01T00:00:00Z",
+    )
+    store.client.rpc = lambda *_: SimpleNamespace(
+        execute=lambda: SimpleNamespace(data=payload)
+    )
+    result = c.get(
+        "/api/admin/product-analytics?athlete_search=TESTER39&limit=1"
+    ).json()
+    assert result["registered"] == 40
+    assert result["athlete_total"] == 1
+    assert result["athletes"][0]["id"] == "39"
+    assert (
+        c.get("/api/admin/product-analytics?visit_filter=never_seen").json()[
+            "athlete_total"
+        ]
+        == 40
+    )
+    assert (
+        c.get("/api/admin/product-analytics?visit_filter=seen_today").json()[
+            "athlete_total"
+        ]
+        == 0
+    )
+    assert c.get("/api/admin/product-analytics?visit_filter=invalid").status_code == 422

@@ -32,6 +32,9 @@ export type ActivitySummary = {
   email?: string | null;
   registered_at: string;
   last_seen?: string | null;
+  latest_action?: { feature: string; action: string } | null;
+  visit_days_7?: number;
+  visit_days_30?: number;
   first_activity: string | null;
   last_activity: string | null;
   active_days_7: number;
@@ -63,6 +66,10 @@ export type Retention = {
 export type ProductReport = {
   tracking_health?: { healthy: boolean; configured?: boolean; last_success_at?: string | null } | null;
   tracking_since?: string | null;
+  latest_browser_event?: string | null;
+  browser_reporting_athletes?: number;
+  seen_recently?: number;
+  no_visit_7d?: number;
   visitors_today?: number;
   visitors_7d?: number;
   visitors_30d?: number;

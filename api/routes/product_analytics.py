@@ -125,6 +125,8 @@ def build_product_analytics_router():
         professional_status: str | None = Query(None, max_length=80),
         sport: str | None = Query(None, max_length=80),
         plan_mode: Literal["plan", "plan_free"] | None = None,
+        athlete_search: str = Query("", max_length=120),
+        visit_filter: Literal["all", "seen_today", "no_visit_7d", "never_seen"] = "all",
         offset: int = Query(0, ge=0),
         limit: int = Query(25, ge=1, le=100),
         admin=Depends(require_admin),
@@ -139,6 +141,29 @@ def build_product_analytics_router():
             sport=sport,
             plan_mode=plan_mode,
         )
+        # Directory filters apply before pagination and do not change headline totals.
+        query = athlete_search.strip().casefold()
+        today = result["as_of"][:10]
+        result["athletes"] = [
+            p
+            for p in result["athletes"]
+            if (
+                not query
+                or query
+                in " ".join(
+                    str(p.get(k) or "") for k in ("id", "full_name", "email")
+                ).casefold()
+            )
+            and (
+                visit_filter == "all"
+                or (
+                    visit_filter == "seen_today"
+                    and (p.get("last_seen") or "")[:10] == today
+                )
+                or (visit_filter == "no_visit_7d" and p["visit_days_7"] == 0)
+                or (visit_filter == "never_seen" and not p.get("last_seen"))
+            )
+        ]
         result["athlete_total"] = len(result["athletes"])
         result["athletes"] = sorted(
             result["athletes"],

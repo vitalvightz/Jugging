@@ -31,7 +31,8 @@
   font-size: 0.85rem;
   flex: 1 1 140px;
 }
-.filters select {
+.filters select,
+.filters input {
   color: inherit;
   background: var(--bg-stat);
   border: 1px solid var(--border-strong);
@@ -130,3 +131,7 @@
 }
 /* Wide diagnostic tables scroll inside their section on narrow screens. */
 .root > * { min-width: 0; }
+
+.directory { min-width: 820px; }
+.directory td { overflow-wrap: anywhere; }
+.directory td:first-child { min-width: 150px; }
