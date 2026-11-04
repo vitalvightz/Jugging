@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from api.contracts.command_view import session_is_today
-from api.services.today_command_cache import recent_today_command
+from api.services.today_command_cache import await_today_command
 from api.services.today_readiness_boundary import build_today_command_view
 from api.services.today_service import resolve_training_day
 from api.services.week_progress import evaluate_week_completion, find_week_for_training_day
@@ -120,7 +120,7 @@ def _today_command(
     athlete_id: str,
     athlete_timezone: str | None,
 ) -> object | None:
-    recent = recent_today_command(
+    recent = await_today_command(
         store,
         athlete_id=athlete_id,
         athlete_timezone=athlete_timezone,
