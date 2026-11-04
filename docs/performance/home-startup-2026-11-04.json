@@ -82,5 +82,34 @@
     "Loaded JavaScript source bytes from CDP coverage exclude inline scripts and are not compressed wire bytes.",
     "No production API, SQL, server cold-start or mobile bandwidth measurement.",
     "Concurrent regression/benchmark timing run discarded; reported after sample was run separately."
+  ],
+  "independent_benchmark_reproduction": [
+    {
+      "readyMs": 3072,
+      "returns": [
+        764,
+        882
+      ],
+      "admissionRequests": 1,
+      "errors": []
+    },
+    {
+      "readyMs": 2663,
+      "returns": [
+        789,
+        593
+      ],
+      "admissionRequests": 1,
+      "errors": []
+    },
+    {
+      "readyMs": 2342,
+      "returns": [
+        603,
+        617
+      ],
+      "admissionRequests": 1,
+      "errors": []
+    }
   ]
 }

@@ -27,6 +27,8 @@ Raw summary: [home-startup-2026-11-04.json](home-startup-2026-11-04.json).
 
 The deterministic improvements are **one removed request** and **40,842 fewer loaded source bytes (3.3%)**. Source bytes are UTF-8 script sizes reported by CDP, not compressed network transfer bytes. The timing ranges overlap; repeat-navigation timing did not improve. This small sample does **not** establish a reliable wall-clock speedup or attainment of the 1.5-second Home target. A benchmark run concurrent with regression work was discarded; the reported before/after samples ran separately. The host remains shared, with no statistical confidence claim.
 
+An independent run of the committed benchmark then observed initial Home times of **3,072 / 2,663 / 2,342 ms**, again with one admission request and no page errors. These samples are also retained in the JSON. This variation reinforces the absence of a reliable end-to-end latency improvement claim.
+
 The before/after benchmark uses fresh browser contexts but a warm local server, local unthrottled assets, fixed-date synthetic athlete data and reduced motion. It is not a real mobile bandwidth test, a server cold-start measurement, or a measurement of production backend/SQL execution. CDP coverage/profile captures are separate from the unprofiled latency samples. The fixture's fixed clock makes native browser PerformanceResourceTiming unsuitable here; request-event timestamps, CPU profiles and script source sizes are used instead.
 
 ## Verification
