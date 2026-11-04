@@ -193,7 +193,7 @@ def _rendered_profiles(label: str, items: list[dict]) -> list:
 
 _REALIZED_DOSE_FIELDS = (
     "effective_prescription", "prescription", "base_prescription", "duration",
-    "timing", "total_minutes", "duration_min", "distance_m",
+    "timing", "total_minutes", "duration_min", "distance_m", "work_sec",
 )
 
 
@@ -249,7 +249,10 @@ def structured_stacking_findings(plan: dict) -> list[dict]:
                         str(session.get(key) or "")
                         for key in ("modality", "title", "objective", "primary_stressor")
                     )
-                session_endurance = session.get("session_type") == "conditioning" or bool(session.get("modality"))
+                session_type = str(session.get("session_type") or "").strip().lower()
+                session_endurance = session_type in {"conditioning", "cardio", "aerobic", "endurance"} or (
+                    session_type in {"", "other", "unknown"} and bool(session.get("modality"))
+                )
                 for block in session.get("blocks") or []:
                     item = _structured_workload_item(block)
                     for field in ("modality", "category", "primary_stressor", "session_type", "rounds", "effective_rounds", "context_modality"):
