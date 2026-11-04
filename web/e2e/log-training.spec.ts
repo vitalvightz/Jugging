@@ -145,7 +145,7 @@ for (const width of [390, 1280]) {
     await expect(prompt).toHaveCount(0);
     await page.getByRole("button", { name: "Log session", exact: true }).click();
     const form = page.getByRole("form", { name: "Log session", exact: true });
-    await choose(form, page, "Activity", "Roadwork");
+    await choose(form, page, "Activity", "Running");
     await choose(form, page, "Duration", "30");
     await choose(form, page, "Effort", "Moderate");
     await form.getByRole("button", { name: "Save Session", exact: true }).click();
@@ -198,7 +198,7 @@ for (const width of [390, 1280]) {
     await expect(form.getByRole("combobox")).toHaveCount(0);
     // The athlete boxes: the same single grid holds boxing session types, then S&C, roadwork and other.
     await expect(form.getByRole("group", { name: "Activity", exact: true }).locator("[data-activity]")).toHaveText(
-      ["Pads", "Bag work", "Shadowboxing", "Technical drills", "Sparring", "Strength", "Conditioning", "Roadwork", "Other"]);
+      ["Pads", "Bag work", "Shadowboxing", "Technical drills", "Sparring", "Strength", "Conditioning", "Running", "Other"]);
     await expect(form.getByLabel("Training date (optional)")).toBeHidden();
     await expect(form.getByRole("button", { name: "Pads", exact: true })).toBeFocused();
     await choose(form, page, "Activity", "Sparring");
