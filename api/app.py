@@ -16,7 +16,7 @@ from postgrest.exceptions import APIError as PostgrestAPIError
 
 from fightcamp.logging_utils import bind_log_context, clear_log_context, configure_logging
 
-from . import read_diagnostics
+from . import read_diagnostics, server_timing
 from .auth import AuthService, SupabaseAuthService
 from .environment import (
     apply_production_environment_defaults,
@@ -592,6 +592,23 @@ def create_app(
         async def invalidate_caches(req: Request):
             return await invalidate_athlete_read_caches(req, limit_admin)
 
+        timings, timing_token = server_timing.begin()
+        request_started = time.perf_counter()
+        try:
+            response = await _dispatch_with_diagnostics(request, invalidate_caches)
+        finally:
+            server_timing.end(timing_token)
+        timings.add("app", (time.perf_counter() - request_started) * 1000)
+        response.headers["Server-Timing"] = timings.header_value()
+        # Cross-origin callers (the web app) can only read Server-Timing in
+        # DevTools / PerformanceResourceTiming when the origin is allowed. Only
+        # origins CORS already accepts are echoed.
+        origin = request.headers.get("origin")
+        if origin and response.headers.get("access-control-allow-origin") == origin:
+            response.headers["Timing-Allow-Origin"] = origin
+        return response
+
+    async def _dispatch_with_diagnostics(request: Request, invalidate_caches):
         # Off by default in every environment. Enable only for controlled captures.
         if os.getenv("UNLXCK_READ_DIAGNOSTICS") != "1":
             return await log_requests(request, invalidate_caches)
