@@ -8,6 +8,7 @@ import uuid
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
 
+from api import server_timing
 from api.compliance import evaluate_profile_compliance
 from api.contracts.training_day import resolve_training_day_str
 from api.models import (
@@ -97,6 +98,7 @@ def build_plans_router(*, require_profile, require_plan_row, get_store) -> APIRo
                 store,
                 owner_id,
                 current_training_day=training_day,
+                known_plan=plan_row,
             ).plan
             if active_plan and str(active_plan.get("id") or "") == str(
                 plan_row.get("id") or ""
@@ -210,24 +212,27 @@ def build_plans_router(*, require_profile, require_plan_row, get_store) -> APIRo
         profile: ProfileRecord = Depends(require_profile),
         store: AppStore = Depends(get_store),
     ) -> PlanDetail:
-        plan_row = _read_plan_for_viewer(plan_id, profile=profile, store=store)
+        with server_timing.measure("plan_read"):
+            plan_row = _read_plan_for_viewer(plan_id, profile=profile, store=store)
         is_admin = is_effective_admin_profile(profile, store)
         training_day = resolve_training_day_str(
             datetime.now(timezone.utc), athlete_timezone=profile.athlete_timezone
         )
-        detail = _map_plan_detail(
-            plan_row,
-            include_admin=is_admin,
-            intake_injuries=admin_intake_injuries(store, plan_row) if is_admin else None,
-            plan_source=_lookup_plan_source(store, str(plan_row.get("id") or "")),
-            current_training_day=training_day,
-            rehab_label_policy=_rehab_policy_for_plan(
+        with server_timing.measure("plan_source"):
+            plan_source = _lookup_plan_source(store, str(plan_row.get("id") or ""))
+        with server_timing.measure("plan_rehab"):
+            rehab_policy = _rehab_policy_for_plan(
+                plan_row, profile=profile, store=store, training_day=training_day,
+            )
+        with server_timing.measure("plan_map"):
+            detail = _map_plan_detail(
                 plan_row,
-                profile=profile,
-                store=store,
-                training_day=training_day,
-            ),
-        )
+                include_admin=is_admin,
+                intake_injuries=admin_intake_injuries(store, plan_row) if is_admin else None,
+                plan_source=plan_source,
+                current_training_day=training_day,
+                rehab_label_policy=rehab_policy,
+            )
         return attach_exercise_media(
             apply_minor_plan_guard(
                 clarify_restricted_training_hold(detail),

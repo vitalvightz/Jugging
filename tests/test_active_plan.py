@@ -483,3 +483,23 @@ def test_set_active_rejects_passed_camp_without_changing_pointer():
     }
     assert store.active == "current"
     assert store.set_calls == []
+
+
+@pytest.mark.parametrize("known_owner,known_id", [("a", "p"), ("other", "p"), ("a", "other")])
+def test_request_local_known_plan_only_reuses_matching_owner_and_pointer(known_owner, known_id):
+    from unittest.mock import Mock
+    row = {"id": "p", "athlete_id": "a", "status": "ready"}
+    store = Store([row], active="p")
+    store.get_plan_for_athlete = Mock(wraps=store.get_plan_for_athlete)
+    known = {**row, "id": known_id, "athlete_id": known_owner}
+    result = resolve_active_plan(store, "a", current_training_day="2026-11-05", known_plan=known)
+    assert result.plan == row
+    assert store.get_plan_for_athlete.call_count == (0 if known_owner == "a" and known_id == "p" else 1)
+
+
+def test_known_plan_still_checks_expiry_and_reads_live_pointer():
+    row = {"id": "p", "athlete_id": "a", "status": "ready", "fight_date": "2026-11-04"}
+    store = Store([row], active="p")
+    assert resolve_active_plan(store, "a", current_training_day="2026-11-05", known_plan=row, auto_activate=False).source == "unusable"
+    store.active = None
+    assert resolve_active_plan(store, "a", known_plan=row, auto_activate=False).plan is None

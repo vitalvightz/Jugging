@@ -13,6 +13,7 @@ from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterator
 
+from api import server_timing
 from api.contracts.training_day import resolve_training_day_str
 from api.store import AppStore
 from .active_plan import ActivePlanResolution, resolve_active_plan
@@ -152,34 +153,38 @@ def build_today_command_view(
     now = now or datetime.now(timezone.utc)
     build_store = store
     store = _BuildReadCache(store)
-    active_plan = _resolve_active_plan_once(
-        store, athlete_id=athlete_id, athlete_timezone=athlete_timezone, now=now
-    )
-    sync_active_plan_intake_injuries(
-        store,
-        athlete_id=athlete_id,
-        athlete_timezone=athlete_timezone,
-        now=now,
-        active_plan=active_plan,
-    )
-    try:
-        _prefetch_view_reads(
+    with server_timing.measure("today_resolve"):
+        active_plan = _resolve_active_plan_once(
+            store, athlete_id=athlete_id, athlete_timezone=athlete_timezone, now=now
+        )
+    with server_timing.measure("today_sync"):
+        sync_active_plan_intake_injuries(
             store,
             athlete_id=athlete_id,
-            training_day=resolve_training_day_str(now, athlete_timezone=athlete_timezone),
+            athlete_timezone=athlete_timezone,
+            now=now,
             active_plan=active_plan,
         )
-    except Exception:  # noqa: BLE001 - prefetch is an optimisation; the view reads for itself
-        logger.exception("[today] read prefetch failed athlete_id=%s", athlete_id)
-    view = _build_core(
-        _NoLegacyBootstrapStore(store),
-        athlete_id=athlete_id,
-        athlete_timezone=athlete_timezone,
-        now=now,
-        active_plan=(
-            None if active_plan is None or active_plan.source in _VIEW_RESOLVES_AGAIN else active_plan
-        ),
-    )
+    with server_timing.measure("today_reads"):
+        try:
+            _prefetch_view_reads(
+                store,
+                athlete_id=athlete_id,
+                training_day=resolve_training_day_str(now, athlete_timezone=athlete_timezone),
+                active_plan=active_plan,
+            )
+        except Exception:  # noqa: BLE001 - prefetch is an optimisation; the view reads for itself
+            logger.exception("[today] read prefetch failed athlete_id=%s", athlete_id)
+    with server_timing.measure("today_core"):
+        view = _build_core(
+            _NoLegacyBootstrapStore(store),
+            athlete_id=athlete_id,
+            athlete_timezone=athlete_timezone,
+            now=now,
+            active_plan=(
+                None if active_plan is None or active_plan.source in _VIEW_RESOLVES_AGAIN else active_plan
+            ),
+        )
     if views is not None:
         views[key] = (build_store, view.model_copy(deep=True))
     return view

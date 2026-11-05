@@ -330,7 +330,11 @@ def resolve_active_plan(
     *,
     current_training_day: date | str | None = None,
     auto_activate: bool = True,
+    known_plan: dict[str, Any] | None = None,
 ) -> ActivePlanResolution:
+    # A viewer may already have read this full row in the same request. Still
+    # read the live pointer and run every eligibility/fallback check below.
+    # Never accept a row for another owner or a different pointer.
     try:
         explicit_id = _explicit_active_plan_id(store, athlete_id)
     except Exception:  # noqa: BLE001 - authority reads must fail closed
@@ -345,7 +349,13 @@ def resolve_active_plan(
         )
 
     try:
-        explicit = store.get_plan_for_athlete(explicit_id, athlete_id)
+        explicit = (
+            known_plan
+            if known_plan is not None
+            and str(known_plan.get("id")) == explicit_id
+            and str(known_plan.get("athlete_id")) == athlete_id
+            else store.get_plan_for_athlete(explicit_id, athlete_id)
+        )
     except Exception:  # noqa: BLE001 - authority reads must fail closed
         logger.exception(
             "[active-plan] referenced_plan_read_failed athlete_id=%s plan_id=%s",
