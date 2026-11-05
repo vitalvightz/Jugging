@@ -1685,6 +1685,16 @@ export interface PushSubscriptionPayload {
   timezone: string;
 }
 
+export function getReactivationEmailPreference(token: string): Promise<{ enabled: boolean }> {
+  return readJson("/api/reactivation/preferences", { token });
+}
+
+export function saveReactivationEmailPreference(token: string, enabled: boolean): Promise<{ enabled: boolean }> {
+  return readJson("/api/reactivation/preferences", {
+    token, method: "PUT", body: JSON.stringify({ enabled }),
+  });
+}
+
 export function getPushSettings(token: string): Promise<PushSettingsResponse> {
   return readJson<PushSettingsResponse>("/api/push/settings", { token });
 }
