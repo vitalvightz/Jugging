@@ -15,6 +15,13 @@
 
 export const SHARED_READ_MAX_AGE_MS = 30_000;
 const MAX_HELD = 12;
+/**
+ * How long a screen may show its last response while it reads again. A
+ * remembered view is display only: every caller still starts a fresh read on
+ * every visit and replaces the view with it. Writes and sign-out drop it.
+ */
+export const REMEMBERED_VIEW_MAX_AGE_MS = 10 * 60_000;
+const MAX_REMEMBERED = 8;
 
 type InFlight = {
   promise: Promise<unknown>;
@@ -25,6 +32,7 @@ type InFlight = {
 
 const inFlight = new Map<string, InFlight>();
 const held = new Map<string, { value: unknown; at: number }>();
+const remembered = new Map<string, { value: unknown; at: number; epoch: number }>();
 let writeEpoch = 0;
 let writesInFlight = 0;
 
@@ -81,13 +89,15 @@ export type SharedReadOptions = {
   hold?: boolean;
   /** Accept a result resolved this recently (capped at SHARED_READ_MAX_AGE_MS). */
   reuseForMs?: number;
+  /** Keep the result for `recallView` (display while re-reading only). */
+  remember?: boolean;
 };
 
 export function sharedRead<T>(
   token: string,
   path: string,
   load: (signal: AbortSignal) => Promise<T>,
-  { signal, hold: holdResult = false, reuseForMs = 0 }: SharedReadOptions = {},
+  { signal, hold: holdResult = false, reuseForMs = 0, remember = false }: SharedReadOptions = {},
 ): Promise<T> {
   // An already-cancelled caller gets nothing and starts nothing.
   if (signal?.aborted) return Promise.reject(abortReason(signal));
@@ -108,7 +118,14 @@ export function sharedRead<T>(
     created.promise = load(controller.signal)
       .then((value) => {
         // Only a read that began and ended with no write in between is reusable.
-        if (holdResult && epoch === writeEpoch && writesInFlight === 0) hold(key, value);
+        if (epoch === writeEpoch && writesInFlight === 0) {
+          if (holdResult) hold(key, value);
+          if (remember) {
+            remembered.delete(key);
+            remembered.set(key, { value, at: now(), epoch });
+            while (remembered.size > MAX_REMEMBERED) remembered.delete(remembered.keys().next().value!);
+          }
+        }
         return value;
       })
       .finally(() => {
@@ -121,9 +138,42 @@ export function sharedRead<T>(
   return consume<T>(key, entry, signal);
 }
 
+/**
+ * The last response remembered for this token and path, if no write has
+ * started since it was read and it is recent. For showing a revisited screen
+ * at once while its fresh read runs — never a substitute for that read.
+ */
+export function recallView<T>(token: string, path: string, maxAgeMs = REMEMBERED_VIEW_MAX_AGE_MS): T | null {
+  const entry = remembered.get(`${token}\u0000${path}`);
+  if (!entry || entry.epoch !== writeEpoch || writesInFlight > 0) return null;
+  if (now() - entry.at > Math.min(maxAgeMs, REMEMBERED_VIEW_MAX_AGE_MS)) return null;
+  return entry.value as T;
+}
+
+/**
+ * The write epoch to pass to `rememberView` from a screen that combines several
+ * reads. Taken before the reads start; -1 while a write is in flight.
+ */
+export function readEpoch(): number {
+  return writesInFlight > 0 ? -1 : writeEpoch;
+}
+
+/**
+ * Remembers a screen's combined view under `key` for `recallView`, unless a
+ * write started since `startedAt` (from `readEpoch`). Display only.
+ */
+export function rememberView(token: string, key: string, value: unknown, startedAt: number): void {
+  if (startedAt < 0 || startedAt !== writeEpoch || writesInFlight > 0) return;
+  const id = `${token}\u0000${key}`;
+  remembered.delete(id);
+  remembered.set(id, { value, at: now(), epoch: writeEpoch });
+  while (remembered.size > MAX_REMEMBERED) remembered.delete(remembered.keys().next().value!);
+}
+
 function invalidate() {
   writeEpoch += 1;
   held.clear();
+  remembered.clear();
   inFlight.clear();
 }
 

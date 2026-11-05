@@ -25,7 +25,7 @@ import { Skeleton } from "@/components/skeleton";
 import { useToast } from "@/components/toast-provider";
 import { ApiError, getActivePlan, getToday, listCustomPlans, listPlans, setActivePlan } from "@/lib/api";
 import { describeLoadFailure } from "@/lib/connectivity";
-import { SHARED_READ_MAX_AGE_MS } from "@/lib/shared-reads";
+import { readEpoch, recallView, rememberView, SHARED_READ_MAX_AGE_MS } from "@/lib/shared-reads";
 import { getOptionLabels, TACTICAL_STYLE_OPTIONS } from "@/lib/intake-options";
 import { humanizeIfRawEnum } from "@/lib/plan-labels";
 import { requestXpRefresh } from "@/lib/xp-events";
@@ -91,6 +91,9 @@ function HeldPlansReviewNotice({ plans }: { plans: PlanSummary[] }) {
 // Loading stand-ins keep the real card and list shapes, so nothing jumps when
 // the plans arrive. Each waits 250ms before it shows (loading-reveal): most
 // loads finish first, and a card that appears for a split second is a flicker.
+const PLANS_SCREEN_KEY = "screen:plans";
+type PlansScreenView = { plans: PlanSummary[]; activePlanId: string | null; customDrafts: CustomPlan[]; customError: string | null };
+
 function CampCardSkeleton() {
   return (
     <article className={`${styles.campCard} loading-reveal`} aria-busy="true" aria-label="Loading current camp">
@@ -137,13 +140,20 @@ export default function PlansPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const { me, session } = useAppSession();
-  const [customDrafts, setCustomDrafts] = useState<CustomPlan[]>([]);
-  const [customError, setCustomError] = useState<string | null>(null);
-  const [plans, setPlans] = useState<PlanSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // A revisit shows the plan list this session last read at once, then reads
+  // it again. Plan lists are presentation; any write (activate, rename,
+  // delete, publish) drops the remembered list (lib/shared-reads.ts).
+  const [recalled] = useState(() => session?.access_token
+    ? recallView<PlansScreenView>(session.access_token, PLANS_SCREEN_KEY)
+    : null);
+  const shownRef = useRef(Boolean(recalled));
+  const [customDrafts, setCustomDrafts] = useState<CustomPlan[]>(() => recalled?.customDrafts ?? []);
+  const [customError, setCustomError] = useState<string | null>(() => recalled?.customError ?? null);
+  const [plans, setPlans] = useState<PlanSummary[]>(() => recalled?.plans ?? []);
+  const [isLoading, setIsLoading] = useState(!recalled);
   const [error, setError] = useState<string | null>(null);
   const [localPlans, setLocalPlans] = useState<PlanSummary[] | null>(null);
-  const [activePlanId, setActivePlanId] = useState<string | null>(null);
+  const [activePlanId, setActivePlanId] = useState<string | null>(() => recalled?.activePlanId ?? null);
   const [isSettingActivePlanId, setIsSettingActivePlanId] = useState<string | null>(null);
   const [overlapConflictPlan, setOverlapConflictPlan] = useState<PlanSummary | null>(null);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
@@ -184,8 +194,10 @@ export default function PlansPage() {
     if (!token) {
       return;
     }
-    setIsLoading(true);
+    // A shown list refreshes in place; only an empty screen shows placeholders.
+    if (!shownRef.current) setIsLoading(true);
     setError(null);
+    const epoch = readEpoch();
     try {
       const [nextPlans, active, custom] = await Promise.all([
         listPlans(token),
@@ -211,6 +223,10 @@ export default function PlansPage() {
       setCustomDrafts(custom.rows);
       setCustomError(custom.error);
       setActivePlanId(active?.plan_id ?? null);
+      shownRef.current = true;
+      rememberView(token, PLANS_SCREEN_KEY, {
+        plans: nextPlans, activePlanId: active?.plan_id ?? null, customDrafts: custom.rows, customError: custom.error,
+      } satisfies PlansScreenView, epoch);
     } catch (plansError) {
       if (latestTokenRef.current !== token) {
         return;

@@ -88,6 +88,16 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: WORKSPACE_ROOT,
   },
+  experimental: {
+    // The root layout is dynamic (per-request CSP nonce), so by default every
+    // client navigation waited for a fresh RSC payload from the server before
+    // the next screen could even mount: one phone → Vercel (iad1) round trip
+    // per tab tap. Workspace pages are client components that read their own
+    // data from /api on every visit, so a visited route's payload carries no
+    // user data and can be reused. Data freshness is unchanged; server actions
+    // and router.refresh() still clear this cache.
+    staleTimes: { dynamic: 300, static: 300 },
+  },
   async rewrites() {
     const backendUrl = resolveBackendUrl();
     if (!backendUrl) {

@@ -232,6 +232,9 @@ export function MobileTabBar() {
           <Link
             key={tab.href}
             href={tab.href}
+            // Full prefetch: a tab's route payload is a client shell with no
+            // user data, so the first tap does not wait on the server either.
+            prefetch
             className={`mobile-tab-bar-item${active ? " mobile-tab-bar-item-active" : ""}`}
             aria-current={active ? "page" : undefined}
             onClick={(event) => {
