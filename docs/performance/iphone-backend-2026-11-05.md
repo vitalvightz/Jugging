@@ -61,3 +61,11 @@ Still unmeasured: complete endpoint before/after application time, SQL execution
 ## Validation
 
 180 passed across `test_active_plan`, `test_api_plan_access`, `test_slim_plan_reads`, `test_today_read_amplification`, `test_today_read_prefetch`, and `test_api_today`. Run with APP_ENV, UNLXCK_ENV, ENVIRONMENT and NODE_ENV all set to test; the workspace otherwise enables production CORS guards and prevents test-client startup. Web `npm run typecheck` passes. New regression cases cover matching-row read elimination, owner/pointer mismatch and expired/missing pointers. Existing suites exercise access control, plan mapping, injury synchronization and Today writes.
+
+## Review follow-up
+
+The isolated read savings must not be extrapolated to Today end-to-end latency. Today itself has not been optimized by this branch. Added nested spans `today_resolve`, `today_sync`, `today_reads` and `today_core` to split its live build into active-plan resolution, injury synchronization, prefetch (both waves), and readiness/prescription assembly. These measure wall time, not CPU; they overlap the enclosing `today_build` and `app` and must not be summed with those totals.
+
+An alternating same-live-row mapping probe (12 before/after pairs) compared runtime `typing.Mapping` checks with `collections.abc.Mapping` in the locked-content module. After excluding the first two pairs, median mapping thread CPU was 52.4ms versus 47.8ms, with identical serialized output on all 24 runs. That small gain does not explain the outstanding latency; no implementation change was made. Larger 110–118ms outliers in both groups need allocation/GC attribution before claiming a mapping optimization.
+
+Follow-up validation: 88 Today API/read-amplification/prefetch tests passed after the nested timing changes; `git diff --check` passed. No frontend code changed in the follow-up.
