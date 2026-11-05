@@ -124,8 +124,8 @@ _REACTIVATION_EMAIL_TASK: dict[str, asyncio.Task[None] | None] = {"task": None}
 async def _run_reactivation_email_sweep_if_due(
     *, store: AppStore, state: dict[str, float], shutdown_event: asyncio.Event,
 ) -> None:
-    """Daily opt-in reactivation sweep; never blocks plan generation."""
-    if shutdown_event.is_set() or time.monotonic() - state.get("last_sweep_at", 0.0) < 86400:
+    """Minute-level opt-in reactivation sweep with database daily caps; never blocks plan generation."""
+    if shutdown_event.is_set() or time.monotonic() - state.get("last_sweep_at", 0.0) < 60:
         return
     task = _REACTIVATION_EMAIL_TASK["task"]
     if task is not None and not task.done():

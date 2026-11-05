@@ -1,0 +1,15 @@
+# Reactivation reminders
+
+Automatic sending remains off unless `UNLXCK_REACTIVATION_EMAIL_ENABLED` is explicitly enabled. Do not enable it during verification. Tests use mocked HTTP; SQL fixtures are for an empty disposable database only.
+
+Apply the PR migration through the normal migration process before enabling. It grants preferences, delivery records and claim RPC access only to the service role, with RLS enabled. No existing consent is changed. An adult approved athlete must explicitly opt in under Settings → Notifications & email. Existing branded HTML and training copy are retained.
+
+Eligibility uses the latest product activity or authenticated daily app-open evidence. Daily tracking receives a conservative two-day timezone allowance, so a reminder may arrive later than seven days. Unknown visit history is excluded. No AI plan is needed, and there is no upper inactivity limit. Each athlete receives at most one reminder for the lifetime of the account.
+
+The worker checks every minute; atomic database claims enforce one request per second and twenty new reminders per rolling day. The full Resend payload is frozen before sending. Timeouts, 429 and server errors retry with the same lifetime idempotency key, at most ten attempts within 23 hours of the first claim. Retry-After pauses claims across workers. Permanent API errors stop retries. An uncertain send beyond that window is deliberately left unresolved rather than risking a duplicate after Resend's 24-hour key expiry. Review provider logs manually; never reset a claim to force delivery.
+
+Before any future enablement, configure a Resend webhook for `email.delivered` and `email.clicked` at `/api/reactivation/webhook`, set its signing secret as `RESEND_WEBHOOK_SECRET`, and enable Resend click tracking. The endpoint verifies Svix signatures with a five-minute replay window. Delivery confirmations and clicks update durable timestamps once. Authenticated app opens record subsequent reactivation independently of email scanners. Lifecycle events use existing `ingest_product_event` privacy/exclusion/retention checks. A click may be a scanner; a subsequent return indicates temporal association, not proof the email caused it.
+
+Existing sender, Resend API key, unsubscribe signing secret and HTTPS unsubscribe URL configuration are still required. Never log payloads, tokens, recipient addresses or provider response bodies.
+
+Validation: run `pytest tests/test_reactivation_email.py tests/test_product_analytics.py tests/test_streaks.py`; run web lint, typecheck and build. SQL validation order in a disposable PostgreSQL database: `tests/sql/reactivation_email.sql`, the PR migration, then `tests/sql/reactivation_email_assertions.sql`. Assertions cover plan-free eligibility, recent visits, consent, adult restrictions, long inactivity, exclusive claims, restart retries, idempotency expiry, lifetime suppression, lifecycle events and privileges/RLS. The fixture stubs analytics ingestion; the adjacent analytics tests cover its existing behavior.

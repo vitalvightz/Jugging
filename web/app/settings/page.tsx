@@ -134,7 +134,7 @@ const ADMIN_TEMPLATES_STORAGE_KEY = "unlxck.adminTemplateDrafts";
 const ATHLETE_SETTINGS_SECTIONS: SettingsSection[] = [
   { id: "account", label: "Account" },
   { id: "training-profile", label: "Training Profile" },
-  { id: "notifications", label: "Notifications" },
+  { id: "notifications", label: "Notifications & email" },
   { id: "subscription", label: "Subscription" },
   { id: "privacy", label: "Privacy" },
   { id: "private-trial", label: "Private Trial Guide" },

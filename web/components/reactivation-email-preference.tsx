@@ -39,7 +39,7 @@ export function ReactivationEmailPreference({ token }: { token: string }) {
           disabled={enabled === null || saving}
           onChange={(event) => void toggle(event.target.checked)}
         />
-        Email me one reminder if I haven't used UNLXCK for seven days.
+        Email me one reminder if I haven&apos;t used UNLXCK for seven days.
       </label>
       <p className="muted">
         Optional. We use your recent app activity to decide when to send it.
