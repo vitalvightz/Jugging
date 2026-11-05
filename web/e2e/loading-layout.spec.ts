@@ -32,7 +32,17 @@ for (const width of [390, 1280]) {
     expect(commandBefore!.height).toBeGreaterThanOrEqual(480);
     const sessionBefore = await loading.locator(":scope > section").last().boundingBox();
     expect(sessionBefore!.y + sessionBefore!.height).toBeGreaterThan(900);
+    const shimmer = () => loading.locator(":scope > section").evaluateAll(elements => elements.map(element => {
+      const style = getComputedStyle(element, "::after");
+      return { animation: style.animationName, position: style.backgroundPosition, duration: style.animationDuration };
+    }));
+    expect((await shimmer()).every(style => style.animation === "none")).toBe(true);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    expect((await shimmer()).every(style => style.animation.endsWith("skeleton-shimmer") && style.duration === "1.4s")).toBe(true);
+    const initial = (await shimmer()).map(style => style.position);
+    await expect.poll(async () => (await shimmer()).every((style, index) => style.position !== initial[index])).toBe(true);
     await page.screenshot({ path: `/tmp/today-loading-${width}.png` });
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await expect(loading).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
     const commandAfter = await page.locator(".today-shell").boundingBox();
