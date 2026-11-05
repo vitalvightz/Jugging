@@ -1,4 +1,4 @@
-"""Opt-in-only, at-most-once reactivation using the existing Resend account."""
+"""One-time reactivation using Resend, with email unsubscribe suppression."""
 
 from __future__ import annotations
 
@@ -136,9 +136,9 @@ def run_reactivation_email_sweep(store: AppStore) -> int:
             store.client.table("reactivation_email_deliveries").update({
                 "payload": payload,
             }).eq("profile_id", profile_id).eq("attempts", claim["attempts"]).execute()
-            consent = store.client.table("reactivation_email_preferences").select("enabled").eq(
+            preferences = store.client.table("reactivation_email_preferences").select("enabled").eq(
                 "profile_id", profile_id
-            ).single().execute().data
+            ).limit(1).execute().data or []
             # Recheck visits after the claim, including analytics-independent opens.
             since = datetime.now(timezone.utc) - timedelta(days=7)
             recent = store.client.table("product_activity").select("id").eq(
@@ -148,7 +148,7 @@ def run_reactivation_email_sweep(store: AppStore) -> int:
                 "athlete_id", profile_id
             ).gte("activity_date", (since - timedelta(days=2)).date().isoformat()).limit(1).execute().data
             status, provider_id, delay = "skipped", None, 0
-            if consent and consent.get("enabled") is True and not recent and not visits:
+            if (not preferences or preferences[0].get("enabled") is True) and not recent and not visits:
                 status, provider_id, delay = _send(profile_id, payload)
             update = {"status": status, "next_attempt_at": (
                 datetime.now(timezone.utc) + timedelta(seconds=max(delay, min(3600, 60 * 2 ** claim["attempts"])))
