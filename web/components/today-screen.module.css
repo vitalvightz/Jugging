@@ -394,8 +394,7 @@
 /* Today already has a visible shell: a delayed reveal creates a blank gap.
    Keep the shimmer, with no second opacity animation on the children. */
 .loading :global(.skeleton) {
-  animation-name: skeleton-shimmer;
-  animation-delay: 0s;
+  animation: skeleton-shimmer 1.4s linear infinite;
 }
 .contentReveal { animation: today-content-in 180ms ease-out; }
 @keyframes today-content-in { from { opacity: 0; } to { opacity: 1; } }
