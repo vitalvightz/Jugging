@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import json
+import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import httpx
+import pytest
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
 
+from api.routes.reactivation import build_reactivation_router
 from api.services import reactivation_email
 
 
@@ -75,13 +85,6 @@ def test_never_sends_when_consent_withdrawn(monkeypatch):
     store.client.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {"enabled": False}
     monkeypatch.setattr(reactivation_email.httpx, "post", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("sent")))
     assert reactivation_email.run_reactivation_email_sweep(store) == 0
-
-
-import pytest
-from types import SimpleNamespace
-from fastapi import FastAPI, HTTPException
-from fastapi.testclient import TestClient
-from api.routes.reactivation import build_reactivation_router
 
 
 @pytest.mark.parametrize("response,expected", [(429, "failed"), (500, "failed"), (400, "skipped"), (401, "skipped")])
@@ -153,7 +156,6 @@ def test_unsubscribe_get_does_not_mutate_and_post_is_repeatable(monkeypatch):
 
 
 def test_webhook_signature_and_delivery(monkeypatch):
-    import base64, hashlib, hmac, json, time
     key = b"test-signing-key"
     monkeypatch.setenv("RESEND_WEBHOOK_SECRET", "whsec_" + base64.b64encode(key).decode())
     store = MagicMock()
