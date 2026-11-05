@@ -12,7 +12,6 @@ import { PasswordStrengthMeter } from "@/components/password-strength-meter";
 import { InstallUnlxck } from "@/components/install-unlxck";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { PushNotificationSettings } from "@/components/push-notification-settings";
-import { ReactivationEmailPreference } from "@/components/reactivation-email-preference";
 import { PrivateTrialGuide } from "@/components/private-trial-guide";
 import { GlobalFeedback } from "@/components/feedback/global-feedback";
 import { ApiError, changeUsername, recordCompliance, updateMe } from "@/lib/api";
@@ -1299,7 +1298,7 @@ export default function SettingsPage() {
             <h2 className="form-section-title">Reminders and messages</h2>
           </div>
           {session?.access_token ? (
-            <><PushNotificationSettings token={session.access_token} /><ReactivationEmailPreference token={session.access_token} /></>
+            <PushNotificationSettings token={session.access_token} />
           ) : (
             <p className="muted">Sign in again to manage notification preferences.</p>
           )}
