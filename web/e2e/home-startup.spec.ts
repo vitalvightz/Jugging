@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mockAthlete, navigate, PRIMARY, SECONDARY, screens, sessionFor, STORAGE_KEY } from "./request-journeys";
+import { mockAthlete, navigate, PRIMARY, SECONDARY, screens, sessionFor, STORAGE_KEY, todayFor } from "./request-journeys";
 
 test("Home checks admission once and stays gated until it succeeds", async ({ page, baseURL }) => {
   await mockAthlete(page, baseURL!);
@@ -17,6 +17,76 @@ test("Home checks admission once and stays gated until it succeeds", async ({ pa
   admit();
   await expect(screens.homeReady(page)).toBeVisible();
   expect(checks).toBe(1);
+});
+
+// Seeds "admitted here before" once per tab, as an earlier visit would have.
+const rememberAdmitted = (athleteId: string) =>
+  `if (!sessionStorage.getItem("seeded")) { sessionStorage.setItem("seeded", "1"); localStorage.setItem("unlxck-admitted:${athleteId}", "1"); }`;
+
+test("an athlete admitted here before starts Home's reads during admission, still gated on it", async ({ page, baseURL }) => {
+  // Today outlasts admission, as in production (≈1–2 s vs ≈0.3 s).
+  const api = await mockAthlete(page, baseURL!, { latencyFor: (_method, path) => (path === "/api/today" ? 1_500 : 0) });
+  await page.addInitScript(rememberAdmitted(PRIMARY.athleteId));
+  let checks = 0;
+  let admit!: () => void;
+  const admission = new Promise<void>(resolve => { admit = resolve; });
+  await page.route("**/rest/v1/profiles?**", async route => {
+    checks++;
+    await admission;
+    await route.fulfill({ json: [{ access_status: "approved" }] });
+  });
+  const started: string[] = [];
+  page.on("request", request => { if (request.url().includes("/api/")) started.push(new URL(request.url()).pathname); });
+  await page.goto("/");
+  // Profile and Today are already on their way while admission is pending…
+  await expect.poll(() => started).toEqual(expect.arrayContaining(["/api/me", "/api/today"]));
+  // …but nothing of the workspace is shown until admission passes.
+  await page.waitForTimeout(300);
+  await expect(screens.homeReady(page)).toHaveCount(0);
+  admit();
+  await expect(screens.homeReady(page)).toBeVisible();
+  await api.settle();
+  expect(checks).toBe(1);
+  // Home's own reads joined the early ones: each was made once.
+  expect(api.calls.filter(call => call.path === "/api/me")).toHaveLength(1);
+  expect(api.calls.filter(call => call.path === "/api/today")).toHaveLength(1);
+});
+
+test("an athlete no longer admitted never sees Home, even after reads started early", async ({ page, baseURL }) => {
+  await mockAthlete(page, baseURL!);
+  await page.addInitScript(rememberAdmitted(PRIMARY.athleteId));
+  await page.route("**/rest/v1/profiles?**", route => route.fulfill({ json: [{ access_status: "pending" }] }));
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/signup\?invite=required/);
+  await expect(screens.homeReady(page)).toHaveCount(0);
+  // The hint is dropped, so the next visit checks admission before any read.
+  expect(await page.evaluate(id => localStorage.getItem(`unlxck-admitted:${id}`), PRIMARY.athleteId)).toBeNull();
+});
+
+test("a first visit checks admission before reading the workspace", async ({ page, baseURL }) => {
+  const api = await mockAthlete(page, baseURL!);
+  let admit!: () => void;
+  const admission = new Promise<void>(resolve => { admit = resolve; });
+  await page.route("**/rest/v1/profiles?**", async route => {
+    await admission;
+    await route.fulfill({ json: [{ access_status: "approved" }] });
+  });
+  await page.goto("/");
+  await page.waitForTimeout(500);
+  expect(api.calls.map(call => call.path)).not.toContain("/api/me");
+  admit();
+  await expect(screens.homeReady(page)).toBeVisible();
+  expect(await page.evaluate(id => localStorage.getItem(`unlxck-admitted:${id}`), PRIMARY.athleteId)).toBe("1");
+});
+
+test("Home reads the plan calendar only for a dated camp's countdown", async ({ page, baseURL }) => {
+  const api = await mockAthlete(page, baseURL!);
+  const fightDate = new Date(Date.parse(`${todayFor(PRIMARY).today.training_day}T00:00:00Z`) + 30 * 86_400_000).toISOString().slice(0, 10);
+  await page.route("**/api/today", route => route.fulfill({ json: { ...todayFor(PRIMARY), active_plan: { ...todayFor(PRIMARY).active_plan, fight_date: fightDate } } }));
+  await page.goto("/");
+  await expect(page.locator(".fight-countdown:not(.fight-countdown-skeleton)")).toBeVisible();
+  await expect.poll(() => api.calls.map(call => call.path)).toContain(`/api/plans/${PRIMARY.planId}`);
+  await expect(page.locator('.fight-countdown[aria-busy="true"]')).toHaveCount(0);
 });
 
 test("a new account gets its own admission and profile after Home has loaded", async ({ page, baseURL }) => {

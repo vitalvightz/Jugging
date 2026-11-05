@@ -3,15 +3,17 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 
 import { usePathname } from "next/navigation";
-import { ApiError, trackProductEvent, getMe } from "@/lib/api";
+import { ApiError, trackProductEvent, getMe, getToday } from "@/lib/api";
 import { observeUsage } from "@/lib/usage-tracking";
 import { clearSharedReads } from "@/lib/shared-reads";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
-import { hasSignupAdmission } from "@/lib/signup-invite-guard";
+import { hasSignupAdmission, rememberAdmission, wasAdmittedHere } from "@/lib/signup-invite-guard";
 import { APPEARANCE_STORAGE_KEY, type AppearanceMode, type MeResponse } from "@/lib/types";
 
 const ME_RETRY_ATTEMPTS = 3;
 const ME_RETRY_DELAY_MS = 1_200;
+// Screens that read the Today command view as soon as a session exists.
+const TODAY_FIRST_PATHS = new Set(["/", "/dashboard", "/today"]);
 
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => globalThis.setTimeout(resolve, ms));
@@ -137,10 +139,29 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     // Only pause the workspace when there is no profile for this user yet.
     const hasCurrentProfile = Boolean(nextSession.user_id && latestMeRef.current?.profile.athlete_id === nextSession.user_id);
     if (!hasCurrentProfile) setIsReady(false);
+    // Admission is a phone → Supabase round trip that used to run before any
+    // API read. For an athlete this browser has already seen admitted, start
+    // their own profile (and, on a Today-first screen, Today) reads alongside
+    // the re-check. Nothing is shown until admission passes; if it fails, the
+    // reads are abandoned and the athlete is signed out exactly as before.
+    const needsProfile = force || hydratedAccessTokenRef.current !== nextSession.access_token || !latestMeRef.current;
+    let earlyMe: Promise<MeResponse> | null = null;
+    let earlyReads: AbortController | null = null;
+    if (needsProfile && wasAdmittedHere(nextSession.user_id)) {
+      earlyMe = getMe(nextSession.access_token);
+      earlyMe.catch(() => undefined);
+      if (TODAY_FIRST_PATHS.has(window.location.pathname)) {
+        earlyReads = new AbortController();
+        getToday(nextSession.access_token, { signal: earlyReads.signal }).catch(() => undefined);
+      }
+    }
     try {
       const admitted = await hasSignupAdmission(nextSession.user_id);
       admissionChecked = true;
+      rememberAdmission(nextSession.user_id, admitted);
+      // Admitted: the screen's own Today read joins the early one in flight.
       if (!admitted) {
+        earlyReads?.abort();
         if (loadGenerationRef.current !== currentLoadId) return;
         clearRetryTimer();
         setSession(null);
@@ -167,7 +188,9 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
 
       for (let attempt = 1; attempt <= ME_RETRY_ATTEMPTS; attempt += 1) {
         try {
-          nextMe = await getMe(nextSession.access_token);
+          const request = earlyMe ?? getMe(nextSession.access_token);
+          earlyMe = null;
+          nextMe = await request;
           break;
         } catch (err) {
           lastError = err;
@@ -198,6 +221,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       hydratedAccessTokenRef.current = nextSession.access_token;
       setSession(nextSession);
     } catch (err) {
+      if (!admissionChecked) earlyReads?.abort();
       if (loadGenerationRef.current !== currentLoadId) {
         return;
       }

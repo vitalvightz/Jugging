@@ -15,10 +15,13 @@ from fastapi import HTTPException, status
 from supabase import Client, ClientOptions, create_client
 
 from . import server_timing
+from .postgrest_parsing import install_fast_row_parsing
 from .environment import is_production_environment
 from .settings import env_flag, env_int
 
 logger = logging.getLogger(__name__)
+# Every Data API read in this process; see api/postgrest_parsing.py.
+install_fast_row_parsing()
 
 
 def _collect_auth_api_error_types() -> tuple[type[BaseException], ...]:
