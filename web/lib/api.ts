@@ -917,7 +917,7 @@ export function getPlan(
   const path = `/api/plans/${encodeURIComponent(planId)}`;
   return sharedRead(token, path, shared =>
     withTransientRetries(() => readJson<PlanDetail>(path, { token, signal: shared }), { signal: shared }),
-    { signal, hold: true, reuseForMs });
+    { signal, hold: true, reuseForMs, remember: true });
 }
 
 /** Completion rows are shared only while in flight: every visit reads them fresh. */

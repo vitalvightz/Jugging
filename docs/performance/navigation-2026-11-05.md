@@ -52,7 +52,13 @@ Time wasted per visit, phone benchmark (4× CPU, 450 ms route-payload delay; §5
    - If the fresh read fails, the decision area says it couldn't confirm today's status and offers Retry, with no stale decision and no action.
    - Tracking-first athletes are excluded: their Home is derived from readiness throughout, so they keep the old behaviour.
 4. **History shows its remembered first page at once and re-reads it.** The fresh page replaces it when it lands. On failure, the shown rows stay. Older pages and the other tabs are unchanged.
-5. **Today is unchanged.** Its decisions, actions and session permission all come from the fresh build, so it keeps waiting for it.
+5. **Plans list and plan viewer use the same pattern.**
+   - **Plans** remembers its whole screen (plan list, active plan id, custom drafts) through `rememberView`. It records the write epoch before its three reads start, so a write landing mid-load is never remembered. A revisit shows the list with no placeholder card and refreshes it in place.
+   - **The plan viewer** shows the plan document from the last read while reading it again. Previously it only reused a read for 30 s, then showed "Unlxcking your plan…". Completions, activation and Today's decisions are still read fresh inside the viewer.
+   - Activating, renaming, deleting or publishing is a write, so it drops both remembered views. The existing "a rename invalidates every reused plan read" test still passes.
+6. **Desktop sidebar links are fully prefetched,** like the phone tabs.
+7. **Progress needed nothing:** it renders from the app-wide XP state, which already survives navigation.
+8. **Today is unchanged.** Its decisions, actions and session permission all come from the fresh build, so it keeps waiting for it.
 
 ## 4. Safety and behaviour preserved
 

@@ -13,7 +13,7 @@ import { PlanViewer } from "@/components/plan-viewer";
 import { LogTraining } from "@/components/log-training";
 import { ApiError, getPlan, trackProductEvent } from "@/lib/api";
 import { isNetworkFailure } from "@/lib/connectivity";
-import { SHARED_READ_MAX_AGE_MS } from "@/lib/shared-reads";
+import { recallView, SHARED_READ_MAX_AGE_MS } from "@/lib/shared-reads";
 import type { PlanDetail } from "@/lib/types";
 
 // Right after generation completes the app redirects straight to
@@ -97,7 +97,12 @@ export function PlanDetailScreen({ planId }: { planId: string }) {
   const { me, session, refreshMe } = useAppSession();
   const searchParams = useSearchParams();
 
-  const [plan, setPlan] = useState<PlanDetail | null>(null);
+  // A plan opened earlier this session shows at once while it is read again.
+  // The plan document is presentation; completions, activation and Today's
+  // decisions are read fresh by the viewer itself. Writes drop it.
+  const [plan, setPlan] = useState<PlanDetail | null>(() => session?.access_token
+    ? recallView<PlanDetail>(session.access_token, `/api/plans/${encodeURIComponent(planId)}`)
+    : null);
   const [error, setError] = useState<string | null>(null);
   const [isConnectionError, setIsConnectionError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);

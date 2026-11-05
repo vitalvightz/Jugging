@@ -150,6 +150,26 @@ export function recallView<T>(token: string, path: string, maxAgeMs = REMEMBERED
   return entry.value as T;
 }
 
+/**
+ * The write epoch to pass to `rememberView` from a screen that combines several
+ * reads. Taken before the reads start; -1 while a write is in flight.
+ */
+export function readEpoch(): number {
+  return writesInFlight > 0 ? -1 : writeEpoch;
+}
+
+/**
+ * Remembers a screen's combined view under `key` for `recallView`, unless a
+ * write started since `startedAt` (from `readEpoch`). Display only.
+ */
+export function rememberView(token: string, key: string, value: unknown, startedAt: number): void {
+  if (startedAt < 0 || startedAt !== writeEpoch || writesInFlight > 0) return;
+  const id = `${token}\u0000${key}`;
+  remembered.delete(id);
+  remembered.set(id, { value, at: now(), epoch: writeEpoch });
+  while (remembered.size > MAX_REMEMBERED) remembered.delete(remembered.keys().next().value!);
+}
+
 function invalidate() {
   writeEpoch += 1;
   held.clear();

@@ -549,6 +549,8 @@ export function AppNav() {
                     <Link
                       className={isLinkActive(link.href) ? "sidebar-link sidebar-link-active" : "sidebar-link"}
                       href={link.href}
+                      // Client shells with no user data: prefetched in full, as the phone tabs are.
+                      prefetch
                       onClick={() => handleSidebarLinkSelect(link.href)}
                     >
                       <div className="sidebar-link-copy">

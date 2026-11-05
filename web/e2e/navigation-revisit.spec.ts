@@ -139,3 +139,22 @@ test("speed diagnostics stay off by default, record navigations when on, and lea
   await expect(page.locator("[data-perf-panel]")).toHaveCount(0);
   expect(await page.evaluate(() => [localStorage.getItem("unlxck-perf-diagnostics"), localStorage.getItem("unlxck-perf-diagnostics-log")])).toEqual([null, null]);
 });
+
+test("a revisited Plans list shows at once and is still read again", async ({ page, baseURL }) => {
+  let listReads = 0;
+  const api = await mockAthlete(page, baseURL!, {
+    latencyFor: (method, path) => (method === "GET" && path === "/api/plans" && ++listReads >= 2 ? 2_500 : 0),
+  });
+  await page.goto("/plans");
+  const planLink = page.locator(`main a[href="/plans/${PRIMARY.planId}"]`).first();
+  await expect(planLink).toBeVisible();
+  await api.settle();
+  await tab(page, "/");
+  await expect(planStrip(page)).toBeVisible();
+  await tab(page, "/plans");
+  // The list this session last read, with no placeholder card, while it is read again.
+  await expect(planLink).toBeVisible({ timeout: 1_000 });
+  await expect(page.locator("main .skeleton")).toHaveCount(0);
+  await api.settle();
+  expect(api.calls.filter(call => call.method === "GET" && call.path === "/api/plans").length).toBe(2);
+});

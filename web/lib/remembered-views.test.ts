@@ -5,7 +5,9 @@ import {
   REMEMBERED_VIEW_MAX_AGE_MS,
   beginSharedReadWrite,
   clearSharedReads,
+  readEpoch,
   recallView,
+  rememberView,
   sharedRead,
 } from "./shared-reads.ts";
 
@@ -69,4 +71,23 @@ test("a failed read is never remembered", async () => {
   await read("token-a", "/api/today", { day: 1 });
   await assert.rejects(sharedRead("token-a", "/api/today", async () => { throw new Error("down"); }, { remember: true }));
   assert.deepEqual(recallView("token-a", "/api/today"), { day: 1 });
+});
+
+test("a screen view is remembered only if no write started since its reads began", () => {
+  const before = readEpoch();
+  rememberView("token-a", "screen:plans", { plans: [1] }, before);
+  assert.deepEqual(recallView("token-a", "screen:plans"), { plans: [1] });
+
+  const started = readEpoch();
+  beginSharedReadWrite()();
+  rememberView("token-a", "screen:plans", { plans: ["pre-write"] }, started);
+  assert.equal(recallView("token-a", "screen:plans"), null);
+});
+
+test("no screen view is remembered while a write is in flight", () => {
+  const endWrite = beginSharedReadWrite();
+  assert.equal(readEpoch(), -1);
+  rememberView("token-a", "screen:plans", { plans: [1] }, readEpoch());
+  endWrite();
+  assert.equal(recallView("token-a", "screen:plans"), null);
 });
