@@ -68,8 +68,8 @@ def _send(row: dict) -> bool:
     unsubscribe = os.getenv("UNLXCK_REACTIVATION_UNSUBSCRIBE_URL", "").strip()
     unsubscribe += ("&" if "?" in unsubscribe else "?") + "token=" + quote(unsubscribe_token(profile_id))
     text = (
-        f"{greeting}\n\nIt's been a while since you checked in.\n\n"
-        "Whether you've been training or taking a break, UNLXCK is here to help you log your sessions, stay consistent, and keep progressing.\n\n"
+        f"{greeting}\n\nIt's been a while since you've checked in.\n\n"
+        "Whether you're training hard or finding your rhythm again, UNLXCK is here to help you stay consistent and keep progressing.\n\n"
         f"Get back to training: {link}\n\nSee you inside,\nUNLXCK\n\nUnsubscribe from these reminders: {unsubscribe}"
     )
     html = (_TEMPLATE.read_text(encoding="utf-8")
