@@ -54,7 +54,10 @@ def test_opted_in_candidate_uses_resend_with_unsubscribe(monkeypatch):
     assert "Unsubscribe" in observed["json"]["html"]
     assert "https://app.unlxck.com/dashboard" in observed["json"]["text"]
     assert observed["json"]["subject"] == "Your progress doesn't stop here"
-    assert "Get back to training" in observed["json"]["html"]
+    assert "GET BACK TO TRAINING" in observed["json"]["html"]
+    assert "TRAINING / CONTINUE" in observed["json"]["html"]
+    assert "background-color:#0a0a0b" in observed["json"]["html"]
+    assert "{{" not in observed["json"]["html"]
     assert observed["headers"]["Idempotency-Key"] == f"reactivation-{profile_id}"
 
 
