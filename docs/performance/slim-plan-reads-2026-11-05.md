@@ -25,7 +25,7 @@ Auth after a restart: the first user session after a deploy made two concurrent 
 
 ## Changes
 
-- **`public.planning_brief_runtime(plans)`** (migrations `20261104235733`, `20261105001500`) is a PostgREST computed field. It returns the brief without `candidate_pools`, keeping the same key and the same text type.
+- **`public.planning_brief_runtime(plans)`** (migrations `20261104235733`, `20261105000702`) is a PostgREST computed field. It returns the brief without `candidate_pools`, keeping the same key and the same text type.
   - It parses once, and not at all when the text has no `candidate_pools` key.
   - Invalid JSON and non-object briefs are returned unchanged.
   - Only `service_role` may execute it. It is registered in `REQUIRED_FUNCTIONS`, so the deploy gate blocks code that ships without it.
