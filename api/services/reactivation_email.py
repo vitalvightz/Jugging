@@ -60,21 +60,20 @@ def _configured() -> bool:
 
 def _send(row: dict) -> bool:
     profile_id = str(row["profile_id"])
-    plan_id = str(UUID(str(row["plan_id"])))
     name = str(row.get("first_name") or "").strip()[:60]
     greeting = f"Hi {name}," if name else "Hi,"
-    link = f"https://unlxck.com/plans/{quote(plan_id)}"
+    link = "https://app.unlxck.com/dashboard"
     unsubscribe = os.getenv("UNLXCK_REACTIVATION_UNSUBSCRIBE_URL", "").strip()
     unsubscribe += ("&" if "?" in unsubscribe else "?") + "token=" + quote(unsubscribe_token(profile_id))
     text = (
-        f"{greeting}\n\nYour UNLXCK training plan is still here whenever you're ready to pick it up.\n\n"
-        f"Open your plan: {link}\n\nUnsubscribe from these reminders: {unsubscribe}"
+        f"{greeting}\n\nIt's been a while since you checked in.\n\n"\n        "Whether you've been training or taking a break, UNLXCK is here to help you log your sessions, stay consistent, and keep progressing.\n\n"
+        f"Get back to training: {link}\n\nSee you inside,\nUNLXCK\n\nUnsubscribe from these reminders: {unsubscribe}"
     )
     html = (
         f"<p>{escape(greeting)}</p>"
-        "<p>Your UNLXCK training plan is still here whenever you're ready to pick it up.</p>"
-        f'<p><a href="{escape(link, quote=True)}">Open your plan</a></p>'
-        f'<p><a href="{escape(unsubscribe, quote=True)}">Unsubscribe from reminders</a></p>'
+        "<p>It's been a while since you checked in.</p>"\n        "<p>Whether you've been training or taking a break, UNLXCK is here to help you log your sessions, stay consistent, and keep progressing.</p>"
+        f'<p><a href="{escape(link, quote=True)}">Get back to training</a></p>'
+        "<p>See you inside, UNLXCK</p>"\n        f'<p><a href="{escape(unsubscribe, quote=True)}">Unsubscribe from reminders</a></p>'
     )
     try:
         response = httpx.post(
@@ -86,7 +85,7 @@ def _send(row: dict) -> bool:
             json={
                 "from": _sender(),
                 "to": [str(row["email"])],
-                "subject": "Your UNLXCK plan is here when you're ready",
+                "subject": "Your progress doesn't stop here",
                 "html": html,
                 "text": text,
                 "headers": {
