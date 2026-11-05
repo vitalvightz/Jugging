@@ -233,7 +233,14 @@ def test_faithful_card_for_the_affected_boxer_validates(boxer_card_and_text):
     # The one rest the source states in words ("full rest") is now carried on
     # the card's instructions, so no explicit source rest is dropped.
     assert [w for w in outcome.warnings if "dropped explicit source rest" in w] == []
-    holds = [b for week in card["weeks"] for day in week["days"] for s in day.get("sessions") or []
+    # #3101/#3104 intentionally vary ranked strength membership. Keep the
+    # original qualitative-rest regression on its recorded authority rather
+    # than requiring today's generated plan to select that same exercise.
+    recorded = json.loads((FIXTURES / "recorded_authority.json").read_text(encoding="utf8"))
+    original_text = (FIXTURES / "production_render.txt").read_text(encoding="utf8")
+    original_card = build_deterministic_structured_plan(recorded, plan_text=original_text)
+    assert original_card is not None
+    holds = [b for week in original_card["weeks"] for day in week["days"] for s in day.get("sessions") or []
              for b in s.get("blocks") or [] if b.get("display_name") == "Single-Leg TRX Suspension Hold"]
     assert holds and all("full rest" in str(b.get("execution_instructions") or "") for b in holds)
 
