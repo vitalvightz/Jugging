@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import HTTPException
 
-from api.store import SupabaseAppStore, TRAINING_PLAN_SELECT
+from api.store import SupabaseAppStore, TRAINING_PLAN_REMOTE_SELECT, TRAINING_PLAN_SELECT
 
 ROWS = [
     {"plan_id": "p", "training_day": "2026-10-07", "block_id": "a", "status": "as_prescribed"},
@@ -61,7 +61,8 @@ def test_an_empty_batch_makes_no_request():
 
 @pytest.mark.parametrize("method,columns", [
     ("get_plan_identity_for_athlete", "id,athlete_id"),
-    ("get_training_plan_for_athlete", TRAINING_PLAN_SELECT),
+    # #3199 preserves the local brief key through a computed-field alias.
+    ("get_training_plan_for_athlete", TRAINING_PLAN_REMOTE_SELECT),
 ])
 def test_compact_plan_reads_keep_the_owner_scope(method, columns):
     client = MagicMock()
