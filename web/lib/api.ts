@@ -1428,13 +1428,10 @@ export function undoExerciseChange(
  * merely label the active plan pass `reuseForMs`: a reused view never decides
  * readiness, training permission, holds or whether a save succeeded.
  */
-export function getToday(
-  token: string,
-  { reuseForMs, signal }: ReadReuse & { signal?: AbortSignal } = {},
-): Promise<TodayCommandView> {
-  return sharedRead(token, "/api/today", shared =>
-    withTransientRetries(() => readJson<TodayCommandView>("/api/today", { token, signal: shared }), { signal: shared }),
-    { hold: true, reuseForMs, signal });
+export function getToday(token: string, { reuseForMs }: ReadReuse = {}): Promise<TodayCommandView> {
+  return sharedRead(token, "/api/today", signal =>
+    withTransientRetries(() => readJson<TodayCommandView>("/api/today", { token, signal }), { signal }),
+    { hold: true, reuseForMs });
 }
 
 export function submitTodayCheckin(

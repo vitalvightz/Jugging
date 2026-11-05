@@ -11,7 +11,7 @@ Base: `6fde133` (#3192–#3198 merged). Raw numbers: [app-open-2026-11-05.json](
 |---|---|---|---|---|
 | 1 | **supabase-py re-validates every PostgREST response through a recursive pydantic `JSON` union.** The production active plan row is 1.29 MB (`planning_brief` 455 KB, `stage2_payload` 566 KB). Parsing it takes **140–160 ms of CPU vs 6 ms for `json.loads`**. The 550 KB training projection is read 3–5 times per app open. This CPU runs inside the single API process (`uvicorn --workers 1`), so it holds the GIL that every concurrent request needs. | backend, every Data API read | **804 ms of the 1,145 ms CPU** in a single app open (replay, CPU only). Home's data **+0.52 s** at 40 ms/call | **fixed** |
 | 2 | **Home warmed the full plan detail for a plan with no fight date.** The calendar only feeds the fight countdown, and the countdown needs a fight date. The 23:46 athlete's active plan has `fight_date = null` (verified), so nothing on screen used this read. It cost two 1.29 MB row reads (route + `resolve_active_plan`) and the plan-detail mapping, all competing with Today and XP. | `web/app/page.tsx` | Home's data **+0.40 s** (replay, read alone) | **fixed** |
-| 3 | **Admission ran strictly before any API read.** `getSession` → `profiles?select=access_status` (phone → Supabase; origin 132 ms at 23:45:58.731) → only then `/api/me` and `/api/today`. | `AuthProvider` | **~0.3 s** in the phone benchmark (one Supabase round trip) | **fixed** for athletes this browser has seen admitted |
+| 3 | **Admission runs strictly before any API read.** `getSession` → `profiles?select=access_status` (phone → Supabase; origin 132 ms at 23:45:58.731) → only then `/api/me` and `/api/today`. | `AuthProvider` | **~0.3 s** in the phone benchmark (one Supabase round trip) | **remaining**: needs server-side admission first (§7) |
 | 4 | Today's build is still a chain of ~11 sequential Data API stages. That gives ~0.9 s at 40 ms/call and ~1.6 s at 80 ms. Every Home/Today visit pays it. | backend `/api/today` | 0.9–1.6 s per visit | **remaining** (§7) |
 | 5 | JavaScript start-up before the first request. | browser | ~1.06 s at 4× CPU (bench) | **remaining** |
 | 6 | The XP card waits for `POST /api/xp/activity`, then `/api/xp/progress`. Progress waits for the running Today build, then does ~7 reads of its own. | `XpProvider` / backend | XP card ~0.9 s after Home's data | **reduced** by #1/#2, otherwise remaining |
@@ -65,7 +65,7 @@ For the 23:46 athlete (open plan) the countdown never rendered. The plan read wa
 
 1. **`api/postgrest_parsing.py`.** Supabase-py's response parse is replaced by `json.loads` for JSON-array bodies. It is installed by `api/store.py` and `api/auth.py`. A JSON array decodes to exactly the values the validator returns. Tests compare values, `repr` and types for nested, unicode, big-int and float payloads. Every other body (object, scalar, invalid JSON, empty) still goes through the library's own method, including its errors. **Effect:** 1.29 MB row 140–160 ms → 6–7 ms; per app open 804 → 19 ms of parse CPU. It applies to every endpoint and every save.
 2. **Home reads the plan calendar only when the countdown can use it.** That means the active plan has a fight date, or before Today arrives, `me.latest_plan` has one. Dated camps keep the warm-up and the same calendar. There is a new browser test for that. The `calendarPending` placeholder follows the same condition.
-3. **Admission overlaps the athlete's own reads,** but only when this browser has seen that athlete admitted before (`localStorage` `unlxck-admitted:<user id>`). `/api/me` and, on `/`, `/dashboard` or `/today`, `/api/today` start alongside the re-check. Nothing renders until admission passes. If it fails, the hint is removed, the early Today read is aborted, and the athlete is signed out and redirected exactly as before. A first visit on a browser keeps the old order. Home's own `getToday` joins the in-flight read (the existing shared-read rules apply, and any write ends sharing).
+Considered and **not shipped**: starting `/api/me` and `/api/today` alongside the admission check for browsers that had seen the athlete admitted. The backend's `require_profile` verifies the user but does not enforce `access_status`, so a revoked account would receive private API responses before the browser found out. Hiding the screen afterwards does not undo that. See §7.
 
 Not changed: Home and Today still read Today fresh; there is no caching of readiness/injury decisions. Write invalidation, confirmed-save behaviour and the XP activity → progress order (which keeps the login streak correct) are unchanged.
 
@@ -91,45 +91,42 @@ Attribution at 40 ms: parse fix alone gives 1,474 → 952; dropping the undated 
 
 ### Phone benchmark: real browser, production build, mocked API
 
-`web/e2e/app-open-bench.spec.ts`: 390×844 touch viewport, 4× CPU throttling, reduced motion, a returning athlete. Server time per endpoint is taken from the backend replay above (40 ms), plus 120 ms phone ↔ API round trip. Admission takes 250 ms. The base and changed builds ran from the same machine with identical settings. Medians of 7.
+`web/e2e/app-open-bench.spec.ts`: 390×844 touch viewport, 4× CPU throttling, reduced motion. Server time per endpoint is taken from the backend replay above (40 ms), plus 120 ms phone ↔ API round trip. Admission takes 250 ms. The base and changed builds ran from the same machine with identical settings. Medians of 7.
 
-| Milestone (ms from navigation) | Before | After, first visit on this browser | After |
-|---|---:|---:|---:|
-| First API request | 1,480 | 1,309 | **1,061** |
-| Home primary content usable | 3,374 | 2,686 | **2,387** |
-| XP card filled / no skeletons | 4,283 | 3,551 | **3,311** |
+| Milestone (ms from navigation) | Before | After |
+|---|---:|---:|
+| First API request | 1,480 | 1,369 |
+| Home primary content usable | 3,374 | **2,786** |
+| XP card filled / no skeletons | 4,283 | **3,644** |
 
 **Not a production measurement.** Server times are fixed per endpoint rather than emerging from live contention, and the local CPU is faster than the production vCPU. Assets are served locally. The production gaps (0.85 s / 0.90 s with no database traffic) suggest the production CPU is slower than this machine, which would make fixes 1–2 worth **more** there. That is unverified until a post-deploy log is read (§7).
 
 ### Targets
 
-- **Cold Home < 2 s: not yet met in the benchmark (2.39 s).** About 1.06 s is JavaScript start-up before any request at 4× CPU, and ~1.1 s is Today's server time plus the round trip.
+- **Cold Home < 2 s: not met in the benchmark (2.79 s).** About 1.1 s is JavaScript start-up before the admission request at 4× CPU, ~0.3 s is admission, and ~1.1 s is Today's server time plus the round trip.
 - **Repeat navigation < 1 s: not met.** Home → Home re-reads Today fresh (≈0.92 s server at 40 ms, plus the round trip). That is unchanged by design; see §7.
 - **Simple saves < 500 ms:** log training 129 ms and check-in 395 ms at 40 ms/call, server side (unchanged). At 80 ms/call the check-in is 683 ms.
-- **Prolonged skeletons:** the undated-plan calendar read is gone, and XP fills ~1 s earlier.
+- **Prolonged skeletons:** the undated-plan calendar read is gone, and XP fills ~0.6 s earlier.
 
 ## 6. Tests
 
 - `tests/test_postgrest_parsing.py` (new): values, types and `repr` are identical to supabase-py's for nested/unicode/big-int/float rows. The count header is preserved. Object, scalar and invalid bodies raise the same `ValidationError`. An empty body still returns `[]`. Installation is idempotent.
-- `web/e2e/home-startup.spec.ts` (new cases):
-  - a returning admitted athlete's `/api/me` and `/api/today` start during admission, Home stays hidden until it passes, and each read happens once;
-  - a no-longer-admitted athlete is redirected, never sees Home, and loses the hint;
-  - a first visit makes no API read before admission;
-  - a dated camp still reads its calendar and renders the countdown.
+- `web/e2e/home-startup.spec.ts` (new case): a dated camp still reads its calendar and renders the countdown. The existing "stays gated until admission succeeds" test still passes.
 - `web/e2e/frontend-requests.spec.ts`: Login → Home no longer reads the undated plan's detail. Home → Today may now read it, since Home did not.
 - Results:
   - Backend: 408 targeted tests passed. These cover the store, request amplification, Today read amplification/prefetch, projections, XP RPC/progress, streaks, the Today API and app core.
   - Web unit: 111 passed (countdown, Home account scope, XP provider, shared reads, auth routing).
-  - E2E: home-startup ×3 repeats, request budgets and home-readiness passed. Also passed: weight-cut final weeks, training-plan presentation, google-auth, beta analytics, and starting-path/signup-code apart from the 10 cases below.
+  - E2E: home-startup, request budgets and home-readiness passed (14/14 after removing the early reads). Also passed: weight-cut final weeks, training-plan presentation, google-auth, beta analytics, and starting-path/signup-code apart from the 10 cases below.
   - **10 starting-path / signup-code cases fail identically on the unmodified base build** in this environment, so they are pre-existing and unrelated.
   - Typecheck clean; no new lint warnings.
 
 ## 7. Remaining bottlenecks and the evidence still needed
 
+0. **Admission before reads (~0.3 s).** To overlap it safely, the backend must enforce admission itself. It can't simply require `access_status = approved` in `require_profile`, because admission also passes for non-approved accounts that hold the signup-access cookie. That path needs a server-side record first. Only then can the browser start reads before its own check.
 1. **Today's sequential chain (≈0.9–1.6 s per visit).** `ensure_profile` → `active_plan_id` → plan projection → flags → intake → flags → adopt/sync RPC → flags, then two waves. In production a five-read tail (plan status, sparring, check-ins, completions, external sessions) also ran sequentially *after* the waves. The fixture does not reproduce that tail, so it needs the athlete-shaped state traced before it is moved into a wave. This is the largest remaining server cost on every Home/Today visit.
 2. **Repeat navigation.** Home re-reads Today fresh on every visit by design. Rendering the held view from this navigation, with a fresh read replacing it, would make returns instant. That is a product/safety decision about readiness decisions shown for <1 s; it is not taken here.
 3. **JavaScript start-up (~1 s at 4× CPU)** before auth: the shared bootstrap, Sentry and Supabase SDK evaluation. The `force-dynamic` root layout means every launch also waits for a server-rendered HTML response. Neither was measured on a real phone.
-4. **The PWA starts at `/dashboard`** (`manifest.start_url`), which renders Today, not Home. Fix 3 covers it, but which screen the recording opened on should be confirmed.
+4. **The PWA starts at `/dashboard`** (`manifest.start_url`), which renders Today, not Home. Which screen the recording opened on should be confirmed.
 5. **`/api/plans/{id}` reads the full plan row twice** (route + `resolve_active_plan`). It is now much cheaper per read, but still 2 × 1.29 MB over the network. Dated camps and the plan viewer still pay it.
 6. **XP card:** activity → progress is serial on purpose (the streak). Progress still makes ~7 reads after reusing Today's build.
 7. **Single-process API.** One app open now costs ~0.38 s of CPU instead of ~1.15 s, but every user shares one core. A second worker would not share the in-process Today/profile caches.
@@ -138,7 +135,6 @@ Attribution at 40 ms: parse fix alone gives 1,474 → 952; dropping the undated 
 
 - the two 0.85–0.9 s windows with no database traffic should disappear;
 - an undated plan should show no `plans?select=*` on Home;
-- `/api/me` and `/api/today` should start within a few ms of the admission request instead of ~240 ms after it.
 
 For the browser side, a Safari Web Inspector timeline from the phone (or Sentry browser tracing with the production DSN) is needed. That is the only way to split the ≈2 s before the admission request into HTML, JavaScript and auth. No production browser trace exists for 23:45:56–58.
 

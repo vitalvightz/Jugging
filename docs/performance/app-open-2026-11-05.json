@@ -252,234 +252,111 @@
           "xp_progress": 1208,
           "other": 60
         },
-        "returning": true,
         "runs": 7
       },
       "median": {
-        "domReady": 378,
-        "homePrimary": 2387,
-        "xpCard": 3302,
-        "noSkeletons": 3311,
-        "firstApiRequest": 1183
+        "domReady": 315,
+        "homePrimary": 2786,
+        "xpCard": 3637,
+        "noSkeletons": 3644,
+        "firstApiRequest": 1369
       },
       "runs": [
         {
-          "domReady": 380,
-          "homePrimary": 2387,
-          "xpCard": 3302,
-          "noSkeletons": 3311,
-          "firstApiRequest": 1195
+          "domReady": 277,
+          "homePrimary": 2805,
+          "xpCard": 3685,
+          "noSkeletons": 3694,
+          "firstApiRequest": 1369
+        },
+        {
+          "domReady": 333,
+          "homePrimary": 2821,
+          "xpCard": 3670,
+          "noSkeletons": 3679,
+          "firstApiRequest": 1451
+        },
+        {
+          "domReady": 337,
+          "homePrimary": 2667,
+          "xpCard": 3521,
+          "noSkeletons": 3528,
+          "firstApiRequest": 1267
+        },
+        {
+          "domReady": 270,
+          "homePrimary": 2703,
+          "xpCard": 3557,
+          "noSkeletons": 3567,
+          "firstApiRequest": 1294
         },
         {
           "domReady": 389,
-          "homePrimary": 2408,
-          "xpCard": 3820,
-          "noSkeletons": 3829,
-          "firstApiRequest": 1231
+          "homePrimary": 2875,
+          "xpCard": 3737,
+          "noSkeletons": 3746,
+          "firstApiRequest": 1428
         },
         {
-          "domReady": 344,
-          "homePrimary": 2401,
-          "xpCard": 3349,
-          "noSkeletons": 3356,
-          "firstApiRequest": 1183
+          "domReady": 315,
+          "homePrimary": 2786,
+          "xpCard": 3637,
+          "noSkeletons": 3644,
+          "firstApiRequest": 1441
         },
         {
-          "domReady": 378,
-          "homePrimary": 2248,
-          "xpCard": 3120,
-          "noSkeletons": 3129,
-          "firstApiRequest": 1061
-        },
-        {
-          "domReady": 295,
-          "homePrimary": 2262,
-          "xpCard": 3202,
-          "noSkeletons": 3228,
-          "firstApiRequest": 1100
-        },
-        {
-          "domReady": 385,
-          "homePrimary": 2318,
-          "xpCard": 3196,
-          "noSkeletons": 3209,
-          "firstApiRequest": 1157
-        },
-        {
-          "domReady": 325,
-          "homePrimary": 2462,
-          "xpCard": 3343,
-          "noSkeletons": 3365,
-          "firstApiRequest": 1262
-        }
-      ],
-      "example_timeline": [
-        {
-          "what": "GET /api/me",
-          "start": 1061,
-          "end": 1331
-        },
-        {
-          "what": "GET /api/today",
-          "start": 1061,
-          "end": 2159
-        },
-        {
-          "what": "admission",
-          "start": 1080,
-          "end": 1333
-        },
-        {
-          "what": "POST /api/xp/activity",
-          "start": 1460,
-          "end": 1755
-        },
-        {
-          "what": "POST /api/analytics/events",
-          "start": 1462,
-          "end": 1653
-        },
-        {
-          "what": "POST /api/analytics/events",
-          "start": 1463,
-          "end": 1655
-        },
-        {
-          "what": "GET /api/xp/progress",
-          "start": 1681,
-          "end": 3025
-        },
-        {
-          "what": "GET /api/generation-jobs/active",
-          "start": 2334,
-          "end": 2527
-        },
-        {
-          "what": "GET /api/generation-jobs/latest",
-          "start": 2531,
-          "end": 2721
-        }
-      ]
-    },
-    "after_first_visit": {
-      "conditions": {
-        "cpuThrottle": 4,
-        "viewport": "390x844",
-        "rttMs": 120,
-        "admissionMs": 250,
-        "server": {
-          "me": 138.8,
-          "today": 961.4,
-          "xp_activity": 91,
-          "xp_progress": 1208,
-          "other": 60
-        },
-        "returning": false,
-        "runs": 7
-      },
-      "median": {
-        "domReady": 346,
-        "homePrimary": 2686,
-        "xpCard": 3542,
-        "noSkeletons": 3551,
-        "firstApiRequest": 1309
-      },
-      "runs": [
-        {
-          "domReady": 265,
-          "homePrimary": 2686,
-          "xpCard": 3542,
-          "noSkeletons": 3551,
-          "firstApiRequest": 1309
-        },
-        {
-          "domReady": 348,
-          "homePrimary": 2834,
-          "xpCard": 3687,
-          "noSkeletons": 3699,
-          "firstApiRequest": 1469
-        },
-        {
-          "domReady": 346,
-          "homePrimary": 2795,
-          "xpCard": 3670,
-          "noSkeletons": 3678,
-          "firstApiRequest": 1406
-        },
-        {
-          "domReady": 363,
-          "homePrimary": 2908,
-          "xpCard": 3792,
-          "noSkeletons": 3801,
-          "firstApiRequest": 1506
-        },
-        {
-          "domReady": 511,
-          "homePrimary": 2650,
-          "xpCard": 3537,
-          "noSkeletons": 3547,
-          "firstApiRequest": 1303
-        },
-        {
-          "domReady": 285,
-          "homePrimary": 2677,
-          "xpCard": 3536,
-          "noSkeletons": 3542,
-          "firstApiRequest": 1293
-        },
-        {
-          "domReady": 309,
-          "homePrimary": 2661,
-          "xpCard": 3518,
-          "noSkeletons": 3526,
-          "firstApiRequest": 1296
+          "domReady": 283,
+          "homePrimary": 2614,
+          "xpCard": 3459,
+          "noSkeletons": 3466,
+          "firstApiRequest": 1229
         }
       ],
       "example_timeline": [
         {
           "what": "admission",
-          "start": 1236,
-          "end": 1489
+          "start": 1025,
+          "end": 1278
         },
         {
           "what": "GET /api/me",
-          "start": 1506,
-          "end": 1782
+          "start": 1294,
+          "end": 1599
         },
         {
           "what": "GET /api/today",
-          "start": 1618,
-          "end": 2711
+          "start": 1411,
+          "end": 2507
         },
         {
           "what": "POST /api/xp/activity",
-          "start": 1822,
-          "end": 2091
+          "start": 1642,
+          "end": 1912
         },
         {
           "what": "POST /api/analytics/events",
-          "start": 1823,
-          "end": 2022
+          "start": 1643,
+          "end": 1837
         },
         {
           "what": "POST /api/analytics/events",
-          "start": 1823,
-          "end": 2024
+          "start": 1643,
+          "end": 1839
         },
         {
           "what": "GET /api/xp/progress",
-          "start": 2042,
-          "end": 3382
+          "start": 1864,
+          "end": 3203
         },
         {
           "what": "GET /api/generation-jobs/active",
-          "start": 2512,
-          "end": 2702
+          "start": 2304,
+          "end": 2498
         },
         {
           "what": "GET /api/generation-jobs/latest",
-          "start": 2707,
-          "end": 2896
+          "start": 2505,
+          "end": 2694
         }
       ]
     }

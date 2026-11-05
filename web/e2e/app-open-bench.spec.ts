@@ -10,7 +10,7 @@ import { mockAthlete, PRIMARY, screens } from "./request-journeys";
  *
  * Browser side is real: the production build, 390×844 touch viewport, 4× CPU
  * throttling, first JavaScript, Supabase auth from storage, the admission
- * request, React rendering. Server time per endpoint comes from
+ * request (always before API reads), React rendering. Server time per endpoint comes from
  * APP_OPEN_BENCH_SERVER (milliseconds, measured with scripts/replay_app_open.py
  * on the real API with a production-sized plan) plus APP_OPEN_BENCH_RTT_MS of
  * phone ↔ API round trip. Admission takes APP_OPEN_BENCH_ADMISSION_MS
@@ -21,7 +21,6 @@ const server: Record<string, number> = JSON.parse(process.env.APP_OPEN_BENCH_SER
 const rttMs = Number(process.env.APP_OPEN_BENCH_RTT_MS ?? 120);
 const admissionMs = Number(process.env.APP_OPEN_BENCH_ADMISSION_MS ?? 250);
 const runs = Number(process.env.APP_OPEN_BENCH_RUNS ?? 5);
-const returning = process.env.APP_OPEN_BENCH_FIRST_VISIT !== "1";
 
 function serverMs(method: string, path: string): number {
   if (path === "/api/me") return server.me ?? 0;
@@ -35,7 +34,7 @@ function serverMs(method: string, path: string): number {
 test("measure app open on a throttled phone", async ({ browser, baseURL }) => {
   test.skip(!out, "Set APP_OPEN_BENCH_OUT to record an app-open benchmark");
   test.setTimeout(runs * 60_000);
-  const results = [];
+  const results: Array<{ marks: Record<string, number>; timeline: Array<{ what: string; start: number; end?: number }> }> = [];
   for (let run = 0; run < runs; run++) {
     const context = await browser.newContext({
       viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: "reduce",
@@ -44,14 +43,6 @@ test("measure app open on a throttled phone", async ({ browser, baseURL }) => {
     const cdp = await context.newCDPSession(page);
     await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
     const api = await mockAthlete(page, baseURL!, { latencyFor: (method, path) => serverMs(method, path) + rttMs });
-    if (returning) {
-      await page.addInitScript(id => {
-        if (!sessionStorage.getItem("seeded")) {
-          sessionStorage.setItem("seeded", "1");
-          localStorage.setItem(`unlxck-admitted:${id}`, "1");
-        }
-      }, PRIMARY.athleteId);
-    }
     const t0 = Date.now();
     const timeline: Array<{ what: string; start: number; end?: number }> = [];
     await page.route("**/rest/v1/profiles?**", async route => {
@@ -91,7 +82,7 @@ test("measure app open on a throttled phone", async ({ browser, baseURL }) => {
   const keys = Object.keys(results[0].marks);
   const summary = Object.fromEntries(keys.map(key => [key, median(results.map(result => result.marks[key]))]));
   writeFileSync(out!, JSON.stringify({
-    conditions: { cpuThrottle: 4, viewport: "390x844", rttMs, admissionMs, server, returning, runs },
+    conditions: { cpuThrottle: 4, viewport: "390x844", rttMs, admissionMs, server, runs },
     median: summary, results,
   }, null, 2));
 });
