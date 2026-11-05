@@ -9,6 +9,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from email.utils import parseaddr
 from html import escape
+from pathlib import Path
 from urllib.parse import quote
 from uuid import UUID
 
@@ -18,6 +19,7 @@ from api.settings import env_flag
 from api.store import AppStore
 
 logger = logging.getLogger(__name__)
+_TEMPLATE = Path(__file__).with_suffix(".html")
 
 
 def _secret() -> str:
@@ -70,14 +72,10 @@ def _send(row: dict) -> bool:
         "Whether you've been training or taking a break, UNLXCK is here to help you log your sessions, stay consistent, and keep progressing.\n\n"
         f"Get back to training: {link}\n\nSee you inside,\nUNLXCK\n\nUnsubscribe from these reminders: {unsubscribe}"
     )
-    html = (
-        f"<p>{escape(greeting)}</p>"
-        "<p>It's been a while since you checked in.</p>"
-        "<p>Whether you've been training or taking a break, UNLXCK is here to help you log your sessions, stay consistent, and keep progressing.</p>"
-        f'<p><a href="{escape(link, quote=True)}">Get back to training</a></p>'
-        "<p>See you inside, UNLXCK</p>"
-        f'<p><a href="{escape(unsubscribe, quote=True)}">Unsubscribe from reminders</a></p>'
-    )
+    html = (_TEMPLATE.read_text(encoding="utf-8")
+        .replace("{{GREETING}}", escape(greeting))
+        .replace("{{DASHBOARD_URL}}", escape(link, quote=True))
+        .replace("{{UNSUBSCRIBE_URL}}", escape(unsubscribe, quote=True)))
     try:
         response = httpx.post(
             "https://api.resend.com/emails",
