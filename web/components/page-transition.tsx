@@ -25,7 +25,7 @@ export function PageTransition({ children }: { children: ReactNode }) {
     if (document.querySelector(".fade-through")) return;
     const page = pageRef.current;
     if (!page || typeof page.animate !== "function" || prefersReducedMotion()) return;
-    page.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: "ease-out" });
+    page.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, easing: "ease-out" });
   }, [pathname]);
 
   return <div ref={pageRef} className="page">{children}</div>;
