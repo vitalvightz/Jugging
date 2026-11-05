@@ -54,7 +54,7 @@ import {
 import { isLoggableBlock, withLastLoad } from "@/lib/exercise-log";
 import { timerExerciseLogs } from "@/lib/session-timer/logs";
 import { cleanText, getBlocks, isZeroLoadSupportSession } from "@/lib/structured-plan";
-import { dayTimerItems, timerSessionFor, withoutSparringItems, type TimerItem } from "@/lib/session-timer/plan";
+import { dayTimerItems, timerSessionFor, type TimerItem } from "@/lib/session-timer/plan";
 import { fightVisualisationFromSession, firstNameOf } from "@/lib/fight-visualisation/script";
 import { fightLevel } from "@/lib/fight-visualisation/crowd";
 import {
@@ -206,13 +206,6 @@ function injuryStripText(injuries: TodayCommandView["open_injuries"]): string {
  * run on the app-wide round timer. */
 type TimerSource = "session" | "contact";
 
-const CONTACT_LOCK_COPY = {
-  not_checked_in: "Sparring rounds unlock after check-in",
-  clinician_clearance: "Sparring rounds locked by clinician clearance",
-  head_impact: "No more contact today after your head-impact report",
-  blocked: "Sparring rounds locked today",
-};
-
 const PLANNED_SPARRING_INTENSITY: Record<ContactTimerTarget["kind"], SparringPlannedIntensity> = {
   sparring: "hard",
   // A declared Light Combat day is only known to be technical work.
@@ -328,7 +321,7 @@ function SafeSessionCard({ view }: { view: SafeSessionView }) {
           <ul>{view.allowed.map((item) => <li key={item}>{item}</li>)}</ul>
         </div>
         <div className="today-safe-list" data-kind="blocked">
-          <p className="today-safe-list-label">Blocked</p>
+          <p className="today-safe-list-label">Avoid</p>
           <ul>{view.blocked.map((item) => <li key={item}>{item}</li>)}</ul>
         </div>
       </div>
@@ -695,20 +688,16 @@ export function TodaySessionPanel({
   // into rounds.
   const timerSourceText = structuredPlan?.raw_markdown_fallback ?? null;
   const timerCountdown = current.day?.countdown_label ?? null;
-  // A rocked/dropped report today ends contact for the day: the server's
-  // notice is authoritative for every contact action, whatever the tier or
-  // clearance says. Non-contact work is untouched.
   const headImpactToday = state.today.primary_safety_notice?.code === "head_impact_no_contact";
+  const concussionWarning = headImpactToday || state.open_injuries.some((injury) =>
+    !injury.resolved_at && injury.status !== "resolved" && injury.consequence === "neuro" && injury.load_region === "head_neck");
   const plannedTimerItems: TimerItem[] = useMemo(() => hasResolvedDaySessions
     ? dayTimerItems(current.sessions, session.session_id, {
         sourceText: timerSourceText,
         countdown: timerCountdown,
       })
     : [], [hasResolvedDaySessions, current.sessions, session.session_id, timerSourceText, timerCountdown]);
-  const nonContactItems = useMemo(() => headImpactToday ? withoutSparringItems(plannedTimerItems) : plannedTimerItems,
-    [headImpactToday, plannedTimerItems]);
-  const contactRemovedFromTimer = nonContactItems.length !== plannedTimerItems.length;
-  const timerItems = nonContactItems;
+  const timerItems = plannedTimerItems;
   // The day's Fight Visualisation, offered as a voice-guided run. Only when the
   // session being logged is one of this day's, the same rule as the timer.
   const guidedVisualisation = useMemo(() =>
@@ -716,8 +705,7 @@ export function TodaySessionPanel({
       ? current.sessions.map(fightVisualisationFromSession).find((item) => item !== null) ?? null
       : null, [hasResolvedDaySessions, current.sessions, session.session_id]);
   const timerKeys: Record<TimerSource, string> = {
-    // A run saved with its sparring rounds is not resumed once they are removed.
-    session: `${SESSION_RUN_KEY_PREFIX}${activePlanId}:${session.session_id ?? ""}:${state.today.training_day}${contactRemovedFromTimer ? ":no-contact" : ""}`,
+    session: `${SESSION_RUN_KEY_PREFIX}${activePlanId}:${session.session_id ?? ""}:${state.today.training_day}`,
     contact: `${CONTACT_RUN_KEY_PREFIX}${activePlanId}:${state.today.training_day}`,
   };
   const timerStorageKey = timerKeys.session;
@@ -801,15 +789,6 @@ export function TodaySessionPanel({
     !timerAvailable;
   // Something to go back into while the session is started.
   const canResume = timerAvailable || guidedLeads || (contactIsSession && contactTimerAvailable);
-  const contactLockCopy =
-    headImpactToday
-      ? CONTACT_LOCK_COPY.head_impact
-      : !clearanceAllowsContact
-      ? CONTACT_LOCK_COPY.clinician_clearance
-      : resolvedDecision.authoritativeTier === "not_checked_in"
-        ? CONTACT_LOCK_COPY.not_checked_in
-        : CONTACT_LOCK_COPY.blocked;
-  const freeTimerAvailable = true;
   // A run left in progress (app closed mid-session) comes back as the mini bar.
   // Read from storage on the client only, so server and first client render agree.
   const savedTimerSource = useSyncExternalStore<TimerSource | null>(
@@ -849,19 +828,17 @@ export function TodaySessionPanel({
     resolvedDecision.tone === "red"
       ? resolvedDecision.tone
       : undefined;
-  const terminalStatusCopy = severeInjuryBlocksCurrentSession
-    ? "Blocked by an active severe injury."
-    : decisionBlocksCurrentSession
-      ? "Follow the recommendation above. Do not start this session from Today."
-      : contactClearanceBlocked
-        ? headImpactToday
-          ? "No more contact today: you reported being rocked or dropped."
-          : "This contact session is locked by your effective clinician clearance."
+  const terminalStatusCopy = severeInjuryBlocksCurrentSession || livePrescription?.safety_hold
+    ? `Training caution: ${livePrescription?.safety_hold_reason?.replace(/\b(?:blocked|locked|on hold)\b/gi, "not recommended") || injuryStripText(state.open_injuries ?? []) || "Follow your current injury guidance."}`
+    : !clearanceAllowsContact
+      ? "Training caution: follow your clinician's contact restrictions."
+      : resolvedDecision.authoritativeTier === "not_checked_in"
+        ? "Check in to get today's training guidance."
         : guidanceCanCheckOff
           ? status === "done" ? "Guidance followed today." : "Follow the guidance, then check it off."
-        : resolvedDecision.authoritativeTier === "not_checked_in"
-          ? "Submit today's check-in to unlock session actions."
-          : "This entry has nothing to log. Follow it as written.";
+          : decisionBlocksCurrentSession
+            ? "Training caution: follow today's recommended limits."
+            : "This entry has nothing to log. Follow it as written.";
 
   async function saveCompletion(
     nextStatus: TodayCompletionStatus,
@@ -1073,9 +1050,7 @@ export function TodaySessionPanel({
     // Leading the tray already, the guided run needs no second button.
     const showGuided =
       Boolean(guidedVisualisation) && !(guidedLeads && (status === "not_started" || status === "started"));
-    // A cleared sparring day already offers a round timer loaded with the plan;
-    // a blank one beside it reads as a duplicate.
-    const showFreeTimer = freeTimerAvailable && !contactTimerAvailable;
+    const showFreeTimer = true;
     const tools = !anyTimerShown && !guidedOpen && (showContact || showFreeTimer || showGuided);
     if (!tools && !trailing) {
       return null;
@@ -1085,17 +1060,10 @@ export function TodaySessionPanel({
       {tools ? (
       <div className="today-action-tools">
         {tools && showContact ? (
-          contactTimerAvailable ? (
             <button type="button" className="action-utility today-tool-button" data-accent="true" onClick={() => openTimer("contact")}>
               <ToolIcon name="bell" />
               Sparring rounds
             </button>
-          ) : (
-            <span className="today-tool-lock">
-              <ToolIcon name="lock" />
-              {contactLockCopy}
-            </span>
-          )
         ) : null}
         {tools && showGuided ? (
           <button
@@ -1133,7 +1101,7 @@ export function TodaySessionPanel({
 
   // A sparring-only day has no session actions: its tray leads with the rounds.
   const contactOnlyTray =
-    !anyTimerShown && (contactTarget || freeTimerAvailable) ? (
+    !anyTimerShown ? (
       <div className="today-session-actions today-action-tray">
         {contactTarget && contactTimerAvailable ? (
           <button type="button" className="cta" onClick={() => openTimer("contact")}>
@@ -1467,7 +1435,7 @@ export function TodaySessionPanel({
           <a href="#today-injury" className="today-injury-strip">
             <ToolIcon name="shield" />
             <span className="today-injury-strip-text">
-              <span className="today-injury-strip-title">Injury-aware session</span>
+              <span className="today-injury-strip-title">Training caution</span>
               <span className="today-injury-strip-detail">Training around {injuryText}</span>
             </span>
             <span className="today-injury-strip-chevron" aria-hidden="true" />
@@ -1623,13 +1591,13 @@ export function TodaySessionPanel({
           </div>
         ) : null}
 
-        {(!resolvedDecision.canCompleteSession || livePrescription?.safety_hold || contactClearanceBlocked) && !safeSession && !isSessionPreview ? (
+        {(concussionWarning || !resolvedDecision.canCompleteSession || livePrescription?.safety_hold || !clearanceAllowsContact) && !isSessionPreview ? (
           <div className="today-terminal-block">
             <p
               className="today-terminal-status"
               data-tone={decisionBlocksCurrentSession || contactClearanceBlocked ? "blocked" : "neutral"}
             >
-              {terminalStatusCopy}
+              {concussionWarning ? <strong role="alert">Stop training and seek medical clearance.</strong> : terminalStatusCopy}
             </p>
             {severeInjuryBlocksCurrentSession ? (
               <a href="#today-injury" className="secondary-button today-terminal-action">
@@ -1700,9 +1668,8 @@ export function TodaySessionPanel({
           <p className="today-terminal-status">{getCompletionLabel(status)}</p>
         ) : null}
 
-        {/* Locked, logged or blocked sessions still get the timer shortcuts. */}
+        {/* Timer shortcuts remain available after logging. */}
         {!(canCompleteSession && (status === "not_started" || status === "started")) &&
-        (contactTarget || freeTimerAvailable) &&
         !anyTimerShown ? (
           <div className="today-session-actions today-action-tray">{timerTools()}</div>
         ) : null}
@@ -1723,7 +1690,6 @@ export function TodaySessionPanel({
         </div> : null}
         {sparringPrompt}
 
-        {livePrescription?.safety_hold ? <p role="alert">{livePrescription.safety_hold_reason || "This session is on hold. Follow the current injury guidance before training."}</p> : null}
         {livePrescription?.safety_hold && resolvedDecision.sessionIsToday ? <div className="today-session-actions">
           {livePrescription.frozen && status === "started" ? <button type="button" className="secondary-button" disabled={isSubmitting} onClick={() => setIntent("modified")}>Log stopped session</button> : null}
           <button type="button" className="ghost-button" disabled={isSubmitting} onClick={() => setIntent("skipped")}>Mark skipped</button>

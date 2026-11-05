@@ -457,8 +457,8 @@ export function getInjuryOverrideBanner(
   return {
     state: recommendationState,
     displayState: "injury_blocked",
-    chip: "INJURY HOLD",
-    title: "Session blocked",
+    chip: "CHECK",
+    title: "Training caution",
     // "Can't train normally" is functional impact on the severe band, not a
     // medical severity; the hold is identical, only the wording differs.
     detail: `${
@@ -697,7 +697,7 @@ export function getRiskTimeframeLabel(
  * override. Pure display transform — the stored risk data is untouched.
  */
 const RISK_WATCH_TEXT_OVERRIDES: Record<string, string> = {
-  stop_red_flag: "Hard combat work is blocked today.",
+  stop_red_flag: "Training caution: avoid hard combat work today.",
 };
 
 export function getRiskWatchText(risk: { category?: string | null; text?: string | null }): string {
@@ -1056,8 +1056,8 @@ export function getSafeSessionView(
   const name = (blockedSessionName ?? "").trim();
   const blockedLead =
     name && name.toLowerCase() !== "today's session"
-      ? `${name} is blocked today.`
-      : "Hard combat work is blocked today.";
+      ? `Training caution: reconsider ${name.toLowerCase()} today.`
+      : "Training caution: avoid hard combat work today.";
   const posture = resolveSafeSessionPosture(openInjuries);
   return {
     eyebrow: "Today's safe session",
