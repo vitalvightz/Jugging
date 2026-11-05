@@ -223,11 +223,21 @@ def test_dedicated_rehab_roles_are_not_rewritten(monkeypatch):
                     "injury_type": "sprain", "timeframe": "last_month", "rehab_generation_context": context}],
     })
     brief = _plan("published_ankle")
-    rehab = [r for _, roles, _ in _surfaces(brief) for r in roles if r["role_key"] == "mobility_rehab"]
-    assert any(r.get("selected_exercise_assignments") for r in rehab)
     published_ids = {rx.drill_id for rx in policy.prescriptions}
-    assert all(a["rehab_drill_id"] in published_ids for r in rehab
-               for a in r.get("selected_exercise_assignments") or [])
+    # #2984 publishes candidates; a generic mobility support insert sharing
+    # this role key is not a dedicated clinical appointment. Exercise the
+    # suppression contract with an explicit, populated clinical role.
+    for phase in ("GPP", "SPP", "TAPER"):
+        slots = brief["candidate_pools"][phase]["rehab_slots"]
+        assert slots
+        assignments = [copy.deepcopy(slot["selected"]) for slot in slots]
+        assert all(a["rehab_drill_id"] in published_ids and a["prescription"] for a in assignments)
+        role = {"role_key": "mobility_rehab", "category": "rehab", "preferred_pool": "rehab_slots",
+                "selected_exercise_assignments": assignments}
+        dedicated = {"weekly_role_map": {"weeks": [{**_week(role), "phase": phase}]}}
+        before = copy.deepcopy(dedicated)
+        suppress_unfilled_physical_roles(dedicated)
+        assert dedicated == before
 
 
 @pytest.mark.parametrize("key", sorted(_SCENARIOS))
