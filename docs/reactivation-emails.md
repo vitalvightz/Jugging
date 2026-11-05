@@ -2,7 +2,7 @@
 
 Automatic sending remains off unless `UNLXCK_REACTIVATION_EMAIL_ENABLED` is explicitly enabled. Do not enable it during verification. Tests use mocked HTTP; SQL fixtures are for an empty disposable database only.
 
-Apply the PR migration through the normal migration process before enabling. It grants preferences, delivery records and claim RPC access only to the service role, with RLS enabled. No existing consent is changed. An adult approved athlete must explicitly opt in under Settings → Notifications & email. Existing branded HTML and training copy are retained.
+Apply the PR migration through the normal migration process before enabling. Apply the follow-up `20261105125500_reactivation_email_unsubscribe_only.sql` migration as well. Reminders cover eligible approved adult private-beta athletes without a Settings toggle; a disabled preference row blocks future reminders after unsubscribe. Delivery records and claim RPC access remain service-role-only with RLS. Existing branded HTML and training copy are retained.
 
 Eligibility uses the latest product activity or authenticated daily app-open evidence. Daily tracking receives a conservative two-day timezone allowance, so a reminder may arrive later than seven days. Unknown visit history is excluded. No AI plan is needed, and there is no upper inactivity limit. Each athlete receives at most one reminder for the lifetime of the account.
 
