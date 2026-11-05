@@ -2,6 +2,7 @@
 import { AnalyticsPreference } from "@/components/analytics-preference";
 
 import Link from "next/link";
+import { PerfDiagnosticsToggle } from "@/components/perf-diagnostics";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
@@ -1616,6 +1617,7 @@ export default function SettingsPage() {
               <button type="button" className="ghost-button" onClick={() => void signOut()}>
                 {tNav("signOut")}
               </button>
+              <PerfDiagnosticsToggle />
             </div>
           </div>
           <div

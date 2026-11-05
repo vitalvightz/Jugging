@@ -12,6 +12,7 @@ import {
   getExerciseLibrary,
   getTrainingHistory,
   trackProductEvent,
+  HISTORY_SESSIONS_PATH,
   deleteExternalTraining,
   deletePlanCompletion,
   listSparringLogHistory,
@@ -42,7 +43,9 @@ import {
 } from "@/lib/history";
 import { formatInjuryDetail, normalizeInjuryLabel } from "@/lib/injury-display";
 import { loadHistoryWithAuthRecovery } from "@/lib/history-request";
+import { recallView } from "@/lib/shared-reads";
 import type { TodayDecisionTone } from "@/lib/today";
+import type { TrainingHistoryPage } from "@/lib/training-history";
 import type {
   InjuryFlagRecord,
   SparringIntensity,
@@ -671,10 +674,16 @@ function HistoryContent() {
   const today = trainingDay ? athleteTrainingDayISO(new Date(), me?.profile.athlete_timezone) : null;
 
   const [tab, setTab] = useState<HistoryTab>("sessions");
-  const [sessions, setSessions] = useState<TabData<TrainingHistorySession[]>>({
-    rows: null,
+  // A revisit shows the sessions page this visit last read at once, then reads
+  // it again. History is a training log, not a safety decision, and any write
+  // drops the remembered page (lib/shared-reads.ts), so an edit is never undone
+  // on screen by an older copy.
+  const [recalledSessions] = useState(() => token ? recallView<TrainingHistoryPage>(token, HISTORY_SESSIONS_PATH) : null);
+  const sessionsRefreshDue = useRef(Boolean(recalledSessions));
+  const [sessions, setSessions] = useState<TabData<TrainingHistorySession[]>>(() => ({
+    rows: recalledSessions?.sessions ?? null,
     error: null,
-  });
+  }));
   const [exercises, setExercises] = useState<TabData<ExerciseLibraryResponse>>({ rows: null, error: null });
   const [exerciseHistoryCache] = useState<ExerciseHistoryCache>(() => new Map());
   const [sparring, setSparring] = useState<TabData<SparringLogHistoryResponse>>({
@@ -687,7 +696,7 @@ function HistoryContent() {
   });
   const [injuries, setInjuries] = useState<TabData<InjuryFlagRecord[]>>({ rows: null, error: null });
   // Sessions page back by whole training days from this cursor.
-  const [sessionCursor, setSessionCursor] = useState<string | null>(null);
+  const [sessionCursor, setSessionCursor] = useState<string | null>(() => recalledSessions?.next_before_day ?? null);
   const [loadingMoreSessions, setLoadingMoreSessions] = useState(false);
   const [moreSessionsError, setMoreSessionsError] = useState<string | null>(null);
   const hasManualSparring = Boolean(sessions.rows?.some(row => row.source === "external" && row.activity === "sparring"));
@@ -755,6 +764,23 @@ function HistoryContent() {
       cancelled = true;
     };
   }, [tab, token, userId, sessions, exercises, sparring, checkins, injuries, hasManualSparring]);
+
+  // The background read behind a remembered page: it replaces the rows when it
+  // lands, and on failure the remembered rows simply stay.
+  useEffect(() => {
+    if (!token || !sessionsRefreshDue.current) return;
+    let cancelled = false;
+    loadHistoryWithAuthRecovery({ access_token: token, user_id: userId }, accessToken => getTrainingHistory(accessToken, true), () => cancelled)
+      .then(page => {
+        if (cancelled) return;
+        sessionsRefreshDue.current = false;
+        setSessions({ rows: page.sessions, error: null });
+        setSessionCursor(page.next_before_day ?? null);
+        void trackProductEvent(token, "history_opened", "history");
+      })
+      .catch(() => { /* The remembered rows stay; the next visit reads again. */ });
+    return () => { cancelled = true; };
+  }, [token, userId]);
 
   // Stable, and guarded by a ref, so the summary can ask for pages from an effect.
   const loadingMore = useRef(false);

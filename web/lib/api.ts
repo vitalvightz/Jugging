@@ -580,11 +580,15 @@ async function readJson<T>(path: string, init?: ApiRequestInit): Promise<T> {
   }
 }
 
+/** The newest History sessions page, as History reads it. */
+export const HISTORY_SESSIONS_PATH = "/api/training/history?include_skipped=true&limit=200";
+
 export function getTrainingHistory(token: string, includeSkipped = false, beforeDay?: string): Promise<TrainingHistoryPage> {
   const before = beforeDay ? `&before_day=${encodeURIComponent(beforeDay)}` : "";
-  const path = includeSkipped ? `/api/training/history?include_skipped=true&limit=200${before}` : "/api/training/history";
+  const path = includeSkipped ? `${HISTORY_SESSIONS_PATH}${before}` : "/api/training/history";
   // Shared while in flight only: History edits must show on the next read.
-  return sharedRead(token, path, signal => readJson<TrainingHistoryPage>(path, { token, signal }));
+  // The newest page is remembered so a revisit can show it while re-reading.
+  return sharedRead(token, path, signal => readJson<TrainingHistoryPage>(path, { token, signal }), { remember: !beforeDay });
 }
 
 export function getSessionDetails(token: string, source: TrainingHistorySession["source"], id: string): Promise<SessionDetails> {
@@ -1431,7 +1435,7 @@ export function undoExerciseChange(
 export function getToday(token: string, { reuseForMs }: ReadReuse = {}): Promise<TodayCommandView> {
   return sharedRead(token, "/api/today", signal =>
     withTransientRetries(() => readJson<TodayCommandView>("/api/today", { token, signal }), { signal }),
-    { hold: true, reuseForMs });
+    { hold: true, reuseForMs, remember: true });
 }
 
 export function submitTodayCheckin(

@@ -24,7 +24,7 @@ import { TrainingSummaryCard } from "@/components/training-summary-card";
 import { useXp } from "@/components/xp-provider";
 import { getPlan, getToday, getTrainingHistory } from "@/lib/api";
 import { describeLoadFailure } from "@/lib/connectivity";
-import { SHARED_READ_MAX_AGE_MS } from "@/lib/shared-reads";
+import { recallView, SHARED_READ_MAX_AGE_MS } from "@/lib/shared-reads";
 import { hasHealthDataConsent } from "@/lib/compliance";
 import { getTrackingHome } from "@/lib/tracking-home";
 import type { TrainingHistorySession } from "@/lib/training-history";
@@ -310,6 +310,17 @@ export default function HomePage() {
   const [commandError, setCommandError] = useState<string | null>(null);
   const [calendar, setCalendar] = useState<{ token: string; id: string; plan: StructuredPlan | null } | null>(null);
   const calendarRequest = useRef<{ token: string; id: string; promise: ReturnType<typeof getPlan> } | null>(null);
+  // Revisiting Home used to show the whole-page skeleton until a fresh Today
+  // read returned (~1 s server, more on a phone). Plan context, the countdown
+  // and XP are presentation, so they show at once from the view this session
+  // last read; any write or sign-out drops it (lib/shared-reads.ts). Today's
+  // decision, its primary action and training alerts are never shown from it:
+  // those wait for the fresh read Home still makes on every visit.
+  const recalledState = !commandState && session?.access_token && me && me.profile.starting_path !== "tracking_first"
+    ? recallView<TodayCommandView>(session.access_token, "/api/today")
+    : null;
+  const shownState = commandState ?? recalledState;
+  const verifyingDecision = !commandState && Boolean(recalledState);
 
   useEffect(() => {
     if (isReady && session && isMeHydrated && !me) {
@@ -447,14 +458,14 @@ export default function HomePage() {
   // open plan never reads it. That read is the full plan detail (the largest
   // backend response), and on app open it competed with Today and XP for the
   // single API process while nothing on screen used it.
-  const activePlanId = commandState?.active_plan?.id;
+  const activePlanId = shownState?.active_plan?.id;
   const knownLatestPlan = me?.latest_plan;
   const activeFightDate = activePlanId
-    ? commandState?.active_plan?.fight_date || (knownLatestPlan?.plan_id === activePlanId ? knownLatestPlan?.fight_date : null)
+    ? shownState?.active_plan?.fight_date || (knownLatestPlan?.plan_id === activePlanId ? knownLatestPlan?.fight_date : null)
     : null;
   const calendarPlanId = activePlanId
     ? (activeFightDate ? activePlanId : undefined)
-    : (commandState ? undefined : knownLatestPlan?.fight_date ? knownLatestPlan.plan_id : undefined);
+    : (shownState ? undefined : knownLatestPlan?.fight_date ? knownLatestPlan.plan_id : undefined);
   useEffect(() => {
     const token = session?.access_token;
     if (!token || !calendarPlanId) {
@@ -576,11 +587,11 @@ export default function HomePage() {
       );
     }
 
-    if (!commandState && !commandError) {
+    if (!shownState && !commandError) {
       return <WorkspaceOverviewSkeleton showCountdown={Boolean(latestPlan?.fight_date)} />;
     }
 
-    if (!commandState && commandError) {
+    if (!shownState && commandError) {
       return (
         <section className="panel loading-card">
           <p className="kicker">Home</p>
@@ -604,7 +615,7 @@ export default function HomePage() {
       );
     }
 
-    const activePlan = enrichConfirmedActivePlan(commandState?.active_plan, latestPlan);
+    const activePlan = enrichConfirmedActivePlan(shownState?.active_plan, latestPlan);
     const hasActivePlan = Boolean(activePlan.id);
     // "No active plan" splits into two states the whole primary area must agree
     // on: saved plans exist (pick one) vs no plans at all (build the first).
@@ -651,7 +662,7 @@ export default function HomePage() {
     const overviewSafety = hasActivePlan ? decisionSafety : undefined;
     // Today's countdown to the fight, and whether the scheduled session is today
     // (vs a future planned day that must read as pending, not cleared).
-    const campDay = getCampDayLabel(commandState?.today?.training_day, String(activePlan.fight_date || ""));
+    const campDay = getCampDayLabel(shownState?.today?.training_day, String(activePlan.fight_date || ""));
     const openOngoing = hasActivePlan && isOpenOngoingPlan(activePlan.fight_date);
     const sessionIsToday = resolvedDecision?.sessionIsToday ?? false;
     // Decision tone drives the colour accents on the decision card (matches
@@ -676,7 +687,7 @@ export default function HomePage() {
     });
     const primaryHref = primaryAction.href;
     const primaryLabel = primaryAction.label;
-    const trainingDay = commandState?.today?.training_day ?? "";
+    const trainingDay = shownState?.today?.training_day ?? "";
     const tracking = tracksWithoutPlan && commandState
       ? getTrackingHome({
         state: commandState, rows: trainingRows, loadedFrom: trainingCursor, today: trainingDay,
@@ -685,7 +696,7 @@ export default function HomePage() {
       : null;
     const countdownProps = {
       fightDate: activePlan.fight_date ? String(activePlan.fight_date) : null,
-      trainingDay: commandState?.today?.training_day,
+      trainingDay: shownState?.today?.training_day,
       phase: activePlan.phase ? String(activePlan.phase) : null,
       plan: structuredPlan,
       eventName: activePlan.event_name ?? null,
@@ -707,8 +718,31 @@ export default function HomePage() {
       <>
         {/* Primary command area — today's decision, the session it affects, and
             one dominant action lead the first viewport. */}
-        <section className="hero-panel overview-command-shell overview-command-primary athlete-motion-slot athlete-motion-header" data-tone={hero.tone}>
+        <section className="hero-panel overview-command-shell overview-command-primary athlete-motion-slot athlete-motion-header" data-tone={verifyingDecision ? undefined : hero.tone}>
           <div className="overview-primary-grid">
+            {verifyingDecision ? (
+              <div className="overview-decision-lead" aria-busy={commandError ? undefined : "true"}>
+                <p className="eyebrow">Today</p>
+                <h1 className="hero-title overview-decision-headline">
+                  {commandError ? "Today's status unavailable" : <><span className="sr-only">Checking today&apos;s status</span><Skeleton variant="text" width="70%" height={40} /></>}
+                </h1>
+                <div className="overview-decision-copy">
+                  <p className="muted" role="status">
+                    {commandError ? "We couldn’t confirm today’s training decision. Retry before you train." : "Checking today’s training decision…"}
+                  </p>
+                </div>
+                <div className="action-stack overview-primary-actions">
+                  {commandError ? (
+                    <button type="button" className="cta" onClick={() => void loadCommandState()} disabled={isReloadingCommand}>
+                      {isReloadingCommand ? "Unlxcking…" : "Retry"}
+                    </button>
+                  ) : <Skeleton variant="block" width={168} height={44} />}
+                  {hasActivePlan ? (
+                    <ActionLink href={`/plans/${activePlan.id}`}>{openOngoing ? "Training plan" : "Fight camp"}</ActionLink>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
             <div className="overview-decision-lead">
               <p className="eyebrow">{hero.eyebrow}</p>
               <h1 className="hero-title overview-decision-headline">{hero.title}</h1>
@@ -732,13 +766,14 @@ export default function HomePage() {
                 )}
               </div>
             </div>
+            )}
             <div className="overview-primary-session">
               {showCountdown ? <FightCountdown key={activePlanId} {...countdownProps} /> : <XpProgressCard />}
               {/* No fight scheduled: the target still shows, as on the countdown card. */}
               {!showCountdown && hasActivePlan ? <FightWeightCard targetWeightKg={countdownProps.targetWeightKg} /> : null}
             </div>
           </div>
-          {commandError ? (
+          {commandError && !verifyingDecision ? (
             <div className="error-banner" role="alert">
               <span>{commandError}</span>
               <button
@@ -806,7 +841,12 @@ export default function HomePage() {
           <WeighInShortcut token={session?.access_token ?? null}
             showStatus={!tracking && hasActivePlan && !openOngoing && inFinalWeeks(activePlan.fight_date, trainingDay)
               && !me.profile.is_minor && hasHealthDataConsent(me)} />
-          <OverviewRiskWatch risks={risks} />
+          {verifyingDecision ? (
+            <article className="status-card overview-command-card overview-risk-card" aria-busy={commandError ? undefined : "true"}>
+              <p className="status-label">Training alerts</p>
+              {commandError ? <p className="muted">Unavailable until today’s status loads.</p> : <Skeleton variant="text" width="60%" height={14} />}
+            </article>
+          ) : <OverviewRiskWatch risks={risks} />}
         </section>
       </>
     );

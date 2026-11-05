@@ -1,0 +1,464 @@
+{
+  "source": "web/e2e/navigation-bench.spec.ts; production builds of 6a3b299 (before) and this branch (after); mocked API",
+  "runs": {
+    "before": {
+      "conditions": {
+        "cpuThrottle": 4,
+        "viewport": "390x844",
+        "rttMs": 150,
+        "server": {
+          "me": 150,
+          "today": 900,
+          "plan": 400,
+          "plans": 250,
+          "history": 350,
+          "xp": 500,
+          "completions": 150,
+          "other": 100
+        },
+        "runs": 5
+      },
+      "median": {
+        "Today \u2192 Home": {
+          "route": 238,
+          "content": 1408,
+          "usable": 1408,
+          "noPlaceholders": 1408,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/today"
+          ]
+        },
+        "Home \u2192 Today": {
+          "route": 120,
+          "content": 1268,
+          "usable": 1268,
+          "noPlaceholders": 1268,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/today",
+            "GET /api/today/feedback",
+            "GET /api/today/training-focus",
+            "GET /api/training/history?manual_only=true&limit=200",
+            "GET /api/training/history"
+          ]
+        },
+        "Today \u2192 Training plan": {
+          "route": 215,
+          "content": 656,
+          "usable": 656,
+          "noPlaceholders": 656,
+          "requests": [
+            "GET /api/plans/active",
+            "GET /api/custom-plans",
+            "POST /api/analytics/events",
+            "GET /api/plans"
+          ]
+        },
+        "Training plan \u2192 History": {
+          "route": 211,
+          "content": 881,
+          "usable": 881,
+          "noPlaceholders": 881,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/training/history?include_skipped=true&limit=200",
+            "POST /api/analytics/events"
+          ]
+        },
+        "History \u2192 Timer": {
+          "route": 167,
+          "content": 167,
+          "usable": 491,
+          "noPlaceholders": 491,
+          "requests": [
+            "POST /api/analytics/events"
+          ]
+        },
+        "Timer \u2192 Home": {
+          "route": 108,
+          "content": 1217,
+          "usable": 1217,
+          "noPlaceholders": 1217,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/today"
+          ]
+        },
+        "Home \u2192 History": {
+          "route": 116,
+          "content": 719,
+          "usable": 719,
+          "noPlaceholders": 719,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/training/history?include_skipped=true&limit=200",
+            "POST /api/analytics/events"
+          ]
+        },
+        "History \u2192 Home": {
+          "route": 114,
+          "content": 1245,
+          "usable": 1245,
+          "noPlaceholders": 1245,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/today"
+          ]
+        }
+      }
+    },
+    "after": {
+      "conditions": {
+        "cpuThrottle": 4,
+        "viewport": "390x844",
+        "rttMs": 150,
+        "rscMs": 0,
+        "server": {
+          "me": 150,
+          "today": 900,
+          "plan": 400,
+          "plans": 250,
+          "history": 350,
+          "xp": 500,
+          "completions": 150,
+          "other": 100
+        },
+        "runs": 5
+      },
+      "median": {
+        "Today \u2192 Home": {
+          "route": 202,
+          "content": 202,
+          "usable": 1349,
+          "noPlaceholders": 1349,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/today"
+          ]
+        },
+        "Home \u2192 Today": {
+          "route": 119,
+          "content": 1243,
+          "usable": 1243,
+          "noPlaceholders": 1243,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/today",
+            "GET /api/today/feedback",
+            "GET /api/today/training-focus",
+            "GET /api/training/history?manual_only=true&limit=200",
+            "GET /api/training/history"
+          ]
+        },
+        "Today \u2192 Training plan": {
+          "route": 144,
+          "content": 609,
+          "usable": 609,
+          "noPlaceholders": 609,
+          "requests": [
+            "GET /api/plans/active",
+            "GET /api/custom-plans",
+            "POST /api/analytics/events",
+            "GET /api/plans"
+          ]
+        },
+        "Training plan \u2192 History": {
+          "route": 156,
+          "content": 807,
+          "usable": 807,
+          "noPlaceholders": 807,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/training/history?include_skipped=true&limit=200",
+            "POST /api/analytics/events"
+          ]
+        },
+        "History \u2192 Timer": {
+          "route": null,
+          "content": 118,
+          "usable": 445,
+          "noPlaceholders": 445,
+          "requests": [
+            "POST /api/analytics/events"
+          ]
+        },
+        "Timer \u2192 Home": {
+          "route": 120,
+          "content": 120,
+          "usable": 1218,
+          "noPlaceholders": 1218,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/today"
+          ]
+        },
+        "Home \u2192 History": {
+          "route": 151,
+          "content": 151,
+          "usable": 151,
+          "noPlaceholders": 151,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/training/history?include_skipped=true&limit=200",
+            "POST /api/analytics/events"
+          ]
+        },
+        "History \u2192 Home": {
+          "route": 118,
+          "content": 118,
+          "usable": 1208,
+          "noPlaceholders": 1208,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/today"
+          ]
+        }
+      }
+    },
+    "before-rsc": {
+      "conditions": {
+        "cpuThrottle": 4,
+        "viewport": "390x844",
+        "rttMs": 150,
+        "rscMs": 450,
+        "server": {
+          "me": 150,
+          "today": 900,
+          "plan": 400,
+          "plans": 250,
+          "history": 350,
+          "xp": 500,
+          "completions": 150,
+          "other": 100
+        },
+        "runs": 5
+      },
+      "median": {
+        "Today \u2192 Home": {
+          "route": 667,
+          "content": 1834,
+          "usable": 1834,
+          "noPlaceholders": 1834,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/today",
+            "GET <route payload ?_rsc>",
+            "GET <route payload ?_rsc>",
+            "GET <route payload ?_rsc>",
+            "GET <route payload ?_rsc>",
+            "GET <route payload ?_rsc>",
+            "GET <route payload ?_rsc>",
+            "GET <route payload ?_rsc>"
+          ]
+        },
+        "Home \u2192 Today": {
+          "route": 569,
+          "content": 1720,
+          "usable": 1720,
+          "noPlaceholders": 1720,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/today",
+            "GET /api/today/feedback",
+            "GET /api/today/training-focus",
+            "GET /api/training/history?manual_only=true&limit=200",
+            "GET /api/training/history",
+            "GET <route payload ?_rsc>"
+          ]
+        },
+        "Today \u2192 Training plan": {
+          "route": 648,
+          "content": 1126,
+          "usable": 1126,
+          "noPlaceholders": 1126,
+          "requests": [
+            "GET /api/plans/active",
+            "GET /api/custom-plans",
+            "POST /api/analytics/events",
+            "GET /api/plans",
+            "GET <route payload ?_rsc>",
+            "GET <route payload ?_rsc>",
+            "GET <route payload ?_rsc>",
+            "GET <route payload ?_rsc>",
+            "GET <route payload ?_rsc>"
+          ]
+        },
+        "Training plan \u2192 History": {
+          "route": 616,
+          "content": 1303,
+          "usable": 1303,
+          "noPlaceholders": 1303,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/training/history?include_skipped=true&limit=200",
+            "POST /api/analytics/events",
+            "GET <route payload ?_rsc>"
+          ]
+        },
+        "History \u2192 Timer": {
+          "route": 593,
+          "content": 593,
+          "usable": 931,
+          "noPlaceholders": 931,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET <route payload ?_rsc>"
+          ]
+        },
+        "Timer \u2192 Home": {
+          "route": 586,
+          "content": 1700,
+          "usable": 1700,
+          "noPlaceholders": 1700,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/today",
+            "GET <route payload ?_rsc>"
+          ]
+        },
+        "Home \u2192 History": {
+          "route": 567,
+          "content": 1176,
+          "usable": 1176,
+          "noPlaceholders": 1176,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/training/history?include_skipped=true&limit=200",
+            "POST /api/analytics/events",
+            "GET <route payload ?_rsc>"
+          ]
+        },
+        "History \u2192 Home": {
+          "route": 575,
+          "content": 1695,
+          "usable": 1695,
+          "noPlaceholders": 1695,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/today",
+            "GET <route payload ?_rsc>"
+          ]
+        }
+      }
+    },
+    "after-rsc": {
+      "conditions": {
+        "cpuThrottle": 4,
+        "viewport": "390x844",
+        "rttMs": 150,
+        "rscMs": 450,
+        "server": {
+          "me": 150,
+          "today": 900,
+          "plan": 400,
+          "plans": 250,
+          "history": 350,
+          "xp": 500,
+          "completions": 150,
+          "other": 100
+        },
+        "runs": 5
+      },
+      "median": {
+        "Today \u2192 Home": {
+          "route": 157,
+          "content": 157,
+          "usable": 1325,
+          "noPlaceholders": 1325,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/today",
+            "GET <route payload ?_rsc>",
+            "GET <route payload ?_rsc>",
+            "GET <route payload ?_rsc>",
+            "GET <route payload ?_rsc>",
+            "GET <route payload ?_rsc>",
+            "GET <route payload ?_rsc>"
+          ]
+        },
+        "Home \u2192 Today": {
+          "route": 124,
+          "content": 1248,
+          "usable": 1248,
+          "noPlaceholders": 1248,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/today",
+            "GET /api/today/feedback",
+            "GET /api/today/training-focus",
+            "GET /api/training/history?manual_only=true&limit=200",
+            "GET /api/training/history"
+          ]
+        },
+        "Today \u2192 Training plan": {
+          "route": 169,
+          "content": 627,
+          "usable": 627,
+          "noPlaceholders": 627,
+          "requests": [
+            "GET /api/plans/active",
+            "GET /api/custom-plans",
+            "POST /api/analytics/events",
+            "GET /api/plans",
+            "GET <route payload ?_rsc>",
+            "GET <route payload ?_rsc>",
+            "GET <route payload ?_rsc>",
+            "GET <route payload ?_rsc>"
+          ]
+        },
+        "Training plan \u2192 History": {
+          "route": 162,
+          "content": 783,
+          "usable": 783,
+          "noPlaceholders": 783,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/training/history?include_skipped=true&limit=200",
+            "POST /api/analytics/events"
+          ]
+        },
+        "History \u2192 Timer": {
+          "route": 142,
+          "content": 142,
+          "usable": 461,
+          "noPlaceholders": 461,
+          "requests": [
+            "POST /api/analytics/events"
+          ]
+        },
+        "Timer \u2192 Home": {
+          "route": 136,
+          "content": 136,
+          "usable": 1213,
+          "noPlaceholders": 1213,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/today"
+          ]
+        },
+        "Home \u2192 History": {
+          "route": 164,
+          "content": 164,
+          "usable": 164,
+          "noPlaceholders": 164,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/training/history?include_skipped=true&limit=200",
+            "POST /api/analytics/events"
+          ]
+        },
+        "History \u2192 Home": {
+          "route": 127,
+          "content": 127,
+          "usable": 1220,
+          "noPlaceholders": 1220,
+          "requests": [
+            "POST /api/analytics/events",
+            "GET /api/today"
+          ]
+        }
+      }
+    }
+  }
+}

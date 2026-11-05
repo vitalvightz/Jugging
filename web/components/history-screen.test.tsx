@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { beforeEach } from "node:test";
 import "./test-dom";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { AppSessionContext } from "./auth-provider";
 import { HistoryScreen } from "./history-screen";
 import { athleteTrainingDayISO } from "@/lib/camp-map";
+import { clearSharedReads } from "@/lib/shared-reads";
+
+// History remembers its last page per session; each test is a fresh session.
+beforeEach(() => clearSharedReads());
 
 test("legacy completion records stay visible without claiming independent workouts in the summary", async () => {
   const originalFetch = globalThis.fetch;
