@@ -128,9 +128,23 @@ class FailingInjuryFlagsStore(FakeStore):
 # ---------------------------------------------------------------------------
 # Module consolidation
 # ---------------------------------------------------------------------------
-def test_check_in_delegates_to_canonical_service():
-    # The boundary does not wrap check-in with a second decision layer.
-    assert boundary.submit_today_checkin is today_service.submit_today_checkin
+def test_check_in_delegates_to_canonical_service(monkeypatch):
+    # The boundary adds no second decision layer: it shares the save's reads
+    # (like the other Today writes) and returns the canonical service's result.
+    from api.services.today_reads import _BuildReadCache
+    seen = {}
+
+    def canonical(store, **kwargs):
+        seen.update(store=store, **kwargs)
+        return {"decided": "canonically"}
+
+    monkeypatch.setattr(today_service, "submit_today_checkin", canonical)
+    payload = {"plan_id": None, "sleep": "good", "body": "normal", "pain": "none"}
+    result = boundary.submit_today_checkin(FakeStore(), athlete_id="athlete-1", athlete_timezone="UTC", payload=payload)
+
+    assert result == {"decided": "canonically"}
+    assert isinstance(seen["store"], _BuildReadCache)
+    assert seen["payload"] is payload and seen["athlete_id"] == "athlete-1"
     assert boundary.resolve_today_landing is today_service.resolve_today_landing
 
 

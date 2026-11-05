@@ -581,6 +581,9 @@ REQUIRED_FUNCTIONS: tuple[str, ...] = (
     "private.prevent_client_product_analytics_profile_writes",
     "public.change_profile_username",
     "public.try_parse_timestamptz",
+    # Computed field: planning_brief without candidate_pools for runtime reads
+    # (TRAINING_PLAN_SELECT in api/store.py selects it by alias).
+    "public.planning_brief_runtime",
     "public.check_plan_generation_short_window_limit",
     "public.create_generation_job_with_daily_limit",
     "public.claim_generation_job",
