@@ -97,3 +97,29 @@ converted technical-only day, instead of displacing it. Two baselines changed:
   `neural_plus_strength_day` are kept instead of displaced by the lock; GPP
   `aerobic_coordination_day` moves from Monday to Thursday. Contact rows are
   unchanged.
+
+## #3120 review follow-up (Main through #3200)
+
+Only three physical baselines are refrozen. Fresh Main `6a3b2999` and the
+branch produce identical projections in all eight scenarios. Historical
+worktrees establish the changes below; contact rows, tail ownership, generator
+mode and payload variant are unchanged. Existing mental rows are retained.
+
+- `d28_finished_tail`: #2888 (`f00cb05b` → `44da5bbb`) moves the SPP
+  alactic appointment from D-17 to D-16. #3103 (`6fdf732a` → `9567453f`)
+  keeps the converted-contact primer; the ledger instead records the
+  provisional flush overridden by fight-day protocol and freshness cut by
+  the spar-first cap.
+- `d24_two_hard`: #2888 first moves the independent alactic appointment
+  D-14 → D-15; #3103 preserves the compatible strength morph there and
+  records strength-touch compression instead of hard-contact displacement.
+- `d16_technical_conversion`: #3103 changes the week-1 suppression from
+  alactic to strength touch after preserving compatible converted-contact work.
+- Both D-16 and D-24 cases: #3106 (`d1e6c0fb` → `77e1d477`) removes the
+  surplus D-15 joint-prep physical filler. #3035's primary-strength must-keep
+  alias priority, retained after #3036's light-coach capacity rollback
+  (`315a469f` → `d0b7a3e3`), suppresses final-week aerobic flush instead of
+  neural primer. No appointment is added to justify the snapshot.
+
+The complete removed/added row diff and citations are in
+[`docs/python-suite-calendar-diff.json`](../../../docs/python-suite-calendar-diff.json).

@@ -10,7 +10,7 @@
     [1, "GPP", "light_combat_day", "technical", "monday", 25, false, false, false, "support", "low"],
     [1, "GPP", "primary_strength_day", "strength", "tuesday", 24, false, false, false, "", ""],
     [1, "GPP", "secondary_strength_day", "strength", "sunday", 26, false, false, false, "", ""],
-    [2, "SPP", "alactic_speed_day", "conditioning", "tuesday", 17, false, false, false, "", ""],
+    [2, "SPP", "alactic_speed_day", "conditioning", "wednesday", 16, false, false, false, "", ""],
     [2, "SPP", "converted_recovery_flush_day", "conditioning", "friday", 14, false, false, false, "", ""],
     [2, "SPP", "converted_recovery_flush_day", "conditioning", "monday", 18, false, false, false, "", ""],
     [2, "SPP", "hard_sparring_day", "sparring", "thursday", 15, false, false, false, "", ""],
@@ -40,7 +40,13 @@
     [1, "recovery_reset_day", "recovery", "", ["spar_first_cap"]],
     [2, "recovery_reset_day", "recovery", "", ["spar_first_cap"]],
     [3, "recovery_reset_day", "recovery", "", ["spar_first_cap"]],
-    [4, "neural_primer_day", "strength", "hard_sparring_day", []]
+    [4, "aerobic_flush_day", "conditioning", "fight_day_protocol", []],
+    [4, "fight_week_freshness_day", "recovery", "", ["spar_first_cap"]]
   ],
-  "tail_handoff": {"active": true, "normal_planner_through_d": 14, "late_fight_planner_from_d": 13, "source": "finished_existing_late_fight_path"}
+  "tail_handoff": {
+    "active": true,
+    "normal_planner_through_d": 14,
+    "late_fight_planner_from_d": 13,
+    "source": "finished_existing_late_fight_path"
+  }
 }

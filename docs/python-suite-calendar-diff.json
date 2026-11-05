@@ -1,36 +1,24 @@
 {
-  "main_revision": "496821b967d9c391e0cf70eb3bf5a52616afec19",
-  "branch_revision": "669a0a2a",
-  "scope": "Historical Oct 30 checkpoint, before the Nov 4 Main integration. No calendar baselines were updated. Revalidate against the current Main snapshot before treating these differences as current.",
+  "main_revision": "6a3b29994f5118cb2210ea37b8aa9fd3f4485581",
+  "python": "3.11.17",
+  "scope": "Current eight-scenario semantic projections; three explained refreezes. Every current Main projection equals the branch projection captured before these fixture edits.",
+  "unchanged": [
+    "contacts",
+    "tail_handoff",
+    "generator_mode",
+    "payload_variant"
+  ],
   "scenarios": {
     "d13_direct": {
-      "baseline_to_main": {},
-      "main_to_fixed": {}
+      "diff": {},
+      "attribution": []
     },
     "d14_boundary": {
-      "baseline_to_main": {},
-      "main_to_fixed": {}
+      "diff": {},
+      "attribution": []
     },
     "d16_technical_conversion": {
-      "baseline_to_main": {
-        "roles": {
-          "removed": [
-            [
-              1,
-              "SPP",
-              "joint_prep",
-              "support_insert",
-              "thursday",
-              15,
-              true,
-              false,
-              false,
-              "support",
-              "low"
-            ]
-          ],
-          "added": []
-        },
+      "diff": {
         "suppressed": {
           "removed": [
             [
@@ -70,24 +58,107 @@
               ]
             ]
           ]
+        },
+        "roles": {
+          "removed": [
+            [
+              1,
+              "SPP",
+              "joint_prep",
+              "support_insert",
+              "thursday",
+              15,
+              true,
+              false,
+              false,
+              "support",
+              "low"
+            ]
+          ],
+          "added": []
         }
       },
-      "main_to_fixed": {}
+      "attribution": [
+        {
+          "change": "D-15 joint_prep support insert removed",
+          "pr": 3106,
+          "before": "d1e6c0fb",
+          "after": "77e1d477",
+          "reason": "Physical fillers may not add a training day beyond the requested distinct-day budget."
+        },
+        {
+          "change": "Week 1 suppression alactic_speed_day becomes strength_touch_day",
+          "pr": 3103,
+          "before": "6fdf732a",
+          "after": "9567453f",
+          "reason": "The hard-sparring lock preserves work compatible with resolved technical-only contact."
+        },
+        {
+          "change": "Final-week suppressed neural_primer_day becomes aerobic_flush_day",
+          "prs": [
+            3035,
+            3036
+          ],
+          "before": "315a469f",
+          "after": "d0b7a3e3",
+          "reason": "Primary-strength aliases receive the must-keep priority; the light-coach capacity rollback retains this priority."
+        }
+      ]
     },
     "d24_high_fatigue": {
-      "baseline_to_main": {},
-      "main_to_fixed": {}
+      "diff": {},
+      "attribution": []
     },
     "d24_no_contact": {
-      "baseline_to_main": {},
-      "main_to_fixed": {}
+      "diff": {},
+      "attribution": []
     },
     "d24_one_hard": {
-      "baseline_to_main": {},
-      "main_to_fixed": {}
+      "diff": {},
+      "attribution": []
     },
     "d24_two_hard": {
-      "baseline_to_main": {
+      "diff": {
+        "suppressed": {
+          "removed": [
+            [
+              2,
+              "neural_plus_strength_day",
+              "strength",
+              "hard_sparring_day",
+              []
+            ],
+            [
+              3,
+              "neural_primer_day",
+              "strength",
+              "",
+              [
+                "spar_first_cap"
+              ]
+            ]
+          ],
+          "added": [
+            [
+              2,
+              "strength_touch_day",
+              "strength",
+              "",
+              [
+                "spar_first_cap"
+              ]
+            ],
+            [
+              3,
+              "aerobic_flush_day",
+              "conditioning",
+              "",
+              [
+                "spar_first_cap"
+              ]
+            ]
+          ]
+        },
         "roles": {
           "removed": [
             [
@@ -132,52 +203,82 @@
               ""
             ]
           ]
+        }
+      },
+      "attribution": [
+        {
+          "change": "Independent alactic_speed_day at D-14 becomes neural_plus_strength_day at D-15",
+          "prs": [
+            2888,
+            3103
+          ],
+          "before": [
+            "f00cb05b",
+            "6fdf732a"
+          ],
+          "after": [
+            "44da5bbb",
+            "9567453f"
+          ],
+          "reason": "Legal-day preservation first retains the original alactic appointment date; resolved-contact locking subsequently preserves the strength morph on that converted technical day."
         },
+        {
+          "change": "D-15 joint_prep support insert removed",
+          "pr": 3106,
+          "before": "d1e6c0fb",
+          "after": "77e1d477",
+          "reason": "Physical fillers respect the requested distinct-day budget."
+        },
+        {
+          "change": "Week 2 suppression neural_plus_strength_day/hard_sparring_day becomes strength_touch_day/spar_first_cap",
+          "pr": 3103,
+          "before": "6fdf732a",
+          "after": "9567453f",
+          "reason": "Converted technical contact no longer displaces compatible selected strength."
+        },
+        {
+          "change": "Final-week suppressed neural_primer_day becomes aerobic_flush_day",
+          "prs": [
+            3035,
+            3036
+          ],
+          "before": "315a469f",
+          "after": "d0b7a3e3",
+          "reason": "Retain primary-strength must-keep priority after rolling back light-coach appointment charging."
+        }
+      ]
+    },
+    "d28_finished_tail": {
+      "diff": {
         "suppressed": {
           "removed": [
             [
-              2,
-              "neural_plus_strength_day",
+              4,
+              "neural_primer_day",
               "strength",
               "hard_sparring_day",
               []
-            ],
-            [
-              3,
-              "neural_primer_day",
-              "strength",
-              "",
-              [
-                "spar_first_cap"
-              ]
             ]
           ],
           "added": [
             [
-              2,
-              "strength_touch_day",
-              "strength",
-              "",
-              [
-                "spar_first_cap"
-              ]
-            ],
-            [
-              3,
+              4,
               "aerobic_flush_day",
               "conditioning",
+              "fight_day_protocol",
+              []
+            ],
+            [
+              4,
+              "fight_week_freshness_day",
+              "recovery",
               "",
               [
                 "spar_first_cap"
               ]
             ]
           ]
-        }
-      },
-      "main_to_fixed": {}
-    },
-    "d28_finished_tail": {
-      "baseline_to_main": {
+        },
         "roles": {
           "removed": [
             [
@@ -209,38 +310,24 @@
               ""
             ]
           ]
-        },
-        "suppressed": {
-          "removed": [
-            [
-              4,
-              "neural_primer_day",
-              "strength",
-              "hard_sparring_day",
-              []
-            ]
-          ],
-          "added": [
-            [
-              4,
-              "aerobic_flush_day",
-              "conditioning",
-              "fight_day_protocol",
-              []
-            ],
-            [
-              4,
-              "fight_week_freshness_day",
-              "recovery",
-              "",
-              [
-                "spar_first_cap"
-              ]
-            ]
-          ]
         }
       },
-      "main_to_fixed": {}
+      "attribution": [
+        {
+          "change": "Week 2 alactic_speed_day moves Tuesday D-17 to Wednesday D-16",
+          "pr": 2888,
+          "before": "f00cb05b",
+          "after": "44da5bbb",
+          "reason": "Keep legal S&C dates instead of relocating them into crowded technical appointments."
+        },
+        {
+          "change": "Final-week neural_primer_day/hard_sparring_day suppression replaced by aerobic_flush_day/fight_day_protocol and fight_week_freshness_day/spar_first_cap",
+          "pr": 3103,
+          "before": "6fdf732a",
+          "after": "9567453f",
+          "reason": "Keep the compatible converted-contact primer; compression cuts freshness and fight-day protocol overrides the remaining provisional flush."
+        }
+      ]
     }
   }
 }
