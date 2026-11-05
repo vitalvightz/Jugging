@@ -504,6 +504,26 @@ def _seed_main(weekly: dict, *slots: dict) -> None:
     ]
 
 
+def test_redistribution_keeps_the_closed_core_component_on_its_host() -> None:
+    weekly = _secondary_power_geometry()
+    slots = _transfer_slots()
+    _seed_main(weekly, *slots)
+    main = weekly["weeks"][0]["session_roles"][0]
+    # All transferable-looking members belong to one existing three-member
+    # core component. Peeling off two destroys its complementary coverage.
+    for member in main["selected_exercise_assignments"][2:]:
+        member["component_group"] = "core_development"
+    before = deepcopy(main["selected_exercise_assignments"])
+    athlete = {"primary_goal": "power", "fatigue": "low"}
+    apply_pre_hard_contact_strength_exposure_cap(weekly, athlete)
+    redistribute_pre_hard_power_from_main(
+        weekly_role_map=weekly, candidate_pools=_candidate_pools(*slots), athlete_model=athlete,
+    )
+    assert main["selected_exercise_assignments"] == before
+    assert not any(r.get("pre_hard_contact_microdose_only")
+                   for r in weekly["weeks"][0]["session_roles"])
+
+
 def test_dense_main_rebalances_two_same_region_exercises_without_more_weekly_work() -> None:
     weekly = _secondary_power_geometry()
     athlete = {"primary_goal": "power", "fatigue": "low", "cut_severity_bucket": "none"}

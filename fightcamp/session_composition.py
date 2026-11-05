@@ -3753,7 +3753,10 @@ def redistribute_pre_hard_power_from_main(
             candidates: list[dict[str, Any]] = []
             if source is not None and len(memberships) >= 5:
                 for index, member in enumerate(memberships):
-                    if member.get("slot_group") != "strength_slots":
+                    # #3166's complementary core component belongs to its
+                    # selected host. A power split must not peel off its members.
+                    if (member.get("slot_group") != "strength_slots"
+                            or member.get("component_group") == TRUNK_BLOCK_GROUP):
                         continue
                     phase = str(member.get("source_phase") or "").strip().upper()
                     slot = _assignment_strength_slot(candidate_pools, phase, member)
