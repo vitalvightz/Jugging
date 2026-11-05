@@ -2557,6 +2557,19 @@ def _build_planning_brief(
     )
     from .pre_hard_contact_strength import apply_pre_hard_contact_strength_exposure_cap
     apply_pre_hard_contact_strength_exposure_cap(weekly_role_map, athlete_model)
+    # This policy is derived after initial composition. Revisit only its
+    # provisional receivers so their ordinary secondary membership cannot
+    # prevent the conserving transfer owner below from funding a real split.
+    microdose_receivers = {
+        id(role) for week in weekly_role_map.get("weeks") or []
+        for role in week.get("session_roles") or []
+        if role.get("pre_hard_contact_microdose_only") is True
+    }
+    if microdose_receivers:
+        compose_normal_strength_assignments(
+            weekly_role_map=weekly_role_map, candidate_pools=candidate_pools,
+            only_roles=microdose_receivers, allow_relocation=False,
+        )
     compose_normal_conditioning_assignments(
         weekly_role_map=weekly_role_map, candidate_pools=candidate_pools,
     )

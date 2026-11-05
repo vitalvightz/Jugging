@@ -465,6 +465,12 @@ def source_suggestion(catalogue_id: str):
         intervals = re.fullmatch(
             r"(\d+)\s*[x×]\s*(\d+)\s*min\s*(?:rounds?)?,?\s*(\d+)\s*s\s*rest", duration, re.I
         )
+        # #2913 publishes complete uphill intervals in seconds. Accept this
+        # exact source grammar only when all three numeric fields agree below.
+        uphill_intervals = re.fullmatch(
+            r"(\d+)\s*[x×]\s*(\d+)\s*s\s+uphill,\s*(\d+)\s*s\s+recovery",
+            duration, re.I,
+        )
         continuous = re.fullmatch(
             r"(\d+(?:\.\d+)?)\s*(min|minutes?|s|sec|seconds?)(?:\s+continuous)?",
             duration,
@@ -475,6 +481,9 @@ def source_suggestion(catalogue_id: str):
                 intervals
                 and (int(intervals[1]), int(intervals[2]) * 60, int(intervals[3]))
                 == (rounds, work, rest)
+            ) or bool(
+                uphill_intervals
+                and tuple(int(uphill_intervals[i]) for i in (1, 2, 3)) == (rounds, work, rest)
             )
             totals = (
                 (rounds * work + (rounds - 1) * rest) / 60,

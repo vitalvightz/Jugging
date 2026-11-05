@@ -524,7 +524,21 @@ def test_open_plan_builds_a_grouped_core_block_every_week():
         # trunk options are a plyometric plank and bodyweight holds): the
         # obligation is kept as maintenance with the composition cause cited.
         assert coverage["state"] == "maintain" and coverage["constraints"]
-        assert all(c["authority"] == "session_composition.trunk_block" for c in coverage["constraints"])
+        composition = [c for c in coverage["constraints"]
+                       if c["authority"] == "session_composition.trunk_block"]
+        weeks = spec["weekly_session_plan"]["weeks"]
+        assert {c["week_index"] for c in composition} == {w["week"] for w in weeks}
+        assert all(c["reason_code"] == "insufficient_complementary_candidates" for c in composition)
+        # #2903's unfunded-receiver suppression now runs after the conserving
+        # transfer (#3120). Additional compression must cite an actual removed
+        # appointment in that week; it cannot substitute for the trunk cause.
+        removed = {(w["week"], reason) for w in weeks for s in w["removed_sessions"]
+                   for reason in s["reason_codes"]}
+        for constraint in coverage["constraints"]:
+            if constraint in composition:
+                continue
+            assert constraint["authority"] == constraint["reason_code"] == "planner_compression"
+            assert (constraint["week_index"], constraint["source_reason_code"]) in removed
     for week in spec["weekly_session_plan"]["weeks"]:
         # Planner-only: the open-plan projection carries ordinary exercises,
         # each with its own dose, and no grouping signal for Stage 2.

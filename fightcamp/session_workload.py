@@ -20,6 +20,21 @@ _MODALITIES = {
     "cycle": r"\b(?:cycle|cycling|bike|biking|ride|riding)\b",
     "row": r"\b(?:row|rowing|rower|erg)\b",
 }
+_DISTANCE_METERS = {
+    **dict.fromkeys(("m", "meter", "meters", "metre", "metres"), 1),
+    **dict.fromkeys(("km", "kilometer", "kilometers", "kilometre", "kilometres"), 1000),
+    **dict.fromkeys(("mi", "mile", "miles"), 1609.344),
+    **dict.fromkeys(("yd", "yard", "yards"), 0.9144),
+}
+_DURATION_MINUTES = {
+    **dict.fromkeys(("s", "sec", "secs", "second", "seconds"), 1 / 60),
+    **dict.fromkeys(("m", "min", "mins", "minute", "minutes"), 1),
+    **dict.fromkeys(("h", "hr", "hrs", "hour", "hours"), 60),
+}
+_DISTANCE_RE = re.compile(
+    r"\b(\d+(?:\.\d+)?)\s*(" + "|".join(map(re.escape, _DISTANCE_METERS)) + r")\b",
+    re.I,
+)
 
 
 def _number(value) -> float:
@@ -37,13 +52,16 @@ def substantial_endurance(item: Mapping) -> bool:
     metadata.update({k: v for k, v in item.items() if v is not None})
     text = " ".join(
         str(metadata.get(k) or "")
-        for k in ("modality", "name", "display_name", "context_modality")
+        for k in ("modality", "name", "display_name", "category", "primary_stressor", "context_modality")
     ).replace("_", " ")
     modality = next(
         (key for key, pattern in _MODALITIES.items() if re.search(pattern, text, re.I)),
         None,
     )
-    if modality is None:
+    classification = str(
+        metadata.get("block_type") or metadata.get("category") or metadata.get("session_type") or ""
+    ).lower()
+    if modality is None and classification not in {"conditioning", "cardio", "aerobic", "endurance"}:
         return False
     dose = str(
         item.get("effective_prescription")
@@ -55,8 +73,7 @@ def substantial_endurance(item: Mapping) -> bool:
     )
     # A rendered/realised shorter dose takes precedence over the bank dose.
     if dose or any(
-        item.get(k) is not None
-        for k in ("total_minutes", "duration_min", "distance_m", "work_sec")
+        item.get(k) is not None for k in ("total_minutes", "duration_min", "distance_m", "work_sec")
     ):
         for key in (
             "total_minutes",
@@ -91,23 +108,11 @@ def substantial_endurance(item: Mapping) -> bool:
     ):
         minutes = float(hours[1]) * 60
     distance = _number(metadata.get("distance_m"))
-    if not distance and (
-        match := re.search(
-            r"\b(\d+(?:\.\d+)?)\s*(km|kilomet(?:er|re)s?|mi|miles?|m|met(?:er|re)s?)\b",
-            duration,
-            re.I,
-        )
-    ):
-        distance = float(match[1]) * (
-            1000
-            if match[2].lower().startswith("k")
-            else 1609.344
-            if match[2].lower() in {"mi", "mile", "miles"}
-            else 1
-        )
+    if not distance and (match := _DISTANCE_RE.search(duration)):
+        distance = float(match[1]) * _DISTANCE_METERS[match[2].lower()]
     return bool(
         (minutes is not None and minutes >= 30)
-        or distance >= _DISTANCE_FLOORS[modality]
+        or (modality is not None and distance >= _DISTANCE_FLOORS[modality])
     )
 
 
@@ -186,96 +191,49 @@ def _rendered_profiles(label: str, items: list[dict]) -> list:
     return profiles
 
 
-def _measured(value, factors: dict[str, float]) -> float | None:
-    if not isinstance(value, Mapping):
-        return None
-    factor = factors.get(str(value.get("unit") or "").strip().lower())
-    return _number(value.get("value")) * factor if factor is not None else None
+_REALIZED_DOSE_FIELDS = (
+    "effective_prescription", "prescription", "base_prescription", "duration",
+    "timing", "total_minutes", "duration_min", "distance_m", "work_sec",
+)
 
 
-_TIME_MINUTES = {
-    "s": 1 / 60,
-    "sec": 1 / 60,
-    "second": 1 / 60,
-    "seconds": 1 / 60,
-    "min": 1,
-    "minute": 1,
-    "minutes": 1,
-    "h": 60,
-    "hr": 60,
-    "hour": 60,
-    "hours": 60,
-}
-_DISTANCE_METRES = {
-    "m": 1,
-    "meter": 1,
-    "meters": 1,
-    "metre": 1,
-    "metres": 1,
-    "km": 1000,
-    "kilometer": 1000,
-    "kilometers": 1000,
-    "kilometre": 1000,
-    "kilometres": 1000,
-    "mi": 1609.344,
-    "mile": 1609.344,
-    "miles": 1609.344,
-}
+def _has_current_dose(record: Mapping) -> bool:
+    for field in (*_REALIZED_DOSE_FIELDS, "prescription_text", "work", "distance"):
+        value = record.get(field)
+        if isinstance(value, str):
+            if value.strip():
+                return True
+        elif isinstance(value, Mapping):
+            if value.get("value") is not None:
+                return True
+        elif value is not None:
+            return True
+    return False
 
 
-def _structured_workload_item(block: Mapping, modality: str) -> dict:
-    item = {
-        key: block[key]
-        for key in (
-            "block_type",
-            "rounds",
-            "effective_rounds",
-            "work_sec",
-            "rest_sec",
-            "duration_min",
-            "total_minutes",
-            "distance_m",
-            "effective_prescription",
-            "prescription",
-            "base_prescription",
-            "timing",
-        )
-        if block.get(key) is not None
-    }
-    item["name"] = block.get("display_name") or block.get("name") or ""
-    if block.get("modality"):
-        item["modality"] = block["modality"]
-    item["context_modality"] = modality
-    if block.get("prescription_text"):
-        item["prescription"] = block["prescription_text"]
-    for field, target, units in (
-        ("duration", "duration_min", _TIME_MINUTES),
-        ("work", "work_sec", {k: v * 60 for k, v in _TIME_MINUTES.items()}),
-        ("distance", "distance_m", _DISTANCE_METRES),
-        ("rest", "rest_sec", {k: v * 60 for k, v in _TIME_MINUTES.items()}),
+def _structured_workload_item(record: Mapping) -> dict:
+    """Keep authored metadata while translating quantities into shared units."""
+    item = {key: value for key, value in record.items() if value is not None}
+    item["name"] = record.get("display_name") or record.get("name") or record.get("title")
+    if text := str(record.get("prescription_text") or "").strip():
+        item["effective_prescription"] = text
+    duration = record.get("duration") or record.get("work") or record.get("planned_duration")
+    for target, measured, factors in (
+        ("duration_min", duration, _DURATION_MINUTES),
+        ("distance_m", record.get("distance"), _DISTANCE_METERS),
     ):
-        measured = _measured(block.get(field), units)
-        if measured is not None:
-            item[target] = measured
+        if not isinstance(measured, Mapping):
+            continue
+        value = _number(measured.get("value"))
+        unit = str(measured.get("unit") or "").strip().lower()
+        factor = factors.get(unit)
+        if factor is not None:
+            item[target] = value * factor
+        if target == "duration_min":
+            # The quantity field disambiguates "m": duration means minutes,
+            # whereas the same alias in a distance quantity means metres.
+            item["duration"] = f"{value * factor:g} min" if factor is not None else f"{value:g} {unit}"
     return item
-
-
-def _has_current_workload(item: Mapping) -> bool:
-    return any(
-        item.get(key) is not None
-        for key in (
-            "duration_min",
-            "total_minutes",
-            "distance_m",
-            "work_sec",
-            "rounds",
-            "effective_rounds",
-            "effective_prescription",
-            "prescription",
-            "base_prescription",
-            "timing",
-        )
-    )
 
 
 def structured_stacking_findings(plan: dict) -> list[dict]:
@@ -284,42 +242,33 @@ def structured_stacking_findings(plan: dict) -> list[dict]:
         for di, day in enumerate(week.get("days") or []):
             profiles = []
             for session in day.get("sessions") or []:
-                label = str(session.get("title") or "")
-                conditioning = session.get("session_type") == "conditioning"
-                modality = (
-                    " ".join(
+                items = []
+                session_item = _structured_workload_item(session)
+                if session.get("session_type") == "conditioning":
+                    session_item["context_modality"] = " ".join(
                         str(session.get(key) or "")
-                        for key in (
-                            "modality",
-                            "title",
-                            "objective",
-                            "primary_stressor",
-                        )
+                        for key in ("modality", "title", "objective", "primary_stressor")
                     )
-                    if conditioning
-                    else ""
+                session_type = str(session.get("session_type") or "").strip().lower()
+                session_endurance = session_type in {"conditioning", "cardio", "aerobic", "endurance"} or (
+                    session_type in {"", "other", "unknown"} and bool(session.get("modality"))
                 )
-                items = [
-                    _structured_workload_item(block, modality)
-                    for block in session.get("blocks") or []
-                ]
-                # Session duration is a fallback for an undosed endurance
-                # appointment, never a replacement for current block doses or
-                # the elapsed time of a strength/interval workout.
-                relevant = [
-                    item
-                    for item in items
-                    if item.get("block_type") in {None, "conditioning"}
-                ]
-                elapsed = _measured(session.get("planned_duration"), _TIME_MINUTES)
-                if (
-                    conditioning
-                    and elapsed is not None
-                    and not any(_has_current_workload(item) for item in relevant)
-                ):
-                    items.append(
-                        {"name": label, "modality": modality, "duration_min": elapsed}
-                    )
+                for block in session.get("blocks") or []:
+                    item = _structured_workload_item(block)
+                    for field in ("modality", "category", "primary_stressor", "session_type", "rounds", "effective_rounds", "context_modality"):
+                        if field not in item and field in session_item:
+                            item[field] = session_item[field]
+                    # A session budget is fallback evidence, never a replacement
+                    # for a shortened exercise or a per-round interval dose.
+                    if (session_endurance and item.get("block_type") in {None, "conditioning", "other"}
+                            and not _has_current_dose(block)):
+                        for field in _REALIZED_DOSE_FIELDS:
+                            if field not in item and field in session_item:
+                                item[field] = session_item[field]
+                    items.append(item)
+                if not items and session_endurance:
+                    items.append(session_item)
+                label = str(session.get("title") or "")
                 if session.get("session_type") == "strength_power":
                     label += " strength"
                 profiles.extend(_rendered_profiles(label, items))

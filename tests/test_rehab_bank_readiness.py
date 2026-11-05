@@ -52,7 +52,8 @@ def test_today_preserves_exact_published_work_in_every_camp_phase(monkeypatch, p
     if pilot[0] == "elbow_hyperextension":
         # This family's profiles only publish CALM. A follow-up can resolve
         # RESTORE, but no unapproved RESTORE exercise may be substituted.
-        assert current["outcome"] == "missing_information"
+        # #3003 distinguishes unavailable content from missing athlete data.
+        assert current["outcome"] == "unsupported_prescription"
         assert current["reason_codes"] == ["stage_not_activated"]
         assert current["prescription"] is None
         return

@@ -173,7 +173,15 @@ def test_api_returns_mandatory_setup_and_original_equipment_without_granting_pre
         assert body["selection_boundary"] == "training_validation_required"
         filtered = client.get("/api/training/library", params={"equipment": "no_equipment", "limit": 24}, headers={"Authorization": "Bearer athlete-token"})
         assert filtered.status_code == 200
-        assert filtered.json()["total"] == 263
+        # #3166 adds three equipment-free core rows and retires one stance;
+        # #3181 adds three footwork rows. Recount the exact current ID set.
+        no_equipment_ids = {r["entry"]["catalogue_id"] for r in index.records
+                            if r["summary"]["category"] == "training"
+                            and "no_equipment" in r["facets"]["equipment"]}
+        assert len(no_equipment_ids) == 280
+        assert filtered.json()["total"] == len(no_equipment_ids)
+        assert {entry["catalogue_id"] for entry in filtered.json()["entries"]} <= no_equipment_ids
+        assert identity not in no_equipment_ids
         assert identity not in {entry["catalogue_id"] for entry in filtered.json()["entries"]}
     finally:
         client.close()

@@ -205,6 +205,7 @@ def test_consumer_completion_and_better_do_not_override_missing_or_worse_respons
 def test_consumer_changes_invalidate_unstarted_work_preserving_started_and_completed(mutation):
     b = consumer_bundle()
     live = deepcopy(view(b).live_prescription)
+    assert not frozen_review_hold(b[0], b[3], live, work_state="unstarted", as_of=NOW)
     row = b[0].injury_flags[b[3]][0]
     if mutation == "location":
         row["description"] = row["description"].replace("elbow_site:lateral", "elbow_site:unknown")
@@ -224,7 +225,9 @@ def test_consumer_changes_invalidate_unstarted_work_preserving_started_and_compl
     elif mutation == "no_work":
         b[0].rehab_exposures.clear()
     original = deepcopy(live)
-    assert frozen_review_hold(b[0], b[3], live, work_state="unstarted", as_of=NOW) is (mutation != "no_work")
+    # #3003: permission cannot replace progression evidence. Removing the
+    # completed work invalidates unstarted LOAD just like the other mutations.
+    assert frozen_review_hold(b[0], b[3], live, work_state="unstarted", as_of=NOW)
     assert not frozen_review_hold(b[0], b[3], live, work_state="started", as_of=NOW)
     assert not frozen_review_hold(b[0], b[3], live, work_state="completed", as_of=NOW)
     assert live == original
@@ -358,14 +361,18 @@ def test_other_presentations_cannot_borrow_lateral_observations(description, kin
     assert view(b).open_injuries[0]["rehab_decision"]["stage"] != "load"
 
 
-def test_known_missing_responses_hold_but_no_history_allows_permission_entry():
+def test_missing_responses_and_history_hold_below_permission_ceiling():
     for field in ("during_response", "next_day_response"):
         b = bundle()
         next(iter(b[0].rehab_exposures.values()))["event_json"]["response"][field] = "not_reported"
         assert view(b).open_injuries[0]["rehab_decision"]["stage"] == "restore"
     b = bundle()
-    b[0].rehab_exposures.clear()
     assert view(b).open_injuries[0]["rehab_decision"]["stage"] == "load"
+    b[0].rehab_exposures.clear()
+    # #3003: reported permission is a ceiling, never progression evidence.
+    decision = view(b).open_injuries[0]["rehab_decision"]
+    assert decision["stage"] == "restore"
+    assert "no_reviewed_stage_exposure" in decision["progression"]["next_transition"]["reason_codes"]
 
 
 def test_no_dynamic_return_or_training_grant():

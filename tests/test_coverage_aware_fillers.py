@@ -323,9 +323,13 @@ def test_live_wrapper_previous_filler_reduces_next_week_remaining_need():
     first = _discretionary_roles(week_one)
     second = _discretionary_roles(week_two)
     assert len(first) == 1
-    assert len(second) == 1
+    # 979085b0 (physical-frequency preservation), refined by #3106:
+    # a breathing insert cannot occupy the week's required physical day.
+    # Keep exactly one physical fallback as well as the zero-load reset.
+    assert len(second) == 2
+    assert {role["role_key"] for role in second} == {"joint_prep", "breathing_reset"}
     assert _supports(first[0], "footwork")
-    assert not _supports(second[0], "footwork")
+    assert all(not _supports(role, "footwork") for role in second)
 
 
 def test_live_wrapper_counts_meaningful_coverage_from_other_scheduled_week():

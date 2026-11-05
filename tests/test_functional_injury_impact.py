@@ -329,11 +329,13 @@ def _api_add(monkeypatch, name, flag):
     monkeypatch.setattr("api.services.today_service.load_clinical_policies", lambda: ())
     client, store, _ = _build_client()
     today = seed_dated(store, phase="SPP")
-    if flag:
-        store.create_injury_flag("athlete-1", flag)
+    saved_flag = store.create_injury_flag("athlete-1", flag) if flag else None
     record = next(r for r in cache.get().records if r["entry"]["name"] == name)
     response, _ = change(client, PLAN_ID, action="add", date=today.isoformat(), session_id=SESSION_ID,
                          catalogue_id=record["entry"]["catalogue_id"], dose={"mode": "duration", "duration_seconds": 10})
+    if saved_flag:
+        # A manual choice must not clear or rewrite its injury evidence.
+        assert store.injury_flags["athlete-1"] == [saved_flag]
     return response.status_code
 
 
@@ -344,20 +346,26 @@ def _api_flag(impact, *, area="shoulder", text="shoulder pain", severity=None):
 
 
 @pytest.mark.parametrize("name", ["Landmine Split-Stance Punch Press", "Punch-Specific Max Isometric Hold"])
-def test_manual_add_follows_the_three_impact_choices(monkeypatch, name):
+def test_manual_add_preserves_choice_for_all_three_impact_reports(monkeypatch, name):
     assert _api_add(monkeypatch, name, None) == 200
     assert _api_add(monkeypatch, name, _api_flag("not_limiting")) == 200  # normal training
-    assert _api_add(monkeypatch, name, _api_flag("limiting")) == 409  # loads the limiting region
-    assert _api_add(monkeypatch, name, _api_flag("cant_train")) == 409  # no normal training
-    assert _api_add(monkeypatch, name, _api_flag(None)) == 409  # legacy: conservative
+    # #3037: manual additions/swaps are explicit athlete choices independent
+    # of injury guidance. Generation's restrictions are checked above.
+    assert _api_add(monkeypatch, name, _api_flag("limiting")) == 200
+    assert _api_add(monkeypatch, name, _api_flag("cant_train")) == 200
+    assert _api_add(monkeypatch, name, _api_flag(None)) == 200
 
 
 @pytest.mark.parametrize("flag", [
     _api_flag("not_limiting", text="shoulder pain with numbness and tingling down the arm"),  # red flag
     _api_flag("not_limiting", severity="severe"),  # severe band on a not-limiting report
 ])
-def test_medical_evidence_overrides_not_limiting_in_manual_changes(monkeypatch, flag):
-    assert _api_add(monkeypatch, "Landmine Split-Stance Punch Press", flag) == 409
+def test_manual_choice_does_not_clear_medical_evidence(monkeypatch, flag):
+    from fightcamp.injury_awareness import is_awareness_only
+
+    assert not is_awareness_only(flag)
+    # #3037 retains explicit manual choices; this is never medical clearance.
+    assert _api_add(monkeypatch, "Landmine Split-Stance Punch Press", flag) == 200
 
 
 # --- End to end: complete programme generation ----------------------------------

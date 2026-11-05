@@ -1,0 +1,214 @@
+{
+  "main_revision": "b898cbce21b853b41dad3d9bba77b37d8f7bb2d3",
+  "merge_commit": "87c1334e61163054925d45a91daa241053450ec0",
+  "approved_upstream_test_retirement": {
+    "pr": 3169,
+    "commit": "aaa5f996e056cd7342ff5d9a27809ea3ddeffea3",
+    "user_approval": "Merge Main; accept #3169\u2019s upstream test removals",
+    "removed_test_functions": [
+      "tests/test_contusion_family_coverage.py::test_previous_37_profiles_hashes_decisions_schedules_and_snapshots_unchanged",
+      "tests/test_goal_weakness_equipment_remediation.py::test_complete_programmes_change_only_where_sprints_become_reachable",
+      "tests/test_hyperextension_family_coverage.py::test_previous_31_profiles_hashes_decisions_schedules_and_snapshots_unchanged",
+      "tests/test_impingement_family_coverage.py::test_previous_26_profiles_hashes_decisions_schedules_and_snapshots_unchanged",
+      "tests/test_mechanical_metadata_corrections.py::test_actual_search_queries_and_all_facets_have_before_after_parity",
+      "tests/test_mechanical_metadata_corrections.py::test_complete_fixed_clock_main_plan_comparison",
+      "tests/test_nonspecific_msk_family_coverage.py::test_previous_48_profiles_and_all_other_bank_hashes_preserved",
+      "tests/test_rehab_pathway_equivalence.py::test_camp_generation_reviewed_line_is_identical",
+      "tests/test_rehab_pathway_equivalence.py::test_decisions_are_identical_across_the_live_matrix",
+      "tests/test_rehab_pathway_equivalence.py::test_policy_content_and_integrity_hashes_are_identical",
+      "tests/test_rehab_pathway_equivalence.py::test_reconciled_today_snapshots_are_identical_for_multi_injury_days",
+      "tests/test_rehab_pathway_equivalence.py::test_today_view_is_identical",
+      "tests/test_rehab_restore_expansion.py::test_existing_published_defaults_are_unchanged_for_every_equipment_setup",
+      "tests/test_remaining_metadata_findings.py::test_complete_programmes_preserve_selection_dose_and_clinical_outputs",
+      "tests/test_sprain_family_coverage.py::test_whole_family_audit_and_preserved_existing_profile_hashes",
+      "tests/test_tag_retirement.py::test_all_banks_clinical_reviews_aliases_and_historical_identities_are_unchanged",
+      "tests/test_tag_retirement.py::test_bank_validation_findings_are_identical_with_old_and_retained_vocabulary",
+      "tests/test_tag_retirement.py::test_complete_current_plans_match_pre_retirement_selection_dose_and_personalisation",
+      "tests/test_tag_retirement.py::test_injury_stages_and_reviewed_progression_match_pre_retirement_decisions",
+      "tests/test_tendon_family_coverage.py::test_all_previous_profiles_and_their_decisions_schedules_and_snapshots_are_unchanged"
+    ],
+    "removed_fixtures": [
+      "tests/fixtures/rehab_profiles_before_contusion.json",
+      "tests/fixtures/rehab_profiles_before_hyperextension.json",
+      "tests/fixtures/rehab_profiles_before_impingement.json",
+      "tests/fixtures/rehab_profiles_before_nonspecific.json",
+      "tests/fixtures/rehab_profiles_before_sprain.json",
+      "tests/fixtures/rehab_profiles_before_tendon.json",
+      "tests/test_rehab_pathway_equivalence.py"
+    ]
+  },
+  "goal_programming_source_rebinding": {
+    "previous_sha256": "93c597b8de2ec53bbf0f22b1edea733ac7422c36718a90b1a680a3d6f6e65896",
+    "current_sha256": "d3a658378ef45b3775b9a36eaa5bb0a0a5c5a069d25ded8e60c6e0b5b0c4d22f",
+    "reviewed_main_source_commits": [
+      "e3b9dc359db1514f7a4dea81d1ddc36385b2bd1a Core Development Block: 3\u20134 complementary trunk exercises beside the main strength session (#3163)",
+      "c6220b6344139bf2dad1e1b054d5391198ebe6ae Revert #3163: Core Development Block (#3165)",
+      "e6f7da43dd5629ca1c875c7519ed4d105a36e165 Restore Core Development Block as planner-only (no Stage 2 grouping signal) (#3166)",
+      "5b38c06f0b19c383d849155e142ef08db0079c80 Extend core maintenance through D-7 inside the late-fight tail (#3168)"
+    ],
+    "unchanged_ast_against_febaf801": [
+      "_classify_prescription_type",
+      "_prescription_templates"
+    ],
+    "review_count": 7,
+    "row_hashes_and_goal_expectations_changed": false
+  },
+  "catalogue_recount": {
+    "main": "b898cbce21b853b41dad3d9bba77b37d8f7bb2d3",
+    "bank_audit": {
+      "total_entries": 2906,
+      "banks": [
+        {
+          "source": "exercise_bank.json",
+          "entries": 359
+        },
+        {
+          "source": "conditioning_bank.json",
+          "entries": 249
+        },
+        {
+          "source": "style_conditioning_bank.json",
+          "entries": 277
+        },
+        {
+          "source": "style_taper_conditioning.json",
+          "entries": 75
+        },
+        {
+          "source": "technical_footwork_bank.json",
+          "entries": 28
+        },
+        {
+          "source": "coordination_bank.json",
+          "entries": 0
+        },
+        {
+          "source": "coordination/universal.json",
+          "entries": 12
+        },
+        {
+          "source": "coordination/striking.json",
+          "entries": 18
+        },
+        {
+          "source": "coordination/kicks.json",
+          "entries": 12
+        },
+        {
+          "source": "coordination/mma_transitions.json",
+          "entries": 9
+        },
+        {
+          "source": "coordination/grappling.json",
+          "entries": 7
+        },
+        {
+          "source": "rehab_bank.json",
+          "entries": 1618
+        },
+        {
+          "source": "tactical_watch_bank.json",
+          "entries": 183
+        },
+        {
+          "source": "fight_visualization_bank.json",
+          "entries": 59
+        }
+      ]
+    },
+    "unique_ids": 2906,
+    "classes": {
+      "conditioning": 601,
+      "technical_coordination": 86,
+      "strength_power": 359,
+      "visualisation": 59,
+      "rehabilitation": 1514,
+      "care_instruction": 104,
+      "tactical_educational": 183
+    },
+    "row_changes_since_496821b9": {
+      "exercise_bank.json": {
+        "old_rows": 345,
+        "new_rows": 359,
+        "added_names": [
+          "Bear Plank Dumbbell Drag",
+          "Renegade Row",
+          "Partner-Perturbed Guard Hold",
+          "Standing Cable Side Bend",
+          "Kettlebell Windmill",
+          "Lateral Med-Ball Catch and Stick",
+          "Slider Body Saw",
+          "Swiss-Ball Pike",
+          "Tall-Kneeling Cable Pulldown Brace",
+          "Reverse Crunch with Pelvic Lift",
+          "Seated Pike Compression Lift-Off",
+          "Kneeling Cable Crunch",
+          "Weighted 45\u00b0 Back Extension",
+          "Low-to-High Cable Lift",
+          "Rotational Med-Ball Catch and Stick"
+        ],
+        "removed_names": [
+          "Staggered Stance Hold"
+        ]
+      },
+      "technical_footwork_bank.json": {
+        "old_rows": 25,
+        "new_rows": 28,
+        "added_names": [
+          "Double Pivot Chain",
+          "Shift-Step Angle Creation",
+          "Foot Feint and Reposition"
+        ],
+        "removed_names": []
+      }
+    }
+  },
+  "additional_test_alignments": [
+    {
+      "test": "tests/test_mechanical_metadata_corrections.py::test_exact_seven_source_deltas_preserve_every_identity_and_other_row",
+      "decision": "#3181 adds three technical footwork rows; the independently recounted 2906 IDs are still compared in full, with exactly seven mechanical row deltas."
+    },
+    {
+      "test": "tests/test_injury_policy_journey.py::test_no_contact_alone_does_not_hold_fitness_or_support_without_contact_metadata[cooldown_recovery]",
+      "decision": "#3166 explicitly inserts published rehab before the closing cooldown. Assert the unchanged cooldown at the final position; preserve no-hold, no-rehab-only and no-changes assertions."
+    },
+    {
+      "test": "tests/test_restore_physical_stimulus.py::test_saved_intake_replays_the_production_calendar_context",
+      "decision": "62c8fa6d03a0d13ec9ab3d1f3bdafcf4c247d876 explicitly keeps has_active_injury true for wound-care visibility. Assert surface_injury_only, no injury restrictions and no injury_management readiness flag. No product behavior changed.",
+      "verification": "The complete saved-intake replay fixture passes this case on the merged branch (153.65 seconds)."
+    }
+  ],
+  "no_equipment_recount": {
+    "main": "b898cbce21b853b41dad3d9bba77b37d8f7bb2d3",
+    "count": 280,
+    "unique_ids": 280,
+    "by_source": {
+      "conditioning_bank.json": 81,
+      "coordination/grappling.json": 1,
+      "coordination/kicks.json": 8,
+      "coordination/mma_transitions.json": 3,
+      "coordination/striking.json": 7,
+      "coordination/universal.json": 6,
+      "exercise_bank.json": 101,
+      "style_conditioning_bank.json": 21,
+      "style_taper_conditioning.json": 24,
+      "technical_footwork_bank.json": 28
+    },
+    "added_ids_since_496821b9": [
+      "exercise_bank.json:472dc701-8ecc-45cf-84f4-7ce5a68fa71c",
+      "exercise_bank.json:50cf4158-4e54-4822-9af7-c03162b0fccc",
+      "exercise_bank.json:57c5a0e7-eebd-4002-958f-7b7f295a4800",
+      "technical_footwork_bank.json:2908b95a-4197-4ee8-931d-34e5ff44ea89",
+      "technical_footwork_bank.json:908f57a7-2833-44d0-8af5-3199a5b110e4",
+      "technical_footwork_bank.json:d2d56b26-31e9-485e-a9f2-d4e28b44d914"
+    ],
+    "removed_ids_since_496821b9": [
+      "exercise_bank.json:c9ce3822-c17f-4177-b43d-ffc7ba92fb4e"
+    ],
+    "reviewed_changes": [
+      "#3166: three equipment-free core rows; one retired stance hold",
+      "#3181: three technical footwork rows"
+    ],
+    "coverage": "API total equals the exact independently enumerated ID set; mandatory Towel Pull-Up setup and prescription boundaries remain asserted."
+  }
+}

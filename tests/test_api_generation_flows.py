@@ -4,6 +4,7 @@ import asyncio
 import concurrent.futures
 import time
 from datetime import datetime, timedelta, timezone
+from functools import partial
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -44,6 +45,7 @@ from support import (
     stage1_result,
     withdraw_health_consent,
 )
+from generation_process_fixtures import under_threshold_stage1_planner
 
 
 def _override_aware_planner_for_test(payload: dict, *, progress_callback=None) -> dict:
@@ -71,11 +73,6 @@ def _slow_stage1_planner_for_test(payload: dict, *, progress_callback=None) -> d
     time.sleep(0.05)
     if progress_callback is not None:
         progress_callback("planner_late_emit", "Planner late emit", "", {})
-    return stage1_result()
-
-
-def _under_threshold_stage1_planner_for_test(payload: dict, *, progress_callback=None) -> dict:
-    time.sleep(0.2)
     return stage1_result()
 
 
@@ -4141,7 +4138,7 @@ def test_runtime_generation_stage1_planner_does_not_fail_before_configured_timeo
         run_generation_job(
             job_id=job["id"],
             store=store,
-            planner_fn=_under_threshold_stage1_planner_for_test,
+            planner_fn=partial(under_threshold_stage1_planner, result=stage1_result()),
             stage2=FakeStage2Automator(result=finalized_result()),
             active_tasks=set(),
         )

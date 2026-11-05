@@ -51,7 +51,18 @@ def test_region_and_exact_type_resolve_a_reviewed_prescription_and_real_completi
     assert decision["outcome"] == "prescribed_rehab"
     assert decision["policy_id"] == f"{region}_{kind}" and decision["stage"] == stage
     prescription = decision["prescription"]
-    assert prescription["drill_id"] == ("wrist_tendonitis_pronation_supination_twists" if region == "wrist" and stage == "restore" else f"{region}_{kind}_" + ("recovery_support" if stage == "calm" else "reviewed_restore"))
+    # #2984 shares compatible published bank options across live profiles.
+    restore_ids = {
+        "wrist": "wrist_tendonitis_pronation_supination_twists",
+        "shoulder": "shoulder_impingement_scapular_wall_slides_with_chin_tuck",
+        "elbow": "elbow_unspecified_pronation_supination_with_dowel",
+    }
+    assert prescription["drill_id"] == (
+        restore_ids.get(region, f"{region}_{kind}_reviewed_restore")
+        if stage == "restore" else f"{region}_{kind}_recovery_support"
+    )
+    if stage == "restore" and region in {"shoulder", "elbow"}:
+        assert kind in prescription["drill"]["compatible_injury_types"]
     assert prescription["bank_hash"] == content_hash(prescription["drill"])
     assert prescription["dose"] == {} and prescription["minimum_gap_days"] == 1
     frozen = reconcile_session_prescription(None, decisions=[decision], plan_id=PLAN, training_day=DAY)
@@ -109,9 +120,10 @@ def test_restore_pull_back_uses_real_loading_hold_semantics(region):
     decision = resolve(row)
     assert decision["prescription"]["is_loading"] is (region == "achilles")
     scheduled = schedule_rehab(row, decision, training_day=DAY, readiness_decision="pull_back")
-    assert scheduled["state"] == ("held" if region == "achilles" else "due")
-    if region == "achilles":
-        assert scheduled["reason"] == "Loading rehab is held by today's reduced-training guidance."
+    # #2993: RESTORE remains available on pull-back days, even if loading.
+    assert decision["stage"] == "restore"
+    assert scheduled["state"] == "due"
+    assert schedule_rehab(row, decision, training_day=DAY, readiness_decision="stop")["state"] == "held"
 
 
 def test_achilles_tendon_loading_function_cannot_bypass_live_stage_gates():

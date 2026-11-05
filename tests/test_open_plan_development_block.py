@@ -38,7 +38,7 @@ _VARIANTS = {
         "hard_sparring_days": ["Tuesday", "Thursday"],
         "support_work_days": ["Friday"],
         "training_availability": ["Monday", "Tuesday", "Thursday", "Friday", "Saturday"],
-        "weekly_training_frequency": 6,
+        "weekly_training_frequency": 5,  # #3125: frequency cannot exceed the five selected days.
         "equipment_access": [
             "medicine_ball", "trap_bar", "landmine", "barbell", "dumbbells",
             "bands", "cable", "sled", "heavy_bag", "assault_bike", "box",
@@ -333,7 +333,8 @@ def test_open_strength_duplicate_backfills_next_qualified_scored_alternate(monke
     (True, [], ["Keep"]),
     (True, [{"name": "Keep", "score": 9, "prescription": "3 x 5"}], ["Keep"]),
     (True, [{"name": "Unprescribed", "score": 9}], ["Keep"]),
-    (True, [{"name": "Backup", "score": 7, "prescription": "3 x 5"}], ["Keep", "Backup"]),
+    # #3147 re-ranks the completed pool, including a promoted alternate.
+    (True, [{"name": "Backup", "score": 7, "prescription": "3 x 5"}], ["Backup", "Keep"]),
 ])
 def test_open_strength_duplicate_falls_back_without_unqualified_replacement(
     monkeypatch, replacement_allowed, alternates, expected,

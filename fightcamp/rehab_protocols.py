@@ -870,7 +870,10 @@ def _log_episode_selection(
 def is_rehab_guidance_name(name: str) -> bool:
     """Recognize advisory bank entries, including legacy rendered lines."""
     title = re.split(r"\s+[–—]\s+|:\s+", str(name), maxsplit=1)[0]
-    return bool(re.search(r"\b(?:activity guidance|safety guidance|medical advice|precautions|seek assessment)\b", title, re.I))
+    return bool(re.search(
+        r"\b(?:(?:activity|safety|protective|protection) guidance|medical advice|precautions|seek assessment)\b",
+        title, re.I,
+    ))
 
 
 def _reviewed_episode_option(episode: dict, location: str | None, phase: str):
@@ -942,7 +945,10 @@ def _select_rehab_drills_per_episode(
     episode_summaries: list[str | None] = []
     for episode in sorted(episodes, key=_episode_sort_key):
         reviewed = _reviewed_episode_option(episode, loc, current_phase)
-        episode_summaries.append(reviewed["decision"].get("summary") if reviewed is not None and not reviewed["line"] else None)
+        episode_summaries.append(
+            "No published rehab is available for this injury. Follow your current restrictions."
+            if reviewed is None else reviewed["decision"].get("summary") if not reviewed["line"] else None
+        )
         if reviewed is not None:
             per_episode.append([reviewed["line"]] if reviewed["line"] else [])
         else:

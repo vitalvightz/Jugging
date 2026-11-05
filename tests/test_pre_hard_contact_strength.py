@@ -504,6 +504,26 @@ def _seed_main(weekly: dict, *slots: dict) -> None:
     ]
 
 
+def test_redistribution_keeps_the_closed_core_component_on_its_host() -> None:
+    weekly = _secondary_power_geometry()
+    slots = _transfer_slots()
+    _seed_main(weekly, *slots)
+    main = weekly["weeks"][0]["session_roles"][0]
+    # All transferable-looking members belong to one existing three-member
+    # core component. Peeling off two destroys its complementary coverage.
+    for member in main["selected_exercise_assignments"][2:]:
+        member["component_group"] = "core_development"
+    before = deepcopy(main["selected_exercise_assignments"])
+    athlete = {"primary_goal": "power", "fatigue": "low"}
+    apply_pre_hard_contact_strength_exposure_cap(weekly, athlete)
+    redistribute_pre_hard_power_from_main(
+        weekly_role_map=weekly, candidate_pools=_candidate_pools(*slots), athlete_model=athlete,
+    )
+    assert main["selected_exercise_assignments"] == before
+    assert not any(r.get("pre_hard_contact_microdose_only")
+                   for r in weekly["weeks"][0]["session_roles"])
+
+
 def test_dense_main_rebalances_two_same_region_exercises_without_more_weekly_work() -> None:
     weekly = _secondary_power_geometry()
     athlete = {"primary_goal": "power", "fatigue": "low", "cut_severity_bucket": "none"}
@@ -1012,3 +1032,64 @@ def test_dense_receiver_uses_its_seven_day_window_in_eight_day_phase_week():
     receivers = [r for r in week["session_roles"] if r.get("dense_day_receiver_provisional")]
     assert len(receivers) == 1
     assert receivers[0]["scheduled_d_day"] == 23
+
+
+def test_composition_leaves_pre_hard_receivers_for_conserving_redistribution() -> None:
+    """A provisional microdose must not become an independently composed token."""
+    weekly = _secondary_power_geometry()
+    slots = list(_transfer_slots())
+    _seed_main(weekly, *slots)
+    athlete = {"primary_goal": "power", "fatigue": "low"}
+    apply_pre_hard_contact_strength_exposure_cap(weekly, athlete)
+    receiver = weekly["weeks"][0]["session_roles"][1]
+    assert receiver["pre_hard_contact_microdose_only"] is True
+    provisional = deepcopy(slots[-1])
+    provisional.update(slot_id="provisional-independent-power", session_index=2)
+    provisional["selected"]["name"] = "Independent provisional power"
+    pools = _candidate_pools(*slots, provisional)
+    original_names = {a["name"] for a in weekly["weeks"][0]["session_roles"][0]["selected_exercise_assignments"]}
+    compose_normal_strength_assignments(
+        weekly_role_map=weekly, candidate_pools=pools,
+        only_roles={id(receiver)}, allow_relocation=False,
+    )
+    assert receiver.get("selected_exercise_assignments") == []
+    redistribute_pre_hard_power_from_main(
+        weekly_role_map=weekly, candidate_pools=pools, athlete_model=athlete,
+    )
+    assert 2 <= len(receiver["selected_exercise_assignments"]) <= 3
+    assert all(a["redistribution_reason"] == "pre_hard_session_rebalance"
+               for a in receiver["selected_exercise_assignments"])
+    after = [a["name"] for r in weekly["weeks"][0]["session_roles"]
+             if r.get("category") == "strength" for a in r.get("selected_exercise_assignments", [])]
+    assert len(after) == len(set(after)) == len(original_names)
+    assert set(after) == original_names
+    apply_effective_strength_prescriptions(weekly_role_map=weekly, candidate_pools=pools, athlete_model=athlete)
+    before = deepcopy(receiver["selected_exercise_assignments"])
+    compose_normal_strength_assignments(
+        weekly_role_map=weekly, candidate_pools=pools,
+        only_roles={id(receiver)}, allow_relocation=False,
+    )
+    assert receiver["selected_exercise_assignments"] == before
+
+
+def test_transfer_records_calendar_day_before_prescriptions_stamp_it() -> None:
+    from fightcamp.calendar_context import role_d_day
+    from fightcamp.session_composition import rollback_invalid_dense_day_redistributions
+
+    weekly = _secondary_power_geometry()
+    slots = _transfer_slots()
+    _seed_main(weekly, *slots)
+    athlete = {"primary_goal": "power", "fatigue": "low"}
+    apply_pre_hard_contact_strength_exposure_cap(weekly, athlete)
+    week = weekly["weeks"][0]
+    receiver = next(r for r in week["session_roles"] if r.get("pre_hard_contact_microdose_only"))
+    receiver.pop("scheduled_d_day", None)
+    expected_day = role_d_day(week, receiver)
+    assert expected_day is not None
+    pools = _candidate_pools(*slots)
+    redistribute_pre_hard_power_from_main(weekly_role_map=weekly, candidate_pools=pools, athlete_model=athlete)
+    assert week["pre_hard_power_redistribution"]["receiver_original_d_day"] == expected_day
+    apply_effective_strength_prescriptions(weekly_role_map=weekly, candidate_pools=pools, athlete_model=athlete)
+    before = deepcopy(receiver["selected_exercise_assignments"])
+    assert not rollback_invalid_dense_day_redistributions(weekly, athlete_model=athlete)
+    assert receiver["selected_exercise_assignments"] == before

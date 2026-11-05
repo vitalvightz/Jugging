@@ -1,11 +1,8 @@
-"""The new rehab metadata is a data contract, not yet an authority.
+"""Unpublished metadata cannot prescribe rehab; live policies retain authority.
 
-PR1 adds structured rehab/safety metadata to the bank. Nothing reads it when
-choosing drills. These tests hold that line: hostile metadata (a stage that says
-"return", high impact/load/velocity, a severity gate that excludes the athlete,
-a zero pain ceiling, explicit stop rules) must leave the generated rehab block
-byte-identical, and every legacy behaviour — phase progression, severity
-filtering, surface-injury separation, red flags — must be untouched.
+#2984 removed legacy generation fallback. Empty-policy cases protect that
+boundary even when the bank metadata changes. Positive cases use the shipped
+published ankle policy and keep dose, identity and single-drill coverage.
 """
 
 from __future__ import annotations
@@ -14,6 +11,8 @@ import copy
 
 import pytest
 
+from fightcamp.rehab_clinical import load_clinical_policies
+from fightcamp.stage2_payload import _build_rehab_slots
 from fightcamp import rehab_protocols
 from fightcamp.rehab_protocols import (
     SURFACE_WOUND_CARE_NOTE,
@@ -28,8 +27,8 @@ PHASES = ("GPP", "SPP", "TAPER")
 
 
 @pytest.fixture(autouse=True)
-def legacy_policy_scope(monkeypatch):
-    """These tests cover pre-pilot metadata behavior, not active policy integrity."""
+def unpublished_policy_scope(monkeypatch):
+    """#2984: bank metadata alone is never prescription authority."""
     monkeypatch.setattr("fightcamp.rehab_clinical.load_clinical_policies", lambda: ())
 
 
@@ -91,7 +90,7 @@ def _hostile_metadata(bank: list[dict]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# The new metadata does not drive selection
+# Unpublished metadata does not grant selection
 # ---------------------------------------------------------------------------
 
 
@@ -151,33 +150,57 @@ def test_metadata_values_never_leak_into_the_rendered_block():
 
 
 # ---------------------------------------------------------------------------
-# Legacy runtime behaviour
+# Publication and phase behaviour
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("phase", PHASES)
-def test_legacy_selection_still_returns_drills(phase):
-    text = _protocol("ankle sprain", phase, parsed_entries=_structured("ankle", "sprain"))
+def _live_ankle_protocol(monkeypatch, phase, **kwargs):
+    policies = load_clinical_policies()
+    policy = next(p for p in policies if p.policy_id == "ankle_sprain")
+    assert policy.activation == "live" and policy.status == "active"
+    monkeypatch.setattr("fightcamp.rehab_clinical.load_clinical_policies", lambda: policies)
+    entry = {**_structured("ankle", "sprain", "moderate")[0],
+             "rehab_stage": "restore", "laterality": "left",
+             "id": "ankle-1", "episode_id": "episode-1", "athlete_id": "athlete-1",
+             "available_equipment": ["stable_support"]}
+    text = _protocol("ankle sprain", phase, parsed_entries=[entry], **kwargs)
+    slots = _build_rehab_slots(text, phase)
+    assert len(slots) == 1
+    selected = slots[0]["selected"]
+    approved = next(p for p in policy.prescriptions if p.drill_id == selected["rehab_drill_id"])
+    assert approved.instructions in text
+    assert approved.stage == "restore"
+    return text, approved
 
-    assert "Ankle" in text
-    assert "•" in text
-    assert "[Function:" in text
+
+@pytest.mark.parametrize("phase", PHASES)
+def test_unpublished_bank_cannot_supply_drills_but_live_policy_can(monkeypatch, phase):
+    text = _protocol("ankle sprain", phase, parsed_entries=_structured("ankle", "sprain"))
+    assert "Ankle" in text and "No published rehab is available" in text
+    assert _build_rehab_slots(text, phase) == []
+    text, _approved = _live_ankle_protocol(monkeypatch, phase)
+    assert "Ankle" in text and "•" in text and "[Function:" in text
     assert "Consult with a healthcare professional" not in text
 
 
-def test_phase_progression_still_selects_phase_specific_notes(restorable_bank):
-    """A GPP→SPP drill renders its GPP half in GPP and its SPP half in SPP."""
-    # Explicit legacy fixture: reviewed originals now have fixed instructions.
-    for entry in restorable_bank:
-        if entry["location"] == "ankle" and entry["type"] == "sprain":
-            for drill in entry["drills"]:
-                drill["notes"] = "GPP: Rebuild proprioception → SPP: Controlled sport movement → TAPER: Maintain comfortable range"
-    gpp = _protocol("ankle sprain", "GPP", parsed_entries=_structured("ankle", "sprain"))
-    spp = _protocol("ankle sprain", "SPP", parsed_entries=_structured("ankle", "sprain"))
-
-    assert "Rebuild proprioception" in gpp
-    assert "Rebuild proprioception" not in spp
-    assert "→" not in gpp.split("[Function:")[0]
+def test_phase_notes_cannot_bypass_publication_or_replace_approved_instructions(restorable_bank, monkeypatch):
+    """#2984: legacy phase notes grant no drill; approved notes stay intact."""
+    originals = [(drill, drill["notes"]) for entry in restorable_bank
+                 if entry["location"] == "ankle" and entry["type"] == "sprain"
+                 for drill in entry["drills"]]
+    for drill, _notes in originals:
+        drill["notes"] = "GPP: Rebuild proprioception → SPP: Controlled sport movement → TAPER: Maintain comfortable range"
+    for phase in ("GPP", "SPP"):
+        text = _protocol("ankle sprain", phase, parsed_entries=_structured("ankle", "sprain"))
+        assert "No published rehab is available" in text
+        assert _build_rehab_slots(text, phase) == []
+        assert "Rebuild proprioception" not in text and "Controlled sport movement" not in text
+    for drill, notes in originals:
+        drill["notes"] = notes
+    gpp, approved = _live_ankle_protocol(monkeypatch, "GPP")
+    spp, same = _live_ankle_protocol(monkeypatch, "SPP")
+    assert same.drill_id == approved.drill_id
+    assert approved.instructions in gpp and approved.instructions in spp
 
 
 @pytest.mark.parametrize("phase", PHASES)
@@ -186,10 +209,13 @@ def test_each_phase_yields_its_own_block(phase):
     assert "Knee" in text
 
 
-def test_sparring_day_keeps_the_single_drill_ceiling():
+def test_sparring_day_keeps_publication_boundary_and_single_drill_ceiling(monkeypatch):
     text = _protocol(
         "knee tendonitis", "SPP", parsed_entries=_structured("knee", "tendonitis"), day_type="sparring"
     )
+    assert "No published rehab is available" in text
+    assert _build_rehab_slots(text, "SPP") == []
+    text, _approved = _live_ankle_protocol(monkeypatch, "SPP", day_type="sparring")
     assert len([line for line in text.splitlines() if line.strip().startswith("•")]) == 1
 
 
@@ -259,7 +285,7 @@ def test_red_flag_text_injury_still_blocks_rehab():
 
 
 # ---------------------------------------------------------------------------
-# The keyword classifier remains the runtime fallback
+# Legacy keyword classification remains deterministic
 # ---------------------------------------------------------------------------
 
 

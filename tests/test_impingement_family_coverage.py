@@ -191,7 +191,13 @@ def test_seed_bank_review_and_profiles_are_byte_idempotent(tmp_path, monkeypatch
     folder = tmp_path / "data"
     folder.mkdir()
     names = ["rehab_bank.json", "rehab_metadata_review.json", "rehab_pathways.json"]
-    expected = {name: (ROOT / "data" / name).read_bytes() for name in names}
+    from tools.rehab_metadata_review_lib import before_bank_publication
+    # #2984 pins migration replay to its historical bank. Reconstruct only
+    # hash-matched reviewed publication deltas; unrelated drift still fails.
+    kinds = {"rehab_bank.json": "drills", "rehab_metadata_review.json": "reviews",
+             "rehab_pathways.json": "profiles"}
+    expected = {name: (json.dumps(before_bank_publication(read(f"data/{name}"), kinds[name]),
+                                 indent=2, ensure_ascii=False) + "\n").encode("utf-8") for name in names}
     for name, data in expected.items():
         (folder / name).write_bytes(data)
     monkeypatch.setattr(seed_impingement_family, "ROOT", tmp_path)

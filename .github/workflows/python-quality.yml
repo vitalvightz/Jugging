@@ -93,6 +93,17 @@ jobs:
             requirements.txt
             requirements-dev.txt
 
+      # Python card-contract tests execute the real React renderer via tsx.
+      - name: Setup Node.js for Python rendering contracts
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install locked web dependencies for Python rendering contracts
+        run: npm ci --prefix web
+
       - name: Install test dependencies
         env:
           # Give pip its own network resilience; the loop below is the belt-and-
@@ -128,7 +139,7 @@ jobs:
           assert selected, "every full-suite shard must contain tests"
           # loadfile keeps each module on one worker so module-level plan
           # caches are generated once rather than once per worker.
-          sys.exit(subprocess.call([sys.executable, "-m", "pytest", "-q", "-n", "auto",
+          sys.exit(subprocess.call([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-n", "auto",
                                     "--dist", "loadfile", *map(str, selected)]))
           PY
 

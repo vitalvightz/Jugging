@@ -411,7 +411,11 @@ def test_bank_identity_display_mechanics_and_all_live_inventory_unchanged():
     assert drill["name"] == "Floor-level controlled Achilles lowering"
     assert drill["notes"] == OPTION.instructions and content_hash(drill) == OPTION.bank_hash
     assert len(policies) == 64
-    assert len({rx.drill_id for p in policies for rx in p.prescriptions}) == 107
+    # #2984/#2986 intentionally expanded published rehab to 130 exercises.
+    # Preserve the identity/mechanics checks and account for real bank IDs.
+    published_ids = {rx.drill_id for p in policies for rx in p.prescriptions}
+    assert len(published_ids) == 130
+    assert published_ids <= {d["id"] for group in bank for d in group["drills"]}
     assert all(set(p.live_stages) <= {"calm", "restore"} for p in policies if p.policy_id not in {OPTION.profile_id, "elbow_tendonitis", "ankle_sprain", "shoulder_tendonitis"})
     assert [(p.policy_id,t.key) for p in policies for t in p.transitions if t.promotable] == [("ankle_sprain","restore->load"), (OPTION.profile_id,"restore->load"), ("shoulder_tendonitis","restore->load"), ("elbow_tendonitis","restore->load")]
     assert OPTION.drill_id in {rx.drill_id for p in policies for rx in p.prescriptions}

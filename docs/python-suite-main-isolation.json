@@ -1,0 +1,324 @@
+{
+  "main_revision": "496821b967d9c391e0cf70eb3bf5a52616afec19",
+  "python": "3.11.17",
+  "baseline_worktree_tracked_changes": false,
+  "command_per_test": "python -m pytest -q -p no:cacheprovider <nodeid>",
+  "scope": "63 unique failures observed across the checkpointed full-suite run and its exact-ID continuation, before subsequent fixes. This is a baseline inventory, not the final branch failure list. Each entry was separately executed in the clean detached Main worktree. The heartbeat passes in isolation; all other entries fail.",
+  "results": [
+    {
+      "nodeid": "tests/test_api_generation_flows.py::test_runtime_generation_stage1_planner_does_not_fail_before_configured_timeout",
+      "exit_code": 1,
+      "log_sha256": "76084b51e55a541d0f7565e3d5d5cfae54407cefb6d24bc0e7885f0791b25929"
+    },
+    {
+      "nodeid": "tests/test_calendar_integrity_characterization.py::test_baseline_d16_technical_conversion",
+      "exit_code": 1,
+      "log_sha256": "a2aaec84ed4bad86a269d951ad3a576a474dae4fafe0480522b60da11616c6ef"
+    },
+    {
+      "nodeid": "tests/test_calendar_integrity_characterization.py::test_baseline_d24_two_hard_contacts",
+      "exit_code": 1,
+      "log_sha256": "cc2be5b4438e7637ed7be66ec8a7397c6656ffcd50126696591f22b4944538b2"
+    },
+    {
+      "nodeid": "tests/test_calendar_integrity_characterization.py::test_baseline_d28_finished_tail",
+      "exit_code": 1,
+      "log_sha256": "dda87d8095ff61349d92636b603e8fd696393f6a947b14e4061b7bbe86d2158d"
+    },
+    {
+      "nodeid": "tests/test_coverage_aware_fillers.py::test_live_wrapper_previous_filler_reduces_next_week_remaining_need",
+      "exit_code": 1,
+      "log_sha256": "5e3f2c2902686171a64f404e536c43f6a32ae021439fbab59d51eb56097a9545"
+    },
+    {
+      "nodeid": "tests/test_equipment_requirements.py::test_api_returns_mandatory_setup_and_original_equipment_without_granting_prescription",
+      "exit_code": 1,
+      "log_sha256": "813e279707cbc4124d2aaa072a5a63657b4b3dccfee73d27b0478f19e630b6d1"
+    },
+    {
+      "nodeid": "tests/test_exercise_customisation.py::test_library_dose_fields_follow_the_drill[Tempo Hill Runs-intervals]",
+      "exit_code": 1,
+      "log_sha256": "05a3e2065722c3f546bd3fb4c3e87c08dc5e97503fb16b5187623e2e30cdbceb"
+    },
+    {
+      "nodeid": "tests/test_functional_injury_impact.py::test_manual_add_follows_the_three_impact_choices[Landmine Split-Stance Punch Press]",
+      "exit_code": 1,
+      "log_sha256": "c27294cdb8c20115296f63c34c714e92443a09b107d0717664f3121780f06dba"
+    },
+    {
+      "nodeid": "tests/test_functional_injury_impact.py::test_manual_add_follows_the_three_impact_choices[Punch-Specific Max Isometric Hold]",
+      "exit_code": 1,
+      "log_sha256": "115784e7211b885198d6227c51e2b15459d09d48c0d3cb0fe6b28431ae9af5cb"
+    },
+    {
+      "nodeid": "tests/test_functional_injury_impact.py::test_medical_evidence_overrides_not_limiting_in_manual_changes[flag0]",
+      "exit_code": 1,
+      "log_sha256": "e4dda7f6496f06b108091a719972e31c36fa7dade2e898516d9f93b36f76a77b"
+    },
+    {
+      "nodeid": "tests/test_functional_injury_impact.py::test_medical_evidence_overrides_not_limiting_in_manual_changes[flag1]",
+      "exit_code": 1,
+      "log_sha256": "4c2a0ea419de540bccdfe54679a4b9e5e6d05bb64b40b8b5743a59b502ce7a11"
+    },
+    {
+      "nodeid": "tests/test_generation_heartbeat.py::test_heartbeat_keeps_refreshing_while_job_stays_running",
+      "exit_code": 0,
+      "log_sha256": "7ec587dca5b2136fa1615d4999b63f5e529cd16fa2712d9491d2fa727d95c126"
+    },
+    {
+      "nodeid": "tests/test_groin_load_hold.py::test_all_profiles_inventory_provenance_and_athlete_interactions_remain_unchanged",
+      "exit_code": 1,
+      "log_sha256": "523f527ef7508acf1001763ed5517d5b90e9273c371b14c4f6ed14976586aa11"
+    },
+    {
+      "nodeid": "tests/test_hyperextension_family_coverage.py::test_previous_31_profiles_hashes_decisions_schedules_and_snapshots_unchanged",
+      "exit_code": 1,
+      "log_sha256": "41ddc4180541317c2d39f67c7ebc1205d737f3df302456c6a856dde0470f5f4e"
+    },
+    {
+      "nodeid": "tests/test_injury_policy_journey.py::test_generation_uses_reviewed_policy_in_taper_and_stage2_does_not_expand_alternates",
+      "exit_code": 1,
+      "log_sha256": "40ec6f43c4a6fd81afc10a99f5967ee3c8329cc5d0b1c38ed244c42943b39831"
+    },
+    {
+      "nodeid": "tests/test_injury_policy_journey.py::test_phase_changes_bounded_dose_not_eligibility",
+      "exit_code": 1,
+      "log_sha256": "eb841f6088e1f59b8fd5ec545f1992efc644df87a109a28b75b9ebe4a5283a16"
+    },
+    {
+      "nodeid": "tests/test_injury_policy_journey.py::test_readiness_requires_reviewed_reductions_and_preserves_camp_ceiling",
+      "exit_code": 1,
+      "log_sha256": "296fd881dfb65be5d1ee4422862112e4d1fb6512c9f5cb42a53c915919276361"
+    },
+    {
+      "nodeid": "tests/test_injury_policy_journey.py::test_shipped_policies_are_sourced_active_and_self_paced",
+      "exit_code": 1,
+      "log_sha256": "ba913ff56cb3b356b07c99cdb95f235efa435e891479d377433f6c74f3084299"
+    },
+    {
+      "nodeid": "tests/test_injury_readiness_replay.py::test_persisted_readiness_preserves_app_budget_with_coached_days[coached_days1-Sometimes my left knee hurts-False]",
+      "exit_code": 1,
+      "log_sha256": "89a7044059d78da074006e6da40fd41a2736acd8bdf43a8b73b6066bad78a8e6"
+    },
+    {
+      "nodeid": "tests/test_injury_readiness_replay.py::test_persisted_readiness_preserves_app_budget_with_coached_days[coached_days1-Sometimes my right shoulder hurts-False]",
+      "exit_code": 1,
+      "log_sha256": "fde4413bcc3fa2cd8efb3a8f85ec0b11553372d67f128875a78a94c221e8a085"
+    },
+    {
+      "nodeid": "tests/test_input_parsing.py::test_guided_injury_runtime_context_does_not_leak_note_body_parts",
+      "exit_code": 1,
+      "log_sha256": "8a67dd8fa75020533c45411c199b574ee02d012e9c78b9fcefd4ba3801df74c3"
+    },
+    {
+      "nodeid": "tests/test_late_camp_selector_rebalance.py::test_audit_snapshot_matches_golden",
+      "exit_code": 1,
+      "log_sha256": "46e0afa63a36fe40de9b18c62c656605a27f9c0d7204ec04eff51494191ed368"
+    },
+    {
+      "nodeid": "tests/test_lateral_elbow_load_activation.py::test_consumer_changes_invalidate_unstarted_work_preserving_started_and_completed[no_work]",
+      "exit_code": 1,
+      "log_sha256": "eb45c616310f339ee87daddaea3bc712552cce58f48708d0a92c0e3dad3e8711"
+    },
+    {
+      "nodeid": "tests/test_lateral_elbow_load_activation.py::test_known_missing_responses_hold_but_no_history_allows_permission_entry",
+      "exit_code": 1,
+      "log_sha256": "97c0e8a91b706a8f67cf82535c4f0de8cc36fccb696355af8184317d0f0444ac"
+    },
+    {
+      "nodeid": "tests/test_locked_content_server_ownership.py::test_locked_content_still_fails_when_the_payload_really_lacks_it",
+      "exit_code": 1,
+      "log_sha256": "31e31b76602c1fa56b07b3d28adb5e142facc78909ca42f1726fd6e0fce3867e"
+    },
+    {
+      "nodeid": "tests/test_nonspecific_msk_family_coverage.py::test_previous_48_profiles_and_all_other_bank_hashes_preserved",
+      "exit_code": 1,
+      "log_sha256": "eb83d10a13d96546b848cadbd2c77e48384791fe6262bbc8e475629d60503af4"
+    },
+    {
+      "nodeid": "tests/test_open_plan_development_block.py::test_two_hard_power_open_block_never_turns_a_microdose_into_full_strength",
+      "exit_code": 1,
+      "log_sha256": "05bc289a52af3fba50ecdd5323dd9917bb0ab9d463f863c02022ddef8580ad5a"
+    },
+    {
+      "nodeid": "tests/test_rehab_bank_publication.py::test_each_new_bank_option_selected_displayed_and_completed_through_today[achilles_tendonitis]",
+      "exit_code": 1,
+      "log_sha256": "637b5be269bc215c0c158f7324cf6c1eb1a7178f0aac3ca77b03b1aa684097cc"
+    },
+    {
+      "nodeid": "tests/test_rehab_bank_publication.py::test_new_load_uses_existing_permission_pending_response_and_setback_holds",
+      "exit_code": 1,
+      "log_sha256": "cc2957c437067e4f453a6337b59844ae7f4720806a05e88c20472a6b16228a39"
+    },
+    {
+      "nodeid": "tests/test_rehab_bank_publication.py::test_timed_load_freeze_accepts_only_exact_prescribed_duration",
+      "exit_code": 1,
+      "log_sha256": "914efb112f982c248d50774f3af81ee1b15e592f6062dc3597d4b25157b2a9fa"
+    },
+    {
+      "nodeid": "tests/test_rehab_bank_readiness.py::test_today_preserves_exact_published_work_in_every_camp_phase[GPP-elbow_hyperextension]",
+      "exit_code": 1,
+      "log_sha256": "1e209bee06808e45c5c8092317de39299572c86d027904f0d71c00515d03a787"
+    },
+    {
+      "nodeid": "tests/test_rehab_bank_readiness.py::test_today_preserves_exact_published_work_in_every_camp_phase[SPP-elbow_hyperextension]",
+      "exit_code": 1,
+      "log_sha256": "99c1620fa2aaa5168e2194e9e83549af7d6f752fe665625ec9e98bc2dd4bc15b"
+    },
+    {
+      "nodeid": "tests/test_rehab_bank_readiness.py::test_today_preserves_exact_published_work_in_every_camp_phase[TAPER-elbow_hyperextension]",
+      "exit_code": 1,
+      "log_sha256": "226020763119815af58f97d2f943f82ccec946c897749a7346124369f6d59020"
+    },
+    {
+      "nodeid": "tests/test_rehab_prescription_bundles.py::test_today_uses_live_bundle_only_for_injury_specific_restore_evidence[worse-calm-ids2]",
+      "exit_code": 1,
+      "log_sha256": "aec79b781211a8fa47eb491a62d21736149a54e8c5df60b2b52897b34eb3ea2e"
+    },
+    {
+      "nodeid": "tests/test_restore_physical_stimulus.py::test_existing_strength_session_carries_speed_and_moving_footwork",
+      "exit_code": 1,
+      "log_sha256": "b86a94929d4ed70b164fa71f4f25a191546972d4077d4846e5158cdca625646f"
+    },
+    {
+      "nodeid": "tests/test_restore_physical_stimulus.py::test_goal_repair_never_stacks_two_meaningful_strength_sessions[saved_plan]",
+      "exit_code": 1,
+      "log_sha256": "d1df6810e22fb3e396aabb6bd68e0a001f34f2c5207052cd169b2f884aa07f73"
+    },
+    {
+      "nodeid": "tests/test_restore_physical_stimulus.py::test_maintenance_repair_uses_the_same_canonical_dose_as_existing_work",
+      "exit_code": 1,
+      "log_sha256": "eb90a1f0bef041478692d5ee772a65a50d474c397bd850f1463bbc5f685d4943"
+    },
+    {
+      "nodeid": "tests/test_restore_physical_stimulus.py::test_more_real_physical_stimulus_than_main_without_invented_doses[saved_plan]",
+      "exit_code": 1,
+      "log_sha256": "5f52473f30d323e659499ec1d8f2d76bf8874590250212755bab468c9d070608"
+    },
+    {
+      "nodeid": "tests/test_restore_physical_stimulus.py::test_saved_intake_replays_the_production_calendar_context",
+      "exit_code": 1,
+      "log_sha256": "dd379e2b1235ed395c82ce65ec95a7d6302a76c9d664aa51251e9b42fe5407ac"
+    },
+    {
+      "nodeid": "tests/test_safety_metadata_enforcement.py::test_complete_programmes_preserve_selection_dose_periodisation_and_personalisation",
+      "exit_code": 1,
+      "log_sha256": "8507a229e5b705a5cfc93fb73a2432a0312f41a5ec076c762a301c43451f25a4"
+    },
+    {
+      "nodeid": "tests/test_schedule_composition_and_loaded_work.py::test_a_power_only_session_on_a_loaded_day_is_not_told_to_drop_loading",
+      "exit_code": 1,
+      "log_sha256": "f26bbbf291a8085121e61667988698870a0100f511f24514bef5699355bfb934"
+    },
+    {
+      "nodeid": "tests/test_schedule_composition_and_loaded_work.py::test_no_strength_stacking_or_duplicated_exercise[bjj35_shoulder]",
+      "exit_code": 1,
+      "log_sha256": "916693aba7b377118753476b2e107b061edb32708a2032a490ba5933332b2476"
+    },
+    {
+      "nodeid": "tests/test_schedule_composition_and_loaded_work.py::test_revalidation_does_not_force_a_move_when_final_doses_are_legal",
+      "exit_code": 1,
+      "log_sha256": "423f0f9df4f9d2227c34acbdba49afce67b4cbe7de4d775c6af22f90b35da9fe"
+    },
+    {
+      "nodeid": "tests/test_sprain_family_coverage.py::test_profiles_preserve_other_inventory_and_require_episode_selection[knee]",
+      "exit_code": 1,
+      "log_sha256": "d84a20feb90a1d355f893c47c59a0a9b4ff7d10c46b0388d67379d3931701bf4"
+    },
+    {
+      "nodeid": "tests/test_sprain_family_coverage.py::test_profiles_preserve_other_inventory_and_require_episode_selection[wrist]",
+      "exit_code": 1,
+      "log_sha256": "26453b3303b4beb1420328eea3fefb69aa67610ad7087b1a3303e7f0dd99f358"
+    },
+    {
+      "nodeid": "tests/test_strain_family_coverage.py::test_correct_region_strain_resolves_reviewed_stage_and_real_completion[restore-groin]",
+      "exit_code": 1,
+      "log_sha256": "0daa1a394a19a3cf2dfa472264185ffe095b5337f4ea087830d7766756e20fd0"
+    },
+    {
+      "nodeid": "tests/test_strain_family_coverage.py::test_live_identities_have_current_review_and_authorised_edits_keep_source_history[groin]",
+      "exit_code": 1,
+      "log_sha256": "becd58afe9d990fa754371c6d568025748bda40d6a09cb615c869cfe236a62a8"
+    },
+    {
+      "nodeid": "tests/test_tag_retirement.py::test_all_banks_clinical_reviews_aliases_and_historical_identities_are_unchanged",
+      "exit_code": 1,
+      "log_sha256": "078127aecb872c32f229faa0bb7fd6ae27f33e0b68e1fd1e49b6290413f84b24"
+    },
+    {
+      "nodeid": "tests/test_tag_retirement.py::test_complete_current_plans_match_pre_retirement_selection_dose_and_personalisation",
+      "exit_code": 1,
+      "log_sha256": "b96a76f7576605ecd9f0b2b5fef54db454d613bf08b0793e9136f3245deb6330"
+    },
+    {
+      "nodeid": "tests/test_tag_retirement.py::test_injury_stages_and_reviewed_progression_match_pre_retirement_decisions",
+      "exit_code": 1,
+      "log_sha256": "41cab85d86c73746f34d81c5e5a062f9be171f7e56d3c6b9f78cf3a5bf8ca77e"
+    },
+    {
+      "nodeid": "tests/test_tendon_family_coverage.py::test_region_and_exact_type_resolve_a_reviewed_prescription_and_real_completion[restore-elbow-tendonitis]",
+      "exit_code": 1,
+      "log_sha256": "8f4903dabc0406fa95b83ead12dc0971661deb635e4ebc03feeccd6bc3ad4062"
+    },
+    {
+      "nodeid": "tests/test_tendon_family_coverage.py::test_region_and_exact_type_resolve_a_reviewed_prescription_and_real_completion[restore-shoulder-tendonitis]",
+      "exit_code": 1,
+      "log_sha256": "57972b2c5c7f7a8b98b0100de0bb70442e0954da0db130170c21df9dd5a3e408"
+    },
+    {
+      "nodeid": "tests/test_tendon_family_coverage.py::test_restore_pull_back_uses_real_loading_hold_semantics[achilles]",
+      "exit_code": 1,
+      "log_sha256": "1321a5a29cb647e2a78b1920bc0c9397b67d2286a026439102e1dd233c01c7f4"
+    },
+    {
+      "nodeid": "tests/test_training_catalogue.py::test_all_audited_entries_accounted_for_with_unique_source_scoped_ids",
+      "exit_code": 1,
+      "log_sha256": "40e0523f6932464e0b743948070189c36475fc57b62bb06715dbdf3eab68ff15"
+    },
+    {
+      "nodeid": "tests/test_training_catalogue.py::test_classification_and_selection_boundaries",
+      "exit_code": 1,
+      "log_sha256": "2299809ceac6fb66a46bdc430f59ac9a90b8a291bcf5ec67bd445aa99e0805d4"
+    },
+    {
+      "nodeid": "tests/test_training_catalogue.py::test_duplicate_names_and_media_variants_remain_distinct",
+      "exit_code": 1,
+      "log_sha256": "4ae72f8a3d9fcb35354d746de1e87e4e8f689b26a1d32747eb2616dbdf784728"
+    },
+    {
+      "nodeid": "tests/test_training_goal_reviews.py::test_each_review_adds_a_supported_goal_filter_and_preview[exercise_bank.json:1090492c-7713-4845-89fc-f311b9088445]",
+      "exit_code": 1,
+      "log_sha256": "0a85fe5dae6c610a078df59311dbd9c6ff5a58d093d6396d43d2b9d2b05201c3"
+    },
+    {
+      "nodeid": "tests/test_training_goal_reviews.py::test_each_review_adds_a_supported_goal_filter_and_preview[exercise_bank.json:21c9e4b8-181f-4f8d-a5d9-6ad56668c05c]",
+      "exit_code": 1,
+      "log_sha256": "7fb7eaba3c546a1e4b9793951fd29d5a4e2f2bccde16e6695eecd250809c041b"
+    },
+    {
+      "nodeid": "tests/test_training_goal_reviews.py::test_each_review_adds_a_supported_goal_filter_and_preview[exercise_bank.json:4cf92eb8-9a32-4521-955f-5e0e3ef3fb2f]",
+      "exit_code": 1,
+      "log_sha256": "5a116418b7f47472dbf5be7155a8d67180c32dd75a38023afc064db8412a0647"
+    },
+    {
+      "nodeid": "tests/test_training_goal_reviews.py::test_each_review_adds_a_supported_goal_filter_and_preview[exercise_bank.json:a8de6b79-4ace-4600-8927-6cf645fbdb04]",
+      "exit_code": 1,
+      "log_sha256": "610a2019941387fad8922d8fa4fec13eb7b99c2f988d00ff7b3293a3e1bdf636"
+    },
+    {
+      "nodeid": "tests/test_training_goal_reviews.py::test_each_review_adds_a_supported_goal_filter_and_preview[exercise_bank.json:ab64c3ed-5f2d-48bb-b9d4-c391c8712e72]",
+      "exit_code": 1,
+      "log_sha256": "f7a45fb477ae676422b64146661204c3d4dda2dd1e50a3442f607991be18f4bf"
+    },
+    {
+      "nodeid": "tests/test_training_goal_reviews.py::test_each_review_adds_a_supported_goal_filter_and_preview[exercise_bank.json:b83eb2e1-57a2-4c80-a80d-ac9cfc004047]",
+      "exit_code": 1,
+      "log_sha256": "1fdf17639527d1fd5d771588dedfa65c7434abca27daac150ad61d9d0b4148a2"
+    },
+    {
+      "nodeid": "tests/test_training_goal_reviews.py::test_each_review_adds_a_supported_goal_filter_and_preview[exercise_bank.json:bbcbe94f-27a1-484f-9ddc-c3565b29cdde]",
+      "exit_code": 1,
+      "log_sha256": "9447f533c316be7168f485f7b6a5d4e3b1090b88e742f7de3c6b5a5207b3620c"
+    }
+  ]
+}

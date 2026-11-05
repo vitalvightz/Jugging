@@ -1,0 +1,246 @@
+{
+  "main_revision": "496821b967d9c391e0cf70eb3bf5a52616afec19",
+  "branch_revision": "669a0a2a",
+  "scope": "Historical Oct 30 checkpoint, before the Nov 4 Main integration. No calendar baselines were updated. Revalidate against the current Main snapshot before treating these differences as current.",
+  "scenarios": {
+    "d13_direct": {
+      "baseline_to_main": {},
+      "main_to_fixed": {}
+    },
+    "d14_boundary": {
+      "baseline_to_main": {},
+      "main_to_fixed": {}
+    },
+    "d16_technical_conversion": {
+      "baseline_to_main": {
+        "roles": {
+          "removed": [
+            [
+              1,
+              "SPP",
+              "joint_prep",
+              "support_insert",
+              "thursday",
+              15,
+              true,
+              false,
+              false,
+              "support",
+              "low"
+            ]
+          ],
+          "added": []
+        },
+        "suppressed": {
+          "removed": [
+            [
+              1,
+              "alactic_speed_day",
+              "conditioning",
+              "",
+              []
+            ],
+            [
+              2,
+              "neural_primer_day",
+              "strength",
+              "",
+              [
+                "spar_first_cap"
+              ]
+            ]
+          ],
+          "added": [
+            [
+              1,
+              "strength_touch_day",
+              "strength",
+              "",
+              [
+                "spar_first_cap"
+              ]
+            ],
+            [
+              2,
+              "aerobic_flush_day",
+              "conditioning",
+              "",
+              [
+                "spar_first_cap"
+              ]
+            ]
+          ]
+        }
+      },
+      "main_to_fixed": {}
+    },
+    "d24_high_fatigue": {
+      "baseline_to_main": {},
+      "main_to_fixed": {}
+    },
+    "d24_no_contact": {
+      "baseline_to_main": {},
+      "main_to_fixed": {}
+    },
+    "d24_one_hard": {
+      "baseline_to_main": {},
+      "main_to_fixed": {}
+    },
+    "d24_two_hard": {
+      "baseline_to_main": {
+        "roles": {
+          "removed": [
+            [
+              2,
+              "SPP",
+              "alactic_speed_day",
+              "conditioning",
+              "friday",
+              14,
+              false,
+              false,
+              false,
+              "",
+              ""
+            ],
+            [
+              2,
+              "SPP",
+              "joint_prep",
+              "support_insert",
+              "thursday",
+              15,
+              true,
+              false,
+              false,
+              "support",
+              "low"
+            ]
+          ],
+          "added": [
+            [
+              2,
+              "SPP",
+              "neural_plus_strength_day",
+              "strength",
+              "thursday",
+              15,
+              false,
+              false,
+              true,
+              "",
+              ""
+            ]
+          ]
+        },
+        "suppressed": {
+          "removed": [
+            [
+              2,
+              "neural_plus_strength_day",
+              "strength",
+              "hard_sparring_day",
+              []
+            ],
+            [
+              3,
+              "neural_primer_day",
+              "strength",
+              "",
+              [
+                "spar_first_cap"
+              ]
+            ]
+          ],
+          "added": [
+            [
+              2,
+              "strength_touch_day",
+              "strength",
+              "",
+              [
+                "spar_first_cap"
+              ]
+            ],
+            [
+              3,
+              "aerobic_flush_day",
+              "conditioning",
+              "",
+              [
+                "spar_first_cap"
+              ]
+            ]
+          ]
+        }
+      },
+      "main_to_fixed": {}
+    },
+    "d28_finished_tail": {
+      "baseline_to_main": {
+        "roles": {
+          "removed": [
+            [
+              2,
+              "SPP",
+              "alactic_speed_day",
+              "conditioning",
+              "tuesday",
+              17,
+              false,
+              false,
+              false,
+              "",
+              ""
+            ]
+          ],
+          "added": [
+            [
+              2,
+              "SPP",
+              "alactic_speed_day",
+              "conditioning",
+              "wednesday",
+              16,
+              false,
+              false,
+              false,
+              "",
+              ""
+            ]
+          ]
+        },
+        "suppressed": {
+          "removed": [
+            [
+              4,
+              "neural_primer_day",
+              "strength",
+              "hard_sparring_day",
+              []
+            ]
+          ],
+          "added": [
+            [
+              4,
+              "aerobic_flush_day",
+              "conditioning",
+              "fight_day_protocol",
+              []
+            ],
+            [
+              4,
+              "fight_week_freshness_day",
+              "recovery",
+              "",
+              [
+                "spar_first_cap"
+              ]
+            ]
+          ]
+        }
+      },
+      "main_to_fixed": {}
+    }
+  }
+}

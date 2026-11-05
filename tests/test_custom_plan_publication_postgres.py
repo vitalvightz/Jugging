@@ -21,7 +21,7 @@ from api.app import create_app
 from api.auth import AuthenticatedUser
 from api.models import PlanRequest
 from api.store import SupabaseAppStore
-from tests.support import FakeAuthService, FakeStore
+from tests.support import FakeAuthService, FakeStore, grant_default_compliance
 from tests.test_custom_open_plans import AUTH, WEEKDAYS, body
 from api.services.today_service import resolve_training_day
 from datetime import date
@@ -166,6 +166,9 @@ def test_saved_custom_plan_publish_view_activate_today_and_retries(persistence):
             setattr(store, method, getattr(persistent, method))
     user = AuthenticatedUser(user_id=OWNER, email="test@example.com", full_name="Test athlete", metadata={})
     store.ensure_profile(user)
+    # #3149 removes the Camp Setup requirement, not the adult profile/consent
+    # prerequisites enforced by the shared compliance contract.
+    grant_default_compliance(store, OWNER)
     store.intakes[OWNER] = [{"id": INTAKE, "athlete_id": OWNER}]
     client = TestClient(create_app(store=store, auth_service=FakeAuthService({"athlete-token": user}), enable_in_process_generation=False))
     weekday = WEEKDAYS[date.fromisoformat(resolve_training_day(None)).weekday()]
@@ -215,7 +218,8 @@ def test_atomic_only_plan_activation_checks_candidate_and_uniqueness(persistence
     store, db, _ = persistence
     # Execute the actual migration function in the disposable PostgreSQL DB.
     # The test DB has no Supabase API roles, so omit only its GRANT/REVOKE.
-    migration = (ROOT / "supabase/migrations/20261031200000_atomic_single_plan_activation.sql")
+    # #3139 renamed this exact migration to its already-applied version.
+    migration = (ROOT / "supabase/migrations/20261031163741_atomic_single_plan_activation.sql")
     db.execute(migration.read_text(encoding="utf-8").split("revoke all on function")[0])
 
     request = PlanRequest(athlete={"full_name": "Test athlete"})

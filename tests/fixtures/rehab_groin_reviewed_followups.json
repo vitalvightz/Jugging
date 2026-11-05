@@ -1,0 +1,29 @@
+{
+  "docs/rehab-bank-rationalisation.md": {
+    "historical_sha256": "85529958e10d2827d2922547803df2e8f39eae3f2db9cb20f01cb5e8f6b352f8",
+    "approved_sha256": "e4653363d2cb238d895afe61a9513801dc464c94c1e8a28a255a339f44cfe52a",
+    "commits": [
+      "fdb37dbe0b229bd64b45fff3aeb9b6577f68987f Publish source-dosed RESTORE rehab for 14 more profiles (111 \u2192 130 live exercises) (#2986)",
+      "aac3c5976badfdc9cb339fae1b77ce6e03b39614 Simplify rehab bank publication and guide exercises across five pilots (#2980)"
+    ]
+  },
+  "web/components/today/today-injury-manager.tsx": {
+    "historical_sha256": "b43adea616c9340d85ae8fa398ab106b3672f47b4416d7bf74a9cbdccbaea076",
+    "approved_sha256": "7c440aee4fb8906c09ac6037cc525cacafe9673ff48da473bab50a76f79ed243",
+    "commits": [
+      "9845b6dc6ada9c8b3b640364d684e918f632fc66 Fix sheet and tap flashes; use black fade for Plan navigation (#3078)",
+      "e921ba65d903abb383b854edd660158b482e4d7d Polish Today overview and injury logging (#3075)",
+      "4a20b4752d47bce4a095cb63c4cc410f928015e7 Simplify injury logging and fit mobile sheet",
+      "d3f35666bf8a218927c88a2543c5c4cf0f42339f Today page cleanup: injury form in a sheet, clearer guidance, less repetition (#3069)",
+      "c3d42c2edf1c3c295da019f289dc118d8b65f129 Smooth Today slides, fade through black, steady feedback card (#3064)",
+      "f00d87bf158ef4532008532dc95b9b359fe19fe8 Calmer notifications and a steady Today screen (#3063)",
+      "0b54797986342d554e4ee3fa7f4399b45514550e Make toasts and XP feedback arrive more gracefully (#3061)",
+      "f59427a20de5960e1e247586d1e54f3bb80c01be Speed up Today session completion and injury updates (#3043)",
+      "5a1661bc2c0aa7ba0c98f9fafebd3ec273c6a051 Fix injury clearance authority and standalone rehab access (#3003)",
+      "58c461e70388f34d3998000148b06ea73441112b Injury cards: clear next step, recent log, compact cards; check-in failsafe fix (#3001)",
+      "24091636844b8a7ed1d67bb544aad6f3149a664d Injury guidance: Pull Back holds only loading stages, and says why (#2993)",
+      "7f4ef5d8fa577e36791ad67b5723d6baffa22eb4 Clarify rehab entry and safety holds with shorter Today copy (#2982)",
+      "4af1dfb9de273dc78029f7c0d2e56c7480861bc6 Fix rehab follow-up progression and quantify bank reachability (#2976)"
+    ]
+  }
+}

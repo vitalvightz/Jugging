@@ -76,6 +76,7 @@ def test_community_requires_authentication(api, path):
             {"action": "approve", "final_confirmation": True},
         ),
     ],
+    ids=["review", "history", "read_revision", "edit_revision", "publish_revision"],
 )
 def test_non_admin_cannot_review_or_publish(api, method, path, payload):
     client, _, _, calls = api

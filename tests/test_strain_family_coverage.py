@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REGIONS = ["hamstring", "calf", "groin", "quads", "biceps", "triceps", "shoulder"]
 RESTORE_IDS = {
     "hamstring": "hamstrings_strain_isometric_hamstring_bridge",
-    "calf": "calf_strain_double_leg_calf_raises", "groin": "groin_strain_side_lying_hip_adduction",
+    "calf": "calf_strain_double_leg_calf_raises", "groin": "groin_unspecified_isometric_adductor_squeeze_ball_between_knees",
 }
 DAY = "2026-10-03"
 PLAN = str(uuid4())
@@ -70,7 +70,9 @@ def test_correct_region_strain_resolves_reviewed_stage_and_real_completion(regio
 def test_live_identities_have_current_review_and_authorised_edits_keep_source_history(region):
     from tests.rehab_inventory_history import inventory_with_history
     _, historical_ledger = inventory_with_history()
-    ledger = {r["drill_id"]: r for r in historical_ledger}
+    # #2984 publishes compatible live options; use their current reviews.
+    ledger = {r["drill_id"]: r for r in json.loads(
+        (ROOT / "data/rehab_metadata_review.json").read_text(encoding="utf-8"))}
     bank = get_rehab_bank()
     policy = next(p for p in load_clinical_policies() if p.region == region)
     assert validate_clinical_bank((policy,), bank) == []
@@ -79,6 +81,7 @@ def test_live_identities_have_current_review_and_authorised_edits_keep_source_hi
         assert record["review_state"] == "reviewed"
         assert record["source_hash"] == source_hash(drill_id=record["drill_id"], location=record["location"],
             injury_type=record["injury_type"], name=record["name"], notes=record["notes"])
+    ledger = {r["drill_id"]: r for r in historical_ledger}
     before = json.loads((ROOT / "docs/strain-family-pre-rollout-audit.json").read_text(encoding="utf-8-sig"))
     for original in before[region]["drills"]:
         record = ledger[original["drill_id"]]

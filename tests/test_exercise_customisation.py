@@ -236,7 +236,8 @@ def test_library_dose_fields_follow_the_drill(query, expected_mode):
     if query == "Tempo Hill Runs":
         pick = next(a for a in alternatives if a["name"] == query)
         assert pick["suggested_dose"] == {
-            "mode": "intervals", "work_seconds": 20, "rounds": 6, "rest_seconds": 60,
+            # #2913 publishes RPE 9 alongside the complete interval timings.
+            "mode": "intervals", "work_seconds": 20, "rounds": 6, "rest_seconds": 60, "rpe": 9.0,
         }
         assert pick["dose_required"] is False  # Source now has a complete interval dose.
 

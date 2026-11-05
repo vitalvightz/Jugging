@@ -181,7 +181,15 @@ def test_profiles_preserve_other_inventory_and_require_episode_selection(region)
     historical_bank, _ = inventory_with_history()
     preserved = {d['id'] for g in historical_bank if g['type'] == 'pain' and g['location'] == region for d in g['drills']}
     assert originals and originals <= preserved
-    assert current <= preserved
+    # #2986 added these source-dosed RESTORE exercises; all older IDs remain
+    # covered by the original rollout inventory comparison above.
+    additions = {
+        "knee": {"knee_pain_seated_knee_straightening_hold", "knee_pain_heel_slide_knee_bend",
+                 "knee_pain_heel_lift_over_rolled_towel"},
+        "wrist": {"wrist_pain_side_to_side_wrist_bend"},
+        "shoulder": set(),
+    }
+    assert current - preserved == additions[region]
     # Pain now has its own reviewed profile; neither active type can bypass
     # current episode/stage selection through the legacy bank-only lookup.
     assert rehab_drill_options_for_phase("pain", region, "GPP", limit=6) == []

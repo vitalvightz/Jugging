@@ -97,11 +97,15 @@ def test_surface_care_and_unknown_tissues_cannot_be_published_as_msk_content():
     assert bank_prescription(group, {**drill, "target_tissues": ["unknown"]})[0] is None
 
 
-def configured_consumer(monkeypatch, option):
+def configured_consumer(monkeypatch, option, *, progress_to_load=True):
     pilot, identity, equipment, permission = option
     journey, client = consumer(monkeypatch, pilot)
     journey.store.intakes[journey.athlete][0]["equipment_access"] = equipment
     journey.permission(permission)
+    # #3003 makes permission a ceiling, independent of progression. Exercise
+    # the existing real completion/response journey before selecting LOAD.
+    if progress_to_load and permission == "loading":
+        journey.reach_load()
     body = view(client)
     return journey, client, body
 
@@ -130,13 +134,18 @@ def test_each_new_bank_option_selected_displayed_and_completed_through_today(mon
     exercise_media.reset_media_index_cache()
     assert view(client)["exercise_media"][f"exercise:{block['exercise_key']}"]["video_id"] == "AAAAAAAAAAA"
     journey.now += timedelta(minutes=1)
+    prior_exposure_ids = set(journey.store.rehab_exposures)
     for status in ("started", "done"):
         response = client.post("/api/today/session-completion", headers=HEADERS, json=dict(
             plan_id=journey.plan, session_id=live["session"]["session_id"],
             prescription_revision=live["revision"], rehab_tracking="injury_checkin", status=status,
             **({"rehab_performance": "done_as_shown"} if status == "done" else {})))
         assert response.status_code == 201, response.text
-    event = next(iter(journey.store.rehab_exposures.values()))["event_json"]
+    # LOAD setup may already have real RESTORE evidence; attribute exactly the
+    # one new event to the exercise just completed, rather than the setup work.
+    new_exposure_ids = set(journey.store.rehab_exposures) - prior_exposure_ids
+    assert len(new_exposure_ids) == 1
+    event = journey.store.rehab_exposures[new_exposure_ids.pop()]["event_json"]
     assert event["drill_id"] == option[1]
     assert event["response"]["during_response"] == "not_reported"
     if bank["dose"]:
@@ -149,9 +158,13 @@ def test_each_new_bank_option_selected_displayed_and_completed_through_today(mon
 
 
 def test_new_load_uses_existing_permission_pending_response_and_setback_holds(monkeypatch):
-    journey, client, body = configured_consumer(monkeypatch, OPTIONS[0])
-    assert decision(body)["stage"] == "load"
-    assert not journey.store.rehab_exposures  # no arbitrary completed-session requirement
+    journey, client, body = configured_consumer(monkeypatch, OPTIONS[0], progress_to_load=False)
+    # #3003: permission alone cannot promote an episode to LOAD.
+    assert decision(body)["stage"] == "restore"
+    assert not journey.store.rehab_exposures
+    assert "no_reviewed_stage_exposure" in decision(body)["progression"]["next_transition"]["reason_codes"]
+    journey.reach_load()
+    assert decision(view(client))["stage"] == "load"
     journey.permission("gentle_recovery")
     assert decision(view(client))["stage"] == "restore"
     journey.complete()

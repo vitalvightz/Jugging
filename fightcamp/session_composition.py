@@ -2006,6 +2006,21 @@ def compose_normal_strength_assignments(
             strength_index += 1
             if role.get("late_fight_tail_owned"):
                 continue
+            if role.get("pre_hard_contact_microdose_only") is True:
+                # This is a receiver for existing donor work, not another
+                # independently composed session. Prefilling it makes the
+                # conserving redistribution owner skip it, leaving a token
+                # after the dose resolver rejects unsuitable members.
+                members = role.get("selected_exercise_assignments") or []
+                funded = bool(members) and all(
+                    member.get("redistribution_reason") == "pre_hard_session_rebalance"
+                    for member in members
+                )
+                if not funded:
+                    role["selected_exercise_assignments"] = []
+                    for field in ("strength_composition_policy", "effective_strength_prescriptions", "effective_strength_envelope"):
+                        role.pop(field, None)
+                continue
 
             # Candidate authority follows the phase that owns this role's D-day,
             # not the weekly container's label, so a week straddling a phase
@@ -3716,7 +3731,7 @@ def redistribute_pre_hard_power_from_main(
             receiver["dense_day_receiver_provisional"] = True
             receiver.setdefault(
                 "dense_day_receiver_token",
-                f"{week.get('week_index')}:{receiver.get('scheduled_d_day')}",
+                f"{week.get('week_index')}:{role_d_day(week, receiver)}",
             )
             sources = [
                 role for role in roles
@@ -3738,7 +3753,10 @@ def redistribute_pre_hard_power_from_main(
             candidates: list[dict[str, Any]] = []
             if source is not None and len(memberships) >= 5:
                 for index, member in enumerate(memberships):
-                    if member.get("slot_group") != "strength_slots":
+                    # #3166's complementary core component belongs to its
+                    # selected host. A power split must not peel off its members.
+                    if (member.get("slot_group") != "strength_slots"
+                            or member.get("component_group") == TRUNK_BLOCK_GROUP):
                         continue
                     phase = str(member.get("source_phase") or "").strip().upper()
                     slot = _assignment_strength_slot(candidate_pools, phase, member)
@@ -3903,7 +3921,7 @@ def redistribute_pre_hard_power_from_main(
                 # relocates or suppresses the proposed receiving appointment.
                 "source_strength_session_index": source.get("strength_session_index"),
                 "receiver_strength_session_index": receiver.get("strength_session_index"),
-                "receiver_original_d_day": receiver.get("scheduled_d_day"),
+                "receiver_original_d_day": role_d_day(week, receiver),
                 "receiver_token": receiver.get("dense_day_receiver_token"),
                 "original_source_assignments": original_source_assignments,
             }

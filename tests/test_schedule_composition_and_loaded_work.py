@@ -328,13 +328,32 @@ def test_no_plan_is_held_for_loaded_work_and_every_envelope_matches_its_cap(key)
 
 
 def test_a_power_only_session_on_a_loaded_day_is_not_told_to_drop_loading():
-    brief = _plan("boxer70_power_only_session_held")
+    # #3101/#3104 changed ranked membership. Keep this specific power-only
+    # regression by choosing the real published Thruster alternate explicitly,
+    # then run the actual dose resolver on the generated calendar and caps.
+    brief = copy.deepcopy(_plan("boxer70_power_only_session_held"))
+    slot = next(s for s in brief["candidate_pools"]["SPP"]["strength_slots"]
+                if any(a["name"] == "Barbell Thruster" for a in s["alternates"]))
+    alternate = next(a for a in slot["alternates"] if a["name"] == "Barbell Thruster")
+    slot_id = f'{slot["slot_id"]}:alternate:{slot["alternates"].index(alternate)}'
+    for _, role in _roles(brief):
+        if role["role_key"] == "neural_plus_strength_day":
+            role["selected_exercise_assignments"] = [{
+                "slot_id": slot_id, "name": alternate["name"], "source_phase": "SPP",
+                "slot_group": "strength_slots", "base_prescription": alternate["prescription"],
+            }]
+    apply_effective_strength_prescriptions(
+        weekly_role_map=brief["weekly_role_map"], candidate_pools=brief["candidate_pools"],
+        athlete_model=brief["athlete_snapshot"],
+    )
     roles = [r for _, r in _roles(brief) if r["role_key"] == "neural_plus_strength_day"
              and "Barbell Thruster" in {m["name"] for m in r["selected_exercise_assignments"]}]
     assert roles
     for role in roles:
         assert loaded_work_permitted(role)
         assert role["effective_strength_envelope"].get("loaded_allowed") is not False
+        assert role["effective_strength_prescriptions"][0]["name"] == "Barbell Thruster"
+        assert role["effective_strength_prescriptions"][0]["effective_prescription"]
 
 
 def test_a_capped_no_load_day_states_its_permission():

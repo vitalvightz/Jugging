@@ -62,8 +62,19 @@ def decide(reviewed, **kwargs):
     return resolve_injury_policy(injury, policies=(policy,), bank=bank, **kwargs)
 
 
-def test_shipped_policies_are_sourced_active_and_self_paced():
-    policies = load_clinical_policies()
+def test_original_shipped_policies_are_sourced_active_and_self_paced(tmp_path):
+    # #2980/#2984/#2986 added source-dosed content. Retain the exact original
+    # self-paced rollout checks against their hash-checked publication history.
+    import json
+    from pathlib import Path
+    from fightcamp.rehab_protocols import get_rehab_bank
+    from tools.rehab_metadata_review_lib import before_bank_publication
+    source = Path(__file__).resolve().parents[1] / "data/rehab_pathways.json"
+    raw = before_bank_publication(json.loads(source.read_text()), "profiles")
+    dated_bank = before_bank_publication(get_rehab_bank(), "drills")
+    target = tmp_path / "original-pathways.json"
+    target.write_text(json.dumps(raw))
+    policies = load_clinical_policies(target, bank=dated_bank)
     assert {p.region for p in policies} == {"chest", "ankle", "hamstring", "calf", "groin", "quads", "biceps", "triceps", "shoulder",
                                           "knee", "toe", "wrist", "elbow", "hand", "fingers", "achilles", "forearm", "hip", "heel", "shin", "neck", "lower back"}
     assert all(p.activation == "live" and p.status == "active" for p in policies)
@@ -72,9 +83,8 @@ def test_shipped_policies_are_sourced_active_and_self_paced():
         and p.clinical_criterion is None and p.required_rehabilitation_level == "loading"
         and p.dose.model_dump(exclude_none=True) == {"sets":1,"reps":8 if policy.policy_id == "shoulder_tendonitis" else 10})
         for policy in policies for p in policy.prescriptions)
-    from fightcamp.rehab_protocols import get_rehab_bank
     from fightcamp.rehab_schema import CONTRACT_FIELDS, PAIN_CEILING_UNRESTRICTED
-    bank = {d["id"]: d for group in get_rehab_bank() for d in group["drills"]}
+    bank = {d["id"]: d for group in dated_bank for d in group["drills"]}
     for policy in policies:
         assert policy.version == {"chest_strain": 3, "ankle_sprain": 6, "achilles_tendonitis":3, "elbow_tendonitis":4, "shoulder_tendonitis":3}.get(policy.policy_id, 1)
         for prescription in policy.prescriptions:
@@ -89,6 +99,30 @@ def test_shipped_policies_are_sourced_active_and_self_paced():
                 assert drill["pain_ceiling"] is None and drill["dose"] is None
     with pytest.raises(ValidationError):
         ClinicalPolicy.model_validate({**policies[0].model_dump(), "content_hash": "a" * 64})
+
+
+def test_live_source_dosed_publication_preserves_authored_dose_and_integrity():
+    from fightcamp.rehab_protocols import get_rehab_bank
+    from fightcamp.rehab_publication import bank_prescription
+    bank = get_rehab_bank()
+    policies = load_clinical_policies()
+    assert validate_clinical_bank(policies, bank) == []
+    published = {d["id"]: (g, d) for g in bank for d in g["drills"] if d.get("prescription")}
+    source_dosed = []
+    for policy in policies:
+        for prescription in policy.prescriptions:
+            if prescription.drill_id not in published:
+                continue
+            group, drill = published[prescription.drill_id]
+            projected, reasons = bank_prescription(group, drill)
+            assert reasons == [] and projected is not None
+            assert prescription.dose == projected.dose
+            assert prescription.bank_hash == content_hash(drill)
+            assert prescription.instructions == drill["notes"]
+            if prescription.dose and prescription.stage == "restore":
+                source_dosed.append(prescription.drill_id)
+    assert "knee_pain_seated_knee_straightening_hold" in source_dosed
+    assert "wrist_pain_side_to_side_wrist_bend" in source_dosed
 
 
 @pytest.mark.parametrize("side", ["left", "unknown", "", "  ", None])
@@ -108,22 +142,23 @@ def test_chest_guidance_retains_episode_feedback_without_inventing_laterality(si
     assert event.dose_completed.completion_state == "performed_amount_unknown"
 
 
-def test_phase_changes_bounded_dose_not_eligibility(reviewed):
+def test_phase_preserves_approved_dose_and_eligibility(reviewed):
     results = [decide(reviewed, phase=phase) for phase in ("GPP", "SPP", "TAPER")]
     assert all(result["outcome"] == "prescribed_rehab" for result in results)
     assert len({r["prescription"]["drill_id"] for r in results}) == 1
-    assert results[-1]["prescription"]["dose"]["sets"] == 1
-    assert results[0]["prescription"]["dose"]["sets"] == 2
+    # #2984: fight-camp periodisation cannot change the approved dose.
+    assert all(r["prescription"]["dose"] == {"sets": 2, "reps": 4} for r in results)
 
 
-def test_readiness_requires_reviewed_reductions_and_preserves_camp_ceiling(reviewed):
+def test_readiness_preserves_restore_dose_and_validates_legacy_context_bounds(reviewed):
     policy, bank, injury = reviewed
-    assert decide(reviewed, readiness_decision="pull_back")["prescription"] is None
+    # #2993: CALM/RESTORE neither require a pull-back dose nor change dose.
+    assert decide(reviewed, readiness_decision="pull_back")["prescription"]["dose"] == {"sets": 2, "reps": 4}
     raw = policy.model_dump()
     raw["prescriptions"][0]["readiness_doses"] = {"pull_back": {"sets": 2, "reps": 2}}
     reduced = reviewed_policy(raw)
     result = resolve_injury_policy(injury, policies=(reduced,), bank=bank, phase="TAPER", readiness_decision="pull_back")
-    assert result["prescription"]["dose"] == {"sets": 1, "reps": 2}
+    assert result["prescription"]["dose"] == {"sets": 2, "reps": 4}
     assert result["stage"] == "restore"
     raw["prescriptions"][0]["readiness_doses"]["pull_back"]["reps"] = 5
     with pytest.raises(ValidationError, match="context dose may only reduce"):
@@ -338,7 +373,8 @@ def test_generation_uses_reviewed_policy_in_taper_and_stage2_does_not_expand_alt
     monkeypatch.setattr(rehab_clinical, "load_clinical_policies", lambda: (policy,))
     monkeypatch.setattr(rehab_protocols, "get_rehab_bank", lambda: bank)
     text, _seen = rehab_protocols.generate_rehab_protocols(injury_string="", exercise_data=[], current_phase="TAPER", parsed_entries=[injury])
-    assert "Test control drill" in text and "1 x 4 reps" in text
+    # #2984: generation preserves the approved dose in TAPER, too.
+    assert "Test control drill" in text and "2 x 4 reps" in text
     assert rehab_protocols.rehab_drill_options_for_phase("sprain", "ankle", "TAPER") == []
     slots = _build_rehab_slots(text, "TAPER")
     assert slots and slots[0]["selected"]["rehab_drill_id"] == bank[0]["drills"][0]["id"]
@@ -723,7 +759,10 @@ def test_no_contact_alone_does_not_hold_fitness_or_support_without_contact_metad
     session = {"session_id": "s", "session_type": "strength", "blocks": [block]}
     snapshot = reconcile_session_prescription(session, decisions=[decision], plan_id=PLAN, training_day=DAY)
     assert snapshot["session"]["session_id"] == "s"
-    assert snapshot["session"]["blocks"][0] == block
+    # #3166 puts added published rehab before the closing cooldown. The
+    # original training block remains intact and unheld in either position.
+    work_index = -1 if block_type == "cooldown_recovery" else 0
+    assert snapshot["session"]["blocks"][work_index] == block
     assert not snapshot["safety_hold"] and not snapshot["rehab_only"]
     assert not snapshot["changes"]
 

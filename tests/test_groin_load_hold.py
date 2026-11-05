@@ -286,26 +286,30 @@ def test_existing_frozen_baseline_history_is_preserved_after_a_setback(state):
 def test_all_profiles_inventory_provenance_and_athlete_interactions_remain_unchanged():
     manifest = json.loads((ROOT / "tools/rehab_groin_activation_inventory_baseline.json").read_text())
     assert manifest["outcome"] == "load_closed" and manifest["selected_load_exercise"] is None
+    followups = json.loads((ROOT / "tests/fixtures/rehab_groin_reviewed_followups.json").read_text())
     for path, expected in manifest["unchanged_files_sha256"].items():
         source = (ROOT / path).read_bytes()
+        if path in followups:
+            # Explicitly reviewed later report/UI changes, pinned byte-for-byte.
+            # The fixture cites every intervening commit, including #2980,
+            # #2986, #3003 and the Today UI PRs through #3078.
+            revision = followups[path]
+            assert revision["historical_sha256"] == expected and revision["commits"]
+            expected = revision["approved_sha256"]
+        if path in {"data/rehab_bank.json", "data/rehab_metadata_review.json"}:
+            from tools.rehab_metadata_review_lib import before_bank_publication
+            kind = "drills" if path.endswith("rehab_bank.json") else "reviews"
+            source = (json.dumps(before_bank_publication(json.loads(source), kind), indent=2, ensure_ascii=False) + "\n").encode()
         if path == "data/rehab_pathways.json":
             from tools.rehab_metadata_review_lib import before_reported_permission_entry
             source = (json.dumps(before_reported_permission_entry(json.loads(source)), indent=2, ensure_ascii=False) + "\n").encode()
         if path == "tools/rehab_advanced_candidate_decisions.json":
             # Only the completion service's explicitly reviewed runtime
             # fingerprint changed; preserve all dated clinical judgments.
-            current = hashlib.sha256((ROOT / "api/services/rehab_completion_service.py").read_bytes()).hexdigest().encode()
+            # #2976 changed this provenance fingerprint only. Later runtime
+            # edits must not masquerade as the dated review's recorded source.
+            current = b"377d536920e8844fd25788d608f374be60d88a2b2e10ad1d602c8fa7355273cb"
             original = b"0695b8dac6aa854e2ebc855d625a80e699e74a3ab80ec86c3228e204fdfaeaf0"
-            assert source.count(current) == 1
-            source = source.replace(current, original)
-        if path == "web/components/today/today-injury-manager.tsx":
-            # This PR changes only the existing response label when yesterday's
-            # follow-up exists. Normalise that exact authorised delta, leaving
-            # the historical manifest and every other UI byte protected.
-            current = b'''<p className="today-field-label today-injury-status-label">{delayedPrompts.some(prompt =>
-                    prompt.injury_id === injury.id && prompt.injury_episode_id === injury.episode_id)
-                    ? "How\xe2\x80\x99s your injury after yesterday\xe2\x80\x99s rehab?" : "How's your injury?"}</p>'''
-            original = b'''<p className="today-field-label today-injury-status-label">How&apos;s your injury?</p>'''
             assert source.count(current) == 1
             source = source.replace(current, original)
         assert hashlib.sha256(source).hexdigest() == expected, path
@@ -313,7 +317,8 @@ def test_all_profiles_inventory_provenance_and_athlete_interactions_remain_uncha
     profiles = before_reported_permission_entry(json.loads((ROOT / "data/rehab_pathways.json").read_text()))["profiles"]
     assert len(profiles) == 64
     assert {p["policy_id"]: content_hash(p) for p in profiles} == manifest["unchanged_profiles_sha256"]
-    bank = json.loads((ROOT / "data/rehab_bank.json").read_text())
-    ledger = json.loads((ROOT / "data/rehab_metadata_review.json").read_text())
+    from tools.rehab_metadata_review_lib import before_bank_publication
+    bank = before_bank_publication(json.loads((ROOT / "data/rehab_bank.json").read_text()), "drills")
+    ledger = before_bank_publication(json.loads((ROOT / "data/rehab_metadata_review.json").read_text()), "reviews")
     assert content_hash({d["id"]: content_hash(d) for g in bank for d in g["drills"]}) == manifest["bank_before_sha256"]
     assert content_hash({r["drill_id"]: content_hash(r) for r in ledger}) == manifest["ledger_before_sha256"]

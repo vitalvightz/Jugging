@@ -35,7 +35,9 @@ def _write(path, payload):
 def test_all_audited_entries_accounted_for_with_unique_source_scoped_ids(entries):
     baseline = audit(catalogue.DATA_DIR)
     assert tuple(catalogue.SOURCE_CLASSES) == SOURCES
-    assert len(entries) == baseline["total_entries"] == 2858
+    # Recount real rows: #3166 adds 15 core exercises and retires one stance
+    # hold; #3181 adds three technical footwork drills. Keep identity checks.
+    assert len(entries) == baseline["total_entries"] == 2906
     assert Counter(e["source"] for e in entries) == {
         bank["source"]: bank["entries"] for bank in baseline["banks"] if bank["entries"]
     }
@@ -117,7 +119,9 @@ def test_duplicate_names_and_media_variants_remain_distinct(entries):
     for entry in entries:
         names[" ".join(entry["name"].casefold().split())].append(entry)
     repeated = [rows for rows in names.values() if len(rows) > 1]
-    assert len(repeated) == 58
+    # #2980 renamed the published ankle CAR option; one duplicate-name group
+    # disappeared. Exact distinct identity/media checks remain below.
+    assert len(repeated) == 57
     for rows in repeated:
         assert len({e["catalogue_id"] for e in rows}) == len(rows)
     rehab_duplicates = [rows for rows in repeated if all(e["source"] == "rehab_bank.json" for e in rows)]
@@ -143,8 +147,8 @@ def test_unknown_equipment_never_becomes_no_equipment(row, state):
 
 def test_classification_and_selection_boundaries(entries):
     assert Counter(e["content_class"] for e in entries) == {
-        "strength_power": 339, "conditioning": 591, "technical_coordination": 83,
-        "rehabilitation": 1499, "care_instruction": 104,
+        "strength_power": 359, "conditioning": 601, "technical_coordination": 86,
+        "rehabilitation": 1514, "care_instruction": 104,
         "tactical_educational": 183, "visualisation": 59,
     }
     for entry in entries:

@@ -26,13 +26,47 @@ def programmes():
             for name, intake in cases(source).items() if name != "recorded_boxing_52_day"}
 
 
+@pytest.fixture(scope="module")
+def saved_plan_requiring_speed_repair(programmes):
+    # 672ac5a4 restores the typed-cut speed candidate, so production can now
+    # satisfy speed during ordinary composition. Create the original missing-
+    # role premise explicitly to keep testing restoration and filler removal.
+    from fightcamp.goal_preservation import reconcile_goal_preservation
+
+    brief = deepcopy(programmes["saved_plan"][0])
+    week, host = next((w, r) for w in brief["weekly_role_map"]["weeks"]
+                      for r in w["session_roles"] if role_d_day(w, r) >= 14
+                      and any(m["name"] == "Jump-in-Place (Max Frequency)"
+                              for m in r.get("selected_exercise_assignments", [])))
+    week["session_roles"].remove(host)
+    # Preserve the allocator's complete category budget; replacing its candidate
+    # reservoir with one role would make the existing D-13 strength touch consume
+    # the only slot and test a capacity refusal instead of a repair.
+    assert any(r["role_key"] == host["role_key"] for r in week["goal_repair_candidates"])
+    day = next(d for d in week["calendar_days"] if d["d_day"] == 17)
+    week["session_roles"].append({
+        "role_key": "joint_prep", "category": "support_insert",
+        "scheduled_day_hint": day["weekday"], "countdown_offset": 17,
+        "physical_occupancy_fill": True, "cost_class": "low",
+        "governance": {"meaningful_stress": False},
+    })
+    assert not any("speed_quality" in e["intents"] and 14 <= (e.get("d_day") or 0) <= 17
+                   for e in collect_goal_evidence(brief))
+    return reconcile_goal_preservation(brief)
+
+
 def test_saved_intake_replays_the_production_calendar_context(programmes):
     brief, summary = programmes["saved_plan"]
     athlete = brief["athlete_snapshot"]
     assert athlete["days_until_fight"] == 18
     assert athlete["include_generation_day"] is True
     assert athlete["training_frequency"] == 4
-    assert athlete["has_active_injury"] is False  # Saved non-limiting surface injury.
+    # 62c8fa6d explicitly keeps this flag true for wound-care visibility;
+    # surface-only injuries must not add rehab, restriction or compression.
+    assert athlete["has_active_injury"] is True
+    assert athlete["surface_injury_only"] is True
+    assert not athlete["injury_restrictions"]
+    assert "injury_management" not in athlete["readiness_flags"]
     assert summary["hard_sparring_cutoff"] == 17
     assert summary["effective_hard_appointments"] == 0
     assert all(c["allows_compatible_sc"] for c in summary["contacts"])
@@ -57,8 +91,8 @@ def test_more_real_physical_stimulus_than_main_without_invented_doses(programmes
     assert programme_fidelity_findings(brief, rendered["text"]) == []
 
 
-def test_existing_strength_session_carries_speed_and_moving_footwork(programmes):
-    brief, _ = programmes["saved_plan"]
+def test_existing_strength_session_carries_speed_and_moving_footwork(saved_plan_requiring_speed_repair):
+    brief = saved_plan_requiring_speed_repair
     evidence = collect_goal_evidence(brief)
     speed = next(e for e in evidence if e.get("name") == "Jump-in-Place (Max Frequency)" and e["d_day"] >= 14)
     footwork = next(e for e in evidence if e.get("name") == "Step-Back Pivot Reset" and e["d_day"] >= 14)
@@ -150,8 +184,8 @@ def test_retained_recovery_bank_members_receive_canonical_doses(programmes):
     assert all(e["prescription"] for r in recovery for e in r["exercises"])
 
 
-def test_maintenance_repair_uses_the_same_canonical_dose_as_existing_work(programmes):
-    brief, _ = programmes["saved_plan"]
+def test_maintenance_repair_uses_the_same_canonical_dose_as_existing_work(saved_plan_requiring_speed_repair):
+    brief = saved_plan_requiring_speed_repair
     role_map = deepcopy(brief["weekly_role_map"])
     role = next(r for w in role_map["weeks"] for r in w["session_roles"]
                 if r.get("goal_preservation_repair") and role_d_day(w, r) >= 14)

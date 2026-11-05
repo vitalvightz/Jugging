@@ -188,7 +188,10 @@ def test_current_frozen_pin_accepts_only_unstarted_work():
 def test_production_catalog_remains_calm_restore_only():
     policies = load_clinical_policies()
     assert len(policies) == 64
-    assert sum(len(p.prescriptions) for p in policies) == 107
+    # #2984/#2986 published 130 distinct exercises; shared drills appear in
+    # multiple profile prescriptions. Keep both real row and identity counts.
+    assert sum(len(p.prescriptions) for p in policies) == 139
+    assert len({rx.drill_id for p in policies for rx in p.prescriptions}) == 130
     assert [(p.policy_id,t.key) for p in policies for t in p.transitions if t.promotable] == [("ankle_sprain","restore->load"), ("achilles_tendonitis","restore->load"), ("shoulder_tendonitis","restore->load"), ("elbow_tendonitis","restore->load")]
     assert all(set(p.live_stages) <= {"calm", "restore"} for p in policies if p.policy_id not in {"achilles_tendonitis", "elbow_tendonitis", "ankle_sprain", "shoulder_tendonitis"})
     assert {stage for p in policies for stage in p.live_stages} == {"calm", "restore", "load"}

@@ -70,7 +70,7 @@ def test_admin_athlete_profile_includes_latest_intake_details():
             "weekly_training_frequency": 5,
             "fatigue_level": "moderate",
             "equipment_access": ["heavy_bag", "weights"],
-            "training_availability": ["Monday", "Tuesday", "Wednesday", "Friday"],
+            "training_availability": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
             "hard_sparring_days": ["Friday"],
         "support_work_days": ["Tuesday"],
             "injuries": "Left shoulder management",

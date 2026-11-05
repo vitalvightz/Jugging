@@ -39,9 +39,17 @@ def test_heartbeat_keeps_refreshing_while_job_stays_running() -> None:
                 "job-1", store, stop_event, on_cancelled=lambda: cancelled_calls.append(None), interval_seconds=0.01
             )
         )
-        await asyncio.sleep(0.05)
-        stop_event.set()
-        await task
+        async def wait_for_two_writes():
+            while store.heartbeat_writes < 2:
+                await asyncio.sleep(0.001)
+
+        try:
+            # Observe two real ticks before stopping. A 50ms wall-clock sleep
+            # can expire before a loaded worker schedules the store's thread.
+            await asyncio.wait_for(wait_for_two_writes(), timeout=5)
+        finally:
+            stop_event.set()
+            await task
 
     asyncio.run(scenario())
 

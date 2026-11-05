@@ -743,7 +743,9 @@ def test_guided_injury_runtime_context_does_not_leak_note_body_parts():
     )
 
     assert context.injuries_only_text == "hip flexor"
-    assert context.training_context.injuries == ["hip flexor"]
+    # #3117 (8ec8e8d4): the movement guard retains the resolved injury type,
+    # while free-text note body parts still cannot become extra injuries.
+    assert context.training_context.injuries == ["hip flexor pain"]
     assert all("knee" not in injury for injury in context.training_context.injuries)
 
 

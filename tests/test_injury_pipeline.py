@@ -930,7 +930,10 @@ def test_generate_rehab_protocols_prefers_structured_entries():
         exercise_data=[],
         current_phase="GPP",
     )
-    assert "Knee (Instability)" in result
+    assert "- Knee Instability:" in result
+    assert "Knee (Pain)" not in result
+    assert "- Knee Pain:" not in result
+    assert "  • " not in result
 
 
 def test_generate_rehab_protocols_structured_entries_do_not_bleed_across_regions():
@@ -940,8 +943,11 @@ def test_generate_rehab_protocols_structured_entries_do_not_bleed_across_regions
         exercise_data=[],
         current_phase="GPP",
     )
-    assert "Shoulder (Pain)" in result
+    # #3033: published pain guidance uses an informational-summary heading.
+    assert "- Shoulder Pain:" in result
     assert "Knee (Instability)" not in result
+    assert "knee" not in result.lower()
+    assert "  • " not in result
 
 
 def test_generate_rehab_protocols_string_fallback_still_works():
@@ -950,7 +956,8 @@ def test_generate_rehab_protocols_string_fallback_still_works():
         exercise_data=[],
         current_phase="GPP",
     )
-    assert "Knee (Instability)" in result
+    assert "- Knee Instability:" in result
+    assert "  • " not in result
 
 
 def test_generate_rehab_protocols_structured_entry_uses_legacy_injury_type_field():
@@ -960,7 +967,8 @@ def test_generate_rehab_protocols_structured_entry_uses_legacy_injury_type_field
         exercise_data=[],
         current_phase="GPP",
     )
-    assert "Knee (Pain)" in result
+    assert "- Knee Pain:" in result
+    assert "  • " not in result
 
 
 def test_generate_rehab_protocols_structured_multiple_injuries_render_separately():
@@ -973,8 +981,10 @@ def test_generate_rehab_protocols_structured_multiple_injuries_render_separately
         exercise_data=[],
         current_phase="GPP",
     )
-    assert "Knee (Instability)" in result
-    assert "Shoulder (Pain)" in result
+    assert "- Knee Instability:" in result
+    assert "- Shoulder Pain:" in result
+    assert sum(line.startswith("- ") for line in result.splitlines()) == 2
+    assert "  • " not in result
 
 
 def test_rehab_severity_filter_high_achilles_blocks_aggressive_terms():
@@ -1011,14 +1021,23 @@ def test_rehab_severity_filter_moderate_blocks_heavy_and_sprint():
 
 
 def test_rehab_day_type_specific_why_and_volume_limits():
+    from fightcamp.rehab_clinical import load_clinical_policies
+    from fightcamp.stage2_payload import _build_rehab_slots
+    policy = next(p for p in load_clinical_policies() if p.policy_id == "ankle_sprain")
+    assert policy.activation == "live"
+    # #2984: exercise coaching requires a published exercise decision.
+    entries = [{"canonical_location": "ankle", "injury_type": "sprain", "severity": "moderate",
+                "rehab_stage": "restore", "laterality": "left", "available_equipment": ["stable_support"]}]
     sparring_text, _ = generate_rehab_protocols(
-        injury_string="knee pain",
+        injury_string="ankle sprain",
+        parsed_entries=entries,
         exercise_data=[],
         current_phase="GPP",
         day_type="sparring",
     )
     strength_text, _ = generate_rehab_protocols(
-        injury_string="knee pain",
+        injury_string="ankle sprain",
+        parsed_entries=entries,
         exercise_data=[],
         current_phase="GPP",
         day_type="strength",
@@ -1026,6 +1045,11 @@ def test_rehab_day_type_specific_why_and_volume_limits():
     assert "pre-sparring inclusion" in sparring_text
     assert "main lift" in strength_text
     assert sparring_text.count("  • ") <= 1
+    slots = _build_rehab_slots(sparring_text, "GPP")
+    assert len(slots) == 1
+    assert slots[0]["selected"]["rehab_drill_id"] in {
+        rx.drill_id for rx in policy.prescriptions if rx.stage == "restore"
+    }
 
 
 def test_phase_level_plan_does_not_use_day_specific_rehab_why():

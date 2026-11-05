@@ -301,13 +301,17 @@ def test_today_uses_live_bundle_only_for_injury_specific_restore_evidence(report
     view = today_service.build_today_command_view(store, athlete_id=ATHLETE, athlete_timezone="UTC",
         now=datetime(2026, 10, 2, 12, tzinfo=timezone.utc))
     decision = view.open_injuries[0]["rehab_decision"]
-    assert decision["stage"] == stage and decision["schedule"]["state"] == "due"
+    # #3003 synchronizes accessible rehab with the final session verdict;
+    # the CALM prescription remains visible but cannot be due under a stop.
+    expected_schedule = "held" if reported == "worse" else "due"
+    assert decision["stage"] == stage and decision["schedule"]["state"] == expected_schedule
     live = view.live_prescription
     assert live and live["safety_hold"] is (reported == "worse")
     if reported == "worse":
         # Main already retains Today's stop guidance even though the CALM
         # movement remains visible. Publication must never bypass that hold.
         assert live["safety_hold_reason"] == "Follow today's stop guidance before training."
+        assert decision["schedule"]["reason"] == live["safety_hold_reason"]
     assert [b["rehab_drill_id"] for b in live["session"]["blocks"]] == ids
     if stage == "calm":
         assert "drills" not in decision["prescription"]

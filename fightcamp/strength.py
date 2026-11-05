@@ -2714,7 +2714,17 @@ def generate_strength_block(*, flags: dict, weaknesses=None):
     def _cached_injury_match(exercise: dict, fields: tuple[str, ...], risk_levels: tuple[str, ...]) -> bool:
         key = (_exercise_key(exercise), fields, risk_levels)
         if key not in injury_match_cache:
-            injury_match_cache[key] = bool(injury_match_details(exercise, injuries, fields=fields, risk_levels=risk_levels))
+            decision = _cached_guarded_decision(exercise)
+            # The shared guard preserves injury type. A later region-only
+            # keyword check must not turn a permitted skin injury into joint
+            # pathology; mixed injuries and surface red flags retain their guard.
+            surface_allowed = (
+                decision.action == "allow"
+                and decision.reason.get("disposition") == "allow_with_skin_precautions"
+            )
+            injury_match_cache[key] = not surface_allowed and bool(
+                injury_match_details(exercise, injuries, fields=fields, risk_levels=risk_levels)
+            )
         return injury_match_cache[key]
 
     def _cached_late_safe_profile(exercise: dict, profile: dict | None = None) -> dict:

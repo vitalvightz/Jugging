@@ -18,11 +18,17 @@ import traceback
 from contextlib import suppress
 from typing import Any
 
-from fightcamp.main import generate_plan_sync
-
 from .types import Planner, ProgressCallback
 
 logger = logging.getLogger(__name__)
+
+
+def generate_plan_sync(payload: dict[str, Any], *, progress_callback: ProgressCallback | None = None) -> dict[str, Any]:
+    # A spawned custom planner must not pay for importing the unused default
+    # planner and its model graph before its own callable can even start.
+    from fightcamp.main import generate_plan_sync as generate
+
+    return generate(payload, progress_callback=progress_callback)
 
 
 class Stage1PlannerError(RuntimeError):

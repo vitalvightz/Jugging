@@ -30,6 +30,7 @@ from api.contracts.rehab_stage import (
 )
 from fightcamp import rehab_protocols
 from fightcamp.rehab_protocols import generate_rehab_protocols, rehab_drill_by_id
+from fightcamp.rehab_clinical import load_clinical_policies
 from fightcamp.stage2_payload import _build_rehab_slots
 
 
@@ -61,6 +62,9 @@ def _parsed_entry_from_flag(flag: dict, stage: str) -> dict:
         "id": flag["id"],
         "episode_id": "episode-a",
         "rehab_stage": stage,
+        # #2984 uses published prescriptions only. The live ankle RESTORE
+        # policy requires stable support; an unequipped fixture cannot select it.
+        "available_equipment": ["stable_support"],
     }
 
 
@@ -112,6 +116,8 @@ def test_the_selector_actually_runs_during_plan_generation(monkeypatch):
 @pytest.mark.parametrize("stage", [STAGE_CALM, STAGE_RESTORE])
 def test_live_stage_reaches_the_structured_rehab_block_with_a_canonical_id(stage):
     """The full chain, ending at the id the app stores against a completion."""
+    policy = next(p for p in load_clinical_policies() if p.policy_id == "ankle_sprain")
+    assert policy.activation == "live"
     flag = _injury_flag()
     entry = _parsed_entry_from_flag(flag, stage)
 
@@ -122,9 +128,8 @@ def test_live_stage_reaches_the_structured_rehab_block_with_a_canonical_id(stage
         parsed_entries=[entry],
     )
 
-    # Stage-aware selection must not empty the rehab block: the whole bank is
-    # still unmigrated for rehab_stage, and rejecting it wholesale is what
-    # replaced real drills with a "consult a professional" note.
+    # #2984: a live published policy with its required equipment must reach
+    # the structured card; unreviewed legacy bank drills grant no prescription.
     assert "Consult with a healthcare professional" not in rehab_block
     assert rehab_block.strip()
 
@@ -173,7 +178,7 @@ def _block_has_drills(block: str) -> bool:
 
 
 @pytest.mark.parametrize("live_stage", [STAGE_CALM, STAGE_RESTORE])
-def test_stage_aware_selection_never_empties_a_block_the_bank_can_fill(live_stage):
+def test_stage_aware_selection_never_empties_a_block_the_bank_can_fill(live_stage, monkeypatch):
     """Across the whole real bank, turning selection on never removes rehab.
 
     Selection narrows *which* drill is prescribed. If it also silently removed
@@ -181,6 +186,10 @@ def test_stage_aware_selection_never_empties_a_block_the_bank_can_fill(live_stag
     professional" note where they used to get drills — which is what happens
     when an unmigrated bank field is treated as a rejection.
     """
+    # This sweep never edits policy files. Keep the real published input
+    # constant across bank pairs instead of repeatedly composing it from disk.
+    policies = load_clinical_policies()
+    monkeypatch.setattr("fightcamp.rehab_clinical.load_clinical_policies", lambda: policies)
     bank = rehab_protocols.get_rehab_bank()
     pairs = sorted(
         {
@@ -288,3 +297,18 @@ def test_a_drill_with_nothing_to_say_in_this_phase_is_not_a_candidate():
     assert not rehab_protocols._drill_is_prescribable(
         {"id": "nameless", "notes": "x"}, "GPP", "low"
     )
+
+@pytest.mark.parametrize("stage", [STAGE_CALM, STAGE_RESTORE])
+def test_missing_published_policy_cannot_fall_back_to_legacy_drills(monkeypatch, stage):
+    """#2984: bank coverage alone never authorises a generation prescription."""
+    monkeypatch.setattr("fightcamp.rehab_clinical.load_clinical_policies", lambda: ())
+    entry = _parsed_entry_from_flag(_injury_flag(), stage)
+    block, seen = generate_rehab_protocols(
+        injury_string="left ankle sprain",
+        exercise_data=[],
+        current_phase="GPP",
+        parsed_entries=[entry],
+    )
+    assert "No published rehab is available" in block
+    assert _build_rehab_slots(block, "GPP") == []
+    assert not seen
