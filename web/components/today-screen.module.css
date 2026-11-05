@@ -403,3 +403,13 @@
 }
 
 .contentReveal :global(.today-decision-banner) { animation: none; }
+
+/* Retain the two quiet loading blocks, with the known status structure in
+   the first. Values stay unknown until the fresh Today read completes. */
+.loadingBox {
+  min-block-size: 180px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--bg-stat);
+}
