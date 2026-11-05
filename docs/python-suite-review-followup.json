@@ -411,5 +411,105 @@
   ],
   "main_revision_scope": "Pre-#3120 Main, independently checked before its merge; product fixes are now included in ae58d872.",
   "pr3120_merge_revision": "ae58d8720e9fd004569e3a11d399bf465379a629",
-  "followup_scope": "Only three attributed calendar baseline updates and evidence; no further product policy change."
+  "followup_scope": "Three attributed calendar baselines, one #3199 projection assertion, and evidence. No further product policy change.",
+  "merged_main_isolations": [
+    {
+      "nodeid": "tests/test_calendar_integrity_characterization.py::test_baseline_d16_technical_conversion",
+      "main": "ae58d8720e9fd004569e3a11d399bf465379a629",
+      "exit_code": 1,
+      "log_sha256": "3ead494dd071e52cd4300c451068768e05ebff764ef6b480f5b7d930750a8bcf"
+    },
+    {
+      "nodeid": "tests/test_calendar_integrity_characterization.py::test_baseline_d24_two_hard_contacts",
+      "main": "ae58d8720e9fd004569e3a11d399bf465379a629",
+      "exit_code": 1,
+      "log_sha256": "f3a46816a5ca3bc0e9dd805a35c7693a0f4ffe2b64b65231ac7accf6a04e00f2"
+    },
+    {
+      "nodeid": "tests/test_injury_readiness_replay.py::test_persisted_readiness_preserves_app_budget_with_coached_days[coached_days1-Sometimes my left knee hurts-False]",
+      "main": "ae58d8720e9fd004569e3a11d399bf465379a629",
+      "exit_code": 1,
+      "log_sha256": "2be3242f3fb2b93b5c22cdb0e1c16f2881db02e05e0bcb17647e19bfdf09f78a"
+    },
+    {
+      "nodeid": "tests/test_injury_readiness_replay.py::test_persisted_readiness_preserves_app_budget_with_coached_days[coached_days1-Sometimes my right shoulder hurts-False]",
+      "main": "ae58d8720e9fd004569e3a11d399bf465379a629",
+      "exit_code": 1,
+      "log_sha256": "c9bcfcc42d712dcf04de48cdbf9cf932678da6e752f1d4b0aca85b42143e2f59"
+    },
+    {
+      "nodeid": "tests/test_late_camp_selector_rebalance.py::test_audit_snapshot_matches_golden",
+      "main": "ae58d8720e9fd004569e3a11d399bf465379a629",
+      "exit_code": 1,
+      "log_sha256": "37bbdc3bac7625b991a1d7cb88efe43f7d7bb8143065413b2d6ddbabfb95dd8b"
+    },
+    {
+      "nodeid": "tests/test_safety_metadata_enforcement.py::test_complete_programmes_preserve_selection_dose_periodisation_and_personalisation",
+      "main": "ae58d8720e9fd004569e3a11d399bf465379a629",
+      "exit_code": 1,
+      "log_sha256": "0bb421b1d7d4755959e4a88f1f34bf308a7ea8dfc59b272f5edbd4dc53d6d70d"
+    },
+    {
+      "nodeid": "tests/test_calendar_integrity_characterization.py::test_baseline_d28_finished_tail",
+      "main": "ae58d8720e9fd004569e3a11d399bf465379a629",
+      "exit_code": 1,
+      "log_sha256": "9a9103bfe7d8c60eb518dd2f13f7f14dab3cfda610e89304fba6f92ef9aef75d"
+    }
+  ],
+  "merged_code_full_ci": {
+    "revision": "3dc48c5c090c8f2f036b0aae944951a15508c451",
+    "run": "https://github.com/vitalvightz/Jugging/actions/runs/41945301774",
+    "shards": {
+      "2": {
+        "failed": 2,
+        "passed": 2982,
+        "skipped": 19
+      },
+      "5": {
+        "passed": 2688,
+        "skipped": 49
+      },
+      "3": {
+        "failed": 3,
+        "passed": 3425
+      },
+      "4": {
+        "passed": 2804,
+        "skipped": 29
+      },
+      "0": {
+        "failed": 1,
+        "passed": 3278,
+        "skipped": 5
+      },
+      "1": {
+        "failed": 2,
+        "passed": 2491,
+        "skipped": 30
+      }
+    },
+    "failed_ids": [
+      "tests/test_injury_readiness_replay.py::test_persisted_readiness_preserves_app_budget_with_coached_days[coached_days1-Sometimes my left knee hurts-False]",
+      "tests/test_injury_readiness_replay.py::test_persisted_readiness_preserves_app_budget_with_coached_days[coached_days1-Sometimes my right shoulder hurts-False]",
+      "tests/test_calendar_integrity_characterization.py::test_baseline_d24_two_hard_contacts",
+      "tests/test_calendar_integrity_characterization.py::test_baseline_d16_technical_conversion",
+      "tests/test_calendar_integrity_characterization.py::test_baseline_d28_finished_tail",
+      "tests/test_store_exercise_logs.py::test_compact_plan_reads_keep_the_owner_scope[get_training_plan_for_athlete-id,athlete_id,intake_id,fight_date,technical_style,full_name,status,plan_text,planning_brief,created_at,plan_name,parsing_metadata,structured_plan,schema_version,stage2_status,stage2_attempt_count,exercise_overrides,exercise_overrides_revision]",
+      "tests/test_safety_metadata_enforcement.py::test_complete_programmes_preserve_selection_dose_periodisation_and_personalisation",
+      "tests/test_late_camp_selector_rebalance.py::test_audit_snapshot_matches_golden"
+    ],
+    "totals": {
+      "passed": 17668,
+      "failed": 8,
+      "skipped": 132,
+      "collected": 17808
+    }
+  },
+  "additional_projection_alignment": {
+    "citation": "#3199 (b55a591b)",
+    "cause": "Owner-scoped training read uses planning_brief:planning_brief_runtime remotely while preserving the local planning_brief key.",
+    "main_revision": "ae58d8720e9fd004569e3a11d399bf465379a629",
+    "main_isolated_failure_sha256": "0efefded42cedd5781db583962c57b5eba5f703a26dbcafcf6da2dd54f693e25",
+    "branch_checks": "14 passed across exercise-log ownership/projection and slim-plan reads; every owner filter and fallback-input assertion retained."
+  }
 }
