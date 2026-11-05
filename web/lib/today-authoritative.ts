@@ -147,13 +147,13 @@ const DEFAULT_COPY_BY_TIER: Record<
 > = {
   stop: {
     title: "Stop today",
-    detail: "A safety restriction is blocking training today.",
-    action: "Today's planned session is blocked.",
+    detail: "Follow the current safety guidance today.",
+    action: "Follow today's safety guidance.",
   },
   pull_back: {
     title: "Pull back today",
     detail: "Your readiness is too low for hard combat work today.",
-    action: "Today's planned session is blocked. Follow today's limits.",
+    action: "Follow today's recommended limits.",
   },
   modify: {
     title: "Follow today's limits",

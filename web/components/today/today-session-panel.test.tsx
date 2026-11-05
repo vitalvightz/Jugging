@@ -1744,3 +1744,35 @@ test("UNLXCK CUE reaches Today's exercises when no next_session is reported, and
     container.remove();
   }
 });
+
+for (const tier of ["not_checked_in", "pull_back", "stop"] as const) {
+  test(`advisory guidance allows session start and sparring timer under ${tier}`, () => {
+    const state = contactDayState(tier);
+    state.effective_clinician_clearance = { level: "rehab_only", scopes: ["rehab"], requires_update: true, limited_by: [] };
+    const html = renderPanel(state);
+    assert.match(html, />Start session</);
+    assert.match(html, /Sparring rounds<\/button>/);
+  });
+}
+
+test("advisory concussion warning keeps Start and both timers accessible", () => {
+  const state = contactDayState("green");
+  state.today.primary_safety_notice = HEAD_IMPACT_NOTICE;
+  const html = renderPanel(state);
+  assert.match(html, /<strong role="alert">Stop training and seek medical clearance\.<\/strong>/);
+  assert.match(html, />Start session</);
+  assert.match(html, /Sparring rounds<\/button>/);
+  assert.match(html, /Free timer<\/button>/);
+  assert.doesNotMatch(html, /locked|unlock|Do not start this session/);
+});
+
+test("advisory clinician warning gives a reason without locking actions", () => {
+  const state = contactDayState("green");
+  state.effective_clinician_clearance = { level: "train_no_contact", scopes: ["rehab", "training"], requires_update: false, limited_by: [] };
+  const html = renderPanel(state);
+  assert.match(html, /Training caution: follow your clinician&#x27;s contact restrictions\./);
+  assert.match(html, />Start session</);
+  assert.match(html, /Sparring rounds<\/button>/);
+  assert.match(html, /Free timer<\/button>/);
+  assert.doesNotMatch(html, /locked|unlock|Do not start this session/);
+});

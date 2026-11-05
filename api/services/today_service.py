@@ -1653,10 +1653,6 @@ def upsert_session_completion(
         from .today_readiness_boundary import build_today_command_view as build_current_command
         command = build_current_command(store, athlete_id=athlete_id, athlete_timezone=athlete_timezone, now=now)
     live = command.live_prescription if command and command.active_plan.get("id") == plan_id else None
-    if command and command.active_plan.get("id") != plan_id and status_value in _TRAINING_COMPLETION_STATUSES:
-        if any(injury.get("rehab_decision", {}).get("activation") in {"live", "retired"}
-               or injury.get("clinician_clearance") for injury in command.open_injuries):
-            raise HTTPException(409, "Activate this plan to apply your current injury guidance before training.")
     standalone = live is not None and live["session"].get("session_id") == session_id
     saved_occurrence = existing.get("prescription_snapshot") or {}
     saved_standalone = saved_occurrence.get("plan_id") == plan_id and saved_occurrence.get("session", {}).get("session_id") == session_id
@@ -1685,42 +1681,8 @@ def upsert_session_completion(
             detail="That day is a rest day in your plan, so there is no session to log.",
         )
 
-    # Server-side safety hold: an active severe injury blocks actually training
-    # this session (start / done / modified) — not just in the UI. Skipping or
-    # reverting to not-started stays allowed so the athlete can still log that
-    # they backed off. Mirrors the Today/Overview injury hold. A low-cost support /
-    # filler session (mental cue, breathing/mobility reset) is exempt — it is the
-    # safe work the hold itself prescribes. Retro-logs are exempt too: they
-    # record training that already happened, so today's injury cannot block them.
-    if (
-        not is_retro_log
-        and status_value in _TRAINING_COMPLETION_STATUSES
-        and not _completion_session_is_support(plan_row, training_day, session_id)
-        and not stopped_started_session
-    ):
-        if severe is not None:
-            label = severe.get("label") or build_injury_label(
-                severe.get("body_area"), severe.get("description")
-            )
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    f"Blocked by an active severe injury ({label}). "
-                    "Clear it before training this session."
-                ),
-            )
-
-    if not is_retro_log and status_value in _TRAINING_COMPLETION_STATUSES and not stopped_started_session and command:
-        # A support exemption only covers injury-driven load restrictions. It
-        # cannot override a current red-flag STOP. Apply current readiness even
-        # when an unsupported injury has no live prescription to carry a hold.
-        # The same rule Today shows (session_hold); nothing here re-derives it.
-        if command.today.decision_tier == "stop" and command._injury_hold_stop:
-            raise HTTPException(409, "This session is on hold for the current injury guidance.")
-        hold = session_hold(command.today.decision_tier, live, session_id=session_id,
-                            check_in_possible=check_in_possible(store, athlete_id))
-        if hold["held"]:
-            raise HTTPException(409, hold["reason"])
+    # Readiness, injury and check-in holds are advisory. Keep their guidance in
+    # the command view, but allow the athlete to start and log the session.
 
     existing_plan_id = str(existing.get("plan_id") or "")
     if existing_plan_id and existing_plan_id != plan_id:
@@ -1743,19 +1705,11 @@ def upsert_session_completion(
         if live:
             if not standalone:
                 raise HTTPException(409, "Refresh Today to use the current session.")
-            if live.get("safety_hold") and not stopped_started_session:
-                raise HTTPException(409, "This session is on hold for the current injury guidance.")
             if not frozen and not stopped_started_session and payload.get("prescription_revision") != live.get("revision"):
                 raise HTTPException(409, "Your session prescription changed. Refresh Today before starting.")
             if not frozen and not stopped_started_session:
                 frozen = live
     performance = payload.get("rehab_performance") or existing.get("rehab_performance")
-    if frozen and status_value in _TRAINING_COMPLETION_STATUSES and not stop_requested and not accepted_stop and str(existing.get("status")) not in {"done", "modified"}:
-        from api.services.clinical_review_freeze import frozen_review_hold
-        if frozen_review_hold(store, athlete_id, frozen,
-                work_state="started" if existing.get("status") == "started" else "unstarted",
-                as_of=now or datetime.now(timezone.utc)):
-            raise HTTPException(409, "The clinical review or prescribed work changed. Stop and refresh Today.")
     # The rehab answer is about the rehab block. A session saved as modified
     # because a different block was skipped can still have its rehab done as shown.
     if performance == "done_as_shown" and (not frozen or status_value not in {"done", "modified"}):
