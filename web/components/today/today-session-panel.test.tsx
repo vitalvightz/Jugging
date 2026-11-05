@@ -1744,3 +1744,13 @@ test("UNLXCK CUE reaches Today's exercises when no next_session is reported, and
     container.remove();
   }
 });
+
+for (const tier of ["not_checked_in", "pull_back", "stop"] as const) {
+  test(`advisory guidance allows session start and sparring timer under ${tier}`, () => {
+    const state = contactDayState(tier);
+    state.effective_clinician_clearance = { level: "rehab_only", scopes: ["rehab"], requires_update: true, limited_by: [] };
+    const html = renderPanel(state);
+    assert.match(html, />Start session</);
+    assert.match(html, /Sparring rounds<\/button>/);
+  });
+}

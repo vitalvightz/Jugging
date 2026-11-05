@@ -748,19 +748,10 @@ export function TodaySessionPanel({
     (resolvedDecision.sessionIsToday && session.coach_led_contact
       ? contactTimerTarget({ today_card: { coach_led_contact: session.coach_led_contact } } as StructuredDay)
       : null);
-  // Hard contact follows the same readiness authority as a session: only a
-  // go / follow-the-limits day, never under pull back, stop or a severe injury.
+  // Readiness and clearance remain guidance; they do not lock the timer.
   const clearanceAllowsContact = !headImpactToday && (!state.effective_clinician_clearance ||
     (state.effective_clinician_clearance.level === "train_contact" && !state.effective_clinician_clearance.requires_update));
-  const contactCleared =
-    clearanceAllowsContact &&
-    (resolvedDecision.authoritativeTier === "green" ||
-      resolvedDecision.authoritativeTier === "modify") &&
-    !severeInjuryBlocksCurrentSession &&
-    !decisionBlocksCurrentSession &&
-    !livePrescription?.rehab_only &&
-    !safeSession;
-  const contactTimerAvailable = Boolean(contactTarget) && contactCleared;
+  const contactTimerAvailable = Boolean(contactTarget);
   // The athlete's declared gym work (hard sparring, technical rounds) is the
   // day's main event: it owns the headline and the primary button, and any app
   // work that day reads as what comes with it. Contact never leads a day the
@@ -794,12 +785,12 @@ export function TodaySessionPanel({
       sameTitle(getSessionTitle(session), contactTarget?.headline ?? "") ||
       sameTitle(getSessionTitle(session), contactHeadline));
   const contactClearanceBlocked = contactIsSession && !clearanceAllowsContact;
-  const canCompleteSession = resolvedDecision.canCompleteSession
-    && !livePrescription?.safety_hold && !contactClearanceBlocked && !guidanceOnlyRehabDay;
+  const canCompleteSession = resolvedDecision.sessionIsToday && Boolean(session.session_id)
+    && session.effective_load?.trim().toLowerCase() !== "none" && !guidanceOnlyRehabDay;
   const guidanceCanCheckOff = guidanceOnlyRehabDay && resolvedDecision.canCompleteSession
     && !livePrescription?.safety_hold;
   const timerAvailable =
-    canCompleteSession && !safeSession && Boolean(session.session_id) && timerItems.length > 0;
+    canCompleteSession && Boolean(session.session_id) && timerItems.length > 0;
   // A day with nothing to time but a Fight Visualisation: starting the session
   // IS the guided run, and finishing it opens the log.
   // An optional camp session never leads: it rides on the day's real work.
@@ -818,8 +809,7 @@ export function TodaySessionPanel({
       : resolvedDecision.authoritativeTier === "not_checked_in"
         ? CONTACT_LOCK_COPY.not_checked_in
         : CONTACT_LOCK_COPY.blocked;
-  const freeTimerAvailable =
-    resolvedDecision.authoritativeTier !== "stop" && !severeInjuryBlocksCurrentSession;
+  const freeTimerAvailable = true;
   // A run left in progress (app closed mid-session) comes back as the mini bar.
   // Read from storage on the client only, so server and first client render agree.
   const savedTimerSource = useSyncExternalStore<TimerSource | null>(
@@ -1483,7 +1473,7 @@ export function TodaySessionPanel({
             <span className="today-injury-strip-chevron" aria-hidden="true" />
           </a>
         ) : null}
-        {canCompleteSession && !rehabOnlyPrescription && !safeSession && status === "not_started" ? (
+        {canCompleteSession && !rehabOnlyPrescription && status === "not_started" ? (
           <div className="today-session-actions today-action-tray">
             {contactCta ? (
               <button type="button" className="cta" onClick={startContact} disabled={isSubmitting}>
@@ -1633,7 +1623,7 @@ export function TodaySessionPanel({
           </div>
         ) : null}
 
-        {!canCompleteSession && !safeSession && !isSessionPreview ? (
+        {(!resolvedDecision.canCompleteSession || livePrescription?.safety_hold || contactClearanceBlocked) && !safeSession && !isSessionPreview ? (
           <div className="today-terminal-block">
             <p
               className="today-terminal-status"
