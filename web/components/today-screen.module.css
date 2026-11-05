@@ -404,9 +404,8 @@
 
 .contentReveal :global(.today-decision-banner) { animation: none; }
 
-/* The first slot covers the entire command section, including its feedback
-   row. Share a floor with the loaded panel; longer guidance grows naturally. */
-.command {
+/* Reserve space only while loading; loaded guidance follows its content. */
+.loading .command {
   min-block-size: 30rem;
   align-content: start;
 }

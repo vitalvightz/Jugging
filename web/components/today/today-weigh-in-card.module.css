@@ -1,4 +1,4 @@
-.card { display: grid; gap: 10px; padding: 18px 18px 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-support, 14px); background: var(--bg-panel); color: var(--text-primary); }
+.card { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-support, 14px); background: var(--bg-panel); color: var(--text-primary); }
 .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .kicker { margin: 0; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--brand-red); }
 .status { display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
@@ -15,7 +15,7 @@
 .when { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .track > span { transition: none; } }
 .main { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: 0.95rem; }
-.main strong { font-size: clamp(40px, 9vw, 52px); font-weight: 700; line-height: 1; letter-spacing: -0.05em; font-variant-numeric: tabular-nums; }
+.main strong { font-size: clamp(28px, 7vw, 36px); font-weight: 700; line-height: 1; letter-spacing: -0.05em; font-variant-numeric: tabular-nums; }
 .meta { margin: 0; font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .detail { margin: 0; font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary); }
 .link { color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
