@@ -403,13 +403,4 @@
   .contentReveal, .loading :global(.skeleton) { animation: none; }
 }
 
-.contentReveal :global(.today-decision-banner),
-.loading :global(.today-decision-banner) { animation: none; }
-
-@media (max-width: 767px) {
-  .loading :global(.today-decision-action) :global(.skeleton) { height: 22px !important; }
-  .loading :global(.today-decision-detail) :global(.skeleton) { height: 21px !important; }
-}
-@media (min-width: 768px) {
-  .loading :global(.today-decision-action) :global(.skeleton):last-child { display: none; }
-}
+.contentReveal :global(.today-decision-banner) { animation: none; }

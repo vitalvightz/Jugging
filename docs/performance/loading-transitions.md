@@ -1,5 +1,7 @@
 # Stable loading transitions
 
+Today’s skeleton layout was subsequently restored to its original four placeholders at the user’s request. The local delay removal and content fade remain.
+
 Based on Main 22848dbb and merged PR #3201. Fresh Today reads and safety gating are unchanged.
 
 Before: the supplied iPhone recording shows the short Home placeholder pushing XP/weight downward and Today's two large rectangles being replaced by a different layout.
@@ -11,17 +13,14 @@ After: synthetic authenticated athlete, production Next server, system Chromium,
 | Surface | Loading | Loaded |
 | --- | --- | --- |
 | Home mobile | ![](loading-transitions/home-loading-390.png) | ![](loading-transitions/home-loaded-390.png) |
-| Today mobile | ![](loading-transitions/today-loading-390.png) | ![](loading-transitions/today-loaded-390.png) |
 | Home desktop | ![](loading-transitions/home-loading-1280.png) | ![](loading-transitions/home-loaded-1280.png) |
-| Today desktop | ![](loading-transitions/today-loading-1280.png) | ![](loading-transitions/today-loaded-1280.png) |
 
 ## Validation
 
 - Production build and typecheck pass; nine Today component tests pass.
 - Targeted ESLint: no errors; existing Home effect warnings.
-- Four production browser cases pass: mobile/desktop geometry, fresh-read gating, failed-read/retry.
+- Four production browser cases pass: Home mobile/desktop geometry, fresh-read gating, failed-read/retry.
 - Home companion's vertical displacement <2px after the existing entrance finishes.
-- Today heading displacement <2px; command shell height difference <8px in the tested fixture. No horizontal overflow.
 - Geometry checks use reduced motion; screenshots cover loading/loaded structure. Content reveal is opacity-only, 180ms, disabled with reduced motion. Today's existing banner entrance is suppressed locally to avoid a second animation.
 - No production timers, network requests, caching, freshness or error handling changed. The 250ms delay is removed only from Today's loading shell and its skeleton children.
 - FadeThroughProvider, PageTransition, full-screen timer/preview/navigation transitions untouched.
