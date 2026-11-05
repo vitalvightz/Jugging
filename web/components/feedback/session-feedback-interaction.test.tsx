@@ -75,11 +75,16 @@ test("the first stage is one question and two buttons, never a form", async () =
   cleanup(container, root);
 });
 
-test("Not now dismisses without sending anything", async () => {
+test("Not now dismisses without submitting feedback", async () => {
   const originalFetch = globalThis.fetch;
-  let requests = 0;
-  globalThis.fetch = (async () => {
-    requests += 1;
+  let feedbackSubmissions = 0;
+  globalThis.fetch = (async (input, init) => {
+    const url = input instanceof Request ? input.url : String(input);
+    const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+    // #3039 records prompt analytics independently of an athlete's submission.
+    if (new URL(url, "http://localhost").pathname.includes("/feedback") && method === "POST") {
+      feedbackSubmissions += 1;
+    }
     return new Response("{}", { status: 200 });
   }) as typeof fetch;
 
@@ -95,7 +100,7 @@ test("Not now dismisses without sending anything", async () => {
   await settle();
 
   assert.equal(dismissed, true);
-  assert.equal(requests, 0);
+  assert.equal(feedbackSubmissions, 0);
 
   globalThis.fetch = originalFetch;
   cleanup(container, root);
