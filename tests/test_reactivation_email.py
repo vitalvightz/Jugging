@@ -52,7 +52,9 @@ def test_opted_in_candidate_uses_resend_with_unsubscribe(monkeypatch):
     assert observed["url"] == "https://api.resend.com/emails"
     assert observed["json"]["to"] == ["fighter@example.test"]
     assert "Unsubscribe" in observed["json"]["html"]
-    assert f"/plans/{plan_id}" in observed["json"]["text"]
+    assert "https://app.unlxck.com/dashboard" in observed["json"]["text"]
+    assert observed["json"]["subject"] == "Your progress doesn't stop here"
+    assert "Get back to training" in observed["json"]["html"]
     assert observed["headers"]["Idempotency-Key"] == f"reactivation-{profile_id}"
 
 
