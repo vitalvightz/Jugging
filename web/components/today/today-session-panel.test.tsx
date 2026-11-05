@@ -7,6 +7,7 @@ import { createRoot } from "react-dom/client";
 
 import { ToastProvider } from "@/components/toast-provider";
 import { FadeThroughProvider } from "@/components/fade-through";
+import { RoundTimerProvider } from "@/components/session-timer/round-timer-provider";
 import { timerAudio } from "@/lib/session-timer/audio";
 import { AuthProvider, AppSessionContext } from "@/components/auth-provider";
 import { previewUnlockCopy, TodaySessionBlocks, TodaySessionPanel } from "./today-session-panel";
@@ -1255,13 +1256,15 @@ for (const action of ["Finish session", "Skip session"] as const) {
   });
 }
 
-test("start session runs the day's visualisation first, then hands on to the timer", async () => {
+for (const tier of ["green", "not_checked_in", "pull_back", "stop"] as const) {
+for (const title of ["Fight Visualisation", "Neural Visualization"]) {
+test(`start ${title} under ${tier} opens the guide then hands on to the timer`, async () => {
   const container = document.createElement("div"); document.body.appendChild(container);
   const root = createRoot(container);
-  const state = contactDayState("green");
-  state.today.next_session = { ...state.today.next_session, coach_led_contact: undefined, title: "Fight Visualisation" };
-  state.live_prescription = { revision: "a".repeat(64), frozen: false, safety_hold: false, changes: [],
-    session: { session_id: state.today.next_session.session_id!, session_type: "skill", title: "Fight Visualisation",
+  const state = contactDayState(tier);
+  state.today.next_session = { ...state.today.next_session, coach_led_contact: undefined, title };
+  state.live_prescription = { revision: "a".repeat(64), frozen: false, safety_hold: tier !== "green", changes: [],
+    session: { session_id: state.today.next_session.session_id!, session_type: "skill", title,
       blocks: [
         { block_id: "vis-1", block_type: "mindset", display_name: "Tactical Picture",
           coaching_cues: ["See the opponent clearly.", "Cue: Take the space."] },
@@ -1278,8 +1281,9 @@ test("start session runs the day's visualisation first, then hands on to the tim
   }) as typeof fetch;
   const button = (scope: ParentNode, label: string) =>
     Array.from(scope.querySelectorAll("button")).find((b) => b.textContent?.trim() === label);
+  const render = () => root.render(<AuthProvider><ToastProvider><TodaySessionPanel state={state} structuredPlan={null} token="token" onRefresh={async () => { state.today.completion_status = "started"; render(); }} /></ToastProvider></AuthProvider>);
   try {
-    await act(async () => { root.render(<AuthProvider><ToastProvider><TodaySessionPanel state={state} structuredPlan={null} token="token" onRefresh={async () => {}} /></ToastProvider></AuthProvider>); });
+    await act(async () => { render(); });
     const start = button(container, "Start session");
     assert.ok(start);
     await act(async () => { start.dispatchEvent(new domWindow.MouseEvent("click", { bubbles: true })); });
@@ -1292,8 +1296,14 @@ test("start session runs the day's visualisation first, then hands on to the tim
     await act(async () => { skip.dispatchEvent(new domWindow.MouseEvent("click", { bubbles: true })); });
     assert.equal(document.querySelector('[aria-label="Guided Tactical Picture"]'), null);
     assert.ok(document.querySelector(".st-root"), "then the timer takes over");
+    await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="Minimise timer"]')!.click(); });
+    await act(async () => { button(container, "Resume session")!.click(); });
+    assert.ok(document.querySelector('.st-root[role="dialog"]'), "resume reopens the session timer");
   } finally { globalThis.fetch = original; act(() => root.unmount()); container.remove(); }
 });
+
+}
+}
 
 test("handing on from the visualisation unlocks timer audio in the tap, not after the fade", async () => {
   const container = document.createElement("div"); document.body.appendChild(container);
@@ -1775,4 +1785,24 @@ test("advisory clinician warning gives a reason without locking actions", () => 
   assert.match(html, /Sparring rounds<\/button>/);
   assert.match(html, /Free timer<\/button>/);
   assert.doesNotMatch(html, /locked|unlock|Do not start this session/);
+});
+
+
+test("Start opens the normal round timer when a held session has no timed blocks", async () => {
+  const container = document.createElement("div"); document.body.appendChild(container);
+  const root = createRoot(container);
+  const state = contactDayState("stop");
+  state.today.next_session = { ...state.today.next_session, coach_led_contact: undefined };
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ completion: { id: "c1" }, rehab_response_prompts: [], logs: [], response_sets: [] }), { status: 200 })) as typeof fetch;
+  const render = () => root.render(<AuthProvider><ToastProvider><RoundTimerProvider><TodaySessionPanel state={state} structuredPlan={null} token="token" onRefresh={async () => { state.today.completion_status = "started"; render(); }} /></RoundTimerProvider></ToastProvider></AuthProvider>);
+  try {
+    domWindow.localStorage.clear();
+    await act(async () => { render(); });
+    const start = Array.from(container.querySelectorAll("button")).find(b => b.textContent?.trim() === "Start session");
+    assert.ok(start);
+    await act(async () => { start.click(); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+    assert.ok(document.querySelector('.st-root[role="dialog"]'), "the round timer opens rather than only updating status");
+  } finally { globalThis.fetch = original; act(() => root.unmount()); container.remove(); domWindow.localStorage.clear(); }
 });
