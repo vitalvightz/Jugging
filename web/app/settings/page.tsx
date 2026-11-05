@@ -12,6 +12,7 @@ import { PasswordStrengthMeter } from "@/components/password-strength-meter";
 import { InstallUnlxck } from "@/components/install-unlxck";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { PushNotificationSettings } from "@/components/push-notification-settings";
+import { ReactivationEmailPreference } from "@/components/reactivation-email-preference";
 import { PrivateTrialGuide } from "@/components/private-trial-guide";
 import { GlobalFeedback } from "@/components/feedback/global-feedback";
 import { ApiError, changeUsername, recordCompliance, updateMe } from "@/lib/api";
@@ -133,7 +134,7 @@ const ADMIN_TEMPLATES_STORAGE_KEY = "unlxck.adminTemplateDrafts";
 const ATHLETE_SETTINGS_SECTIONS: SettingsSection[] = [
   { id: "account", label: "Account" },
   { id: "training-profile", label: "Training Profile" },
-  { id: "notifications", label: "Notifications" },
+  { id: "notifications", label: "Notifications & email" },
   { id: "subscription", label: "Subscription" },
   { id: "privacy", label: "Privacy" },
   { id: "private-trial", label: "Private Trial Guide" },
@@ -1298,7 +1299,7 @@ export default function SettingsPage() {
             <h2 className="form-section-title">Reminders and messages</h2>
           </div>
           {session?.access_token ? (
-            <PushNotificationSettings token={session.access_token} />
+            <><PushNotificationSettings token={session.access_token} /><ReactivationEmailPreference token={session.access_token} /></>
           ) : (
             <p className="muted">Sign in again to manage notification preferences.</p>
           )}

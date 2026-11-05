@@ -118,6 +118,30 @@ async def _run_plan_ready_email_sweep_if_due(
     _PLAN_READY_EMAIL_TASK["task"] = asyncio.create_task(_sweep())
 
 
+_REACTIVATION_EMAIL_TASK: dict[str, asyncio.Task[None] | None] = {"task": None}
+
+
+async def _run_reactivation_email_sweep_if_due(
+    *, store: AppStore, state: dict[str, float], shutdown_event: asyncio.Event,
+) -> None:
+    """Minute-level opt-in reactivation sweep with database daily caps; never blocks plan generation."""
+    if shutdown_event.is_set() or time.monotonic() - state.get("last_sweep_at", 0.0) < 60:
+        return
+    task = _REACTIVATION_EMAIL_TASK["task"]
+    if task is not None and not task.done():
+        return
+    state["last_sweep_at"] = time.monotonic()
+
+    async def _sweep() -> None:
+        try:
+            from .services.reactivation_email import run_reactivation_email_sweep
+            await asyncio.to_thread(run_reactivation_email_sweep, store)
+        except Exception:  # noqa: BLE001 - email must never affect generation
+            logger.exception("[worker] reactivation sweep failed")
+
+    _REACTIVATION_EMAIL_TASK["task"] = asyncio.create_task(_sweep())
+
+
 class ContributionReplayState(TypedDict, total=False):
     last_sweep_at: float
     after_id: str | None
@@ -483,6 +507,7 @@ async def run_worker() -> None:
     recovery_sweep_state: dict[str, float] = {}
     morning_sweep_state: dict[str, float] = {}
     plan_ready_email_sweep_state: dict[str, float] = {}
+    reactivation_email_sweep_state: dict[str, float] = {}
     morning_sweep_interval = _morning_push_sweep_interval_seconds()
     contribution_replay_state: ContributionReplayState = {}
     contribution_replay_idle_seconds = _contribution_xp_replay_idle_seconds()
@@ -502,6 +527,9 @@ async def run_worker() -> None:
             )
             await _run_plan_ready_email_sweep_if_due(
                 store=store, state=plan_ready_email_sweep_state, shutdown_event=shutdown_event,
+            )
+            await _run_reactivation_email_sweep_if_due(
+                store=store, state=reactivation_email_sweep_state, shutdown_event=shutdown_event,
             )
             await _run_morning_push_sweep_if_due(
                 store=store,

@@ -653,6 +653,14 @@ export type EffortPrescription = {
   scale: string | null;
 };
 
+export type EmailPreference = {
+  enabled: boolean;
+};
+
+export type EmailPreferenceRequest = {
+  enabled: boolean;
+};
+
 export type EquipmentRequirementGroup = {
   mode: "ALL" | "ANY" | "OPTIONAL" | "SINGLE" | "UNKNOWN";
   items: EquipmentRequirementItem[];
