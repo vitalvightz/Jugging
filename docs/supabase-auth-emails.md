@@ -102,6 +102,7 @@ unstyled defaults.
 | `recovery.html` | Reset Password |
 | `email-change.html` | Change Email Address |
 | `invite.html` | Invite user |
+| `password-changed.html` | Password Changed (security notification, if enabled) |
 
 To apply: **Authentication → Emails → Templates**, pick the template, paste the
 file contents into the message body, and save. Re-paste after editing a file
@@ -120,8 +121,10 @@ Suggested subject lines:
 
 ### Template constraints
 
-- **No remote images.** The wordmark is letter-spaced text so it renders even
-  when a client blocks remote content. Do not swap in a hosted logo.
+- **Shared animated logo.** Email headers use the same small, public GIF at
+  `https://unlxck.com/brand/unlxck-email-glitch.gif`; deploy and verify this asset
+  before applying templates. The image has `alt="UNLXCK"` for image-blocking
+  clients. Authentication codes and action links must never depend on images.
 - **Inline styles only.** Gmail strips `<style>` blocks in several clients.
 - **Table layout.** `flex` and `grid` are unreliable across email clients.
 - Link-based templates use `{{ .ConfirmationURL }}` for the button and
