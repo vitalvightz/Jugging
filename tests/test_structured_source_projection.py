@@ -160,7 +160,9 @@ def test_converter_completes_missing_rest_effort_and_cue(has_source_cue, name, k
     assert published["rest"] == {"value": 180, "unit": "seconds"}
     assert published["effort"]["method"] == effort["method"]
     assert published["effort"]["value"] == effort["value"]
-    assert published["coaching_cues"] == candidate["weeks"][0]["days"][0]["sessions"][0]["blocks"][0]["coaching_cues"]
+    # #3172/#3174 project the exact approved labelled source cue; without
+    # one, the converter still supplies the same concise execution wording.
+    assert published["coaching_cues"] == ([f"Cue: {cue}"] if has_source_cue else [cue])
     assert len(client.responses.calls) == 1  # No third completion/repair call.
     prompt = client.responses.calls[0]["input"]
     assert "rest, effort and one concise execution cue" in prompt
