@@ -3,7 +3,7 @@
   "python": "3.11.17",
   "baseline_worktree_tracked_changes": false,
   "command_per_test": "python -m pytest -q -p no:cacheprovider <nodeid>",
-  "scope": "63 unique failures observed across the checkpointed full-suite run and its exact-ID continuation, before subsequent fixes. This is a baseline inventory, not the final branch failure list. Each entry was separately executed in the clean detached Main worktree. The heartbeat passes in isolation; all other entries fail.",
+  "scope": "Historical checkpoint. 63 unique failures observed across the checkpointed full-suite run and its exact-ID continuation, before subsequent fixes. This is a baseline inventory, not the final branch failure list. Each entry was separately executed in the clean detached Main worktree. The heartbeat passes in isolation; all other entries fail.",
   "results": [
     {
       "nodeid": "tests/test_api_generation_flows.py::test_runtime_generation_stage1_planner_does_not_fail_before_configured_timeout",
@@ -320,5 +320,6 @@
       "exit_code": 1,
       "log_sha256": "9447f533c316be7168f485f7b6a5d4e3b1090b88e742f7de3c6b5a5207b3620c"
     }
-  ]
+  ],
+  "current_main_followup": "python-suite-review-followup.json contains current Main 6a3b2999 individual proof for all 24 review failures and 14 product regressions."
 }

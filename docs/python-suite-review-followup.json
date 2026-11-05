@@ -1,0 +1,415 @@
+{
+  "main_revision": "6a3b29994f5118cb2210ea37b8aa9fd3f4485581",
+  "main_worktree_tracked_changes": false,
+  "python": "3.11.17",
+  "command_per_case": "python -m pytest -q -p no:cacheprovider <nodeid>",
+  "reviewed_ci_revision": "887315b53b8e2613e0a40571b53812030c2a837e",
+  "main_isolation_summary": {
+    "failed": 19,
+    "passed": 5
+  },
+  "branch_isolation_revision": "5cee7612",
+  "remaining_isolated_failures": 4,
+  "reviewed_failures": [
+    {
+      "nodeid": "tests/test_supabase_runtime_schema_checker.py::test_index_requirement_satisfied_by_constraint_alias",
+      "main_exit_code": 1,
+      "main_log_sha256": "09987b19589dbbfb0804301940386b5a7bc92dbe71705610315e44b24b939a66",
+      "classification": "documented_test_alignment",
+      "resolution_or_decision": "#3170 adds two required uniqueness indexes; complete the present-index fixture while retaining constraint-alias coverage.",
+      "citations": [
+        "#3170"
+      ],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_calendar_integrity_characterization.py::test_baseline_d24_two_hard_contacts",
+      "main_exit_code": 1,
+      "main_log_sha256": "e700bfc136de3ecc8bf8a5267f9953874e2139cd4413ee5b9ce300345d449637",
+      "classification": "documented_test_alignment",
+      "resolution_or_decision": "All changed physical rows attributed by historical source runs; refreeze only the three affected scenarios. Contacts and tail ownership unchanged.",
+      "citations": [
+        "#2888",
+        "#3035",
+        "#3036",
+        "#3103",
+        "#3106"
+      ],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_calendar_integrity_characterization.py::test_baseline_d16_technical_conversion",
+      "main_exit_code": 1,
+      "main_log_sha256": "94a9f4ba08e4c37057dbed474346b66843e626c77ad6cdc49a228ee069f0c40f",
+      "classification": "documented_test_alignment",
+      "resolution_or_decision": "All changed physical rows attributed by historical source runs; refreeze only the three affected scenarios. Contacts and tail ownership unchanged.",
+      "citations": [
+        "#2888",
+        "#3035",
+        "#3036",
+        "#3103",
+        "#3106"
+      ],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_calendar_integrity_characterization.py::test_baseline_d28_finished_tail",
+      "main_exit_code": 1,
+      "main_log_sha256": "e9a319d50d2fd008864241854feab3d8ea227aa2f0fdb7534c085dc42bdfd4de",
+      "classification": "documented_test_alignment",
+      "resolution_or_decision": "All changed physical rows attributed by historical source runs; refreeze only the three affected scenarios. Contacts and tail ownership unchanged.",
+      "citations": [
+        "#2888",
+        "#3035",
+        "#3036",
+        "#3103",
+        "#3106"
+      ],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_stage2_luna_coaching.py::test_finalize_with_mocked_luna_keeps_coaching_and_passes_release",
+      "main_exit_code": 0,
+      "main_log_sha256": "c2e32b999daedf2465c1bb0d22d8aee0c9f49676b1bc8c497cf5d33d846507b4",
+      "classification": "product_regression_in_pr",
+      "resolution_or_decision": "Redistribution split a closed Core component. Keep its members on their selected host; added a regression, with the original Luna validation passing.",
+      "citations": [
+        "#3166",
+        "b9144ffd"
+      ],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_training_discovery_filters.py::test_dictionary_is_field_scoped_descriptive_and_source_supported",
+      "main_exit_code": 1,
+      "main_log_sha256": "2ca0996c610bb7563bd0dd6a2af8e2c8be8124e0fb50d4f1e69f00fc12647987",
+      "classification": "documented_test_alignment",
+      "resolution_or_decision": "Recount Goal facets: three added footwork rows include one new Defensive Movement entry; totals 285 original-rule members and 291 expanded members.",
+      "citations": [
+        "#3181"
+      ],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_open_plan_development_block.py::test_open_plan_carries_a_deterministic_four_week_session_plan[mma_two_hard_power]",
+      "main_exit_code": 1,
+      "main_log_sha256": "e5d09f9e4047154a5395a1694105c044320f7cf25d0887d94baa661772d36fac",
+      "classification": "documented_test_alignment",
+      "resolution_or_decision": "MMA intake requested six days but supplied five. Use frequency five; preserve every four-week membership/contract assertion.",
+      "citations": [
+        "#3125"
+      ],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_open_plan_development_block.py::test_open_plan_has_no_periodisation_or_countdown[mma_two_hard_power]",
+      "main_exit_code": 1,
+      "main_log_sha256": "46c53bab9b69d2819f3a2f316b07eac0e0347a9a33a549d8cf9b2e367a92a9e5",
+      "classification": "documented_test_alignment",
+      "resolution_or_decision": "Same six-request/five-available fixture correction; retain periodisation/countdown prohibitions.",
+      "citations": [
+        "#3125"
+      ],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_open_plan_development_block.py::test_two_hard_power_open_block_never_turns_a_microdose_into_full_strength",
+      "main_exit_code": 1,
+      "main_log_sha256": "310af789984f123bfb62a1a9aac5dae58db662ca708d77bd1bf70f139ab25410",
+      "classification": "documented_test_alignment",
+      "resolution_or_decision": "Same valid-intake fixture correction; retain all microdose caps.",
+      "citations": [
+        "#3125"
+      ],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_open_plan_development_block.py::test_open_strength_duplicate_falls_back_without_unqualified_replacement[True-alternates4-expected4]",
+      "main_exit_code": 1,
+      "main_log_sha256": "47d05df55d54f684980a1dabb833761d5a93e0d0e9496ac20e102a278d7dea80",
+      "classification": "documented_test_alignment",
+      "resolution_or_decision": "Promoted alternate score seven must precede original score five in the completed score-ranked pool; membership assertions remain exact.",
+      "citations": [
+        "#3147"
+      ],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_programme_fidelity_production.py::test_late_goal_repair_retains_earlier_speed_appointments",
+      "main_exit_code": 1,
+      "main_log_sha256": "00787a6d2016e95b59de52497b1dee9b63427923e0a2e26ab18dc5bcf31fb16b",
+      "classification": "documented_test_alignment",
+      "resolution_or_decision": "Frequency nine is no longer legal; use all seven available days and frequency seven to retain the high-capacity repair premise.",
+      "citations": [
+        "#3125"
+      ],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_ai_coaching_contract.py::test_valid_numeric_coaching_survives_conversion_save_effective_plan_and_react",
+      "main_exit_code": 0,
+      "main_log_sha256": "106285e5a22431ea0bbbd2a0b6cef3811c8da23f7cb6702b35cf47a695129473",
+      "classification": "ci_dependency_bug",
+      "resolution_or_decision": "Python CI executed the actual React renderer without installing tsx. Install locked web dependencies; both cases pass on fresh Main with those dependencies.",
+      "citations": [],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_ai_coaching_contract.py::test_duplicate_sessions_keep_distinct_coaching_through_save_and_react",
+      "main_exit_code": 0,
+      "main_log_sha256": "04ace7b697931deb20025d6a8844512fa257e5f20a96046d929ededc7a511262",
+      "classification": "ci_dependency_bug",
+      "resolution_or_decision": "Python CI executed the actual React renderer without installing tsx. Install locked web dependencies; both cases pass on fresh Main with those dependencies.",
+      "citations": [],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_schedule_composition_and_loaded_work.py::test_revalidation_does_not_force_a_move_when_final_doses_are_legal",
+      "main_exit_code": 0,
+      "main_log_sha256": "2ef1108f76e85b0ade6ab4717e9921a43df509712351320627517cec14ca2390",
+      "classification": "passes_current_main",
+      "resolution_or_decision": "Fails individually at b898cbce but passes at current Main 6a3b2999 and on the branch. No assertion changed.",
+      "citations": [
+        "#3195",
+        "#3197"
+      ],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_card_replay_representative_plans.py::test_faithful_card_for_the_affected_boxer_validates",
+      "main_exit_code": 1,
+      "main_log_sha256": "559d5a6788500f9386788986b7be13e380834cbdd6fb9d916b7b340f58e1d399",
+      "classification": "documented_test_alignment",
+      "resolution_or_decision": "The generated card validates; membership variety removed the hard-coded TRX hold. Retain its exact qualitative-rest check using existing recorded_authority.json; still validate the current generated programme.",
+      "citations": [
+        "#3101",
+        "#3104",
+        "#3117"
+      ],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_injury_readiness_replay.py::test_persisted_readiness_preserves_app_budget_with_coached_days[coached_days1-Sometimes my left knee hurts-False]",
+      "main_exit_code": 1,
+      "main_log_sha256": "102243a20bf409fe80cd5d30bec515fe1f9f2040335d04ff34be26317cc3085f",
+      "classification": "decision_required",
+      "resolution_or_decision": "The supported strength, conditioning, provenance, coach-day and goal checks pass. Only the explicit #3036 requirement for generic mobility/joint-prep fails in the unrestricted open coached case. Decide whether this support must be embedded on an existing day, or whether distinct-day/clinical-policy constraints permit its absence. No fallback rehab drill added.",
+      "citations": [
+        "#3036",
+        "#3106",
+        "#2984"
+      ],
+      "branch_exit_code": 1,
+      "branch_log_sha256": "8f0d865717f526febe7f4320a80ca33df484db336bfbee99fcf23fa2cf1a4c98"
+    },
+    {
+      "nodeid": "tests/test_injury_readiness_replay.py::test_persisted_readiness_preserves_app_budget_with_coached_days[coached_days1-Sometimes my right shoulder hurts-False]",
+      "main_exit_code": 1,
+      "main_log_sha256": "15bf8ac2ca9ca1e25486073285f65cd1b0453b3695d70e9897965a9d6e757c3d",
+      "classification": "decision_required",
+      "resolution_or_decision": "The supported strength, conditioning, provenance, coach-day and goal checks pass. Only the explicit #3036 requirement for generic mobility/joint-prep fails in the unrestricted open coached case. Decide whether this support must be embedded on an existing day, or whether distinct-day/clinical-policy constraints permit its absence. No fallback rehab drill added.",
+      "citations": [
+        "#3036",
+        "#3106",
+        "#2984"
+      ],
+      "branch_exit_code": 1,
+      "branch_log_sha256": "16bb2b75e204ff2b942c2df299ddb26f21549d1e80c0ca0a320d40d9220629b1"
+    },
+    {
+      "nodeid": "tests/test_empty_sessions_and_low_load_support.py::test_dedicated_rehab_roles_are_not_rewritten",
+      "main_exit_code": 1,
+      "main_log_sha256": "718c6f5d58e8988afa642bac277f83162b8736aea96aec9c89d6dbf36d09fb4e",
+      "classification": "fixture_premise_bug",
+      "resolution_or_decision": "Live ankle policy returns prescribed_rehab and nonempty published candidates in GPP/SPP/TAPER. Generic support resets share mobility_rehab but are not clinical appointments. Use those actual published candidates in an explicit dedicated clinical role and assert suppression leaves the whole brief unchanged.",
+      "citations": [
+        "#2984"
+      ],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_late_camp_selector_rebalance.py::test_audit_snapshot_matches_golden",
+      "main_exit_code": 1,
+      "main_log_sha256": "3386ae90626cfad4e8c11c27af5fe3b2ec1aa2007f1376e60f6b65c4091e4623",
+      "classification": "decision_required",
+      "resolution_or_decision": "Main and branch snapshots are identical; common scores/reasons unchanged. Most membership drift is traced to #2882/#2960/#3101/#3166, but the older Agility Ladder (Recovery) blocked-row expectation still lacks a complete source attribution. Decide the audit boundary for equipment-ineligible candidates before approving the remaining refreeze.",
+      "citations": [
+        "#2882",
+        "#2960",
+        "#3101",
+        "#3166"
+      ],
+      "branch_exit_code": 1,
+      "branch_log_sha256": "e0bef9fe135af49d93a2339817162b577dd312725ecc03542f78a9fc2d6e8d6c"
+    },
+    {
+      "nodeid": "tests/test_structured_source_projection.py::test_converter_completes_missing_rest_effort_and_cue[Box Jump-plyometric_power-effort0-Explode upwards.-True]",
+      "main_exit_code": 1,
+      "main_log_sha256": "62efab562f95afd2fe911cfffbb288db0222d2bdd55200afd0fdb9a1caa0a4e1",
+      "classification": "documented_test_alignment",
+      "resolution_or_decision": "Approved labelled source cues now win; require exact Cue: wording when source-authored and the same concise converter cue otherwise. All dose/rest/effort/no-extra-call checks remain.",
+      "citations": [
+        "#3172",
+        "#3174"
+      ],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_structured_source_projection.py::test_converter_completes_missing_rest_effort_and_cue[Goblet Squat-strength-effort1-Brace before squatting.-True]",
+      "main_exit_code": 1,
+      "main_log_sha256": "9c111c7240f85e862001ac2e0a378c458a79373cd07941e4db4d33d3e96cd0d1",
+      "classification": "documented_test_alignment",
+      "resolution_or_decision": "Approved labelled source cues now win; require exact Cue: wording when source-authored and the same concise converter cue otherwise. All dose/rest/effort/no-extra-call checks remain.",
+      "citations": [
+        "#3172",
+        "#3174"
+      ],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_core_development_block.py::test_open_plan_builds_a_grouped_core_block_every_week",
+      "main_exit_code": 0,
+      "main_log_sha256": "b431a4cf5967121895f0c7541194ac74693200faca0bef5f9718062a43179654",
+      "classification": "product_regression_in_pr_and_test_alignment",
+      "resolution_or_decision": "Keep Core component membership intact. Retain satisfied maintenance/no contract errors and every week's insufficient-complementary composition cause; additional planner compression must cite an actual removed appointment in that week.",
+      "citations": [
+        "#2903",
+        "#3166",
+        "#3120"
+      ],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_api_profile_flows.py::test_admin_athlete_profile_includes_latest_intake_details",
+      "main_exit_code": 1,
+      "main_log_sha256": "ccc06c649d3a1994e543843527ed87ab8d01bad67661907be3f15d3c10b0cee8",
+      "classification": "documented_test_alignment",
+      "resolution_or_decision": "Five requested days require five available days; add Thursday to the intake, preserving all API assertions.",
+      "citations": [
+        "#3125"
+      ],
+      "branch_status": "passes targeted checks; full-suite confirmation follows in CI"
+    },
+    {
+      "nodeid": "tests/test_safety_metadata_enforcement.py::test_complete_programmes_preserve_selection_dose_periodisation_and_personalisation",
+      "main_exit_code": 1,
+      "main_log_sha256": "2d99eec54a9528af3a8378af158f0f6e464e25a70a56c654d5305bd734260907",
+      "classification": "decision_required",
+      "resolution_or_decision": "Six-programme hashes remain pinned to 5b8f4fbf despite reviewed later selection/calendar/dose changes. Current Main and branch both fail. A per-case programme change ledger is required before approving replacement hashes; the old comparison remains enforced.",
+      "citations": [
+        "#2882",
+        "#2888",
+        "#3101",
+        "#3166"
+      ],
+      "branch_exit_code": 1,
+      "branch_log_sha256": "0e893707838cd5bc8a74676124ca6dc32623314f1a8732d7a8c9a216de526d83"
+    }
+  ],
+  "original_product_regressions": [
+    {
+      "nodeid": "tests/test_pre_hard_contact_strength.py::test_transfer_records_calendar_day_before_prescriptions_stamp_it",
+      "main_exit_code": 1,
+      "main_log_sha256": "2a33241e0a40b470624eebda201f3e787277f2211a0d88e97ea126d6ca1b422b"
+    },
+    {
+      "nodeid": "tests/test_pre_hard_contact_strength.py::test_composition_leaves_pre_hard_receivers_for_conserving_redistribution",
+      "main_exit_code": 1,
+      "main_log_sha256": "f1f7b23ec66e878fdf4e95de037ca6c82dc4ebe70cc5d7c4eae28c61719be8ef"
+    },
+    {
+      "nodeid": "tests/test_rehab_advisory_generation.py::test_protection_guidance_cannot_become_a_structured_exercise[knee_instability]",
+      "main_exit_code": 1,
+      "main_log_sha256": "d5b670ef521c681d04ac5715a657826065c23ec01b56c4360991181c5831ab1d"
+    },
+    {
+      "nodeid": "tests/test_rehab_advisory_generation.py::test_protection_guidance_cannot_become_a_structured_exercise[shoulder_impingement]",
+      "main_exit_code": 1,
+      "main_log_sha256": "0ba9b0c86c76f5454f95375d52ecf2f3e17190d91cc390415eb3a576c7f96c56"
+    },
+    {
+      "nodeid": "tests/test_rehab_advisory_generation.py::test_published_protection_guidance_is_summary_only[knee_instability]",
+      "main_exit_code": 1,
+      "main_log_sha256": "13dcd3af1dfd0d7364f2cd3cd08473dbcfdd652f6fd26d4efb738f527dd19dad"
+    },
+    {
+      "nodeid": "tests/test_rehab_advisory_generation.py::test_published_protection_guidance_is_summary_only[shoulder_impingement]",
+      "main_exit_code": 1,
+      "main_log_sha256": "3e852f070fe71bcc89ea86ce3b2fa370e925df638de2750c439bc15cb8633d20"
+    },
+    {
+      "nodeid": "tests/test_stage1_runner_import.py::test_custom_stage1_runner_does_not_import_the_default_planner",
+      "main_exit_code": 1,
+      "main_log_sha256": "4819ab9711e687435824621896c8ec0295bcfc13cfce85b34ed1dba00ddd5fdd"
+    },
+    {
+      "nodeid": "tests/test_strength_surface_injury_selection.py::test_final_strength_selection_preserves_surface_policy_with_a_safe_fallback[surface-cut]",
+      "main_exit_code": 1,
+      "main_log_sha256": "4421ff9317b83e7fc553ffa7c7eed4f4ccfe193cae711fa3cf3fdd05fb929bf2"
+    },
+    {
+      "nodeid": "tests/test_running_source_dose.py::test_uphill_source_dose_requires_complete_consistent_evidence[published]",
+      "main_exit_code": 1,
+      "main_log_sha256": "87a108994556545af67e911dafac67e7d7d6c2fa77406b58e5e4546ca0b2e75b"
+    },
+    {
+      "nodeid": "tests/test_structured_endurance_session_metadata.py::test_generic_endurance_cards_preserve_session_and_block_evidence[block_modality]",
+      "main_exit_code": 1,
+      "main_log_sha256": "3dcb26b4913cf53ad8c784fa4239c75e64ddcdee245f49eaf156a192b8b1248c"
+    },
+    {
+      "nodeid": "tests/test_structured_endurance_session_metadata.py::test_generic_endurance_cards_preserve_session_and_block_evidence[conditioning_type]",
+      "main_exit_code": 1,
+      "main_log_sha256": "efe8ca5a7a55f5bca46f8df5bb22943f4510a8d31fae778f210dc58a5801640c"
+    },
+    {
+      "nodeid": "tests/test_structured_endurance_session_metadata.py::test_generic_endurance_cards_preserve_session_and_block_evidence[session_only]",
+      "main_exit_code": 1,
+      "main_log_sha256": "20b345b8e1d9ec37550639788dc78da306fd4b88fd4455f8fbc875293a180426"
+    },
+    {
+      "nodeid": "tests/test_structured_endurance_units.py::test_duration_minute_alias_is_not_reinterpreted_as_metres",
+      "main_exit_code": 1,
+      "main_log_sha256": "944675f9c8836b8e723e7ac3aa2ed0179f46241d72b6ef5623c9efeda3c4533c"
+    },
+    {
+      "nodeid": "tests/test_structured_endurance_units.py::test_short_second_quantities_are_not_interpreted_as_minutes[secs]",
+      "main_exit_code": 1,
+      "main_log_sha256": "3d12f0ad98e5ed19f272baa8bcf60b0055f58ddee755aad2da783465cc25f273"
+    }
+  ],
+  "review_followup_regressions": {
+    "dose_precedence_and_actual_session_type": {
+      "main": "7 passed",
+      "before_fix": "5 failed, 2 passed",
+      "branch": "7 passed (79 including related endurance checks)"
+    },
+    "closed_core_transfer": {
+      "before_fix": "failed",
+      "after_fix": "passed; pre-hard plus Luna 52 passed"
+    }
+  },
+  "additional_ci_fixes": [
+    {
+      "area": "PostgreSQL publication compliance",
+      "main": "isolated failure at 6a3b2999",
+      "citation": "#3149 retains adult DOB/consent prerequisites",
+      "main_log_sha256": "45eaa8ec04ac18a25b7aa671bd1137c53cb397d687422d87f57b913f61b27fcc"
+    },
+    {
+      "area": "PostgreSQL migration reference",
+      "main": "isolated failure at 6a3b2999",
+      "citation": "#3139 renames identical migration SQL",
+      "main_log_sha256": "61879ffad7f96519135f47e4f99d5088b95298c3b3808979d4c13ed4a1a61ec5"
+    },
+    {
+      "area": "Feedback dismissal",
+      "main": "2 analytics requests conflict with zero-network expectation",
+      "citation": "#3039 adds prompt analytics; prohibit feedback submissions while retaining dismissal assertion",
+      "main_log_sha256": "c350e2e47d3dd7740d360b8486fa97e30c1fe981f00ee03f289f362df4372b2b"
+    }
+  ],
+  "main_revision_scope": "Pre-#3120 Main, independently checked before its merge; product fixes are now included in ae58d872.",
+  "pr3120_merge_revision": "ae58d8720e9fd004569e3a11d399bf465379a629",
+  "followup_scope": "Only three attributed calendar baseline updates and evidence; no further product policy change."
+}
