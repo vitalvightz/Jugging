@@ -232,3 +232,12 @@ test("the crowd sits under the voice and stays out of the settle", () => {
   assert.equal(fightLevel("amateur"), "amateur");
   assert.equal(fightLevel(undefined), "amateur");
 });
+
+test("Neural Visualization uses its supplied instructions in the guided player", () => {
+  const result = fightVisualisationFromSession({
+    session_id: "neural-visualization", title: "Neural Visualization", blocks: [
+      { block_type: "mindset", display_name: "Neural Visualization", notes: "Rehearse your first exchange and exit." },
+    ],
+  });
+  assert.deepEqual(result?.steps, ["Rehearse your first exchange and exit."]);
+});

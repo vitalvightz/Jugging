@@ -785,10 +785,9 @@ export function TodaySessionPanel({
   const guidedLeads =
     Boolean(guidedVisualisation && !guidedVisualisation.optional) &&
     canCompleteSession &&
-    !safeSession &&
     !timerAvailable;
   // Something to go back into while the session is started.
-  const canResume = timerAvailable || guidedLeads || (contactIsSession && contactTimerAvailable);
+  const canResume = canCompleteSession;
   // A run left in progress (app closed mid-session) comes back as the mini bar.
   // Read from storage on the client only, so server and first client render agree.
   const savedTimerSource = useSyncExternalStore<TimerSource | null>(
@@ -954,6 +953,10 @@ export function TodaySessionPanel({
       }
       if (timerAvailable) {
         fadeThrough(() => setActiveTimer({ source: "session", mode: "open" }));
+      } else if (contactIsSession && contactTimerAvailable) {
+        openTimer("contact");
+      } else {
+        roundTimer.open();
       }
     });
   }
@@ -1075,7 +1078,7 @@ export function TodaySessionPanel({
             onClick={() => {
               // Doing today's visualisation is doing today's session: start it,
               // so finishing the run logs the exercise.
-              if (canCompleteSession && !safeSession && status === "not_started") {
+              if (canCompleteSession && status === "not_started") {
                 startSession();
               } else {
                 fadeThrough(() => setGuidedOpen(true));
@@ -1487,9 +1490,8 @@ export function TodaySessionPanel({
             </button>
           </div>
         ) : null}
-        {safeSession ? (
-          <SafeSessionCard view={safeSession} />
-        ) : showStructuredBlocks ? (
+        {safeSession ? <SafeSessionCard view={safeSession} /> : null}
+        {showStructuredBlocks ? (
           // A previewed day is read on its own screen; today's work stays here.
           isSessionPreview ? (
             previewOpen ? (
@@ -1633,7 +1635,7 @@ export function TodaySessionPanel({
                   openTimer("contact");
                   return;
                 }
-                showToast("Session is in progress.", { tone: "info" });
+                roundTimer.open();
               }}
               disabled={isSubmitting}
             >

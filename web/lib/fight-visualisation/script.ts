@@ -40,8 +40,8 @@ export type GuideScript = {
   totalSec: number;
 };
 
-const VISUALISATION_TITLE_RE = /\bfight\s+visuali[sz]ation\b/i;
-const VISUALISATION_ID_RE = /fight-visuali[sz]ation$/i;
+const VISUALISATION_TITLE_RE = /\b(?:fight|neural)\s+visuali[sz]ation\b/i;
+const VISUALISATION_ID_RE = /(?:fight|neural)[-_]visuali[sz]ation$/i;
 const DEFAULT_DURATION_SEC = 5 * 60;
 const OPTIONAL_RE = /^optional[.:]\s*/i;
 
@@ -72,14 +72,15 @@ export function fightVisualisationFromSession(
 ): FightVisualisation | null {
   if (!session || !isFightVisualisationSession(session)) return null;
   const block: StructuredBlock | undefined = (session.blocks ?? []).find(
-    (item) => (item.coaching_cues ?? []).some((cue) => cleanText(cue)),
+    (item) => (item.coaching_cues ?? []).some((cue) => cleanText(cue)) ||
+      cleanText(item.execution_instructions ?? item.instructions ?? item.notes),
   );
   if (!block) return null;
 
   const steps: string[] = [];
   let cue: string | null = null;
   let preBout: string | null = null;
-  for (const raw of block.coaching_cues ?? []) {
+  for (const raw of block.coaching_cues?.length ? block.coaching_cues : [block.execution_instructions ?? block.instructions ?? block.notes]) {
     const line = cleanText(raw);
     if (!line) continue;
     const cueText = prefixed(line, "cue");
