@@ -728,7 +728,7 @@ export default function HomePage() {
                 </h1>
                 <div className="overview-decision-copy">
                   <p className="muted" role="status">
-                    {commandError ? "We couldn’t confirm today’s training decision. Retry before you train." : <><span>Checking today’s training decision…</span><Skeleton width="95%" height={16} /><Skeleton width="80%" height={16} /></>}
+                    {commandError ? "We couldn’t confirm today’s training decision. Retry before you train." : <><span className="sr-only">Checking today’s training decision…</span><Skeleton width="95%" height={16} /><Skeleton width="80%" height={16} /></>}
                   </p>
                 </div>
                 <div className="action-stack overview-primary-actions">

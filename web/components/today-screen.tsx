@@ -41,24 +41,24 @@ import type { TodayCompletionStatus } from "@/lib/types";
 
 function TodayLoadingState() {
   return (
-    <section className={`panel today-shell ${styles.loading}`} aria-busy="true" aria-label="Loading Today">
-      <Skeleton variant="text" width={120} />
-      <Skeleton variant="text" width="70%" height={42} />
-      <div className={styles.loadingBox}>
-        <ul className={styles.tiles} aria-label="Today status loading">
-          {["Check-in", "Today’s session", "Injuries"].map(label => (
-            <li key={label} className={styles.tile}>
+    <div className={`today-page ${styles.loading}`} aria-busy="true" aria-label="Loading Today">
+      <section className={`panel today-shell ${styles.command}`} aria-hidden="true">
+        <Skeleton variant="text" width={120} height={42} />
+        <Skeleton variant="text" width="55%" height={12} />
+        <ul className={styles.tiles}>
+          {[0, 1, 2].map(index => (
+            <li key={index} className={styles.tile}>
               <Skeleton variant="circle" width={30} height={30} />
               <span className={styles.tileText}>
-                <span className={styles.tileLabel}>{label}</span>
-                <Skeleton width={48} height={14} />
+                <Skeleton variant="text" width={48} height={10} />
+                <Skeleton variant="text" width={48} height={14} />
               </span>
             </li>
           ))}
         </ul>
-      </div>
-      <Skeleton variant="block" height={220} />
-    </section>
+      </section>
+      <section className={`panel ${styles.loadingSession}`} aria-hidden="true" />
+    </div>
   );
 }
 
