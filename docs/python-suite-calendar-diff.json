@@ -209,18 +209,18 @@
         {
           "change": "Independent alactic_speed_day at D-14 becomes neural_plus_strength_day at D-15",
           "prs": [
-            2889,
+            2888,
             3103
           ],
           "before": [
-            "e41e9542",
+            "f00cb05b",
             "6fdf732a"
           ],
           "after": [
-            "e5090fac",
+            "44da5bbb",
             "9567453f"
           ],
-          "reason": "Compatible composition first relocates the alactic appointment; resolved-contact locking subsequently preserves the strength morph on that converted technical day."
+          "reason": "Legal-day preservation first retains the original alactic appointment date; resolved-contact locking subsequently preserves the strength morph on that converted technical day."
         },
         {
           "change": "D-15 joint_prep support insert removed",
@@ -315,10 +315,10 @@
       "attribution": [
         {
           "change": "Week 2 alactic_speed_day moves Tuesday D-17 to Wednesday D-16",
-          "pr": 2889,
-          "before": "e41e9542",
-          "after": "e5090fac",
-          "reason": "Compatible speed/strength composition uses the canonical host calendar and refreshes goal evidence."
+          "pr": 2888,
+          "before": "f00cb05b",
+          "after": "44da5bbb",
+          "reason": "Keep legal S&C dates instead of relocating them into crowded technical appointments."
         },
         {
           "change": "Final-week neural_primer_day/hard_sparring_day suppression replaced by aerobic_flush_day/fight_day_protocol and fight_week_freshness_day/spar_first_cap",

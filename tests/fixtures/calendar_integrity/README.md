@@ -105,12 +105,12 @@ branch produce identical projections in all eight scenarios. Historical
 worktrees establish the changes below; contact rows, tail ownership, generator
 mode and payload variant are unchanged. Existing mental rows are retained.
 
-- `d28_finished_tail`: #2889 (`e41e9542` → `e5090fac`) moves the SPP
+- `d28_finished_tail`: #2888 (`f00cb05b` → `44da5bbb`) moves the SPP
   alactic appointment from D-17 to D-16. #3103 (`6fdf732a` → `9567453f`)
   keeps the converted-contact primer; the ledger instead records the
   provisional flush overridden by fight-day protocol and freshness cut by
   the spar-first cap.
-- `d24_two_hard`: #2889 first moves the independent alactic appointment
+- `d24_two_hard`: #2888 first moves the independent alactic appointment
   D-14 → D-15; #3103 preserves the compatible strength morph there and
   records strength-touch compression instead of hard-contact displacement.
 - `d16_technical_conversion`: #3103 changes the week-1 suppression from
