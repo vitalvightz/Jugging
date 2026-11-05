@@ -404,12 +404,19 @@
 
 .contentReveal :global(.today-decision-banner) { animation: none; }
 
-/* Retain the two quiet loading blocks, with the known status structure in
-   the first. Values stay unknown until the fresh Today read completes. */
-.loadingBox {
-  min-block-size: 180px;
-  min-width: 0;
-  padding: 12px;
-  border-radius: 8px;
-  background: var(--bg-stat);
+/* The first slot covers the entire command section, including its feedback
+   row. Share a floor with the loaded panel; longer guidance grows naturally. */
+.command {
+  min-block-size: 30rem;
+  align-content: start;
+}
+
+/* The session continues below the viewport. Avoid a false bottom edge while
+   its contents are unknown, and keep the footer out of the loading viewport. */
+.loadingSession {
+  min-block-size: 100svh;
+  border-bottom: 0;
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+  background: linear-gradient(var(--surface-panel, #111216), transparent);
 }

@@ -12,7 +12,7 @@ for (const width of [390, 1280]) {
     await expect(page.getByLabel("Loading Today")).toHaveCount(0);
     await page.locator('nav a[href="/"]:visible').first().click();
     const pending = page.getByText("Checking today’s training decision…");
-    await expect(pending).toBeVisible();
+    await expect(pending).toBeAttached();
     const companion = page.locator(".overview-primary-session");
     // Let the existing 560ms page entrance finish before measuring the swap.
     await page.waitForTimeout(650);
@@ -25,13 +25,19 @@ for (const width of [390, 1280]) {
     await page.goto("/today");
     const loading = page.getByLabel("Loading Today");
     await expect(loading).toBeVisible();
-    const statusTiles = loading.getByRole("list", { name: "Today status loading" });
-    await expect(statusTiles.getByRole("listitem")).toHaveCount(3);
-    await expect(statusTiles.getByRole("listitem")).toContainText(["Check-in", "Today’s session", "Injuries"]);
-    await expect(loading.locator(":scope > .skeleton-block")).toHaveCount(1);
+    // Two section-sized boxes with no visible loading copy.
+    await expect(loading.locator(":scope > section")).toHaveCount(2);
+    expect((await loading.innerText()).trim()).toBe("");
+    const commandBefore = await loading.locator(":scope > section").first().boundingBox();
+    expect(commandBefore!.height).toBeGreaterThanOrEqual(480);
+    const sessionBefore = await loading.locator(":scope > section").last().boundingBox();
+    expect(sessionBefore!.y + sessionBefore!.height).toBeGreaterThan(900);
     await page.screenshot({ path: `/tmp/today-loading-${width}.png` });
     await expect(loading).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
+    const commandAfter = await page.locator(".today-shell").boundingBox();
+    expect(Math.abs(commandAfter!.height - commandBefore!.height)).toBeLessThan(2);
+    expect(Math.abs(commandAfter!.y - commandBefore!.y)).toBeLessThan(2);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.waitForTimeout(220); // Capture after the opacity reveal.
     await page.screenshot({ path: `/tmp/today-loaded-${width}.png` });

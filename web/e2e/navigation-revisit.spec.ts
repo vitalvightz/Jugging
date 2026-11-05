@@ -28,7 +28,7 @@ test("a revisited Home shows plan context at once but no decision until Today is
   // Presentation from this session's last read shows immediately…
   await expect(planStrip(page)).toBeVisible({ timeout: 1_000 });
   // …while the decision, its action and the training alerts wait for the fresh read.
-  await expect(page.getByText("Checking today’s training decision…")).toBeVisible();
+  await expect(page.getByText("Checking today’s training decision…")).toBeAttached();
   await expect(decisionAction(page)).toHaveCount(0);
   await expect(page.locator(".overview-risk-card[aria-busy='true']")).toBeVisible();
   await expect(decisionAction(page)).toBeVisible({ timeout: 5_000 });
