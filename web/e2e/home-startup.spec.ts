@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mockAthlete, navigate, PRIMARY, SECONDARY, screens, sessionFor, STORAGE_KEY } from "./request-journeys";
+import { mockAthlete, navigate, PRIMARY, SECONDARY, screens, sessionFor, STORAGE_KEY, todayFor } from "./request-journeys";
 
 test("Home checks admission once and stays gated until it succeeds", async ({ page, baseURL }) => {
   await mockAthlete(page, baseURL!);
@@ -17,6 +17,16 @@ test("Home checks admission once and stays gated until it succeeds", async ({ pa
   admit();
   await expect(screens.homeReady(page)).toBeVisible();
   expect(checks).toBe(1);
+});
+
+test("Home reads the plan calendar only for a dated camp's countdown", async ({ page, baseURL }) => {
+  const api = await mockAthlete(page, baseURL!);
+  const fightDate = new Date(Date.parse(`${todayFor(PRIMARY).today.training_day}T00:00:00Z`) + 30 * 86_400_000).toISOString().slice(0, 10);
+  await page.route("**/api/today", route => route.fulfill({ json: { ...todayFor(PRIMARY), active_plan: { ...todayFor(PRIMARY).active_plan, fight_date: fightDate } } }));
+  await page.goto("/");
+  await expect(page.locator(".fight-countdown:not(.fight-countdown-skeleton)")).toBeVisible();
+  await expect.poll(() => api.calls.map(call => call.path)).toContain(`/api/plans/${PRIMARY.planId}`);
+  await expect(page.locator('.fight-countdown[aria-busy="true"]')).toHaveCount(0);
 });
 
 test("a new account gets its own admission and profile after Home has loaded", async ({ page, baseURL }) => {

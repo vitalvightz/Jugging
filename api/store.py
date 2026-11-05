@@ -22,6 +22,7 @@ from storage3.exceptions import StorageApiError
 from supabase import Client, ClientOptions, create_client
 
 from .auth import AuthenticatedUser
+from .postgrest_parsing import install_fast_row_parsing
 from .compliance import (
     CODE_DOB_INVALID,
     CODE_UNDER_MINIMUM_AGE,
@@ -81,6 +82,8 @@ from api.datetimes import parse_utc_datetime as _parse_datetime_utc
 from .settings import env_flag, env_float
 
 logger = logging.getLogger(__name__)
+# Every Data API read in this process; see api/postgrest_parsing.py.
+install_fast_row_parsing()
 
 
 def _readiness_history_rows(response: Any) -> list[dict[str, Any]]:

@@ -16,8 +16,11 @@ test.describe("frontend request budget", () => {
     const api = await mockAthlete(page, baseURL!);
     const steps = byJourney(await runJourney(page, api));
 
-    // Startup still reads everything Home shows, exactly once.
-    expect(steps["Login → Home"]).toEqual(expect.arrayContaining(["GET /api/me", "GET /api/today", `GET ${plan}`, "GET /api/xp/progress"]));
+    // Startup still reads everything Home shows, exactly once. This athlete's
+    // plan is open (no fight date), so Home shows no countdown and never reads
+    // the plan detail that only the countdown's calendar would use.
+    expect(steps["Login → Home"]).toEqual(expect.arrayContaining(["GET /api/me", "GET /api/today", "GET /api/xp/progress"]));
+    expect(steps["Login → Home"]).not.toContain(`GET ${plan}`);
     for (const [journey, calls] of Object.entries(steps)) {
       expect(duplicateGets(calls.map(call => ({ method: call.split(" ")[0], path: call.split(" ")[1], bytes: 0 }))), journey).toEqual([]);
     }
@@ -27,7 +30,7 @@ test.describe("frontend request budget", () => {
     }
     // …but the plan detail just read by another screen is not fetched again,
     // and opening Today is not a reward-affecting action.
-    for (const journey of ["Home → Today", "Today → Viewer", "Viewer → Today", "Today → Home", "Plans → Viewer"]) {
+    for (const journey of ["Today → Viewer", "Viewer → Today", "Today → Home", "Plans → Viewer"]) {
       expect(steps[journey], journey).not.toContain(`GET ${plan}`);
     }
     expect(steps["Home → Today"]).not.toContain("GET /api/xp/progress");
