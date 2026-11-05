@@ -22,6 +22,7 @@ from storage3.exceptions import StorageApiError
 from supabase import Client, ClientOptions, create_client
 
 from .auth import AuthenticatedUser
+from .postgrest_parsing import install_fast_row_parsing
 from .compliance import (
     CODE_DOB_INVALID,
     CODE_UNDER_MINIMUM_AGE,
@@ -61,6 +62,7 @@ from .schema_requirements import (
     GENERATION_JOB_STAGE2_COST_COLUMNS,
     INTAKES_TABLE,
     PLAN_RUNTIME_REQUIRED_COLUMNS,
+    REQUIRED_PLANS_COLUMNS,
 )
 from .state_machine import (
     ADMIN_REVIEW_PLAN_STATUSES,
@@ -80,6 +82,8 @@ from api.datetimes import parse_utc_datetime as _parse_datetime_utc
 from .settings import env_flag, env_float
 
 logger = logging.getLogger(__name__)
+# Every Data API read in this process; see api/postgrest_parsing.py.
+install_fast_row_parsing()
 
 
 def _readiness_history_rows(response: Any) -> list[dict[str, Any]]:
@@ -148,6 +152,21 @@ TRAINING_PLAN_SELECT = (
     "plan_text,planning_brief,created_at,plan_name,parsing_metadata,"
     "structured_plan,schema_version,stage2_status,stage2_attempt_count,"
     "exercise_overrides,exercise_overrides_revision"
+)
+# Runtime reads never use the planner's candidate_pools (~75% of planning_brief,
+# avg ~400 KB): the database computed field public.planning_brief_runtime
+# returns the brief without them, under the same key and type. Plan detail keeps
+# the full brief because exercise identity stamping reads the pools.
+TRAINING_PLAN_REMOTE_SELECT = ",".join(
+    "planning_brief:planning_brief_runtime" if column == "planning_brief" else column
+    for column in TRAINING_PLAN_SELECT.split(",")
+)
+# Admin-only Stage-2 prompt/result blobs (~600 KB per row together). Athlete
+# reads of a whole plan (active-plan resolution, the athlete plan viewer) take
+# every other column; admin and worker paths read them through get_plan.
+ADMIN_ONLY_PLAN_COLUMNS = ("stage2_payload", "stage2_handoff_text", "stage2_retry_text")
+ATHLETE_PLAN_SELECT = ",".join(
+    column for column in REQUIRED_PLANS_COLUMNS if column not in ADMIN_ONLY_PLAN_COLUMNS
 )
 GENERATION_JOB_SELECT = "*"
 # Admin job-list endpoints never read stage1_result (the largest intermediate
@@ -2096,7 +2115,7 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
                 operation=f"get_plan_for_athlete plan_id={plan_id} athlete_id={athlete_id}",
                 fn=lambda: self._select_first(
                     self.client.table("plans")
-                    .select("*")
+                    .select(ATHLETE_PLAN_SELECT)
                     .eq("id", plan_id)
                     .eq("athlete_id", athlete_id)
                 ),
@@ -2131,7 +2150,7 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
     def get_training_plan_for_athlete(self, plan_id: str, athlete_id: str) -> dict[str, Any] | None:
         """The execution calendar and its unchanged deterministic fallback inputs."""
         return self._owned_plan_projection(
-            plan_id, athlete_id, columns=TRAINING_PLAN_SELECT, operation="get_training_plan_for_athlete"
+            plan_id, athlete_id, columns=TRAINING_PLAN_REMOTE_SELECT, operation="get_training_plan_for_athlete"
         )
 
     def get_latest_plan(self, athlete_id: str) -> dict[str, Any] | None:

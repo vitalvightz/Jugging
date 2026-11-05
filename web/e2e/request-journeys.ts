@@ -53,7 +53,11 @@ const historyRows = Array.from({ length: 12 }, (_, index) => ({
   training_day: new Date(Date.parse("2026-10-05T12:00:00Z") - index * 86_400_000).toISOString().slice(0, 10),
 }));
 
-export type MockOptions = { latencyMs?: number; persona?: Persona; planName?: string };
+export type MockOptions = {
+  latencyMs?: number; persona?: Persona; planName?: string;
+  /** Per-request server time, overriding latencyMs (benchmarks). */
+  latencyFor?: (method: string, path: string) => number | undefined;
+};
 
 /** Signs a persona in and serves the app's API from fixtures with fixed latency. */
 export async function mockAthlete(page: Page, baseURL: string, options: MockOptions = {}) {
@@ -76,7 +80,8 @@ export async function mockAthlete(page: Page, baseURL: string, options: MockOpti
     const id = `${method} ${path} ${calls.length}`;
     pending.add(id);
     try {
-      if (latencyMs) await new Promise(resolve => setTimeout(resolve, latencyMs));
+      const delayMs = options.latencyFor?.(method, url.pathname) ?? latencyMs;
+      if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
       const fulfil = async (body: unknown, status = 200) => {
         const text = JSON.stringify(body);
         calls.push({ method, path, status, bytes: Buffer.byteLength(text), at: Date.now() });

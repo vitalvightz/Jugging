@@ -443,8 +443,18 @@ export default function HomePage() {
 
   // Warm the known plan while Today loads. Only the confirmed active plan can
   // supply the countdown's calendar; a different latest plan is never shown.
+  // The calendar only feeds the fight countdown, which needs a fight date: an
+  // open plan never reads it. That read is the full plan detail (the largest
+  // backend response), and on app open it competed with Today and XP for the
+  // single API process while nothing on screen used it.
   const activePlanId = commandState?.active_plan?.id;
-  const calendarPlanId = activePlanId || me?.latest_plan?.plan_id;
+  const knownLatestPlan = me?.latest_plan;
+  const activeFightDate = activePlanId
+    ? commandState?.active_plan?.fight_date || (knownLatestPlan?.plan_id === activePlanId ? knownLatestPlan?.fight_date : null)
+    : null;
+  const calendarPlanId = activePlanId
+    ? (activeFightDate ? activePlanId : undefined)
+    : (commandState ? undefined : knownLatestPlan?.fight_date ? knownLatestPlan.plan_id : undefined);
   useEffect(() => {
     const token = session?.access_token;
     if (!token || !calendarPlanId) {
@@ -683,7 +693,7 @@ export default function HomePage() {
       // Under-18s have no weight-cut feature, so it never shows for them.
       targetWeightKg: me.profile.is_minor ? null : (activePlan.target_weight_kg ?? null),
       // The calendar read for this plan hasn't settled yet (success or failure).
-      calendarPending: Boolean(activePlanId) && !(calendar?.token === session?.access_token && calendar?.id === activePlanId),
+      calendarPending: Boolean(activeFightDate) && !(calendar?.token === session?.access_token && calendar?.id === activePlanId),
     };
     const showCountdown = !tracking && getFightCountdown(countdownProps) !== null;
     const trainingStreak = xpProgress.streaks.adherence.current;

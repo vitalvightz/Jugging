@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import math
 import os
 import re
@@ -47,7 +48,7 @@ from api.state_machine import (
 from api.generation_config import generation_worker_id
 from api.schema_requirements import GENERATION_JOB_STAGE2_COST_COLUMNS
 from api.store import _signup_date_of_birth, _signup_full_name, _generation_hard_max_runtime_seconds, _generation_startup_max_attempts, is_job_loaded_stalled_generation_job, is_stage1_planner_stalled_generation_job, is_startup_stale_generation_job
-from api.store import RehabExposureWindow, TRAINING_PLAN_SELECT
+from api.store import ADMIN_ONLY_PLAN_COLUMNS, RehabExposureWindow, TRAINING_PLAN_SELECT
 from api.xp import XP_CALENDAR_SCOPED_ACTIONS, XP_REWARD_AMOUNTS, XpAction
 from api.services.xp_awards import XP_ABUSE_HARDENING_VERSION
 from api.services.notification_foundation import (
@@ -125,6 +126,21 @@ def xp_hardening_ready_payload() -> dict:
         "rollout_ready": True,
         "open_plan_scope_ready": True,
     }
+
+
+def planning_brief_runtime(brief):
+    """In-memory public.planning_brief_runtime: the brief minus candidate_pools."""
+    if isinstance(brief, dict):
+        return {k: v for k, v in brief.items() if k != "candidate_pools"} if "candidate_pools" in brief else brief
+    if isinstance(brief, str):
+        try:
+            decoded = json.loads(brief)
+        except ValueError:
+            return brief
+        if isinstance(decoded, dict) and "candidate_pools" in decoded:
+            decoded.pop("candidate_pools")
+            return json.dumps(decoded)
+    return brief
 
 
 @dataclass
@@ -865,29 +881,44 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
     def get_plan(self, plan_id: str) -> dict | None:
         return self.plans.get(plan_id)
 
-    def get_plan_for_athlete(self, plan_id: str, athlete_id: str) -> dict | None:
+    def _owned_plan_row(self, plan_id: str, athlete_id: str) -> dict | None:
+        """The live stored row, for this fake's own writes."""
         row = self.plans.get(plan_id)
         if not row or str(row.get("athlete_id")) != athlete_id:
             return None
         return row
+
+    def get_plan_for_athlete(self, plan_id: str, athlete_id: str) -> dict | None:
+        # Mirrors ATHLETE_PLAN_SELECT: no admin-only Stage-2 blobs.
+        row = self._owned_plan_row(plan_id, athlete_id)
+        if row is None:
+            return None
+        return {key: value for key, value in row.items() if key not in ADMIN_ONLY_PLAN_COLUMNS}
 
     def get_latest_plan(self, athlete_id: str) -> dict | None:
         plans = self.list_user_plans(athlete_id)
         return plans[0] if plans else None
 
     def get_plan_identity_for_athlete(self, plan_id: str, athlete_id: str) -> dict | None:
-        row = self.get_plan_for_athlete(plan_id, athlete_id)
+        row = self._owned_plan_row(plan_id, athlete_id)
         return {"id": row["id"], "athlete_id": row["athlete_id"]} if row else None
 
     def get_training_plan_for_athlete(self, plan_id: str, athlete_id: str) -> dict | None:
+        # Through the public read, so tests that count or fail plan reads see it.
         row = self.get_plan_for_athlete(plan_id, athlete_id)
-        # Exercise the actual production projection, including absent fields.
-        return {key: row[key] for key in TRAINING_PLAN_SELECT.split(",") if key in row} if row else None
+        # Exercise the actual production projection, including absent fields and
+        # the planning_brief_runtime computed field (no candidate_pools).
+        if not row:
+            return None
+        projected = {key: row[key] for key in TRAINING_PLAN_SELECT.split(",") if key in row}
+        if "planning_brief" in projected:
+            projected["planning_brief"] = planning_brief_runtime(projected["planning_brief"])
+        return projected
 
     def compare_and_set_plan_exercise_overrides(
         self, plan_id: str, athlete_id: str, *, expected_revision: int, overrides: list[dict],
     ) -> dict | None:
-        row = self.get_plan_for_athlete(plan_id, athlete_id)
+        row = self._owned_plan_row(plan_id, athlete_id)
         if row is None or int(row.get("exercise_overrides_revision") or 0) != expected_revision:
             return None
         row["exercise_overrides"] = copy.deepcopy(overrides)
@@ -908,7 +939,7 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         return row
 
     def rename_plan_for_athlete(self, plan_id: str, athlete_id: str, plan_name: str) -> dict:
-        row = self.get_plan_for_athlete(plan_id, athlete_id)
+        row = self._owned_plan_row(plan_id, athlete_id)
         if not row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="plan not found")
         row["plan_name"] = plan_name
@@ -925,7 +956,7 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         return row
 
     def archive_plan_for_athlete(self, plan_id: str, athlete_id: str) -> dict:
-        row = self.get_plan_for_athlete(plan_id, athlete_id)
+        row = self._owned_plan_row(plan_id, athlete_id)
         if not row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="plan not found")
         try:
@@ -940,7 +971,7 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         del self.plans[plan_id]
 
     def delete_plan_for_athlete(self, plan_id: str, athlete_id: str) -> None:
-        row = self.get_plan_for_athlete(plan_id, athlete_id)
+        row = self._owned_plan_row(plan_id, athlete_id)
         if not row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="plan not found")
         del self.plans[plan_id]
@@ -3141,7 +3172,7 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         )
 
     def get_feedback_plan_for_owner(self, plan_id: str, profile_id: str) -> dict | None:
-        return self.get_plan_for_athlete(plan_id, profile_id)
+        return self._owned_plan_row(plan_id, profile_id)
 
     def get_feedback_active_plan_id(self, profile_id: str) -> str | None:
         return self.get_active_plan_id(profile_id)

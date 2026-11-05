@@ -83,7 +83,7 @@ from api.services.rehab_completion_service import (
     record_reported_permission_rehab,
 )
 from api.services.notification_foundation import invalidate_notification_action
-from api.services.today_command_cache import remember_today_command
+from api.services.today_command_cache import today_command_build
 from api.services.today_service import resolve_training_day
 from api.services.effective_structured_plan import resolve_effective_structured_plan
 from api.services.open_plan_timeline import project_open_structured_plan
@@ -559,19 +559,17 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
         store: AppStore = Depends(get_store),
     ) -> CommandView:
         response.headers["Cache-Control"] = "private, no-store"
-        view = build_today_command_view(
-            store,
-            athlete_id=profile.athlete_id,
-            athlete_timezone=profile.athlete_timezone,
-        )
-        # XP progress refreshes right after every Today load; let it reuse
-        # this build instead of assembling the whole command view again.
-        remember_today_command(
-            store,
-            athlete_id=profile.athlete_id,
-            athlete_timezone=profile.athlete_timezone,
-            view=view,
-        )
+        # XP progress is requested alongside every Today load; it waits for and
+        # reuses this build instead of assembling the whole command view again.
+        with today_command_build(
+            store, athlete_id=profile.athlete_id, athlete_timezone=profile.athlete_timezone
+        ) as publish:
+            view = build_today_command_view(
+                store,
+                athlete_id=profile.athlete_id,
+                athlete_timezone=profile.athlete_timezone,
+            )
+            publish(view)
         return view
 
     @router.get("/api/today/landing", response_model=LandingResponse)

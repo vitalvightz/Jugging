@@ -287,3 +287,69 @@ def test_token_already_expired_is_never_cached():
     service.get_user_from_token(token)
 
     assert service._token_cache == {}
+
+
+def _concurrent_first_requests(fetch, n=8):
+    """n requests with distinct tokens hit a cold verifier at once."""
+    import threading
+
+    private_key, public_jwk = _key_pair("k1")
+    fetch.keys = [public_jwk]
+    client = MagicMock()
+    client.auth.get_user.side_effect = AssertionError("upstream verification used")
+    verifier = SupabaseJwksVerifier(SUPABASE_URL, fetch_jwks=fetch, min_refetch_seconds=30)
+    service = SupabaseAuthService(client, jwks_verifier=verifier)
+    tokens = [_token(private_key, "k1", sub=f"athlete-{i}") for i in range(n)]
+    start, results, errors = threading.Barrier(n), [], []
+
+    def request(token):
+        start.wait()
+        try:
+            results.append(service.get_user_from_token(token).user_id)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=request, args=(t,)) for t in tokens]
+    [t.start() for t in threads]
+    [t.join(10) for t in threads]
+    return client, results, errors
+
+
+class _SlowJwks(_Jwks):
+    def __call__(self, url):
+        import time
+        time.sleep(0.2)
+        return super().__call__(url)
+
+
+def test_concurrent_first_requests_wait_for_one_jwks_fetch_instead_of_going_upstream():
+    fetch = _SlowJwks()
+    client, results, errors = _concurrent_first_requests(fetch)
+
+    assert errors == []
+    assert sorted(results) == sorted(f"athlete-{i}" for i in range(8))
+    assert fetch.calls == 1
+    client.auth.get_user.assert_not_called()
+
+
+def test_warm_loads_keys_before_the_first_request():
+    private_key, public_jwk = _key_pair("k1")
+    fetch = _Jwks(public_jwk)
+    client = MagicMock()
+    service = SupabaseAuthService(client, jwks_verifier=SupabaseJwksVerifier(SUPABASE_URL, fetch_jwks=fetch))
+
+    service.warm()
+    assert fetch.calls == 1
+    assert service.get_user_from_token(_token(private_key, "k1")).user_id == "athlete-1"
+    assert fetch.calls == 1
+    client.auth.get_user.assert_not_called()
+
+
+def test_a_failed_fetch_is_still_rate_limited_and_waiters_defer_upstream():
+    fetch = _Jwks()
+    fetch.fail = True
+    verifier = SupabaseJwksVerifier(SUPABASE_URL, fetch_jwks=fetch, min_refetch_seconds=30)
+    for _ in range(5):
+        verifier.warm()
+        assert verifier.verify("not-a-jwt") is None
+    assert fetch.calls == 1
