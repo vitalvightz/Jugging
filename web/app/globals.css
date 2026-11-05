@@ -23245,3 +23245,13 @@ a, button, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
   position: absolute;
   inset: -8px -6px;
 }
+
+/* Reserve the normal two-line command and four-line explanation in both states.
+   Minimums allow longer safety guidance and larger text to grow without clipping. */
+.overview-decision-headline { min-block-size: 2.08em; }
+.overview-decision-copy { min-block-size: 6em; align-content: start; }
+.overview-decision-copy [role="status"] .skeleton { display: block; margin-top: 6px; }
+.skeleton-content-reveal { animation: skeleton-appear 180ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-content-reveal { animation: none; }
+}

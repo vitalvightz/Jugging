@@ -390,3 +390,26 @@
 
 .heroDate { flex: none; margin-top: 8px; letter-spacing: 0.04em; }
 .heroPhase { font-family: var(--font-sans); font-size: 13px; letter-spacing: 0; text-transform: none; overflow-wrap: anywhere; }
+
+/* Today already has a visible shell: a delayed reveal creates a blank gap.
+   Keep the shimmer, with no second opacity animation on the children. */
+.loading :global(.skeleton) {
+  animation-name: skeleton-shimmer;
+  animation-delay: 0s;
+}
+.contentReveal { animation: today-content-in 180ms ease-out; }
+@keyframes today-content-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .contentReveal, .loading :global(.skeleton) { animation: none; }
+}
+
+.contentReveal :global(.today-decision-banner),
+.loading :global(.today-decision-banner) { animation: none; }
+
+@media (max-width: 767px) {
+  .loading :global(.today-decision-action) :global(.skeleton) { height: 22px !important; }
+  .loading :global(.today-decision-detail) :global(.skeleton) { height: 21px !important; }
+}
+@media (min-width: 768px) {
+  .loading :global(.today-decision-action) :global(.skeleton):last-child { display: none; }
+}
