@@ -311,7 +311,10 @@ def test_provider_card_conversion_uses_the_reconciled_programme(production_repla
 
 def test_late_goal_repair_retains_earlier_speed_appointments(monkeypatch):
     from test_combat_training_allocation import run_lead
-    _, brief = run_lead(monkeypatch, status="professional", training_frequency=9, fatigue="low",
+    # #3125 permits at most seven distinct days. Keep this high-capacity repair
+    # scenario at the legal maximum, including all seven available weekdays.
+    _, brief = run_lead(monkeypatch, status="professional", training_frequency=7, fatigue="low",
+                        training_days=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
                         hard_sparring_days=[], support_work_days=["Tuesday", "Thursday", "Friday"])
     assert all(g["satisfied"] for g in brief["goal_preservation"])
     evidence = collect_goal_evidence(brief)

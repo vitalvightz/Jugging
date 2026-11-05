@@ -197,6 +197,9 @@ def test_index_requirement_satisfied_by_constraint_alias():
         "beta_feedback_screenshot_expiry_idx",
         "notification_deliveries_profile_day_class_idx",
         "notification_evaluations_diagnostic_idx",
+        # #3170 adds the two training-focus ON CONFLICT targets.
+        "training_focus_inferences_source_key",
+        "training_focus_call_budget_pkey",
     }
     assert find_missing_index_constraints(present) == []
 

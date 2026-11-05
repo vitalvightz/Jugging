@@ -38,7 +38,7 @@ _VARIANTS = {
         "hard_sparring_days": ["Tuesday", "Thursday"],
         "support_work_days": ["Friday"],
         "training_availability": ["Monday", "Tuesday", "Thursday", "Friday", "Saturday"],
-        "weekly_training_frequency": 6,
+        "weekly_training_frequency": 5,  # #3125: frequency cannot exceed the five selected days.
         "equipment_access": [
             "medicine_ball", "trap_bar", "landmine", "barbell", "dumbbells",
             "bands", "cable", "sled", "heavy_bag", "assault_bike", "box",
