@@ -34,11 +34,8 @@ language sql stable security invoker set search_path = public, pg_temp as $$
     from public.product_activity a where a.athlete_id = p.id
   ) activity on activity.last_at between now() - interval '21 days'
                               and now() - interval '7 days'
-  join lateral (
-    select id from public.plans
-    where athlete_id = p.id and status in ('ready', 'publishable_with_flags')
-    order by created_at desc limit 1
-  ) pl on true
+  join public.plans pl on pl.id = p.active_plan_id
+    and pl.athlete_id = p.id and pl.status in ('ready', 'publishable_with_flags')
   where p.role = 'athlete'
     and p.access_status = 'approved'
     and p.date_of_birth is not null
