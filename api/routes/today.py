@@ -27,6 +27,7 @@ from api.services.session_details import session_details
 from api.contracts.exercise_library import ExerciseLibraryResponse, ExercisePerformancesResponse
 from api.contracts.manual_exercises import ManualExerciseEntry, PerformedExerciseInput, ManualExerciseListResponse
 from api.services.manual_exercises import delete_session_exercise, list_session_exercises, save_session_exercise
+from api import server_timing
 from api.services.tracking_xp import reconcile_training_xp
 from api.services.training_focus import latest_training_focus
 from api.services.training_focus_inference import schedule_focus_inference, schedule_focus_refresh
@@ -561,15 +562,16 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
         response.headers["Cache-Control"] = "private, no-store"
         # XP progress is requested alongside every Today load; it waits for and
         # reuses this build instead of assembling the whole command view again.
-        with today_command_build(
-            store, athlete_id=profile.athlete_id, athlete_timezone=profile.athlete_timezone
-        ) as publish:
-            view = build_today_command_view(
-                store,
-                athlete_id=profile.athlete_id,
-                athlete_timezone=profile.athlete_timezone,
-            )
-            publish(view)
+        with server_timing.measure("today_build"):
+            with today_command_build(
+                store, athlete_id=profile.athlete_id, athlete_timezone=profile.athlete_timezone
+            ) as publish:
+                view = build_today_command_view(
+                    store,
+                    athlete_id=profile.athlete_id,
+                    athlete_timezone=profile.athlete_timezone,
+                )
+                publish(view)
         return view
 
     @router.get("/api/today/landing", response_model=LandingResponse)
