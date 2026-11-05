@@ -110,7 +110,11 @@ With 450 ms route payloads (ms: route changed / first real content / usable / no
 ## 7. Remaining bottlenecks and the evidence needed
 
 1. **Fresh Today build (~0.75–1.0 s server, every Home decision and every Today visit).** This is now the main wait between a tap and a usable decision. Its sequential Data API chain is backend work, covered in the earlier reports. It is not changed here, because showing a stale decision is not acceptable.
-2. **Vercel function region `iad1`.** HTML on cold start, route payloads on a first visit (until the idle prefetch lands), and `/api` rewrites from a UK phone all cross the Atlantic before reaching the Nuremberg backend. Moving the functions to `lhr1`/`fra1` is a deploy setting to decide and measure. It is not changed in this PR.
+2. **Vercel function region `iad1` (minor, cold start only).** `x-vercel-id` shows two kinds of request:
+   - **`/api/*` rewrites** (`iad1::…`, single segment) are proxied straight from the nearest Vercel edge to the backend. For a UK phone that is London edge → Frankfurt/Nuremberg backend. They never reach `iad1`, and the region does not affect them.
+   - **HTML and route payloads** (`iad1::iad1::…`) are rendered by a function in Washington, D.C., which costs a UK user one transatlantic round trip per request.
+
+   After this PR, taps no longer wait on route payloads, so a Frankfurt function region would only shave the cold-start HTML and the one-off tab prefetch. That is an estimated 0.1–0.3 s, not measured. Pages fetch no data server-side, so proximity to the backend is irrelevant for them.
 3. **Unmeasured on the device:** Safari main-thread time per navigation, real cellular round trips, and whether `/api` rewrites add a hop. **Evidence needed:** one diagnostic report covering the recording's sequence (Today → Home → Today → Plan → History → Timer → Home), from both the installed app and Safari, plus the same sequence on desktop for comparison.
 4. **Today itself** still shows its full loading state for ~1.2 s per visit. Session blocks are presentation and could be shown from the plan read while the decision loads; that needs its own safety review.
 
