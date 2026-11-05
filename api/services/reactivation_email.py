@@ -66,14 +66,17 @@ def _send(row: dict) -> bool:
     unsubscribe = os.getenv("UNLXCK_REACTIVATION_UNSUBSCRIBE_URL", "").strip()
     unsubscribe += ("&" if "?" in unsubscribe else "?") + "token=" + quote(unsubscribe_token(profile_id))
     text = (
-        f"{greeting}\n\nIt's been a while since you checked in.\n\n"\n        "Whether you've been training or taking a break, UNLXCK is here to help you log your sessions, stay consistent, and keep progressing.\n\n"
+        f"{greeting}\n\nIt's been a while since you checked in.\n\n"
+        "Whether you've been training or taking a break, UNLXCK is here to help you log your sessions, stay consistent, and keep progressing.\n\n"
         f"Get back to training: {link}\n\nSee you inside,\nUNLXCK\n\nUnsubscribe from these reminders: {unsubscribe}"
     )
     html = (
         f"<p>{escape(greeting)}</p>"
-        "<p>It's been a while since you checked in.</p>"\n        "<p>Whether you've been training or taking a break, UNLXCK is here to help you log your sessions, stay consistent, and keep progressing.</p>"
+        "<p>It's been a while since you checked in.</p>"
+        "<p>Whether you've been training or taking a break, UNLXCK is here to help you log your sessions, stay consistent, and keep progressing.</p>"
         f'<p><a href="{escape(link, quote=True)}">Get back to training</a></p>'
-        "<p>See you inside, UNLXCK</p>"\n        f'<p><a href="{escape(unsubscribe, quote=True)}">Unsubscribe from reminders</a></p>'
+        "<p>See you inside, UNLXCK</p>"
+        f'<p><a href="{escape(unsubscribe, quote=True)}">Unsubscribe from reminders</a></p>'
     )
     try:
         response = httpx.post(
