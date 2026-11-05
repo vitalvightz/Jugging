@@ -5,7 +5,7 @@ import logging
 import os
 import warnings
 from dataclasses import dataclass
-from threading import RLock
+from threading import Lock, RLock
 from time import monotonic, perf_counter, time as wall_time
 from typing import Any, Callable, Protocol
 
@@ -93,6 +93,10 @@ def _unverified_exp(token: str) -> float | None:
     return float(exp) if isinstance(exp, (int, float)) and not isinstance(exp, bool) else None
 
 
+# A JWKS fetch times out after 3 s; waiters give up shortly after that.
+_JWKS_WAIT_SECONDS = 4.0
+
+
 class _LocalTokenRejected(Exception):
     """The token was checked against a known project key and is not valid."""
 
@@ -115,6 +119,11 @@ class SupabaseJwksVerifier:
         self._keys: dict[str, jwt.PyJWK] = {}
         self._fetched_at: float | None = None
         self._lock = RLock()
+        # One fetch at a time. Requests that arrive while it runs wait for its
+        # keys instead of each falling back to /auth/v1/user (seen as concurrent
+        # upstream calls on the first requests after every restart).
+        self._fetch_lock = Lock()
+        self._fetching = False
 
     @staticmethod
     def _http_fetch_jwks(url: str) -> dict[str, Any]:
@@ -122,15 +131,43 @@ class SupabaseJwksVerifier:
         response.raise_for_status()
         return response.json()
 
-    def _refresh(self, *, force: bool) -> None:
-        now = monotonic()
+    def _due(self, *, force: bool) -> bool:
         with self._lock:
-            if self._fetched_at is not None:
-                age = now - self._fetched_at
-                if age < self._min_refetch_seconds or (not force and age < self._cache_seconds):
-                    return
-            # Mark the attempt first so an outage cannot turn into a fetch per request.
-            self._fetched_at = now
+            if self._fetched_at is None:
+                return True
+            age = monotonic() - self._fetched_at
+            return not (age < self._min_refetch_seconds or (not force and age < self._cache_seconds))
+
+    def _wait_for_fetch(self) -> None:
+        # Bounded by the fetch's own HTTP timeout; on expiry the caller defers upstream.
+        if self._fetch_lock.acquire(timeout=_JWKS_WAIT_SECONDS):
+            self._fetch_lock.release()
+
+    def warm(self) -> None:
+        """Load the keys ahead of the first request (startup)."""
+        self._refresh(force=False)
+
+    def _refresh(self, *, force: bool) -> None:
+        if not self._due(force=force):
+            with self._lock:
+                fetching = self._fetching
+            if fetching:
+                self._wait_for_fetch()
+            return
+        with self._fetch_lock:
+            with self._lock:
+                if self._fetched_at is not None and not self._due(force=force):
+                    return  # another request fetched while this one waited
+                # Mark the attempt first so an outage cannot turn into a fetch per request.
+                self._fetched_at = monotonic()
+                self._fetching = True
+            try:
+                self._fetch_and_store()
+            finally:
+                with self._lock:
+                    self._fetching = False
+
+    def _fetch_and_store(self) -> None:
         try:
             payload = self._fetch_jwks(self.jwks_url)
         except Exception:
@@ -198,6 +235,11 @@ class SupabaseAuthService:
         self._cache_lock = RLock()
         self._cache_ttl_seconds = env_int("AUTH_TOKEN_CACHE_TTL", 60)
         self._max_cache_size = env_int("AUTH_TOKEN_CACHE_MAX_SIZE", 1000)
+
+    def warm(self) -> None:
+        """Fetch the project's signing keys before the first request needs them."""
+        if self.jwks_verifier is not None:
+            self.jwks_verifier.warm()
 
     @classmethod
     def from_env(cls) -> "SupabaseAuthService":

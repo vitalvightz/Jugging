@@ -7,7 +7,7 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -299,6 +299,13 @@ def _log_admin_count_on_startup(store: AppStore) -> None:
         logger.info("[admin] startup_admin_count=%s", admin_count)
 
 
+async def _warm_auth_keys(warm: Callable[[], None]) -> None:
+    try:
+        await asyncio.to_thread(warm)
+    except Exception:  # noqa: BLE001 - requests still verify (and fetch) on demand
+        logger.warning("[auth] jwks_warm_failed", exc_info=True)
+
+
 async def _self_heal_structured_cards_on_startup(store: AppStore) -> None:
     """Detached startup task: recover card builds orphaned by a prior restart.
 
@@ -366,6 +373,12 @@ def create_app(
         # startup pays nothing.
         heal_task = asyncio.create_task(_self_heal_structured_cards_on_startup(store))
         app_instance.state.structured_card_self_heal_task = heal_task
+        # Load the auth signing keys now rather than on the first requests,
+        # which otherwise wait for (or before the fix, bypassed) that fetch.
+        # Detached: readiness never waits on it.
+        warm_auth = getattr(auth_service, "warm", None)
+        if callable(warm_auth):
+            app_instance.state.auth_warm_task = asyncio.create_task(_warm_auth_keys(warm_auth))
         try:
             yield
         finally:

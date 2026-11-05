@@ -10,7 +10,11 @@ from api.read_diagnostics import DiagnosticHttpClient, begin, end
 from api.services.active_plan import _active_plan_overlap
 from api.services.effective_structured_plan import resolve_effective_structured_plan
 from api.services.today_service import check_in_possible
-from api.store import PROFILE_COMPLIANCE_SELECT, TRAINING_PLAN_SELECT, SupabaseAppStore
+from api.schema_requirements import REQUIRED_FUNCTIONS, REQUIRED_PLANS_COLUMNS
+from api.store import (
+    ADMIN_ONLY_PLAN_COLUMNS, ATHLETE_PLAN_SELECT, PROFILE_COMPLIANCE_SELECT, TRAINING_PLAN_REMOTE_SELECT,
+    TRAINING_PLAN_SELECT, SupabaseAppStore,
+)
 from tests.backend_read_fixtures import hybrid_fixture, HEADERS, ATHLETE, OTHER_PLAN
 from tests.test_today_service import TestOpenPlanRestDayResolution as OpenPlanFixture
 from tests.test_today_read_amplification import PLAN, _store_with_camp
@@ -60,7 +64,10 @@ def test_compact_projection_is_owned_and_full_detail_is_unchanged():
         store.get_plan_for_athlete(PLAN, ATHLETE)
         store.get_plan(PLAN)
         store.get_latest_plan(ATHLETE)
-    assert [r.url.params["select"] for r in captured] == [TRAINING_PLAN_SELECT, "id,athlete_id", "id,status,stage2_status,intake_id", "*", "*", "*"]
+    # Athlete reads drop the admin-only Stage-2 blobs and, for runtime reads, the
+    # planner's candidate_pools; admin/worker reads stay whole.
+    assert [r.url.params["select"] for r in captured] == [
+        TRAINING_PLAN_REMOTE_SELECT, "id,athlete_id", "id,status,stage2_status,intake_id", ATHLETE_PLAN_SELECT, "*", "*"]
     for request in (captured[0], captured[1], captured[3]):
         assert request.url.params["id"] == f"eq.{PLAN}"
         assert request.url.params["athlete_id"] == f"eq.{ATHLETE}"
@@ -145,3 +152,16 @@ def test_training_projection_keeps_real_deterministic_fallback_inputs(stored):
     expected = resolve_effective_structured_plan(full)
     assert expected is not None
     assert resolve_effective_structured_plan(compact) == expected
+
+
+def test_slim_plan_selects_stay_tied_to_the_gated_schema():
+    athlete = ATHLETE_PLAN_SELECT.split(",")
+    # Every gated column except exactly the three admin-only blobs, so a column
+    # added to the schema gate reaches athlete reads too.
+    assert set(athlete) == set(REQUIRED_PLANS_COLUMNS) - set(ADMIN_ONLY_PLAN_COLUMNS)
+    assert set(ADMIN_ONLY_PLAN_COLUMNS) == {"stage2_payload", "stage2_handoff_text", "stage2_retry_text"}
+    assert "planning_brief" in athlete  # plan detail stamps exercise identity from candidate_pools
+    # The runtime projection differs from TRAINING_PLAN_SELECT only by the alias.
+    assert TRAINING_PLAN_REMOTE_SELECT.split(",") == [
+        "planning_brief:planning_brief_runtime" if c == "planning_brief" else c for c in TRAINING_PLAN_SELECT.split(",")]
+    assert "public.planning_brief_runtime" in REQUIRED_FUNCTIONS
