@@ -39,45 +39,14 @@ import {
 } from "@/lib/today-authoritative";
 import type { TodayCompletionStatus } from "@/lib/types";
 
-export function TodayLoadingState() {
+function TodayLoadingState() {
   return (
-    <div className={`today-page ${styles.loading}`} aria-busy="true" aria-label="Loading Today">
-      <section className={`panel today-shell ${styles.command}`}>
-        <div className={styles.hero}>
-          <div className="today-hero-copy">
-            <h1>Today</h1>
-            <p className={styles.heroPhase}><Skeleton width={160} height={12} style={{ marginBlock: 4 }} /></p>
-          </div>
-          <Skeleton width={72} height={12} />
-        </div>
-        <ul className={styles.tiles} aria-hidden="true">
-          {[0, 1, 2].map(index => (
-            <li key={index} className={styles.tile}>
-              <Skeleton variant="circle" width={30} height={30} />
-              <span className={styles.tileText}>
-                <Skeleton width={48} height={10} />
-                <Skeleton width={54} height={14} />
-              </span>
-            </li>
-          ))}
-        </ul>
-        <div className="today-decision-banner" data-current-guidance="true" aria-hidden="true">
-          <div className="today-decision-command">
-            <div className="today-decision-heading"><Skeleton width={110} height={12} /><Skeleton width={64} height={24} /></div>
-            <p className="today-decision-action"><Skeleton width="90%" height={20} /><Skeleton width="65%" height={20} /></p>
-            <p className="today-decision-detail"><Skeleton width="100%" height={14} /><Skeleton width="75%" height={14} /></p>
-          </div>
-          <details className="today-decision-disclosure"><summary tabIndex={-1}><Skeleton width={140} height={16} /></summary></details>
-        </div>
-        <details className="today-feedback-disclosure" aria-hidden="true"><summary tabIndex={-1}><Skeleton width="75%" height={16} /></summary></details>
-      </section>
-      <section className="panel today-session-panel" aria-hidden="true">
-        <Skeleton width={100} height={12} />
-        <Skeleton width="60%" height={24} />
-        <Skeleton width="85%" height={14} />
-        <div className="today-action-row"><Skeleton variant="block" width={144} height={44} /></div>
-      </section>
-    </div>
+    <section className={`panel today-shell ${styles.loading}`} aria-busy="true" aria-label="Loading Today">
+      <Skeleton variant="text" width={120} />
+      <Skeleton variant="text" width="70%" height={42} />
+      <Skeleton variant="block" height={180} />
+      <Skeleton variant="block" height={220} />
+    </section>
   );
 }
 
