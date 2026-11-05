@@ -1,6 +1,11 @@
 # Stable loading transitions
 
-Today’s skeleton layout was subsequently restored to its original four placeholders at the user’s request. The local delay removal and content fade remain.
+Today’s skeleton keeps the two large quiet blocks, with Check-in, Today’s session and Injuries mini cards inside the top block. Values remain placeholders until the fresh read completes. The local delay removal and content fade remain.
+
+Current loading states, verified in production Chromium at 390px and 1280px:
+
+![Today mobile loading](loading-transitions/today-loading-390.png)
+![Today desktop loading](loading-transitions/today-loading-1280.png)
 
 Based on Main 22848dbb and merged PR #3201. Fresh Today reads and safety gating are unchanged.
 

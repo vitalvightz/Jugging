@@ -25,6 +25,10 @@ for (const width of [390, 1280]) {
     await page.goto("/today");
     const loading = page.getByLabel("Loading Today");
     await expect(loading).toBeVisible();
+    const statusTiles = loading.getByRole("list", { name: "Today status loading" });
+    await expect(statusTiles.getByRole("listitem")).toHaveCount(3);
+    await expect(statusTiles.getByRole("listitem")).toContainText(["Check-in", "Today’s session", "Injuries"]);
+    await expect(loading.locator(":scope > .skeleton-block")).toHaveCount(1);
     await page.screenshot({ path: `/tmp/today-loading-${width}.png` });
     await expect(loading).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
