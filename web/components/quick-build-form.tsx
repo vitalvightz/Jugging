@@ -1044,7 +1044,9 @@ function QuickBuildFormInner() {
             disabled={sessionsSelectDisabled}
             onChange={(value) => patch("weekly_training_frequency", Number(value) || 1)}
           />
-          <p className="muted">We’ll plan {input.weekly_training_frequency} training day{input.weekly_training_frequency === 1 ? "" : "s"} across your available days.</p>
+          {input.weekly_training_frequency > 0 && input.weekly_training_frequency <= maxWeeklySessions ? (
+            <p className="muted">We’ll plan {input.weekly_training_frequency} training day{input.weekly_training_frequency === 1 ? "" : "s"} across your available days.</p>
+          ) : null}
           {input.weekly_training_frequency > 7 ? (
             <p className="quick-build-field-error" role="alert">
               Previous value: {input.weekly_training_frequency} sessions/week. Select your actual training days (1–7); your saved plan has not changed.

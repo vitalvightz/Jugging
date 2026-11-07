@@ -12,14 +12,14 @@ import messages from "../messages/en.json";
 import { emptyPlanRequest } from "@/lib/onboarding";
 import type { MeResponse } from "@/lib/types";
 
-async function mountSchedule() {
+async function mountSchedule(trainingAvailability = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]) {
   const originalScrollTo = window.scrollTo;
   const originalFrame = globalThis.requestAnimationFrame;
   const originalScrollIntoView = window.HTMLElement.prototype.scrollIntoView;
   window.scrollTo = () => {};
   globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
   window.HTMLElement.prototype.scrollIntoView = () => {};
-  const draft = { ...emptyPlanRequest(), weekly_training_frequency: 6, training_availability: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] };
+  const draft = { ...emptyPlanRequest(), weekly_training_frequency: 6, training_availability: trainingAvailability };
   const me = { profile: { id: "fixture-athlete", full_name: "Fixture athlete", role: "athlete",
     health_consent_granted: true, onboarding_draft: draft }, latest_intake: null } as unknown as MeResponse;
   const router = { push() {}, replace() {}, refresh() {}, back() {}, forward() {}, prefetch() {}, bfcacheId: "fixture" };
@@ -75,6 +75,14 @@ test("quick build never offers more than selected training days", async () => {
     assert.equal(saturday.checked, false);
     await act(async () => frequency.click());
     assert.equal(Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).some(option => option.textContent?.trim() === "6"), false);
+  } finally { await ui.cleanup(); }
+});
+
+test("quick build waits for available days before describing the planned frequency", async () => {
+  const ui = await mountSchedule([]);
+  try {
+    assert.equal(ui.host.textContent?.includes("We’ll plan 6 training days across your available days."), false);
+    assert.equal(ui.host.querySelector<HTMLButtonElement>("#qb-weekly-frequency")?.disabled, true);
   } finally { await ui.cleanup(); }
 });
 
