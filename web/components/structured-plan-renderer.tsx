@@ -466,6 +466,11 @@ function useBlockPrescription(block: StructuredBlock, sourceCountdown?: string |
       .map((rule) => rule.trim().replace(/^stop(?:\s+rule)?\s*:\s*/i, "").trim())
       .filter(Boolean)
       .join("; ") || null;
+  // Text-adapted blocks carry the complete verbatim dose in load.display.
+  // Recovering scalar metrics/rest alongside it repeats the same prescription.
+  if (block.block_id?.startsWith("text-block-") && load) {
+    return { title, load, metrics: [], rest: null, effort: null, compactStopRule, progression, sourceVolume: null };
+  }
   return { title, load, metrics, rest, effort, compactStopRule, progression, sourceVolume };
 }
 

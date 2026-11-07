@@ -1469,8 +1469,41 @@ def prune_unfaithful_content(
     plan = copy.deepcopy(structured_plan) if isinstance(structured_plan, dict) else None
     source = str(source_markdown or "")
     index = _source_index(source, planning_brief) if plan else None
-    if plan is None or index is None:
+    if plan is None:
         return None, []
+    if index is None:
+        # Undated plans have week/session membership authority rather than
+        # D-day authority. Prune only the blocks that gate actually rejected;
+        # all remaining schema, membership and safety checks still run.
+        from fightcamp.weekly_schedule_view import normalize_weekday
+
+        violations = set(_open_plan_membership_violations(plan, source, planning_brief))
+        removed = []
+        total = dropped = 0
+        for position, week in enumerate(_plan_weeks(plan), 1):
+            week_number = week.get("week_index") or position
+            for day in week.get("days") or []:
+                weekday = normalize_weekday(day.get("weekday"))
+                for session in day.get("sessions") or []:
+                    kept = []
+                    for block in session.get("blocks") or []:
+                        total += 1
+                        finding = (
+                            f"{INTRODUCED}: open week {week_number} {weekday} "
+                            f"exercise {str(block.get('display_name') or '').strip()!r} "
+                            "is not authorised by its source session"
+                        )
+                        if (finding in violations and not block.get("athlete_change")
+                                and block.get("prescription_source") != "athlete"):
+                            dropped += 1
+                            removed.append(f"{finding}; block dropped")
+                        else:
+                            kept.append(block)
+                    session["blocks"] = kept
+        allowance = max(SALVAGE_MIN_DROP_ALLOWANCE, int(total * SALVAGE_MAX_DROPPED_SHARE))
+        if dropped > allowance or dropped > total * SALVAGE_MAX_DROPPED_FRACTION_CEILING:
+            return None, removed
+        return plan, removed
 
     weeks = _plan_weeks(plan)
     calendar_only = _calendar_only_ddays(weeks)
