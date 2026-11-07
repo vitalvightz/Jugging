@@ -59,6 +59,7 @@ import { PlanSessionEditor } from "./plan-session-editor";
 import { runSummary } from "@/lib/run-time";
 import { RUN_TYPE_LABELS } from "@/lib/run-insights";
 import { markHistoryHintSeen } from "@/lib/history-hint";
+import { useSeenOnce } from "./once-hint";
 import { SparringLogPrompt, type SparringDraft } from "./today/sparring-log-prompt";
 import { TrainingSummaryCard } from "./training-summary-card";
 import { TrainingRhythm } from "./training-rhythm";
@@ -202,6 +203,7 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
   const [search, setSearch] = useState("");
   const [sparringDraft, setSparringDraft] = useState<SparringDraft | null>(null);
   const [selected, setSelected] = useState<TrainingHistorySession | null>(null);
+  const [editHint, dismissEditHint] = useSeenOnce("discovery-history-edit-seen");
   // A run's edit sheet opened from its details, which reopen once it closes.
   const [editRun, setEditRun] = useState<TrainingHistorySession | null>(null);
   async function remove(row: TrainingHistorySession) {
@@ -268,12 +270,16 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
           ) : null}
         </div>
       ) : null}
+      {editHint && rows.some(row => row.source === "external" || row.history_editable) && !selected ? <div className="history-discovery-hint" role="note">
+        <span>Made a mistake? Open a session to review it, then use Edit when available.</span>
+        <button type="button" onClick={dismissEditHint} aria-label="Dismiss session editing tip">×</button>
+      </div> : null}
       <ul className="history-list">
         {shown.map((row) => (
           <li key={`${row.source}-${row.id}`} className="history-row history-session-row" data-tone={sessionStatusTone(row.status)}>
             <button type="button" className="history-session-open" aria-haspopup="dialog"
               aria-label={`View ${trainingTitle(row) || "session"} details for ${formatAppDate(row.training_day)}`}
-              onClick={() => setSelected(row)} />
+              onClick={() => { dismissEditHint(); setSelected(row); }} />
             <div className="history-row-head">
               <span className="history-row-title">{trainingTitle(row)?.trim() || "Session"}</span>
               <StatusBadge tone={sessionStatusTone(row.status)} label={sessionStatusLabel(row.status)} />

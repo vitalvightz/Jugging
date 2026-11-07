@@ -78,6 +78,21 @@ async function mount({ entries = [] as ManualExerciseEntry[], reference = null a
 
 const puts = (calls: Call[]) => calls.filter(call => call.method === "PUT");
 
+test("entering a load reveals the unit switch once, and using it retires the tip", async () => {
+  window.localStorage.removeItem("discovery-weight-unit-seen");
+  const ui = await mount();
+  try {
+    await ui.click("Back Squat");
+    await ui.type('[data-measure="load"]', "80");
+    assert.match(ui.container.textContent!, /Tap the load unit to switch between kg and lb/);
+    const unit = ui.container.querySelector<HTMLButtonElement>('[aria-label^="Load unit:"]');
+    assert.ok(unit);
+    await act(async () => unit.click());
+    assert.equal(window.localStorage.getItem("discovery-weight-unit-seen"), "1");
+    assert.doesNotMatch(ui.container.textContent!, /Tap the load unit to switch between kg and lb/);
+  } finally { ui.cleanup(); window.localStorage.removeItem("discovery-weight-unit-seen"); }
+});
+
 test("a recent exercise becomes a compact saved row and the logger is ready for the next", async () => {
   const ui = await mount();
   try {
