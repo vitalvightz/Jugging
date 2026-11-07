@@ -385,6 +385,41 @@ def test_today_command_view_and_active_resolver_use_same_plan():
     assert today.active_plan.get("id") == "old"
 
 
+def test_today_fight_weight_follows_active_plan_instead_of_latest_intake():
+    class WeightStore(Store):
+        def get_intake(self, intake_id):
+            return {
+                "intake": {"athlete": {"target_weight_kg": {
+                    "old-intake": 90.0, "new-intake": 100.0, "unset-intake": None,
+                }[intake_id]}}
+            }
+
+        def get_latest_intake(self, athlete_id):
+            return self.get_intake("new-intake")
+
+        def get_profile(self, athlete_id):
+            return {"onboarding_draft": {"athlete": {"target_weight_kg": 110.0}}}
+
+        def get_profile_compliance(self, athlete_id):
+            return {"date_of_birth": "1995-04-02"}
+
+    store = WeightStore([
+        {**plan("old"), "intake_id": "old-intake", "fight_date": "2026-11-27"},
+        {**plan("new"), "intake_id": "new-intake", "fight_date": "2026-11-27"},
+        {**plan("unset"), "intake_id": "unset-intake", "fight_date": "2026-11-27"},
+    ], active="old")
+    now = datetime(2026, 11, 7, tzinfo=timezone.utc)
+    assert build_today_command_view(store, athlete_id="ath", athlete_timezone="UTC", now=now).active_plan["target_weight_kg"] == 90.0
+
+    store.active = "new"
+    assert build_today_command_view(store, athlete_id="ath", athlete_timezone="UTC", now=now).active_plan["target_weight_kg"] == 100.0
+
+    store.active = "unset"
+    assert "target_weight_kg" not in build_today_command_view(
+        store, athlete_id="ath", athlete_timezone="UTC", now=now
+    ).active_plan
+
+
 def test_activation_state_precedence_and_legacy_date_handling():
     assert get_plan_activation_state(
         {**plan("archived", status="archived"), "fight_date": "2026-06-01"},

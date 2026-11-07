@@ -1,6 +1,6 @@
 """Home fight countdown card fields read from the plan's intake."""
 from api.nutrition_workspace import current_target_weight_kg
-from api.services.today_service import _athlete_is_adult, _current_target_weight, _fight_card_fields_from_intake
+from api.services.today_service import _athlete_is_adult, _fight_card_fields_from_intake
 
 
 class _Store:
@@ -45,11 +45,3 @@ def test_current_target_follows_the_workspace_the_tracker_shows():
     assert current_target_weight_kg(onboarding_draft=shared_only, latest_intake_row=None) == 87.0
     assert current_target_weight_kg(onboarding_draft=None, latest_intake_row=None) is None
     assert current_target_weight_kg(onboarding_draft={"athlete": {"target_weight_kg": True}}, latest_intake_row=None) is None
-
-
-def test_current_target_read_failure_returns_none():
-    class _Broken:
-        def get_profile(self, athlete_id):
-            raise RuntimeError("read failed")
-
-    assert _current_target_weight(_Broken(), "a") is None
