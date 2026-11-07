@@ -700,7 +700,7 @@ export default function HomePage() {
       phase: activePlan.phase ? String(activePlan.phase) : null,
       plan: structuredPlan,
       eventName: activePlan.event_name ?? null,
-      // The athlete's current target fight weight (the newest one set), never current bodyweight.
+      // The active plan's target fight weight, never current bodyweight or a newer draft's target.
       // Under-18s have no weight-cut feature, so it never shows for them.
       targetWeightKg: me.profile.is_minor ? null : (activePlan.target_weight_kg ?? null),
       // The calendar read for this plan hasn't settled yet (success or failure).

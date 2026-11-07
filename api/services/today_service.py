@@ -3088,22 +3088,6 @@ def _athlete_is_adult(store: AppStore, athlete_id: str) -> bool:
         return False
 
 
-def _current_target_weight(store: AppStore, athlete_id: str) -> float | None:
-    """The target weight the athlete set most recently, as the weight tracker
-    shows it (onboarding draft, else latest intake). ``None`` on a failed read,
-    so the card falls back to the plan's own intake."""
-    try:
-        from api.nutrition_workspace import current_target_weight_kg
-        profile = store.get_profile(athlete_id) or {}
-        return current_target_weight_kg(
-            onboarding_draft=profile.get("onboarding_draft"),
-            latest_intake_row=store.get_latest_intake(athlete_id),
-        )
-    except Exception:
-        logger.exception("[today] current_target_weight_read_failed athlete_id=%s", athlete_id)
-        return None
-
-
 def _fight_card_fields_from_intake(intake: Mapping[str, Any]) -> dict[str, Any]:
     """Event name and target fight weight from the plan's own intake, for Home's
     fight countdown card. Display-only; absent values are simply omitted."""
@@ -3726,10 +3710,6 @@ def _build_today_command_view(
     intake, _intake_ok = _checked_intake_payload_for_readiness(store, plan_row)
     equipment = _rehab_equipment_from_intake(intake)
     fight_card = _fight_card_fields_from_intake(intake)
-    # A target set after the plan was built (weight tracker, Camp Setup) wins.
-    current_target = _current_target_weight(store, athlete_id)
-    if current_target is not None:
-        fight_card["target_weight_kg"] = current_target
     if "target_weight_kg" in fight_card and not _athlete_is_adult(store, athlete_id):
         # Under-18s have no weight-cut feature: never send a target weight.
         fight_card.pop("target_weight_kg")

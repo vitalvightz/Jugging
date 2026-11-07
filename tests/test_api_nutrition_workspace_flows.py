@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 from fastapi import HTTPException, status
 
+from api.contracts.training_day import current_training_day
 from support import _build_client, _build_request
 
 
@@ -279,6 +280,35 @@ def _intake_weight(store) -> float:
 
 def _days_from_today(days: int) -> str:
     return (date.today() + timedelta(days=days)).isoformat()
+
+
+def test_weight_tracker_days_follow_active_plan_instead_of_latest_intake():
+    client, store, _ = _build_client()
+    client.get("/api/me", headers={"Authorization": "Bearer athlete-token"})
+    active_request = _build_request({"fight_date": _days_from_today(20)})
+    active_intake = store.create_intake("athlete-1", active_request)
+    active_plan = store.create_plan(
+        athlete_id="athlete-1", intake_id=active_intake["id"],
+        request=active_request, result={"status": "ready"},
+    )
+    store.set_active_plan_id("athlete-1", active_plan["id"])
+    store.create_intake("athlete-1", _build_request({"fight_date": _days_from_today(1)}))
+
+    workspace = _get_current_workspace(client)
+    expected_days = (date.fromisoformat(active_plan["fight_date"]) - current_training_day(
+        athlete_timezone=store.profiles["athlete-1"].get("athlete_timezone"),
+    )).days
+    assert workspace["derived"]["days_until_fight"] == expected_days
+    assert workspace["shared_camp_context"]["fight_date"] == _days_from_today(1)
+
+    response = client.put(
+        "/api/nutrition/current",
+        headers={"Authorization": "Bearer athlete-token"},
+        json=workspace,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["derived"]["days_until_fight"] == expected_days
+    assert store.get_latest_intake("athlete-1")["intake"]["fight_date"] == _days_from_today(1)
 
 
 MONDAY = {"date": _days_from_today(-4), "weight_kg": 71.8, "time": "07:00", "is_fasted": True, "notes": None}

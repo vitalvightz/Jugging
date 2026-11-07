@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from api.contracts.training_day import current_training_day
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from api.compliance_guards import require_health_feature_access
@@ -13,6 +14,7 @@ from api.nutrition_workspace import (
     sync_current_weight_with_log,
 )
 from api.plan_mappers import _map_admin_athlete
+from api.services.active_plan import resolve_active_plan
 from api.store import AppStore
 
 
@@ -24,6 +26,15 @@ def _sync_weight_from_log(*, update, previous_log, today):
             detail="A weight can't be dated in the future.",
         )
     return sync_current_weight_with_log(update=update, previous_log=previous_log, today=today)
+
+
+def _active_plan_fight_date(store: AppStore, profile: ProfileRecord) -> str | None:
+    plan = resolve_active_plan(
+        store,
+        profile.athlete_id,
+        current_training_day=current_training_day(athlete_timezone=profile.athlete_timezone),
+    ).plan
+    return str(plan.get("fight_date") or "") if plan else None
 
 
 def build_nutrition_router(
@@ -43,7 +54,11 @@ def build_nutrition_router(
         store: AppStore = Depends(get_store),
     ) -> NutritionWorkspaceState:
         latest_intake = store.get_latest_intake(profile.athlete_id)
-        return build_nutrition_workspace(profile=profile, latest_intake_row=latest_intake)
+        return build_nutrition_workspace(
+            profile=profile,
+            latest_intake_row=latest_intake,
+            active_plan_fight_date=_active_plan_fight_date(store, profile),
+        )
 
     @router.put("/api/nutrition/current", response_model=NutritionWorkspaceState)
     def update_nutrition_current(
@@ -70,7 +85,11 @@ def build_nutrition_router(
                 }
             )
         latest_intake = store.get_latest_intake(profile.athlete_id)
-        current_workspace = build_nutrition_workspace(profile=profile, latest_intake_row=latest_intake)
+        active_plan_fight_date = _active_plan_fight_date(store, profile)
+        current_workspace = build_nutrition_workspace(
+            profile=profile, latest_intake_row=latest_intake,
+            active_plan_fight_date=active_plan_fight_date,
+        )
         update = update.model_copy(update={"nutrition_coach_controls": current_workspace.nutrition_coach_controls})
         normalized_update = normalize_nutrition_update_request(
             update=update,
@@ -110,7 +129,10 @@ def build_nutrition_router(
                 technical_style=list(merged_payload.get("athlete", {}).get("technical_style") or updated_profile.technical_style),
             )
             refreshed_intake = store.get_latest_intake(profile.athlete_id)
-            return build_nutrition_workspace(profile=updated_profile, latest_intake_row=refreshed_intake)
+            return build_nutrition_workspace(
+                profile=updated_profile, latest_intake_row=refreshed_intake,
+                active_plan_fight_date=active_plan_fight_date,
+            )
 
         updated_profile = update_profile_with_nutrition_fallback(
             store=store,
@@ -121,7 +143,10 @@ def build_nutrition_router(
             ),
         )
         refreshed_intake = store.get_latest_intake(profile.athlete_id)
-        return build_nutrition_workspace(profile=updated_profile, latest_intake_row=refreshed_intake)
+        return build_nutrition_workspace(
+            profile=updated_profile, latest_intake_row=refreshed_intake,
+            active_plan_fight_date=active_plan_fight_date,
+        )
 
     @router.get("/api/admin/athletes/{athlete_id}/nutrition/current", response_model=NutritionWorkspaceState)
     def get_admin_athlete_nutrition_current(

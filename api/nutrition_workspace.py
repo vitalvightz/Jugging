@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from api.bodyweight_trend import daily_readings, seven_day_average, smoothed_trend, weekly_pace
+from api.contracts.training_day import current_training_day
 from api.datetimes import parse_calendar_date
 from fightcamp.camp_phases import calculate_phase_weeks
 from fightcamp.input_parsing import _athlete_calendar_now, _compute_days_until_fight, is_short_notice_days
@@ -708,6 +709,7 @@ def build_nutrition_workspace(
     *,
     profile: ProfileRecord | AdminAthleteRecord,
     latest_intake_row: dict[str, Any] | None = None,
+    active_plan_fight_date: str | None = None,
 ) -> NutritionWorkspaceState:
     source, intake_id, raw_payload = _workspace_payload(profile.onboarding_draft, latest_intake_row)
 
@@ -722,7 +724,16 @@ def build_nutrition_workspace(
     technical_style = _clean_list(raw_athlete.get("technical_style") or profile.technical_style)
     tactical_style = _clean_list(raw_athlete.get("tactical_style") or profile.tactical_style)
     professional_status = _coerce_optional_str(raw_athlete.get("professional_status")) or profile.professional_status
-    days_until_fight = _compute_days_out(shared_camp_context.fight_date, profile.athlete_timezone)
+    if active_plan_fight_date is None:
+        days_until_fight = _compute_days_out(shared_camp_context.fight_date, profile.athlete_timezone)
+    else:
+        # Keep the editable workspace's date intact while its countdown follows
+        # the same active plan and athlete-local training day as Home.
+        fight_day = parse_calendar_date(active_plan_fight_date)
+        days_until_fight = None
+        if fight_day is not None:
+            days = (fight_day - current_training_day(athlete_timezone=profile.athlete_timezone)).days
+            days_until_fight = days if days >= 0 else None
     weight_cut_pct = compute_weight_cut_pct(shared_camp_context.current_weight_kg or 0.0, shared_camp_context.target_weight_kg or 0.0)
     weight_cut_risk = weight_cut_pct >= 3.0
     is_minor = bool(getattr(profile, "is_minor", False))
