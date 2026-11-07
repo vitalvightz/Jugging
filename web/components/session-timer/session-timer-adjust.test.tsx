@@ -95,6 +95,13 @@ test("the first round timer points to settings and retires the hint when opened"
   assert.ok(document.querySelector('[aria-label="Timer settings"][aria-expanded="true"]'));
   assert.equal(document.querySelector(".st-hint"), null);
   assert.equal(window.localStorage.getItem("st-settings-hint-seen"), "1");
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Close settings"]')?.click());
+  const start = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Start round 1");
+  assert.ok(start);
+  await act(async () => start.click());
+  assert.match(document.querySelector(".st-hint")?.textContent ?? "", /leave and return later/);
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Minimise timer"]')?.click());
+  assert.equal(window.localStorage.getItem("st-minimize-hint-seen"), "1");
 });
 
 test("typing a round length and rest sets them exactly", async () => {

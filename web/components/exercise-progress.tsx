@@ -6,6 +6,7 @@ import { formatAppDate } from "@/lib/date-format";
 import { measurementSummary, splitLoad } from "@/lib/session-details";
 import { measurementBasis, measurementCount, progressPoints, progressSeries } from "@/lib/exercise-progress";
 import styles from "./training-progress.module.css";
+import { useSeenOnce } from "./once-hint";
 
 export function ExerciseProgress({ records, exercise, hasMore, about, onInspect }: {
   records: ExercisePerformance[]; exercise: PersonalExercise; hasMore: boolean;
@@ -15,6 +16,7 @@ export function ExerciseProgress({ records, exercise, hasMore, about, onInspect 
   const options = useMemo(() => progressSeries(records), [records]);
   const [seriesId, setSeriesId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pointHint, dismissPointHint] = useSeenOnce("discovery-progress-point-seen");
   const series = options.find(option => option.id === seriesId) ?? options[0];
   // Only eligible measurements: axis, path, count, selection and best all derive from this set.
   const valid = useMemo(() => series ? progressPoints(records, series) : [], [records, series]);
@@ -46,7 +48,10 @@ export function ExerciseProgress({ records, exercise, hasMore, about, onInspect 
   const path = valid.map((point, index) => `${index ? "L" : "M"}${x(point.record.training_day).toFixed(2)},${y(point.value).toFixed(2)}`).join(" ");
   const format = (value: number) => `${Number(value.toFixed(2))} ${series?.unit}`;
   const best = series?.metric === "load" ? exercise.best_loads.find(load => load.unit === series.unit)?.value : undefined;
-  const choose = (index: number) => setSelectedId(valid[Math.max(0, Math.min(valid.length - 1, index))].record.id);
+  const choose = (index: number) => {
+    dismissPointHint();
+    setSelectedId(valid[Math.max(0, Math.min(valid.length - 1, index))].record.id);
+  };
   // Sessions with several loads plot their heaviest set; say so beside the value.
   const loads = selected && series.metric === "load" ? (selected.record.performed_values?.set_entries ?? []).flatMap(entry => entry.load?.unit === series.unit ? [entry.load.value] : []) : [];
   const ranged = loads.length > 1 && Math.min(...loads) < Math.max(...loads);
@@ -79,6 +84,10 @@ export function ExerciseProgress({ records, exercise, hasMore, about, onInspect 
       <p className={styles.note}>{measurementCount(valid.length, series.metric)}{hasMore ? " · Earlier records available" : ""}{best != null ? ` · Best recorded ${format(best)}` : ""}.</p>
       {valid.length >= 3 ? <>
         {/* The plot is the control: tap a point, or use arrow keys when focused. */}
+        {pointHint ? <div className={styles.discoveryHint} role="note">
+          <span>Tap a point to inspect that result.</span>
+          <button type="button" onClick={dismissPointHint} aria-label="Dismiss chart tip">×</button>
+        </div> : null}
         <div ref={plot} className={styles.linePlot} role="slider" tabIndex={0} aria-label="Inspect performance"
           aria-valuemin={1} aria-valuemax={valid.length} aria-valuenow={selectedIndex + 1}
           aria-valuetext={`${formatAppDate(selected.record.training_day)}: ${format(selected.value)}`}
@@ -92,6 +101,7 @@ export function ExerciseProgress({ records, exercise, hasMore, about, onInspect 
             const px = (event.clientX - bounds.left) / bounds.width * plotWidth;
             const py = (event.clientY - bounds.top) / bounds.height * 200;
             const nearest = valid.reduce((a, b) => Math.hypot(x(a.record.training_day) - px, y(a.value) - py) <= Math.hypot(x(b.record.training_day) - px, y(b.value) - py) ? a : b);
+            dismissPointHint();
             setSelectedId(nearest.record.id);
             if (event.pointerType === "mouse") event.currentTarget.setPointerCapture(event.pointerId);
           }} onPointerMove={event => {
