@@ -67,7 +67,7 @@ test("quick build never offers more than selected training days", async () => {
     assert.ok(six);
     await act(async () => six.click());
     assert.equal(frequency.textContent?.trim(), "6");
-    const label = Array.from(ui.host.querySelectorAll(".checkbox-group-label")).find(entry => entry.textContent === "Days you can train");
+    const label = Array.from(ui.host.querySelectorAll(".checkbox-group-label")).find(entry => entry.textContent === "Days you’re available to train");
     assert.ok(label?.parentElement);
     const saturday = Array.from(label.parentElement.querySelectorAll("label")).find(entry => entry.textContent?.trim() === "Saturday")?.querySelector<HTMLInputElement>("input");
     assert.ok(saturday);
