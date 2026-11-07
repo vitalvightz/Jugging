@@ -1003,3 +1003,23 @@ def test_model_content_on_a_day_absent_from_source_is_still_rejected():
     plan["weeks"][0]["days"][0]["today_card"] = {"headline": ""}
     violations = check_structured_faithfulness(plan, SOURCE)
     assert any(v.startswith("COUNTDOWN") and "'D-99'" in v for v in violations), violations
+
+
+def test_undated_salvage_prunes_only_rejected_week_membership():
+    brief = {"open_plan_spec": {"plan_type": "open_ongoing_system",
+        "weekly_session_plan": {"authority": "deterministic_open_development_block",
+            "weeks": [{"week": 1, "sessions": [{"weekday": "Wednesday",
+                "exercises": [{"name": "Lat Pulldown"}, {"name": "Woodchopper (Cable)"}]}]}]}}}
+    blocks = [{"block_type": "strength", "display_name": name}
+              for name in ["Lat Pulldown", "Woodchopper (Cable)", "Easy Jog Flush"]]
+    plan = {"weeks": [{"week_index": 1, "days": [{"weekday": "Wed",
+        "sessions": [{"title": "Strength", "blocks": blocks}]}]}]}
+    original = copy.deepcopy(plan)
+    pruned, removed = faithfulness.prune_unfaithful_content(plan, "Undated plan", brief)
+    assert pruned is not None
+    assert [b["display_name"] for b in pruned["weeks"][0]["days"][0]["sessions"][0]["blocks"]] == [
+        "Lat Pulldown", "Woodchopper (Cable)"]
+    assert len(removed) == 1
+    assert "Easy Jog Flush" in removed[0]
+    assert plan == original
+    assert not faithfulness._open_plan_membership_violations(pruned, "Undated plan", brief)

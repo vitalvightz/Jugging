@@ -2994,3 +2994,18 @@ test("legacy raw day and session labels do not reach the athlete renderer", () =
   assert.match(session, /Technical Combat/);
   assert.doesNotMatch(session, /technical_combat/);
 });
+
+test("text fallback renders the full dose without recovered scalar duplicates", () => {
+  const plan: StructuredPlan = {
+    schema_version: "1.0",
+    raw_markdown_fallback: "## Wednesday: Strength\n- **Lat Pulldown:** 2 sets x 6 reps; rest 90 sec; RPE 6.",
+    weeks: [{ week_index: 1, days: [{ weekday: "Wed", sessions: [{ title: "Strength", blocks: [{
+      block_id: "text-block-1", block_type: "strength", display_name: "Lat Pulldown",
+      load: { display: "2 sets x 6 reps; rest 90 sec; RPE 6." },
+    }] }] }] }],
+  };
+  const html = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} openOngoing />);
+  assert.ok(html.includes("2 sets x 6 reps; rest 90 sec; RPE 6."));
+  assert.ok(!html.includes("2 sets × 6 reps"));
+  assert.ok(!html.includes("90 sec rest"));
+});

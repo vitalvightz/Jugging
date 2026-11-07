@@ -309,7 +309,19 @@ def attach_exercise_media(detail: Any, store: Any) -> Any:
                 )
             return detail
         structured_plan = getattr(outputs, "structured_plan", None)
-        if outputs is None or structured_plan is None:
+        if outputs is None:
+            return detail
+        if structured_plan is None:
+            # The text adapter renders named exercise bullets even when card
+            # conversion failed. Resolve those exact names against the curated
+            # catalogue; never take a video ID from generated prose.
+            index = load_media_index(store)
+            text = getattr(outputs, "plan_text", None) or getattr(outputs, "final_plan_text", None) or ""
+            names = re.findall(r"^\s*[-*•]\s+\*\*(.+?)\*\*\s*:", text, re.MULTILINE)
+            outputs.exercise_media = {
+                name: video for name in names
+                if (video := _media_for_display_name(name, index)) is not None
+            }
             return detail
         outputs.exercise_media = resolve_plan_exercise_media(
             structured_plan,
