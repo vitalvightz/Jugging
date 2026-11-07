@@ -629,6 +629,9 @@
   transform-origin: calc(100% - 22px) 0;
 }
 
+.st-hint-settings { right: 4px; }
+.st-hint-settings::before { right: 17px; }
+
 .st-hint::before {
   content: "";
   position: absolute;

@@ -83,6 +83,20 @@ async function tapValue(label: string) {
   await act(async () => value.click());
 }
 
+test("the first round timer points to settings and retires the hint when opened", async () => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  const timer = <SessionTimer items={ROUNDS} storageKey="settings-hint-test" sessionTitle="Round timer" visible
+    onMinimize={() => undefined} onExpand={() => undefined} onFinish={() => undefined} onClose={() => undefined} />;
+  await act(async () => root?.render(timer));
+  assert.match(document.querySelector(".st-hint")?.textContent ?? "", /change timer settings/);
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Timer settings"]')?.click());
+  assert.ok(document.querySelector('[aria-label="Timer settings"][aria-expanded="true"]'));
+  assert.equal(document.querySelector(".st-hint"), null);
+  assert.equal(window.localStorage.getItem("st-settings-hint-seen"), "1");
+});
+
 test("typing a round length and rest sets them exactly", async () => {
   await openAdjustSheet();
 

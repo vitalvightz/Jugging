@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { useSeenOnce } from "./once-hint";
 import { EmptyState } from "./empty-state";
 import { TrainingBlock } from "./session-details";
 import { ExerciseProgress } from "./exercise-progress";
@@ -31,6 +32,11 @@ function ExerciseCard({ exercise, onSelect }: { exercise: PersonalExercise; onSe
 export function ExerciseLibrary({ library, token, cache }: { library: ExerciseLibraryResponse; token: string; cache: ExerciseHistoryCache }) {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<PersonalExercise | null>(null);
+  const [progressHintUnseen, dismissProgressHint] = useSeenOnce("discovery-exercise-progress-seen");
+  function selectExercise(exercise: PersonalExercise) {
+    dismissProgressHint();
+    setSelected(exercise);
+  }
   if (!library.exercises.length) return <EmptyState eyebrow="Exercise records" title="No performed exercises recorded yet."
     description="Completed and modified exercise logs, and exercises you add to logged training, build your personal record. Skipped-only exercises are excluded."
     example="Log your performance on Today, or add exercises to a session you logged." />;
@@ -44,12 +50,16 @@ export function ExerciseLibrary({ library, token, cache }: { library: ExerciseLi
       <input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search your exercise records" />
     </label>
     <p className={styles.scope}>Best saved loads, kept separate per weight unit.</p>
+    {progressHintUnseen && !search ? <div className={styles.discoveryHint} role="note">
+      <span>Tap an exercise to see its progress and session history.</span>
+      <button type="button" onClick={dismissProgressHint} aria-label="Dismiss exercise progress tip">×</button>
+    </div> : null}
     {canonical.length ? <ul className={`history-list ${styles.library}`} aria-label="Your exercises">
-      {canonical.map(exercise => <ExerciseCard key={exercise.id} exercise={exercise} onSelect={() => setSelected(exercise)} />)}
+      {canonical.map(exercise => <ExerciseCard key={exercise.id} exercise={exercise} onSelect={() => selectExercise(exercise)} />)}
     </ul> : null}
     {legacy.length ? <section className={styles.legacy} aria-label="Unlinked legacy records">
       <h2>Unlinked legacy records</h2><p className={styles.scope}>These records have no exercise key, so they stay separate.</p>
-      <ul className={`history-list ${styles.library}`}>{legacy.map(exercise => <ExerciseCard key={exercise.id} exercise={exercise} onSelect={() => setSelected(exercise)} />)}</ul>
+      <ul className={`history-list ${styles.library}`}>{legacy.map(exercise => <ExerciseCard key={exercise.id} exercise={exercise} onSelect={() => selectExercise(exercise)} />)}</ul>
     </section> : null}
     {!matching.length ? <p className="muted" role="status">No matching exercises in your saved history.</p> : null}
     {selected ? <ExerciseDetails key={selected.id} exercise={selected} asOf={library.as_of} token={token} cache={cache} onDismiss={() => setSelected(null)} /> : null}

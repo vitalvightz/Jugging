@@ -660,6 +660,7 @@ function AdjustSheet({ timer, onClose }: { timer: SessionTimerController; onClos
 }
 
 const ADJUST_HINT_KEY = "st-adjust-hint-seen";
+const SETTINGS_HINT_KEY = "st-settings-hint-seen";
 
 /** Whether the one-time "you can edit these" hint should show. */
 function useAdjustHint(): [boolean, () => void] {
@@ -1040,6 +1041,7 @@ export function SessionTimer({
   const finishInFlight = useRef(false);
   const autoFinishAttempted = useRef(false);
   const [adjustHint, dismissAdjustHint] = useAdjustHint();
+  const [settingsHint, dismissSettingsHint] = useSeenOnce(SETTINGS_HINT_KEY);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const miniDrag = useDraggableMini(onExpand);
   const item = currentItem(state);
@@ -1213,7 +1215,7 @@ export function SessionTimer({
           <button
             type="button"
             className="st-icon"
-            onClick={() => setSheet((open) => (open === "settings" ? null : "settings"))}
+            onClick={() => { dismissSettingsHint(); setSheet((open) => (open === "settings" ? null : "settings")); }}
             aria-label="Timer settings"
             aria-expanded={sheet === "settings"}
             data-active={sheet === "settings" ? "true" : undefined}
@@ -1221,7 +1223,10 @@ export function SessionTimer({
             <Icon name="settings" />
           </button>
         </div>
-        {canAdjust && adjustHint && sheet === null ? (
+        {sheet === null && item?.kind === "interval" && settingsHint ? (
+          <OnceHint className="st-hint st-hint-settings" onDismiss={dismissSettingsHint}
+            label="Tap ⚙ to change timer settings" />
+        ) : sheet === null && canAdjust && adjustHint && item?.kind !== "interval" ? (
           <OnceHint className="st-hint" onDismiss={dismissAdjustHint}
             label={item?.kind === "sets" ? `Tap to edit ${countNoun(item)}s & rest` : "Tap to edit rounds & timing"} />
         ) : null}
