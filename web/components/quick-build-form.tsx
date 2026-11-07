@@ -1029,11 +1029,32 @@ function QuickBuildFormInner() {
           onSelect={handleTrainingPresetSelect}
         />
         <ChipMultiSelect
-          label="Days you can train"
+          label="Days you’re available to train"
           options={TRAINING_AVAILABILITY_OPTIONS}
           selectedValues={input.training_availability}
           onToggle={(value) => toggleField("training_availability", value)}
         />
+        <div className="field">
+          <label htmlFor="qb-weekly-frequency">How many days per week do you want to train?</label>
+          <CustomSelect
+            id="qb-weekly-frequency"
+            value={sessionsSelectDisabled ? "" : String(input.weekly_training_frequency)}
+            options={weeklyFrequencyOptions}
+            placeholder={sessionsSelectDisabled ? "Choose training days first" : "Days"}
+            disabled={sessionsSelectDisabled}
+            onChange={(value) => patch("weekly_training_frequency", Number(value) || 1)}
+          />
+          {input.weekly_training_frequency > 0 && input.weekly_training_frequency <= maxWeeklySessions ? (
+            <p className="muted">We’ll plan {input.weekly_training_frequency} training day{input.weekly_training_frequency === 1 ? "" : "s"} across your available days.</p>
+          ) : null}
+          {input.weekly_training_frequency > 7 ? (
+            <p className="quick-build-field-error" role="alert">
+              Previous value: {input.weekly_training_frequency} sessions/week. Select your actual training days (1–7); your saved plan has not changed.
+            </p>
+          ) : null}
+          <FieldError message={visibleError("weekly_training_frequency")} />
+          <FieldError message={visibleError("training_availability")} />
+        </div>
         <ChipMultiSelect
           label="Hard sparring days"
           options={TRAINING_AVAILABILITY_OPTIONS}
@@ -1084,25 +1105,6 @@ function QuickBuildFormInner() {
             </button>
           </div>
         ) : null}
-        <div className="field">
-          <label htmlFor="qb-weekly-frequency">Training days per week</label>
-          <CustomSelect
-            id="qb-weekly-frequency"
-            value={sessionsSelectDisabled ? "" : String(input.weekly_training_frequency)}
-            options={weeklyFrequencyOptions}
-            placeholder={sessionsSelectDisabled ? "Choose training days first" : "Days"}
-            disabled={sessionsSelectDisabled}
-            onChange={(value) => patch("weekly_training_frequency", Number(value) || 1)}
-          />
-          <p className="muted">Count each training day once, even if you do multiple sessions that day.</p>
-          {input.weekly_training_frequency > 7 ? (
-            <p className="quick-build-field-error" role="alert">
-              Previous value: {input.weekly_training_frequency} sessions/week. Select your actual training days (1–7); your saved plan has not changed.
-            </p>
-          ) : null}
-          <FieldError message={visibleError("weekly_training_frequency")} />
-          <FieldError message={visibleError("training_availability")} />
-        </div>
         <PresetSelect
           id="qb-equipment-preset"
           label="Recommended equipment (optional)"
