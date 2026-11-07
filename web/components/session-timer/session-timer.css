@@ -631,6 +631,7 @@
 
 .st-hint-settings { right: 4px; }
 .st-hint-settings::before { right: 17px; }
+.st-hint-minimize { left: 4px; right: auto; transform-origin: 22px 0; }
 
 .st-hint::before {
   content: "";
@@ -643,6 +644,8 @@
   transform: rotate(45deg);
   border-radius: 2px;
 }
+
+.st-hint-minimize::before { left: 17px; right: auto; }
 
 .st-hint span {
   font-size: 15px;

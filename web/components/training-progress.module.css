@@ -38,6 +38,10 @@
 .sessionOpen strong { font-size: 14px; overflow-wrap: anywhere; }
 .sessionOpen > span:first-child > span { font-size: 11px; color: var(--text-muted); }
 .exerciseChart { min-width: 0; }
+.discoveryHint { display: flex; align-items: center; gap: 12px; margin: 12px 0 0; padding: 10px 12px; border: 1px solid var(--border-default); border-left: 2px solid var(--brand-red); border-radius: 8px; background: var(--bg-panel); color: var(--text-secondary); font-size: 13px; line-height: 1.4; }
+.discoveryHint span { flex: 1; }
+.discoveryHint button { flex: 0 0 44px; width: 44px; height: 44px; margin: -10px -10px -10px 0; border: 0; background: transparent; color: var(--text-muted); font: inherit; font-size: 20px; cursor: pointer; }
+.discoveryHint button:focus-visible { outline: 2px solid var(--brand-red); outline-offset: 2px; }
 .exerciseChart .sectionHead { flex-wrap: wrap; align-items: center; }
 .exerciseChart h3 { font-size: 16px; margin: 0 0 14px; }
 .linePlot { position: relative; height: 230px; margin: 16px 0 4px; touch-action: pan-y; cursor: pointer; border-radius: 6px; }

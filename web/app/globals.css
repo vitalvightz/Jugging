@@ -21856,6 +21856,35 @@ html[data-app-surface="brand"] .app-safety-footer {
   gap: 20px;
 }
 
+.history-discovery-hint {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-default);
+  border-left: 2px solid var(--brand-red);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.history-discovery-hint span { flex: 1; }
+.history-discovery-hint button {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  margin: -10px -10px -10px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 20px;
+  cursor: pointer;
+}
+.history-discovery-hint button:focus-visible { outline: 2px solid var(--brand-red); outline-offset: 2px; }
+
 /* History sections stay legible: one row on desktop, two balanced rows on mobile. */
 .history-tabs {
   display: grid;

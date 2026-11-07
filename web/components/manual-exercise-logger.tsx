@@ -16,6 +16,7 @@ import sheet from "./log-training.module.css";
 import styles from "./manual-exercise-logger.module.css";
 import { SetRows } from "./set-rows";
 import { useSheetExit } from "@/lib/use-sheet-exit";
+import { useSeenOnce } from "./once-hint";
 
 type Picked = { name: string; choice: ExerciseChoice; format: MeasurementFormat | null; reference: string | null };
 /**
@@ -72,6 +73,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const [status, setStatus] = useState("");
+  const [unitHint, dismissUnitHint] = useSeenOnce("discovery-weight-unit-seen");
   const [reuse, setReuse] = useState<ManualExerciseEntry[] | null>(null);
   const [reuseState, setReuseState] = useState<"idle" | "loading" | "error">("idle");
 
@@ -181,6 +183,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
   }
 
   function cycleUnit(field: FieldId) {
+    if (field === "load") dismissUnitHint();
     const choices = UNIT_CHOICES[field]!;
     setEditor(current => {
       const next = choices[(choices.indexOf(current.draft.units[field]!) + 1) % choices.length];
@@ -285,6 +288,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
   const individualSets = Boolean(editor.draft.setRows && (format === "strength" || format === "bodyweight"));
   const extras = format ? EXTRA_FIELDS[format].filter(field => !individualSets || !["load", "effort"].includes(field)) : [];
   const extraFilled = extras.some(field => editor.draft.values[field]?.trim()) || Boolean(editor.draft.notes.trim());
+  const hasLoadEntry = Boolean(editor.draft.values.load?.trim() || editor.draft.setRows?.some(row => row.load.trim()));
 
   return <dialog ref={dialog} className={`${sheet.dialog} ${styles.dialog}`} aria-labelledby={`${fieldId}-title`} data-closing={closing || undefined}
     onCancel={event => { event.preventDefault(); close(); }}>
@@ -359,6 +363,10 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
               onClick={() => { setEditor(current => ({ ...current, formatMenu: false, picked: current.picked && { ...current.picked, format: item.id } })); setError(null); focusFirstField(); }}>{item.label}</button>)}
           </div> : null}
           {picked.reference ? <p className={styles.reference}>{picked.reference}</p> : null}
+          {unitHint && hasLoadEntry && (format === "strength" || format === "bodyweight") ? <div className={styles.discoveryHint} role="note">
+            <span>Tap the load unit to switch between kg and lb.</span>
+            <button type="button" onClick={dismissUnitHint} aria-label="Dismiss weight unit tip">×</button>
+          </div> : null}
           {format ? <>
             {editor.draft.setRows && (format === "strength" || format === "bodyweight") ? <SetRows
               rows={editor.draft.setRows} unit={editor.draft.units.load ?? "kg"} onUnitChange={() => cycleUnit("load")}
