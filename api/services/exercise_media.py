@@ -294,6 +294,28 @@ def with_athlete_change_media(
         return snapshot
 
 
+def _text_exercise_names(text: str) -> list[str]:
+    """Names from fallback bullets, matching the text adapter's separators.
+
+    Strip emphasis before splitting so both **Name**: and **Name:** resolve
+    identically. Catalogue matching remains exact; prose never supplies IDs.
+    """
+    names: list[str] = []
+    for line in text.splitlines():
+        bullet = re.match(r"^\s*(?:[-*•‣▪◦·]|\d+\.)\s+(.+)$", line)
+        if not bullet:
+            continue
+        content = bullet[1].replace("**", "").replace("__", "").strip()
+        colon = re.match(r"^([^:]{2,80}):\s+(.+)$", content)
+        if colon:
+            name = colon[1].strip()
+        else:
+            name = re.split(r"\s[-–—]\s", content, maxsplit=1)[0].strip()
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
 def attach_exercise_media(detail: Any, store: Any) -> Any:
     """Populate ``detail.outputs.exercise_media`` in place. Never raises."""
     try:
@@ -317,7 +339,7 @@ def attach_exercise_media(detail: Any, store: Any) -> Any:
             # catalogue; never take a video ID from generated prose.
             index = load_media_index(store)
             text = getattr(outputs, "plan_text", None) or getattr(outputs, "final_plan_text", None) or ""
-            names = re.findall(r"^\s*[-*•]\s+\*\*(.+?)\*\*\s*:", text, re.MULTILINE)
+            names = _text_exercise_names(text)
             outputs.exercise_media = {
                 name: video for name in names
                 if (video := _media_for_display_name(name, index)) is not None

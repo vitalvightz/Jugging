@@ -1172,8 +1172,17 @@ def test_custom_plan_without_athlete_changes_never_loads_the_index():
     assert media.with_athlete_change_media({"exercise:published": "kept"}, blocks, Store()) == {"exercise:published": "kept"}
 
 
-def test_text_fallback_keeps_curated_media_without_structured_card():
-    outputs = PlanOutputs(plan_text="## Wednesday: Strength\n- **Lat Pulldown**: 2 x 6; RPE 6.\n- **Unknown Drill**: 5 reps.")
+@pytest.mark.parametrize("bullet", [
+    "- **Lat Pulldown**: 2 x 6; RPE 6.",
+    "- **Lat Pulldown:** 2 x 6; RPE 6.",
+    "- Lat Pulldown: 2 x 6; RPE 6.",
+    "* Lat Pulldown — 2 x 6; RPE 6.",
+    "• Lat Pulldown - 2 x 6; RPE 6.",
+    "1. Lat Pulldown – 2 x 6; RPE 6.",
+    "- Lat Pulldown",
+])
+def test_text_fallback_keeps_curated_media_without_structured_card(bullet):
+    outputs = PlanOutputs(plan_text=f"## Wednesday: Strength\n{bullet}\n- **Unknown Drill**: 5 reps.")
     detail = SimpleNamespace(outputs=outputs)
     store = SimpleNamespace(list_exercise_media=lambda: [_row("lat-pulldown", status="ok")])
     media.attach_exercise_media(detail, store)
