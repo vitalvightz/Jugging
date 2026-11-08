@@ -1983,7 +1983,9 @@ def test_card_retry_crash_releases_on_the_inline_outcome():
     assert "structured_card_retry_finished" in _milestone_codes(job)
 
 
-@pytest.mark.parametrize("rejected_status", ["invalid_fallback_used", "blocked_by_safety_audit"])
+@pytest.mark.parametrize("rejected_status", [
+    "invalid_fallback_used", "blocked_by_safety_audit", "timed_out", "generation_failed",
+])
 def test_card_the_validators_rejected_is_not_converted_again(rejected_status):
     # Production job ec326d04: the inline card was rejected inside finalize and
     # the identical conversion ran again for 4m34s before release.

@@ -722,7 +722,7 @@ def test_finalize_soft_blocking_warning_released_with_flags(monkeypatch: pytest.
 def test_finalize_low_risk_quality_warning_releases_with_flags(monkeypatch: pytest.MonkeyPatch):
     # An explicitly allowlisted low-risk quality flag does not hold the athlete.
     # The structured call has no mocked response, so it must fail cleanly and
-    # leave an auditable not_attempted marker instead of masking the release.
+    # leave an auditable generation_failed marker instead of masking the release.
     def _warn_review(**_):
         return {
             "status": "WARN",
@@ -745,7 +745,7 @@ def test_finalize_low_risk_quality_warning_releases_with_flags(monkeypatch: pyte
     assert result["status"] == "publishable_with_flags"
     assert result["plan_text"] == "# final plan"
     assert result["structured_plan"] is None
-    assert result["stage2_validator_report"]["structured_plan"]["status"] == "not_attempted"
+    assert result["stage2_validator_report"]["structured_plan"]["status"] == "generation_failed"
     assert result["stage2_validator_report"]["quality_review_flags"] == [
         {"code": "template_like_session_render", "severity": "blocker"}
     ]
@@ -998,7 +998,7 @@ def test_finalize_does_not_crash_when_structured_model_errors(
     assert result["plan_text"] == "# final plan"
     assert result["final_plan_text"] == "# final plan"
     assert result["structured_plan"] is None
-    assert result["stage2_validator_report"]["structured_plan"]["status"] == "not_attempted"
+    assert result["stage2_validator_report"]["structured_plan"]["status"] == "generation_failed"
 
 
 # ---------------------------------------------------------------------------

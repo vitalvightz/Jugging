@@ -26,8 +26,10 @@ def _effective_timeout(remaining_runtime_seconds: float | None) -> float | None:
 
 _OPENAI_QUOTA_ADMIN_ERROR = "OpenAI quota exceeded. Check API billing, credits, project budget, or organization limits."
 _OPENAI_QUOTA_ATHLETE_ERROR = "Generation is temporarily unavailable. Please try again later."
-# A model conversion of the final text already ran and validation rejected it.
-_MODEL_CARD_REJECTED_STATUSES = frozenset({"invalid_fallback_used", "blocked_by_safety_audit"})
+# A completed or failed conversion must not be repeated during the same job.
+_TERMINAL_CARD_ATTEMPT_STATUSES = frozenset({
+    "invalid_fallback_used", "blocked_by_safety_audit", "timed_out", "generation_failed",
+})
 
 
 async def finalize_stage2_with_timeout(
@@ -126,11 +128,9 @@ async def retry_structured_card_before_release(
     prior_report = final_result.get("stage2_validator_report")
     prior_card = prior_report.get("structured_plan") if isinstance(prior_report, dict) else None
     prior_status = str((prior_card or {}).get("status") or "not_attempted")
-    if prior_status in _MODEL_CARD_REJECTED_STATUSES:
-        # Stage 2 already converted this exact text and the validators rejected
-        # the card. Repeating the identical conversion is not a recovery, it is
-        # a second roll of the dice that cost 4-7 minutes in production; the
-        # athlete is served the validated deterministic card instead.
+    if prior_status in _TERMINAL_CARD_ATTEMPT_STATUSES:
+        # Conversion already ran, failed or timed out. Do not restart the same
+        # expensive operation before releasing the existing fallback.
         logger.info(
             "[jobs] generation:structured_card_retry_skipped prior_status=%s context=%s",
             prior_status,
