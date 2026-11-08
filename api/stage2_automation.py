@@ -1445,7 +1445,11 @@ class OpenAIStage2Automator:
         stage1_result: dict[str, Any],
         log_context: dict[str, str] | None = None,
     ) -> dict[str, Any]:
+        finalize_started = time.monotonic()
         package = build_stage2_package(stage1_result=stage1_result)
+        prepared_at = time.monotonic()
+        logger.info("[stage2] preparation_finished context=%s elapsed_seconds=%.3f",
+                    log_context or {}, prepared_at - finalize_started)
         preflight_findings = [
             finding
             for finding in (package.get("planner_preflight_findings") or [])
@@ -1502,7 +1506,7 @@ class OpenAIStage2Automator:
                 source=source,
                 log_context=log_context,
             )
-        except Stage2CallDeadlineError:
+        except Stage2CallDeadlineError as deadline_error:
             # A hung plan-text call is retried once. The whole-finalize cap in
             # api/generation/timeouts.py still bounds the job; a second hang
             # fails with the deadline error instead of waiting out that cap.
@@ -1516,6 +1520,11 @@ class OpenAIStage2Automator:
                 source=source,
                 log_context=log_context,
             )
+            # Keep the timed-out attempt visible even when recovery succeeds.
+            first_pass_cost = _merge_stage2_costs(deadline_error.stage2_cost, first_pass_cost)
+        model_finished_at = time.monotonic()
+        logger.info("[stage2] plan_model_finished context=%s elapsed_seconds=%.3f",
+                    log_context or {}, model_finished_at - prepared_at)
         from fightcamp.programme_fidelity import reconcile_authoritative_programme
         programme_reconciliation = reconcile_authoritative_programme(package["planning_brief"], first_pass_text)
         first_pass_text = programme_reconciliation["text"]
@@ -1754,6 +1763,9 @@ class OpenAIStage2Automator:
             source=source,
         )
 
+        validation_finished_at = time.monotonic()
+        logger.info("[stage2] validation_finished context=%s elapsed_seconds=%.3f",
+                    log_context or {}, validation_finished_at - model_finished_at)
         # Structured-plan conversion is triggered by the canonical state-machine
         # predicate (athlete-displayable plans only), not a hardcoded Stage 2
         # status. Any failure degrades to the plan_text fallback and is recorded
@@ -1778,6 +1790,15 @@ class OpenAIStage2Automator:
         # reflects total Stage 2 spend, not just the plan-text pass.
         result["stage2_cost"] = _merge_stage2_costs(plan_text_cost, *structured_costs)
         record_stage2_model_calls(result)
+        report = result.setdefault("stage2_validator_report", {})
+        report["stage2_timings"] = {
+            "preparation_seconds": prepared_at - finalize_started,
+            "plan_model_seconds": model_finished_at - prepared_at,
+            "validation_and_repair_seconds": validation_finished_at - model_finished_at,
+            "card_conversion_seconds": time.monotonic() - validation_finished_at,
+            "finalize_seconds": time.monotonic() - finalize_started,
+        }
+        logger.info("[stage2] timings context=%s timings=%s", log_context or {}, report["stage2_timings"])
         return result
 
     async def _attempt_structured_plan(
@@ -1910,6 +1931,7 @@ class OpenAIStage2Automator:
             response_format=json_format,
         )
         costs.append(first_cost)
+        card_validation_started = time.monotonic()
         first_json = parse_structured_json(first_text)
         if first_json is None:
             _annotate_call(first_cost, outcome="invalid_fallback_used")
@@ -1937,6 +1959,8 @@ class OpenAIStage2Automator:
             planning_brief=planning_brief,
             allow_salvage=not _structured_repair_enabled(),
         )
+        logger.info("[stage2] card_validation_finished context=%s attempt=structured_first elapsed_seconds=%.3f",
+                    log_context or {}, time.monotonic() - card_validation_started)
         _annotate_call(first_cost, outcome=first_outcome.status)
         # A safety-blocked card is terminal: it was schema-valid, so the repair
         # path would re-validate the same JSON and hit the same blocking
@@ -1972,6 +1996,7 @@ class OpenAIStage2Automator:
             response_format=json_format,
         )
         costs.append(repair_cost)
+        card_validation_started = time.monotonic()
         repaired_json = parse_structured_json(repaired_text)
         repaired_outcome = build_structured_plan_outcome(
             first_json,
@@ -1980,6 +2005,8 @@ class OpenAIStage2Automator:
             computed_support=computed_support,
             planning_brief=planning_brief,
         )
+        logger.info("[stage2] card_validation_finished context=%s attempt=structured_repair elapsed_seconds=%.3f",
+                    log_context or {}, time.monotonic() - card_validation_started)
         _annotate_call(repair_cost, outcome=repaired_outcome.status, reason=first_outcome.status)
         # Telemetry for the repair lever: did the second call actually rescue a
         # card the first pass could not produce? Aggregated over time this tells

@@ -324,6 +324,13 @@ def test_first_pass_pass_returns_ready_with_one_provider_call(
     assert result["stage2_status"] == "stage2_pass"
     assert result["stage2_attempt_count"] == 1
     assert result["stage2_retry_text"] == ""
+    timings = result["stage2_validator_report"]["stage2_timings"]
+    assert set(timings) == {
+        "preparation_seconds", "plan_model_seconds", "validation_and_repair_seconds",
+        "card_conversion_seconds", "finalize_seconds",
+    }
+    assert all(value >= 0 for value in timings.values())
+    assert timings["finalize_seconds"] >= timings["plan_model_seconds"]
 
 
 def test_first_pass_omits_max_output_tokens_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1352,3 +1359,30 @@ def test_merged_cost_sums_reasoning_and_elapsed_and_concatenates_calls() -> None
         {"stage2_reasoning_tokens": None}, {"stage2_reasoning_tokens": None}
     )
     assert unknown["stage2_reasoning_tokens"] is None
+
+
+def test_recovered_plan_preserves_deadline_attempt_telemetry(monkeypatch):
+    monkeypatch.setattr(stage2_module, "review_stage2_output", lambda **_: _review("PASS"))
+    monkeypatch.setattr(stage2_module, "_structured_plan_enabled", lambda: False)
+    labels = []
+
+    async def generate(self, prompt, *, attempt_label, **kwargs):
+        labels.append(attempt_label)
+        cost = stage2_module._build_stage2_cost(
+            "test-model", prompt=prompt, response=None, elapsed_seconds=2,
+            attempt_label=attempt_label, source="test",
+        )
+        if attempt_label == "first_pass":
+            raise stage2_module._with_stage2_cost(
+                stage2_module.Stage2CallDeadlineError("deadline"), cost,
+            )
+        return "# final plan", cost
+
+    monkeypatch.setattr(OpenAIStage2Automator, "_generate_text", generate)
+    result = asyncio.run(OpenAIStage2Automator(client=None, model="test-model").finalize(
+        stage1_result=_stage1_result(),
+    ))
+    assert labels == ["first_pass", "first_pass_retry"]
+    assert result["stage2_cost"]["stage2_elapsed_seconds"] == 4
+    assert len(result["stage2_cost"]["stage2_calls"]) == 2
+    assert result["final_plan_text"] == "# final plan"
