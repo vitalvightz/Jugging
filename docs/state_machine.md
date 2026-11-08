@@ -282,3 +282,69 @@ can_transition("generation_job", "running", "failed")
 
 Do not introduce scattered status sets or a second release authority in route
 handlers, workers, validators, renderers, or structured-card code.
+
+### Stage 2 latency diagnostics
+
+The generation milestone `stage2_model_call_started` surrounds the entire
+finalizer, not just the provider call. Likewise,
+`stage2_model_response_received` is emitted after finalization and a heartbeat
+write. Do not subtract model-call costs from that interval and attribute the
+remainder to provider latency.
+
+The validator report now retains `stage2_timings`: preparation, plan model
+(including a deadline retry), validation and deterministic repair, inline card
+conversion, total finalization, and (when applicable) pre-release card retry.
+Monotonic durations are seconds. Logs also record heartbeat and plan/result
+persistence durations. Model request logs distinguish stream opening from
+awaiting the final response. Conversion timing includes prompt construction,
+model calls, schema/faithfulness/safety checks and deterministic recovery.
+
+A held result can skip inline card conversion, then become
+`publishable_with_flags` under persistence's existing release override.
+The pre-release card gate handles that case. Its source
+`generation_card_retry` does not imply a previous card model request.
+Do not repeat a conversion whose card validators already rejected it.
+
+#### November 8, 2026 investigation
+
+Job `a0470cc7-145f-441e-8b3e-099b2100eb1c`, inspected against Main
+`13c89223`:
+
+- Created 12:55:50.617509; claimed 12:55:56.814784.
+- Finalizer wrapper milestone: 12:56:11.399748–13:02:59.894794
+  (408.495 seconds); recorded text call 46.73 seconds.
+- Card retry: 13:03:00.313825–13:05:07.783310 (127.469 seconds);
+  recorded card call 127.34 seconds.
+- Plan persistence: 13:05:08.398326–13:05:12.680194 (4.282 seconds).
+- Final-result persistence: 0.262 seconds; completed 13:05:13.819895.
+
+Saved final text and Stage 1 brief replayed locally with model calls mocked:
+0.337 seconds under cProfile before changes (including optional card preparation).
+This does not reproduce production network waits, process contention or provider
+SDK retries. It does not establish where the missing 361.765 seconds occurred.
+Historical worker logs and the deployed revision are still needed for that
+attribution; the job row alone cannot resolve it.
+
+The Anchor warning was a false positive: the open-plan weekday Tactical Review
+contained the explicit tactical-only/no-physical-load contract but the existing
+exception parsed only countdown sessions. The narrow exception now recognizes
+that format and still checks every occurrence for leaks outside tactical review.
+
+Synchronous heartbeat writes discarded their return value but requested the
+default full-row read-back, including the large Stage 1 payload. They now use
+the existing refresh=False option, as the periodic heartbeat already does.
+This removes one database read per synchronous heartbeat. Savings are
+network-dependent; neither this change nor the anchor fix has a measured
+production latency improvement. In particular, a 362-second improvement must
+not be claimed from the available evidence.
+
+Successful deadline recovery previously discarded the first failed request's
+cost telemetry. The failed and successful attempts are now merged. Thus an
+absence of failed attempts in older records is not conclusive proof that none
+occurred. This is a telemetry defect, not evidence that this job retried.
+The incident's successful call is labelled first_pass, whereas current deadline
+recovery uses first_pass_retry.
+
+Card validation logs separately time parsing and schema/faithfulness/safety
+validation for each model conversion attempt. No model, reasoning setting,
+safety policy, deterministic fallback or card repair gate was changed.
