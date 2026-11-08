@@ -282,3 +282,17 @@ can_transition("generation_job", "running", "failed")
 
 Do not introduce scattered status sets or a second release authority in route
 handlers, workers, validators, renderers, or structured-card code.
+
+### Enhanced-card attempt outcomes
+
+A conversion stopped by its wall-clock deadline records `timed_out`; other
+conversion exceptions record `generation_failed`. Both retain available failed
+call telemetry and release through the existing fallback. The pre-release card
+gate does not repeat these attempts during the same job. `not_attempted` remains
+reserved for conversions skipped before execution (including held plans).
+
+Stage 2 logs `model_first_output` once and `model_stream_timing` on completion,
+failure, timeout or cancellation. The summary includes stream-open, first-text
+and last-event offsets from request start, event count and time since the last
+event. Missing offsets mean the corresponding event was never observed.
+No prompts or output text are included in these timing logs.

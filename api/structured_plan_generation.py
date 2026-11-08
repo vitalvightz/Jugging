@@ -97,6 +97,8 @@ from .structured_plan_models import (
 # the plan is held for review, never published on the card's authority.
 StructuredPlanStatus = Literal[
     "not_attempted",
+    "timed_out",
+    "generation_failed",
     "valid",
     "repair_attempted_valid",
     "invalid_fallback_used",

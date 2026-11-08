@@ -93,6 +93,10 @@ class Stage2CallDeadlineError(Stage2AutomationError):
     """One model call exceeded its total wall-clock deadline."""
 
 
+class Stage2RequestTimeoutError(Stage2AutomationError):
+    """The provider SDK stopped a request on its HTTP timeout."""
+
+
 class Stage2AutomationUnavailableError(Stage2AutomationError):
     """Raised when Stage 2 automation is not configured for runtime use."""
 
@@ -192,11 +196,11 @@ def _stage2_call_deadline_seconds(attempt_label: str) -> float | None:
     hold the job until the whole-finalize cap. Successful plans complete every
     pass well inside these defaults: on GPT-6 Luna the plan-text call takes
     55-86s and the structured-card call 121-193s (production, Nov 2026), so
-    each default is roughly 2x the slowest observed call. A slower model
-    needs these raised via env. ``0``/``none`` disables.
+    the plan-text default remains 180s. Card calls allow 720s to accommodate
+    slower conversions. Environment overrides still apply; ``0``/``none`` disables.
     """
     if attempt_label.startswith("structured"):
-        return _env_deadline_seconds("UNLXCK_STAGE2_STRUCTURED_CALL_DEADLINE_SECONDS", 360.0)
+        return _env_deadline_seconds("UNLXCK_STAGE2_STRUCTURED_CALL_DEADLINE_SECONDS", 720.0)
     return _env_deadline_seconds("UNLXCK_STAGE2_CALL_DEADLINE_SECONDS", 180.0)
 
 
@@ -1301,6 +1305,11 @@ class OpenAIStage2Automator:
         call_cost: dict[str, Any] = {"attempt_label": attempt_label, "source": source}
         started = time.monotonic()
         request_phase = "opening_stream"
+        stream_open_seconds = None
+        first_output_seconds = None
+        last_event_seconds = None
+        event_count = 0
+        request_outcome = "failed"
 
         async def log_waiting() -> None:
             # This reports where we are waiting, never claims model progress.
@@ -1308,13 +1317,13 @@ class OpenAIStage2Automator:
             while True:
                 await asyncio.sleep(_MODEL_WAIT_LOG_INTERVAL_SECONDS)
                 logger.info(
-                    "[stage2] model_request_waiting job_id=%s attempt=%s model=%s phase=%s elapsed_seconds=%.3f",
+                    "[stage2] model_request_waiting job_id=%s attempt=%s model=%s phase=%s elapsed_seconds=%.3f last_event_seconds=%s event_count=%s",
                     context.get("job_id") or "unknown", attempt_label, self.model,
-                    request_phase, time.monotonic() - started,
+                    request_phase, time.monotonic() - started, last_event_seconds, event_count,
                 )
 
         async def consume_stream() -> Any:
-            nonlocal request_phase
+            nonlocal request_phase, stream_open_seconds, first_output_seconds, last_event_seconds, event_count
             # Stream instead of a single blocking create: the HTTP read timeout
             # then applies to the gap between events, not the whole generation,
             # so long responses stop tripping idle-connection timeouts.
@@ -1322,10 +1331,21 @@ class OpenAIStage2Automator:
             # Response object create() would have.
             async with self.client.responses.stream(**request) as stream:
                 request_phase = "awaiting_final_response"
+                stream_open_seconds = time.monotonic() - started
                 logger.info(
                     "[stage2] model_stream_opened job_id=%s attempt=%s model=%s elapsed_seconds=%.3f phase=awaiting_final_response",
                     context.get("job_id") or "unknown", attempt_label, self.model, time.monotonic() - started,
                 )
+                async for event in stream:
+                    event_count += 1
+                    last_event_seconds = time.monotonic() - started
+                    if event.type == "response.output_text.delta" and first_output_seconds is None:
+                        first_output_seconds = last_event_seconds
+                        request_phase = "receiving_output"
+                        logger.info(
+                            "[stage2] model_first_output job_id=%s attempt=%s elapsed_seconds=%.3f",
+                            context.get("job_id") or "unknown", attempt_label, first_output_seconds,
+                        )
                 return await stream.get_final_response()
 
         deadline_seconds = _stage2_call_deadline_seconds(attempt_label)
@@ -1337,7 +1357,9 @@ class OpenAIStage2Automator:
                 # Leaving the stream context closes the connection; the
                 # background response is not retrieved after this point.
                 response = await asyncio.wait_for(consume_stream(), timeout=deadline_seconds)
+            request_outcome = "completed"
         except asyncio.TimeoutError as exc:
+            request_outcome = "timed_out"
             elapsed = time.monotonic() - started
             logger.warning(
                 "[stage2] model_request_deadline_exceeded job_id=%s attempt=%s model=%s phase=%s elapsed_seconds=%.3f deadline_seconds=%s",
@@ -1353,6 +1375,7 @@ class OpenAIStage2Automator:
                 ),
             ) from exc
         except asyncio.CancelledError:
+            request_outcome = "cancelled"
             logger.warning(
                 "[stage2] model_request_cancelled job_id=%s attempt=%s model=%s elapsed_seconds=%.3f",
                 context.get("job_id") or "unknown", attempt_label, self.model, time.monotonic() - started,
@@ -1368,6 +1391,14 @@ class OpenAIStage2Automator:
                 elapsed_seconds=time.monotonic() - started,
                 **call_cost,
             )
+            # Import lazily, preserving from_env's graceful missing-SDK path.
+            from openai import APITimeoutError
+            if isinstance(exc, APITimeoutError):
+                request_outcome = "timed_out"
+                raise _with_stage2_cost(
+                    Stage2RequestTimeoutError("Stage 2 model request timed out."),
+                    failure_cost,
+                ) from exc
             if _is_quota_or_rate_limit_error(exc):
                 raise _with_stage2_cost(
                     Stage2AutomationError(
@@ -1387,6 +1418,15 @@ class OpenAIStage2Automator:
                 failure_cost,
             ) from exc
         finally:
+            elapsed = time.monotonic() - started
+            logger.info(
+                "[stage2] model_stream_timing job_id=%s attempt=%s outcome=%s phase=%s "
+                "elapsed_seconds=%.3f stream_open_seconds=%s first_output_seconds=%s "
+                "last_event_seconds=%s seconds_since_last_event=%s event_count=%s",
+                context.get("job_id") or "unknown", attempt_label, request_outcome, request_phase,
+                elapsed, stream_open_seconds, first_output_seconds, last_event_seconds,
+                elapsed - last_event_seconds if last_event_seconds is not None else None, event_count,
+            )
             wait_logger.cancel()
             with suppress(asyncio.CancelledError):
                 await wait_logger
@@ -1807,12 +1847,17 @@ class OpenAIStage2Automator:
                 log_context=log_context,
                 costs=costs,
             )
-        except Exception:  # never block the raw plan on structured failure
+        except Exception as exc:  # never block the raw plan on structured failure
+            failure_status = "timed_out" if isinstance(exc, (Stage2CallDeadlineError, Stage2RequestTimeoutError, TimeoutError)) else "generation_failed"
+            failed_cost = getattr(exc, "stage2_cost", None)
+            if failed_cost:
+                _annotate_call(failed_cost, outcome=failure_status)
+                costs.append(failed_cost)
             logger.exception("[stage2] structured_plan attempt failed; using raw fallback")
             # Preserve costs from any calls that did complete before the failure.
             return (
                 StructuredPlanOutcome(
-                    status="not_attempted",
+                    status=failure_status,
                     errors=["structured generation error (see server logs)"],
                 ),
                 costs,

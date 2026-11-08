@@ -3322,6 +3322,12 @@ class FakeOpenAIStream:
     async def __aexit__(self, *exc_info: object) -> None:
         return None
 
+    async def __aiter__(self):
+        # Drain/hang/raise like the underlying request, without invented events.
+        await self.get_final_response()
+        return
+        yield
+
     async def get_final_response(self) -> object:
         return self._response
 
