@@ -478,7 +478,6 @@ async def persist_plan_and_finalize(
     persistence timeout/failure the job is marked failed and we return early
     (the caller then falls through to its finally block, as before).
     """
-    persistence_started = time.monotonic()
     plan_row: dict[str, Any] | None = None
     previous_plan_row: dict[str, Any] | None = None
     emit_milestone(
@@ -641,9 +640,6 @@ async def persist_plan_and_finalize(
         "Saved plan row was created or updated.",
         plan_id=plan_id,
     )
-    plan_persisted_at = time.monotonic()
-    logger.info("[jobs] generation:plan_persistence_finished job_id=%s elapsed_seconds=%.3f",
-                job_id, plan_persisted_at - persistence_started)
     emit_milestone(
         "final_result_persisting",
         "Saving Stage 2 result",
@@ -687,8 +683,6 @@ async def persist_plan_and_finalize(
                 heartbeat_at=now_iso,
             )
         return
-    logger.info("[jobs] generation:result_persistence_finished job_id=%s elapsed_seconds=%.3f",
-                job_id, time.monotonic() - plan_persisted_at)
     emit_milestone(
         "final_result_persisted",
         "Stage 2 result saved",

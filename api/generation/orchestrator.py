@@ -251,16 +251,12 @@ async def run_generation_job(
             )
 
     async def _touch_heartbeat() -> None:
-        started = time.monotonic()
         with suppress(Exception):
             await asyncio.to_thread(
                 store.update_generation_job,
                 job_id,
-                refresh=False,
                 heartbeat_at=utc_now_iso(),
             )
-        logger.info("[jobs] generation:heartbeat_finished job_id=%s elapsed_seconds=%.3f",
-                    job_id, time.monotonic() - started)
 
     async def _to_thread_with_heartbeat(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         await _touch_heartbeat()

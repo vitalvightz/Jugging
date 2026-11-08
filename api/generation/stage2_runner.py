@@ -151,7 +151,6 @@ async def retry_structured_card_before_release(
     )
     report = candidate.get("stage2_validator_report")
     candidate["stage2_validator_report"] = dict(report) if isinstance(report, dict) else {}
-    started = time.monotonic()
     try:
         timeout_seconds = _effective_timeout(remaining_runtime_seconds)
         if timeout_seconds is not None and timeout_seconds <= 0:
@@ -169,10 +168,9 @@ async def retry_structured_card_before_release(
             retried, costs = await asyncio.wait_for(attempt, timeout=timeout_seconds)
     except Exception as exc:  # noqa: BLE001 - the text fallback must always release
         logger.warning(
-            "[jobs] generation:structured_card_retry_failed exc_type=%s context=%s elapsed_seconds=%.3f",
+            "[jobs] generation:structured_card_retry_failed exc_type=%s context=%s",
             type(exc).__name__,
             log_context or {},
-            time.monotonic() - started,
         )
         emit_milestone(
             "structured_card_retry_finished",
@@ -181,10 +179,6 @@ async def retry_structured_card_before_release(
         )
         return final_result
 
-    report = retried.setdefault("stage2_validator_report", {})
-    report.setdefault("stage2_timings", {})["card_retry_seconds"] = time.monotonic() - started
-    logger.info("[jobs] generation:structured_card_retry_timing context=%s elapsed_seconds=%.3f",
-                log_context or {}, time.monotonic() - started)
     # Only the card is decided here. The release status stays persistence's call.
     retried["status"] = final_result.get("status")
     if costs:

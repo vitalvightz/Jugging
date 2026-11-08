@@ -1,5 +1,3 @@
-import pytest
-
 from fightcamp.stage2_validator_postprocess import postprocess_stage2_validator_report
 
 
@@ -206,20 +204,3 @@ D-12 (Monday): Neural speed touch.
     assert finding["code"] == "missing_week_session_role"
     assert finding["actual_session_count"] == 1
     assert finding["expected_session_count"] == 2
-
-
-@pytest.mark.parametrize("outside", [False, True])
-def test_open_plan_tactical_review_anchor_requires_all_occurrences_in_no_load_section(outside):
-    line = "Anchor: Repeated beats random."
-    text = """### Monday Tactical Review
-- Opponent Pattern Scan: 10 minutes, tactical review only. No physical load.
-  Anchor: Repeated beats random.
-## Coach Notes
-"""
-    if outside:
-        text += line
-    report = postprocess_stage2_validator_report(
-        planning_brief={}, final_plan_text=text,
-        validator_report={"warnings": [_anchor_leak_warning(line)]},
-    )
-    assert bool(report["warnings"]) == outside

@@ -358,26 +358,6 @@ def _is_legitimate_tactical_anchor(final_plan_text: str, line: str) -> bool:
             1 for value in (block.get("lines") or []) if _norm_anchor(value) == target
         )
 
-    # Open plans use weekday headings rather than D-X session cards. Only
-    # recognize the explicit tactical-review heading and no-load contract;
-    # every occurrence outside these sections must still trigger the warning.
-    open_section: list[str] = []
-    is_open_tactical = False
-    for raw_line in [*str(final_plan_text or "").splitlines(), "## End"]:
-        if re.match(r"^#{1,6}\s", raw_line):
-            if is_open_tactical and any(
-                "tactical review only" in _norm(value) and "no physical load" in _norm(value)
-                for value in open_section
-            ):
-                tactical_occurrences += sum(_norm_anchor(value) == target for value in open_section)
-            is_open_tactical = bool(re.fullmatch(
-                r"###\s+(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday) Tactical Review\s*",
-                raw_line, re.IGNORECASE,
-            ))
-            open_section = []
-        elif is_open_tactical:
-            open_section.append(raw_line)
-
     return tactical_occurrences == total_occurrences
 
 
