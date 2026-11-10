@@ -53,7 +53,7 @@ for (const training of [false, true]) for (const width of [320, 390, 1280]) test
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await expect(page.getByRole("link", {name: "View Full Plan", exact: true})).toHaveAttribute("href", `/plans/${id}`);
   await expect(page.getByRole("link", {name: "View plan", exact: true})).toHaveCount(0);
-  // Icons must sit beside readable words at phone widths, never above them.
+  // Status icons stay beside text; navigation keeps its original vertical layout.
   if (width <= 390) {
     const aligned = await page.locator('[class*="tileLink"]').evaluateAll(tiles => tiles.every(tile => {
       const icon = tile.querySelector('[class*="tileIcon"]')?.getBoundingClientRect();
@@ -64,9 +64,10 @@ for (const training of [false, true]) for (const width of [320, 390, 1280]) test
     const navAligned = await page.locator('.mobile-tab-bar-item').evaluateAll(items => items.every(item => {
       const icon = item.querySelector('.mobile-tab-bar-icon')!.getBoundingClientRect();
       const label = item.querySelector('.mobile-tab-bar-label')!.getBoundingClientRect();
-      return icon.right <= label.left && icon.top < label.bottom && icon.bottom > label.top && label.right <= item.getBoundingClientRect().right;
+      return icon.bottom <= label.top && Math.abs((icon.left + icon.right) / 2 - (label.left + label.right) / 2) < 1;
     }));
     expect(navAligned).toBe(true);
+    expect((await page.locator(".mobile-tab-bar").boundingBox())!.height).toBe(56);
   }
   await page.screenshot({path: `/tmp/programme-arrival-${training ? "six-week-camp" : "rehab"}-${width}.png`});
   if (training) {
