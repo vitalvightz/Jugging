@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { ExerciseMediaProvider } from "@/components/exercise-demo";
 import { useFadeThrough } from "@/components/fade-through";
@@ -40,8 +40,10 @@ import { useTodayExerciseLogs } from "@/components/today/use-exercise-logs";
 import { useTrainingFocus } from "@/components/today/use-training-focus";
 import { announceTrainingFocusChanged, exerciseCues, focusSessionFor, relevantFocusItem, upcomingSport } from "@/lib/training-focus";
 import { useToast } from "@/components/toast-provider";
-import { dismissTrainingFocus, submitTodaySessionCompletion } from "@/lib/api";
-import { offerPushNotifications } from "@/lib/push-prompt";
+import { dismissTrainingFocus, getPushSettings, submitTodaySessionCompletion } from "@/lib/api";
+import { parseNotificationPreferences, updateNotificationPreferences } from "@/lib/notification-preferences";
+import { isPushSupported, subscribeToPushNotifications } from "@/lib/push";
+import { offerInstallPrompt, offerPushNotifications } from "@/lib/push-prompt";
 import { timerAudio } from "@/lib/session-timer/audio";
 import {
   CONTACT_FORMAT_MEMORY_KEY,
@@ -309,6 +311,99 @@ function getSessionRelationCopy(
  * The recovery/mobility-only card shown in place of the scheduled blocks when
  * today is a STOP — Today never displays hard combat as available under a stop.
  */
+const TRAINING_TIME_ROW_DISMISSED_KEY = "unlxck:training-time-row:dismissed";
+const DEFAULT_TRAINING_TIME = "18:00";
+
+type ReminderPush = { public_key: string; registration: ServiceWorkerRegistration } | "subscribed" | "unavailable";
+
+/**
+ * One inline row before the first sessions: pick a training time and turn on
+ * the reminder that already exists (a push 30 minutes before, on days with a
+ * session). It saves the existing `preferred_training_time` preference and,
+ * when the device can, subscribes in the same tap. Gone once a time is saved
+ * (Settings changes it) or dismissed on this device; never a modal.
+ */
+function TrainingTimeReminder({ token }: { token: string }) {
+  const { showToast } = useToast();
+  const [offer, setOffer] = useState<{ push: ReminderPush } | null>(null);
+  const [time, setTime] = useState(DEFAULT_TRAINING_TIME);
+  const [busy, setBusy] = useState(false);
+  const working = useRef(false);
+  const fieldId = useId();
+
+  useEffect(() => {
+    let cancelled = false;
+    try {
+      if (window.localStorage.getItem(TRAINING_TIME_ROW_DISMISSED_KEY)) return;
+    } catch { /* Device storage is optional. */ }
+    void (async () => {
+      try {
+        const settings = await getPushSettings(token);
+        const preferences = parseNotificationPreferences((settings as { preferences?: unknown }).preferences);
+        if (cancelled || preferences.preferred_training_time) return;
+        // Prepared now so the permission request keeps the tap's activation.
+        let push: ReminderPush = "unavailable";
+        if (settings.enabled && settings.public_key && preferences.push_enabled && isPushSupported()
+          && Notification.permission !== "denied") {
+          const registration = await navigator.serviceWorker.getRegistration();
+          const existing = registration?.active ? await registration.pushManager.getSubscription() : null;
+          push = existing && Notification.permission === "granted" ? "subscribed"
+            : registration?.active ? { public_key: settings.public_key, registration } : "unavailable";
+        }
+        if (!cancelled) setOffer({ push });
+      } catch { /* Optional: a failed read shows nothing rather than a broken row. */ }
+    })();
+    return () => { cancelled = true; };
+  }, [token]);
+
+  if (!offer) return null;
+
+  function dismiss() {
+    try { window.localStorage.setItem(TRAINING_TIME_ROW_DISMISSED_KEY, "1"); } catch { /* Hidden for this visit. */ }
+    setOffer(null);
+  }
+
+  async function save() {
+    if (!offer || working.current || !time) return;
+    working.current = true;
+    setBusy(true);
+    // Subscribing first, synchronously inside the tap: iOS and Safari only
+    // allow the permission request while the user activation is fresh.
+    const subscribing = typeof offer.push === "object"
+      ? subscribeToPushNotifications(token, offer.push).then(() => true, () => false)
+      : Promise.resolve(offer.push === "subscribed");
+    try {
+      await updateNotificationPreferences(token, { preferred_training_time: time });
+      const reminded = await subscribing;
+      if (!reminded && offer.push === "unavailable") offerInstallPrompt();
+      showToast(reminded
+        ? `Reminder set: 30 min before ${time} on training days.`
+        : `Training time saved: ${time}. Turn on notifications in Settings for the reminder.`,
+      { tone: reminded ? "success" : "info" });
+      setOffer(null);
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : "Couldn't save your training time.", { tone: "error" });
+    } finally {
+      working.current = false;
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="today-training-time" aria-label="Training time reminder"
+      onSubmit={(event) => { event.preventDefault(); void save(); }}>
+      <label className="today-training-time-label" htmlFor={fieldId}>Train at</label>
+      <input id={fieldId} className="today-training-time-input" type="time" value={time} required
+        disabled={busy} onChange={(event) => setTime(event.target.value)} />
+      <button type="submit" className="secondary-button today-training-time-save" disabled={busy || !time}>
+        {busy ? "Saving…" : "Remind me"}
+      </button>
+      <button type="button" className="today-training-time-dismiss" aria-label="Dismiss training time reminder"
+        disabled={busy} onClick={dismiss}>×</button>
+    </form>
+  );
+}
+
 function SafeSessionCard({ view }: { view: SafeSessionView }) {
   return (
     <div className="today-safe-session" data-tone="red">
@@ -1490,6 +1585,9 @@ export function TodaySessionPanel({
             </button>
           </div>
         ) : null}
+        {token && !safeSession && !rehabOnlyPrescription
+          && ((canCompleteSession && status === "not_started") || isSessionPreview)
+          ? <TrainingTimeReminder token={token} /> : null}
         {safeSession ? <SafeSessionCard view={safeSession} /> : null}
         {showStructuredBlocks ? (
           // A previewed day is read on its own screen; today's work stays here.

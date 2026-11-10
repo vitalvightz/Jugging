@@ -7,7 +7,6 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { cancelGenerationJob, retryGenerationJob } from "@/lib/api";
 import { formatGenerationElapsedLabel, formatJobElapsedLabel } from "@/lib/generation-elapsed";
 import { humanizeGenerationError } from "@/lib/generation-failure";
-import { offerInstallPrompt } from "@/lib/push-prompt";
 import { useAppSession } from "./auth-provider";
 import { useGenerationStatus } from "./generation-status-provider";
 
@@ -467,14 +466,9 @@ export function GlobalGenerationStatus() {
     return () => window.clearInterval(interval);
   }, [isElapsedRunning]);
 
-  const isAthlete = me?.profile.role === "athlete";
-  const offeredPlanRef = useRef<string | null>(null);
-  useEffect(() => {
-    // A plan that finishes in the background is the same value moment as /generate.
-    if (!isAthlete || phase !== "completed" || !planId || offeredPlanRef.current === planId) return;
-    offeredPlanRef.current = planId;
-    offerInstallPrompt();
-  }, [isAthlete, phase, planId]);
+  // Install guidance is offered after the first saved session (see
+  // offerPushNotifications), not when a plan finishes, so it never stands
+  // between a new plan and its first session.
 
   useEffect(() => {
     if (previousPhaseRef.current !== "completed" && phase === "completed") {
