@@ -100,7 +100,7 @@ def test_pressure_fighter_hybrid_stance_stage2_handoff_sanitizes_raw_planning_br
     )
 
     packet = _json_section(handoff, "FINALIZER PACKET")
-    athlete_profile = _json_section(handoff, "ATHLETE PROFILE")
+    athlete_profile = {**packet["athlete_model"], **_json_section(handoff, "ATHLETE PROFILE")}
 
     assert planning_brief["athlete_snapshot"]["tactical_styles"] == [
         "pressure fighter",

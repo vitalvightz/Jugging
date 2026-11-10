@@ -22,7 +22,7 @@ test("saved paths survive landing and a saved plan still takes priority", () => 
   const me = account(); me.profile.starting_path = "tracking_first";
   assert.equal(getAuthenticatedLandingHref(me), "/");
   me.latest_plan = { plan_id: "plan-9" } as NonNullable<MeResponse["latest_plan"]>;
-  assert.equal(getAuthenticatedLandingHref(me), "/plans/plan-9");
+  assert.equal(getAuthenticatedLandingHref(me), "/today");
   me.latest_plan = null; me.profile.starting_path = "plan_first";
   assert.equal(getAuthenticatedLandingHref(me), "/quick-build");
 });

@@ -1,5 +1,7 @@
-/** A saved workout (or, for install, a newly generated plan) is the value
- * moment for the one-time device opt-ins. */
+/** A saved workout is the value moment for the one-time device opt-ins:
+ * install guidance first, then notifications on a later visit. A newly
+ * generated plan no longer offers install, so nothing interrupts the path
+ * from a new plan into its first session. */
 export const PUSH_PROMPT_EVENT = "unlxck:session-saved";
 /** Dispatched first; the install prompt cancels it when it takes the moment. */
 export const INSTALL_PROMPT_EVENT = "unlxck:install-offer";

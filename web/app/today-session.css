@@ -845,3 +845,148 @@ html[data-theme="light"] .today-segment.today-segment-chosen:hover:not(.today-se
   align-items: center;
   min-height: 44px;
 }
+
+/* Training time + reminder: a small utility row under the session's actions,
+   never another call to action. Everything stays on one line on a phone. */
+.today-training-time {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 4px 0 0;
+  padding: 2px 4px 2px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+}
+.today-training-time > .today-tool-icon { flex: none; color: var(--text-muted); }
+.today-training-time-label {
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  white-space: nowrap;
+}
+.today-training-time-input {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 7.5em;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-btn);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.today-training-time-input:focus-visible { outline: 2px solid var(--border-active); outline-offset: 2px; }
+.today-session-card .today-training-time-save {
+  width: auto;
+  margin-left: auto;
+  padding-inline: 12px;
+  color: var(--text-primary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.today-training-time-dismiss {
+  min-width: 36px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.today-training-time-dismiss:hover { color: var(--text-secondary); }
+.today-training-time-note {
+  flex-basis: 100%;
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+/* -- Compact tray: one lead action, everything else quieter ---------------- */
+/* A second start (the session beside the combat lead) is a smaller secondary. */
+.today-session-card .today-action-tray > .secondary-button {
+  width: 100%;
+  min-height: 44px;
+  border-color: var(--border-subtle);
+  background: transparent;
+  font-size: var(--type-body);
+  font-weight: 500;
+}
+.today-session-card .today-session-actions.today-action-tray { gap: 8px; }
+/* Free timer and Skip session share one short row. */
+.today-session-card .today-action-tools {
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: 4px;
+  padding-top: 4px;
+}
+.today-session-card .today-action-tools > .today-tool-button,
+.today-session-card .today-action-tools > .today-tool-link {
+  flex: 1 1 0;
+  min-height: 44px;
+  justify-content: center;
+}
+.today-session-card .today-action-tools > .today-tool-link { padding-inline: 8px; }
+
+/* Week intent sits tight under the actions instead of opening a new section. */
+.today-session-card .today-open-week-note { gap: 6px; line-height: 1.4; }
+
+/* Technical / light-combat note on Today: one compact line-pair, the full
+   explanation stays behind its (i). */
+.today-session-card .cm-day-context-contact {
+  margin-bottom: 8px;
+  padding: 8px 12px;
+}
+.today-session-card .cm-day-context-contact .cm-light-technical {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+}
+.today-session-card .cm-day-context-contact .cm-light-technical-head { gap: 6px; }
+.today-session-card .cm-day-context-contact .sp-today-note {
+  flex: 1 1 180px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* Compact daily readiness; scoped so clinical injury forms keep their layout. */
+.today-page .today-checkin-card { padding: 14px 16px; gap: 12px; }
+.today-checkin-card .today-card-head .kicker { color: var(--text-secondary); }
+.today-page .today-checkin-card h2 { font-size: clamp(18px, 4.5vw, 22px); line-height: 1.2; }
+.today-page .today-checkin-form { gap: 10px; }
+.today-checkin-card .today-field-label { margin: 0; }
+.today-checkin-card .today-segment-row { gap: 6px; }
+.today-page .today-checkin-form .today-segment { min-height: 44px; padding: 6px 8px; font-size: 14px; }
+.today-checkin-card .today-segment:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 3px; }
+.today-checkin-card .today-red-flags { padding: 0 10px; }
+.today-checkin-card .today-red-flags summary { min-height: 44px; align-content: center; font-size: 14px; }
+.today-checkin-card .today-red-flags[open] { padding-bottom: 10px; }
+.today-checkin-card .today-flag-grid { gap: 6px; padding-top: 8px; }
+.today-checkin-card .today-flag-option { min-height: 44px; padding: 6px 8px; }
+.today-checkin-card .today-primary-action,
+html[data-theme="light"] .today-checkin-card .today-primary-action { min-height: 44px; padding: 8px 14px; background: var(--bg-surface-alt); border: 1px solid var(--border-strong); color: var(--text-primary); box-shadow: none; font-size: 14px; }
+.today-checkin-card .today-primary-action:hover:not(:disabled),
+html[data-theme="light"] .today-checkin-card .today-primary-action:hover:not(:disabled) { background: var(--bg-stat); box-shadow: none; }
+
+/* Three utilities share a row by label width, so Sparring rounds never wraps. */
+.today-session-card .today-action-tools > .today-tool-button,
+.today-session-card .today-action-tools > .today-tool-link {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding-inline: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.today-session-card .today-action-tools .today-tool-icon { flex: 0 0 16px; width: 16px; height: 16px; }
+@media (max-width: 360px) {
+  .today-session-card .today-action-tools > .today-tool-button,
+  .today-session-card .today-action-tools > .today-tool-link { gap: 3px; padding-inline: 2px; font-size: 11px; }
+  .today-session-card .today-action-tools .today-tool-icon { flex-basis: 14px; width: 14px; height: 14px; }
+}

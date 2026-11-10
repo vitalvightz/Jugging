@@ -23,8 +23,10 @@ export function needsStartingPath(me: MeResponse | null): boolean {
  * have one, otherwise their saved starting experience.
  */
 export function getAthleteWorkspaceHref(me: MeResponse | null): string {
+  // An athlete with a plan lands on Today: their next action, not the
+  // programme. The full plan stays one tap away from there.
   if (me?.latest_plan?.plan_id) {
-    return `/plans/${me.latest_plan.plan_id}`;
+    return "/today";
   }
 
   // Tracking athletes keep the same Home, filled from what they log.

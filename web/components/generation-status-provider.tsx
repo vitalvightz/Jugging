@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from "react";
-import { getActiveGenerationJob, getGenerationJob, getLatestGenerationJob, isRetryableApiFailure } from "@/lib/api";
+import { getActivePlan, getActiveGenerationJob, getGenerationJob, getLatestGenerationJob, isRetryableApiFailure } from "@/lib/api";
 import {
   isPreStartStaleGenerationJob,
   resolveFailedJobWithSavedPlan,
@@ -12,6 +12,7 @@ import {
   resolveGenerationEndedAtMs,
   subscribeGenerationTerminalJob,
 } from "@/lib/generation-terminal-event";
+import { offerProgrammeArrival } from "@/lib/programme-arrival";
 import type { GenerationJobResponse, GenerationJobStatus } from "@/lib/types";
 
 export type GlobalGenerationPhase = "queued" | "running" | "finalizing" | "completed" | "failed" | null;
@@ -490,6 +491,18 @@ export function GenerationStatusProvider({ children, token }: GenerationStatusPr
         try {
           const latest = await getLatestGenerationJob(token);
           if (sequence !== checkSequenceRef.current || !latestTokenRef.current) return;
+          // A reload may land after the job finished, with no active job left.
+          // Only recover a recent completion, never introduce historical plans.
+          const terminal = latest ? resolveTerminalGenerationView(latest, Date.now()) : null;
+          const completionPlanId = latest ? resolveTerminalJobPlanId(latest) : null;
+          const completedAt = Date.parse(latest?.completed_at || latest?.updated_at || "");
+          const age = Number.isFinite(completedAt) ? Date.now() - completedAt : Infinity;
+          if (terminal?.terminalStatus === "completed" && completionPlanId && !terminal.requiresAdminResume
+            && age >= 0 && age < 5 * 60 * 1000) {
+            const active = await getActivePlan(token);
+            if (sequence !== checkSequenceRef.current || !latestTokenRef.current) return;
+            if (active?.plan_id === completionPlanId) offerProgrammeArrival(completionPlanId);
+          }
           setLatestJob(shouldRetainLatestJob(latest) ? latest : null);
         } catch {
           setLatestJob(null);

@@ -1,10 +1,13 @@
 "use client";
 
+import { useSeenOnce } from "@/components/once-hint";
 import { Collapse } from "@/components/today/collapse";
 
 import Link from "next/link";
 import { TrainingHabitLog } from "@/components/training-habit-log";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ARRIVING_PLAN_PARAM } from "@/lib/generation-status-guards";
+import { hasProgrammeArrival, consumeProgrammeArrival, PROGRAMME_ARRIVAL_EVENT, programmeArrivalHeadline } from "@/lib/programme-arrival";
 import styles from "./today-screen.module.css";
 
 import { useAppSession } from "@/components/auth-provider";
@@ -38,6 +41,10 @@ import {
   withoutInjuryTrackingReminder,
 } from "@/lib/today-authoritative";
 import type { TodayCompletionStatus } from "@/lib/types";
+
+// Same window Plan Detail allows a just-saved plan (5 reads, 1.5s apart).
+const ARRIVAL_MAX_REREADS = 4;
+const ARRIVAL_REREAD_DELAY_MS = 1500;
 
 function TodayLoadingState() {
   return (
@@ -188,7 +195,7 @@ function TodayReadinessStrip({
       )}
       {hasPlan ? (
         <StatusTile
-          label="Today’s session"
+          label="Session"
           value={SESSION_TILE_VALUE[completionStatus] ?? getCompletionLabel(completionStatus)}
           modified={completionStatus === "modified"}
           tone={sessionTone}
@@ -219,6 +226,7 @@ function TodayReadinessStrip({
 }
 
 export function TodayScreen() {
+  const [, dismissPlanHint] = useSeenOnce("discovery-full-plan-seen");
   const { session, me } = useAppSession();
   const token = session?.access_token ?? null;
   const {
@@ -267,7 +275,69 @@ export function TodayScreen() {
     [exerciseMedia, state?.exercise_media],
   );
 
-  if (isLoading) {
+  // Arriving from a just-built plan (?plan=<id>): the saved plan can briefly
+  // lag its completion event. Re-read a few times instead of showing a
+  // plan-free Today, then fall back to the plan page, which has its own retry.
+  const [arrivingPlanId] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get(ARRIVING_PLAN_PARAM));
+  const [offeredPlanId, setOfferedPlanId] = useState<string | null>(null);
+  const activeArrivalId = state?.active_plan?.id ?? null;
+  useEffect(() => {
+    const check = () => {
+      if (activeArrivalId && hasProgrammeArrival(activeArrivalId)) setOfferedPlanId(activeArrivalId);
+    };
+    const onCompletion = () => { check(); void refresh(); };
+    check();
+    window.addEventListener(PROGRAMME_ARRIVAL_EVENT, onCompletion);
+    return () => window.removeEventListener(PROGRAMME_ARRIVAL_EVENT, onCompletion);
+  }, [activeArrivalId, refresh]);
+  const arrivalConfirmed = useRef<string | null>(null);
+  const [arrivalAction, setArrivalAction] = useState<HTMLButtonElement | null>(null);
+  const arrivalWeeks = structuredPlan?.weeks?.length ?? 0;
+  const arrivalMetadata = programmeArrivalHeadline(arrivalWeeks, openOngoing,
+    structuredPlan?.plan_metadata?.sport, structuredPlan?.athlete_context?.sport_profile);
+  const showProgrammeArrival = Boolean(offeredPlanId && offeredPlanId === state?.active_plan?.id
+    && !isLoading && !error && !presentationPending && structuredPlan && arrivalMetadata);
+  useEffect(() => {
+    if (!showProgrammeArrival || !offeredPlanId) return;
+    // Effects run after the matching plan's summary is committed to the DOM.
+    if (arrivalConfirmed.current !== offeredPlanId && consumeProgrammeArrival(offeredPlanId)) arrivalConfirmed.current = offeredPlanId;
+    const sessionPanel = document.getElementById("today-session");
+    const updateAction = () => {
+      const action = Array.from(sessionPanel?.querySelectorAll<HTMLButtonElement>(".today-session-actions button.cta") ?? [])
+        .find(button => !button.disabled && /^(start|resume)\b/i.test(button.textContent?.trim() ?? ""));
+      setArrivalAction(action ?? null);
+    };
+    // The session owns its controls (including local timer/resume state).
+    const observer = new window.MutationObserver(updateAction);
+    if (sessionPanel) observer.observe(sessionPanel, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled"] });
+    const frame = window.requestAnimationFrame(updateAction);
+    return () => { observer.disconnect(); window.cancelAnimationFrame(frame); };
+  }, [showProgrammeArrival, offeredPlanId, state, presentationPending]);
+  const arrivalReads = useRef(0);
+  const awaitingArrivingPlan = Boolean(arrivingPlanId && state && state.active_plan?.id !== arrivingPlanId);
+  useEffect(() => {
+    if (!arrivingPlanId || !state || isRefreshing) return;
+    if (state.active_plan?.id === arrivingPlanId) {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has(ARRIVING_PLAN_PARAM)) {
+        params.delete(ARRIVING_PLAN_PARAM);
+        const query = params.toString();
+        window.history.replaceState(window.history.state, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
+      }
+      return;
+    }
+    if (arrivalReads.current >= ARRIVAL_MAX_REREADS) {
+      // Rare fallback; a full load keeps Today free of a router dependency.
+      window.location.replace(`/plans/${encodeURIComponent(arrivingPlanId)}`);
+      return;
+    }
+    arrivalReads.current += 1;
+    const timer = window.setTimeout(() => void refresh(), ARRIVAL_REREAD_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [arrivingPlanId, state, isRefreshing, refresh]);
+
+  if (isLoading || awaitingArrivingPlan) {
     return <TodayLoadingState />;
   }
   if (error && (!state || /unauthorized|forbidden|not authenticated/i.test(error))) {
@@ -391,9 +461,22 @@ export function TodayScreen() {
       <section className={`panel today-shell ${styles.command} ${styles.contentReveal}`}>
         <div className={styles.hero}>
           <div className="today-hero-copy">
-            <h1>Today</h1>
+            {showProgrammeArrival ? null : <h1>Today</h1>}
             {hasPlan ? (
-              <p className={styles.heroPhase}>{planTitle}{weekLabel}</p>
+              showProgrammeArrival ? (
+                <div className={styles.programmeArrival}>
+                  <p className={styles.arrivalTitle}><TileIcon name="check" ring />{openOngoing ? "Programme ready" : "Your camp is ready"}</p>
+                  <h1 className={styles.arrivalHeadline}>{arrivalMetadata}</h1>
+                  <div className={styles.arrivalLinks}>
+                    {arrivalAction ? <a className={`cta ${styles.arrivalStart}`} href="#today-session" onClick={event => {
+                      event.preventDefault();
+                      arrivalAction.scrollIntoView({ block: "center", behavior: "auto" });
+                      arrivalAction.focus({ preventScroll: true });
+                    }}>Go to Session</a> : null}
+                    <Link href={`/plans/${activePlan.id}`} onClick={dismissPlanHint}>View Full Plan <span aria-hidden="true">→</span></Link>
+                  </div>
+                </div>
+              ) : <p className={styles.heroPhase}>{planTitle}{weekLabel}</p>
             ) : (
               <p className={styles.heroIntro}>Your training, your record. Log coach-led or solo sessions.</p>
             )}
@@ -507,8 +590,8 @@ export function TodayScreen() {
               <span className={styles.chevron} aria-hidden="true" />
             </Link>
           )}
-          {hasPlan ? (
-            <Link href={`/plans/${activePlan.id}`} className={styles.quickAction}>
+          {hasPlan ? (showProgrammeArrival ? null :
+            <Link href={`/plans/${activePlan.id}`} className={styles.quickAction} onClick={dismissPlanHint}>
               <TileIcon name="plan" />
               View plan
               <span className={styles.chevron} aria-hidden="true" />

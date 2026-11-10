@@ -195,3 +195,85 @@ select count(*) eligible_athletes,
  count(*) filter (where c.enabled) opted_in,
  public.product_analytics_retention_health()->>'healthy' collection_healthy
 from eligible e left join public.product_analytics_preferences c on c.athlete_id=e.id;
+
+-- 8. Plan-to-training activation. One row per usable generated plan (a
+--    completed generation job linked to a ready/publishable plan), so the
+--    first-ever plan and later regenerations are measured separately:
+--    cohort = 'first_plan' when the athlete had no earlier usable plan (ready,
+--    publishable or since archived; failed builds don't count), 'regenerated'
+--    otherwise. Segments: fight = scheduled_fight (fight_date
+--    set) vs open_camp (no fight date); plan_source = the job's source
+--    (quick_build / self_serve / ...); starting_path = current saved profile
+--    value. Training intent itself is not captured; these are proxies.
+--    Every window starts at available_at: when the plan's generation job
+--    completed (the earliest completed job, so a retry never restarts the
+--    clock), falling back to plans.created_at only when no completion time
+--    exists. Metrics only count plans old enough for their window, so in-progress
+--    windows never read as failures. Session evidence is session_completions
+--    rows for that exact plan: an observed start (started_at) and a logged
+--    done/modified completion (completed_at). First scheduled session = the
+--    earliest structured-plan day on/after the available day that schedules at
+--    least one session; open (undated) plans have none and are reported as
+--    null there, not as misses. week1_return = a meaningful action on any
+--    later UTC day within 7 days of availability (generating is never one).
+with admin_emails(email) as (select unnest('{}'::text[])),
+eligible as (
+ select p.id, p.starting_path from public.profiles p
+ where p.role='athlete' and not p.analytics_excluded
+ and not exists(select 1 from public.product_analytics_excluded_emails x where x.email=lower(btrim(p.email)))
+ and not exists(select 1 from admin_emails a where a.email=lower(btrim(p.email)))
+), generated as (
+ select distinct on (pl.id) pl.id plan_id, pl.athlete_id, pl.created_at,
+  coalesce(j.completed_at, pl.created_at) available_at, pl.fight_date, pl.structured_plan,
+  coalesce(nullif(j.source,''),'unknown') plan_source, coalesce(e.starting_path,'unknown') starting_path,
+  case when exists(select 1 from public.plans prior where prior.athlete_id=pl.athlete_id
+   and prior.status in ('ready','publishable_with_flags','archived')
+   and (prior.created_at, prior.id) < (pl.created_at, pl.id)) then 'regenerated' else 'first_plan' end cohort
+ from public.plans pl
+ join eligible e on e.id=pl.athlete_id
+ join public.generation_jobs j on j.plan_id=pl.id and j.status='completed'
+ where pl.status in ('ready','publishable_with_flags')
+ order by pl.id, j.completed_at asc nulls last
+), facts as (
+ select g.*,
+  (select min(c.started_at) from public.session_completions c
+   where c.plan_id=g.plan_id and c.athlete_id=g.athlete_id and c.started_at>=g.available_at) first_start_at,
+  (select min(c.completed_at) from public.session_completions c
+   where c.plan_id=g.plan_id and c.athlete_id=g.athlete_id and c.status in ('done','modified')
+   and c.completed_at>=g.available_at) first_logged_at,
+  (select min((d->>'date')::date)
+   from jsonb_array_elements(case when jsonb_typeof(g.structured_plan->'weeks')='array' then g.structured_plan->'weeks' else '[]'::jsonb end) w,
+    jsonb_array_elements(case when jsonb_typeof(w->'days')='array' then w->'days' else '[]'::jsonb end) d
+   where (d->>'date') ~ '^\d{4}-\d{2}-\d{2}$'
+   and jsonb_typeof(d->'sessions')='array' and jsonb_array_length(d->'sessions')>0
+   and (d->>'date')::date>=(g.available_at at time zone 'UTC')::date) first_scheduled_day
+ from generated g
+), scored as (
+ select f.*,
+  f.available_at<now()-interval '48 hours' mature_48h,
+  f.available_at<now()-interval '8 days' mature_7d,
+  f.first_scheduled_day is not null and f.first_scheduled_day<(now() at time zone 'UTC')::date-1 scheduled_elapsed,
+  exists(select 1 from public.session_completions c where c.plan_id=f.plan_id and c.athlete_id=f.athlete_id
+   and c.training_day=f.first_scheduled_day and c.status in ('done','modified')) first_scheduled_completed,
+  exists(select 1 from public.product_activity a where a.athlete_id=f.athlete_id and a.meaningful
+   and (a.occurred_at at time zone 'UTC')::date>(f.available_at at time zone 'UTC')::date
+   and a.occurred_at<f.available_at+interval '7 days') week1_return
+ from facts f
+)
+select cohort,
+ case when fight_date is null then 'open_camp' else 'scheduled_fight' end fight,
+ plan_source, starting_path,
+ count(*) plans,
+ count(*) filter (where first_start_at is not null) first_session_started_ever,
+ count(*) filter (where mature_48h) plans_48h_mature,
+ count(*) filter (where mature_48h and first_start_at<available_at+interval '48 hours') started_within_48h,
+ count(*) filter (where mature_48h and first_logged_at<available_at+interval '48 hours') logged_within_48h,
+ count(*) filter (where scheduled_elapsed) dated_first_session_elapsed,
+ count(*) filter (where scheduled_elapsed and first_scheduled_completed) first_scheduled_session_completed,
+ count(*) filter (where mature_7d) plans_7d_mature,
+ count(*) filter (where mature_7d and week1_return) returned_within_7d,
+ round((percentile_cont(0.5) within group (order by extract(epoch from first_logged_at-available_at)/3600)
+  filter (where first_logged_at is not null))::numeric,1) median_hours_to_first_log
+from scored
+group by grouping sets ((cohort), (cohort, fight), (cohort, fight, plan_source, starting_path))
+order by cohort, fight nulls first, plan_source nulls first, starting_path nulls first;

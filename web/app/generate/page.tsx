@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { offerProgrammeArrival } from "@/lib/programme-arrival";
 import { RequireAuth } from "@/components/auth-guard";
 import { useAppSession } from "@/components/auth-provider";
-import { createGenerationJob, getActiveGenerationJob } from "@/lib/api";
+import { createGenerationJob, getActiveGenerationJob, getActivePlan } from "@/lib/api";
 import { COMPLETED_GENERATION_KEY, parseCompletedGeneration } from "@/lib/completed-generation";
 import { useGenerationController } from "@/lib/generation-controller";
 import { clearGenerationIntent, hasGenerationIntent } from "@/lib/generation-intent";
@@ -18,11 +19,12 @@ import {
 import {
   resolveGenerateAutoStartDecision,
   resolveMatchingPayloadGenerationAction,
+  resolvePostGenerationTarget,
 } from "@/lib/generation-status-guards";
 import { hydratePlanRequest } from "@/lib/onboarding";
 import { validatePerformanceFocusSelections } from "@/lib/performance-focus-cap";
 import { stableStringify } from "@/lib/stable-stringify";
-import { offerInstallPrompt } from "@/lib/push-prompt";
+import { clearSharedReads } from "@/lib/shared-reads";
 import { PremiumLoadingScreen } from "@/components/premium-loading-screen";
 import { PublicGenerationScreen } from "@/components/public-generation-screen";
 import { useFadeNavigate } from "@/components/fade-through";
@@ -117,23 +119,28 @@ export default function GeneratePage() {
       if (!planId) {
         return;
       }
-      // The new plan is the first value moment; the prompt opens on the plan page.
-      if (!isProtectedTriageOutcome) offerInstallPrompt();
-      const search = new URLSearchParams();
-      if (status === "review_required") {
-        search.set("review_required", "1");
-      }
-      if (recovered) {
-        search.set("recovered", "1");
-      }
-      if (requiresAdminResume) {
-        search.set("protected_triage", "1");
-        if (stage2Status) {
-          search.set("stage2_status", stage2Status);
+      // Install guidance waits for the first saved session (offerPushNotifications
+      // offers it first), so it never sits between the new plan and training.
+      const token = session?.access_token ?? null;
+      void (async () => {
+        // A first plan is activated as it is published. Read past any held
+        // result: only a fresh answer may send the athlete to Today.
+        let activePlanId: string | null = null;
+        if (token && !isProtectedTriageOutcome) {
+          try {
+            activePlanId = (await getActivePlan(token))?.plan_id ?? null;
+          } catch {
+            // Unknown active plan: the plan page is the safe destination.
+          }
         }
-      }
-      const nextPath = `/plans/${planId}${search.toString() ? `?${search.toString()}` : ""}`;
-      router.replace(nextPath);
+        // Today must not show a view read before this plan existed.
+        clearSharedReads();
+        const target = resolvePostGenerationTarget({
+          planId, activePlanId, status, recovered, requiresAdminResume, stage2Status,
+        });
+        if (target.startsWith("/today?")) offerProgrammeArrival(planId);
+        router.replace(target);
+      })();
     },
   });
 

@@ -6,7 +6,30 @@ import { GlobalGenerationStatus, getGenerationStatusTarget } from "./global-gene
 import { MobileTabBar } from "./mobile-tab-bar";
 import { useEffect, useRef, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { getActivePlan } from "@/lib/api";
+import { clearSharedReads } from "@/lib/shared-reads";
+import { offerProgrammeArrival } from "@/lib/programme-arrival";
 import { releaseOrphanedOverlayScroll } from "@/lib/overlay-scroll-lock";
+
+// Observe tracked completions independently of the generation page or destination.
+export function ProgrammeCompletionReceipt() {
+  const { me, session } = useAppSession();
+  const token = session?.access_token;
+  const { phase, planId, terminalStatus, requiresAdminResume } = useGenerationStatus();
+  useEffect(() => {
+    if (me?.profile.role !== "athlete" || !token || phase !== "completed" || !planId
+      || terminalStatus !== "completed" || requiresAdminResume) return;
+    let cancelled = false;
+    void getActivePlan(token).then(active => {
+      if (!cancelled && active?.plan_id === planId) {
+        clearSharedReads();
+        offerProgrammeArrival(planId);
+      }
+    }).catch(() => { /* Unknown activation must not offer an unrelated plan. */ });
+    return () => { cancelled = true; };
+  }, [me?.profile.role, token, phase, planId, terminalStatus, requiresAdminResume]);
+  return null;
+}
 
 function ApprovedGenerationHandoff() {
   const { me } = useAppSession();
@@ -66,6 +89,7 @@ export function GenerationStatusShell({ children }: GenerationStatusShellProps) 
 
   return (
     <GenerationStatusProvider token={token}>
+      <ProgrammeCompletionReceipt />
       <ApprovedGenerationHandoff />
       <OrphanedScrollLockGuard />
       {children}

@@ -52,18 +52,18 @@ test("the briefing is not a gate: a fresh sign-up goes straight to Quick Build",
   assert.equal(getAuthenticatedLandingHref(meFixture({})), "/quick-build");
 });
 
-test("an athlete with a plan lands on it, briefed or not", () => {
-  assert.equal(getAuthenticatedLandingHref(meFixture({ planId: "plan-9" })), "/plans/plan-9");
+test("an athlete with a plan lands on Today, briefed or not", () => {
+  assert.equal(getAuthenticatedLandingHref(meFixture({ planId: "plan-9" })), "/today");
   const acknowledged = meFixture({ planId: "plan-9", ack: "2026-08-06T09:00:00Z" });
-  assert.equal(getAuthenticatedLandingHref(acknowledged), "/plans/plan-9");
+  assert.equal(getAuthenticatedLandingHref(acknowledged), "/today");
 });
 
 test("the workspace for an athlete with no plan yet is Quick Build", () => {
   assert.equal(getAthleteWorkspaceHref(meFixture({})), "/quick-build");
 });
 
-test("acknowledging continues to the latest plan when one exists", () => {
-  assert.equal(getAthleteWorkspaceHref(meFixture({ planId: "plan-9" })), "/plans/plan-9");
+test("acknowledging continues to Today when a plan exists", () => {
+  assert.equal(getAthleteWorkspaceHref(meFixture({ planId: "plan-9" })), "/today");
 });
 
 test("role destinations still win over the trial gate", () => {

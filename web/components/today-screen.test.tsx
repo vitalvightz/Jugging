@@ -238,3 +238,98 @@ test("without consent a plan-free athlete is not asked for readiness data", asyn
     assert.match(container.querySelector('[aria-label="Today command status"]')?.textContent ?? "", /Readiness.*Not assessed/);
   } finally { await cleanup(); }
 });
+
+test("arriving from a new plan re-reads Today until that plan is active, then drops the param", async () => {
+  const originalFetch = globalThis.fetch;
+  const original = `${window.location.pathname}${window.location.search}`;
+  window.history.replaceState(null, "", "/today?plan=plan-new");
+  let todayReads = 0;
+  const lagging: TodayCommandView = {...NO_PLAN_STATE};
+  const ready: TodayCommandView = {...NO_PLAN_STATE, active_plan: {id: "plan-new", name: "Camp", phase: "GPP"}};
+  const json = (body: unknown) => new Response(JSON.stringify(body), {status: 200});
+  globalThis.fetch = (async (input: string) => {
+    if (String(input).endsWith("/api/today")) return json(++todayReads === 1 ? lagging : ready);
+    if (String(input).includes("/api/plans/")) return json({outputs: {}});
+    if (String(input).includes("/api/training/history")) return json({sessions: []});
+    return json({logs: [], pending: [], rehab_response_prompts: []});
+  }) as typeof fetch;
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => { root.render(<AppSessionContext.Provider value={{isReady: true,
+      isMeHydrated: true, hasTransientMeError: false, session: {access_token: "test-token"},
+      me: CONSENTED as never, previewAppearanceMode: () => {}, refreshMe: async () => {}, replaceMe: () => {},
+      signOut: async () => {}}}>
+      <ToastProvider><TodayScreen /></ToastProvider>
+    </AppSessionContext.Provider>); });
+    // The lagging read never surfaces as a plan-free Today.
+    assert.equal(todayReads, 1);
+    assert.ok(container.querySelector('[aria-label="Loading Today"]'));
+    assert.doesNotMatch(container.textContent ?? "", /Generate my S&C plan/);
+
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1700)); });
+    assert.equal(todayReads, 2);
+    assert.equal(container.querySelector('[aria-label="Loading Today"]'), null);
+    assert.match(container.textContent ?? "", /View plan/);
+    assert.equal(new URLSearchParams(window.location.search).get("plan"), null);
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+    globalThis.fetch = originalFetch;
+    window.history.replaceState(null, "", original);
+  }
+});
+
+for (const lateCompletion of [false, true]) test(`new active programme summary waits for metadata, consumes once, and preserves a rest day (late completion: ${lateCompletion})`, async () => {
+  const { offerProgrammeArrival, hasProgrammeArrival } = await import("@/lib/programme-arrival");
+  const originalFetch = globalThis.fetch;
+  window.localStorage.removeItem("unlxck:programme-arrival-seen:plan-new");
+  window.history.replaceState(null, "", "/today");
+  window.localStorage.removeItem("discovery-full-plan-seen");
+  if (!lateCompletion) offerProgrammeArrival("plan-new");
+  let release!: (value: Response) => void;
+  const detail = new Promise<Response>(resolve => { release = resolve; });
+  const state = {...NO_PLAN_STATE, active_plan: {id: "plan-new", name: "Camp", phase: "GPP", fight_date: "2026-12-01"}};
+  const json = (body: unknown) => new Response(JSON.stringify(body), {status: 200});
+  globalThis.fetch = (async (input: string) => {
+    if (String(input).endsWith("/api/today")) return json(state);
+    if (String(input).includes("/api/plans/")) return detail;
+    if (String(input).includes("/api/training/history")) return json({sessions: []});
+    return json({logs: [], pending: [], rehab_response_prompts: []});
+  }) as typeof fetch;
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  let root = createRoot(container);
+  const render = () => <AppSessionContext.Provider value={{isReady: true, isMeHydrated: true,
+    hasTransientMeError: false, session: {access_token: `arrival-token-${lateCompletion}`}, me: CONSENTED as never,
+    previewAppearanceMode: () => {}, refreshMe: async () => {}, replaceMe: () => {}, signOut: async () => {}}}>
+    <ToastProvider><TodayScreen /></ToastProvider></AppSessionContext.Provider>;
+  try {
+    await act(async () => { root.render(render()); });
+    if (lateCompletion) await act(async () => offerProgrammeArrival("plan-new"));
+    assert.equal(hasProgrammeArrival("plan-new"), true);
+    assert.doesNotMatch(container.textContent ?? "", /Your camp is ready/);
+    await act(async () => { release(json({outputs: {structured_plan: {
+      athlete_context: {sport_profile: "Boxing, 3 x 3 rounds; primary focus speed, with footwork as the main limiter..", experience_level: "Intermediate"},
+      weeks: [{week_index: 1, days: []}, {week_index: 2, days: []}],
+    }}})); });
+    assert.match(container.textContent ?? "", /Your camp is ready/);
+    assert.match(container.textContent ?? "", /2-week boxing camp/);
+    assert.equal(hasProgrammeArrival("plan-new"), false);
+    assert.doesNotMatch(container.textContent ?? "", /primary focus|limiter|Tap “View Full Plan”/);
+    assert.equal(container.querySelector('[aria-label="Dismiss full plan tip"]'), null);
+    assert.equal(container.querySelectorAll('a[href="/plans/plan-new"]').length, 1);
+    assert.doesNotMatch(container.textContent ?? "", /Go to Session/);
+    assert.match(container.textContent ?? "", /No plan session today/);
+    await act(async () => { root.unmount(); });
+    root = createRoot(container);
+    await act(async () => { root.render(render()); });
+    assert.doesNotMatch(container.textContent ?? "", /Your camp is ready/);
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove(); globalThis.fetch = originalFetch;
+    window.history.replaceState(null, "", "/today"); window.sessionStorage.clear();
+    window.localStorage.removeItem("discovery-full-plan-seen");
+  }
+});

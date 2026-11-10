@@ -248,3 +248,10 @@ html[data-app-surface="brand"] .app-safety-footer {
   bottom: auto;
   left: 0;
 }
+
+/* Preserve the original navigation, with a slightly shorter footprint. */
+@media (max-width: 720px) {
+  :root { --mobile-tab-bar-height: 56px; }
+  .mobile-tab-bar-item { gap: 3px; padding: 4px; }
+  .mobile-tab-bar-icon, .mobile-tab-bar-icon svg { width: 22px; height: 22px; }
+}
