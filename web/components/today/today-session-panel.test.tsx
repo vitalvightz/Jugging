@@ -1850,8 +1850,10 @@ for (const saved of [null, "07:30"] as const) {
       }
       assert.ok(row);
       // Push is off on the server here: the row never promises a reminder.
-      assert.equal(row.querySelector('button[type="submit"]')?.textContent, "Save time");
-      assert.doesNotMatch(row.textContent ?? "", /Remind me/);
+      const submit = row.querySelector('button[type="submit"]');
+      assert.equal(submit?.textContent, "Save");
+      assert.equal(submit?.getAttribute("aria-label"), "Save time");
+      assert.doesNotMatch(row.textContent ?? "", /Remind me|\bRemind\b/);
       assert.match(row.textContent ?? "", /Reminders need notifications on this device\./);
       const input = row.querySelector<HTMLInputElement>('input[type="time"]')!;
       await act(async () => {

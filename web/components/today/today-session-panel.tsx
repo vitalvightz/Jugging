@@ -395,12 +395,14 @@ function TrainingTimeReminder({ token }: { token: string }) {
   return (
     <form className="today-training-time" aria-label="Training time"
       onSubmit={(event) => { event.preventDefault(); void save(); }}>
+      <ToolIcon name="bell" />
       <label className="today-training-time-label" htmlFor={fieldId}>Train at</label>
       <input id={fieldId} className="today-training-time-input" type="time" value={time} required
         disabled={busy} onChange={(event) => setTime(event.target.value)} />
-      <button type="submit" className="secondary-button today-training-time-save" disabled={busy || !time}
+      <button type="submit" className="action-utility today-training-time-save" disabled={busy || !time}
+        aria-label={busy ? undefined : canRemind ? "Remind me" : "Save time"}
         aria-describedby={canRemind ? undefined : `${fieldId}-note`}>
-        {busy ? "Saving…" : canRemind ? "Remind me" : "Save time"}
+        {busy ? "Saving…" : canRemind ? "Remind" : "Save"}
       </button>
       <button type="button" className="today-training-time-dismiss" aria-label="Dismiss training time"
         disabled={busy} onClick={dismiss}>×</button>
@@ -1199,9 +1201,11 @@ export function TodaySessionPanel({
             Free timer
           </button>
         ) : null}
+        {/* Skip shares the utilities' row rather than taking one of its own. */}
+        {trailing}
       </div>
       ) : null}
-      {trailing ? <div className="today-action-footer">{trailing}</div> : null}
+      {!tools && trailing ? <div className="today-action-footer">{trailing}</div> : null}
       </>
     );
   }
