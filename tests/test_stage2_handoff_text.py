@@ -1,3 +1,5 @@
+import json
+
 from fightcamp.stage2_finalizer_packet import build_stage2_finalizer_packet
 from fightcamp.stage2_payload import _closed_membership_render_manifest, build_stage2_handoff_text
 
@@ -121,7 +123,9 @@ def test_build_stage2_handoff_text_uses_finalizer_packet_as_single_structured_co
 
     assert athlete_profile_block.startswith("```json\n")
     assert athlete_profile_block.endswith("\n```")
-    assert athlete_profile_body == '{"sport":"boxing","status":"amateur"}'
+    assert json.loads(athlete_profile_body) == {}
+    assert json.loads(packet_body)["athlete_model"] == planning_brief["athlete_snapshot"]
+    assert "ATHLETE PROFILE takes precedence on conflict" in handoff
 
     # Compact JSON formatting only.
     assert '\n  "' not in packet_body

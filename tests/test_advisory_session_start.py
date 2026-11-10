@@ -1,9 +1,14 @@
 """Session guidance remains visible without preventing an athlete from starting."""
 import pytest
 
+from tests import test_clinician_clearance_today as clearance_tests
 from tests.test_clinician_clearance_today import (
-    REHAB, TRAIN, context, execute, report, session, set_sessions, view,
+    REHAB, TRAIN, execute, report, session, set_sessions, view,
 )
+
+
+# Register the shared fixture without shadowing an imported name in the test.
+context = clearance_tests.context
 
 
 @pytest.mark.parametrize("scopes", [REHAB, TRAIN])

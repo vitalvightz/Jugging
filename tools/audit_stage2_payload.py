@@ -12,12 +12,6 @@ import subprocess
 from pathlib import Path
 import sys
 
-sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parents[1] / 'tests')]
-import pytest
-from test_late_camp_fight_week_handoff import _run
-from fightcamp.plan_pipeline_runtime import prime_plan_banks
-import fightcamp.stage2_payload as payload
-import api.structured_plan_generation as structured
 
 BASELINE = sys.argv[1] if len(sys.argv) > 1 else '43db0aed'
 
@@ -40,12 +34,20 @@ def json_section(text, title):
 
 
 def main():
+    sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parents[1] / 'tests')]
+    import pytest
+    from test_late_camp_fight_week_handoff import _run
+    from fightcamp.plan_pipeline_runtime import prime_plan_banks
+    import fightcamp.stage2_payload as payload
+    import api.structured_plan_generation as structured
     logging.disable(logging.CRITICAL)
     prime_plan_banks(logger=logging.getLogger('audit'))
     before_handoff = old_function(payload, 'fightcamp/stage2_payload.py', 'build_stage2_handoff_text')
     before_card = old_function(structured, 'api/structured_plan_generation.py', 'build_structured_plan_prompt')
     # Same chars/4 estimate as stage2_automation._estimated_input_tokens.
-    metrics = lambda s: {'chars': len(s), 'estimated_tokens_chars_div_4': (len(s) + 3) // 4}
+    def metrics(s):
+        return {'chars': len(s), 'estimated_tokens_chars_div_4': (len(s) + 3) // 4}
+
     results = []
     for weeks in (2, 4, 8, 12):
         with pytest.MonkeyPatch.context() as patch:
