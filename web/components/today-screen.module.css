@@ -247,7 +247,7 @@
   .tileIcon .icon { width: 16px; height: 16px; }
   .tile .chevron { display: none; }
   .tileLabel { font-size: 11px; }
-  .tileValue { font-size: 12px; }
+  .tileValue { font-size: 12px; white-space: nowrap; }
 }
 @media (max-width: 360px) {
   .tiles { grid-template-columns: minmax(0, 1fr); gap: 4px; }
