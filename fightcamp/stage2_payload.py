@@ -4653,7 +4653,18 @@ def build_stage2_handoff_text(
         )
 
     sections.append("FINALIZER PACKET\n" + _json_block(finalizer_packet))
-    sections.append("ATHLETE PROFILE\n" + _json_block(athlete_profile))
+    # The packet already carries the compact athlete model. Keep every extra
+    # or conflicting profile value, without sending identical fields twice.
+    packet_athlete = finalizer_packet.get("athlete_model") or {}
+    profile_additions = {
+        key: value for key, value in athlete_profile.items()
+        if key not in packet_athlete or packet_athlete[key] != value
+    }
+    sections[0] += (
+        "\nUse FINALIZER PACKET.athlete_model together with ATHLETE PROFILE's "
+        "additional fields; ATHLETE PROFILE takes precedence on conflict."
+    )
+    sections.append("ATHLETE PROFILE\n" + _json_block(profile_additions))
 
     injury_context = stage2_payload.get("injury_context")
     if isinstance(injury_context, dict):

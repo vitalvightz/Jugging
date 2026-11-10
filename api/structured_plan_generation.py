@@ -3996,7 +3996,7 @@ def build_structured_plan_prompt(
         brief_context = _select_brief_context(planning_brief)
         try:
             from fightcamp.stage2_payload import scrub_planner_only_keys
-            brief_json = json.dumps(scrub_planner_only_keys(brief_context), ensure_ascii=False)
+            brief_json = json.dumps(scrub_planner_only_keys(brief_context), ensure_ascii=False, separators=(",", ":"))
         except (TypeError, ValueError):
             brief_json = ""
         if not brief_json:
@@ -4008,7 +4008,7 @@ def build_structured_plan_prompt(
 
         if computed_support:
             try:
-                support_json = json.dumps(computed_support, ensure_ascii=False)
+                support_json = json.dumps(computed_support, ensure_ascii=False, separators=(",", ":"))
             except (TypeError, ValueError):
                 support_json = ""
             if support_json and is_minor:
