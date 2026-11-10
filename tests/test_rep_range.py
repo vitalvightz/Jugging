@@ -108,3 +108,45 @@ def test_the_log_freezes_the_range_it_was_read_against(healthy):
     plan, brief = healthy
     block = next(b for _, b in _strength_blocks(reconcile_exercise_keys(plan, brief)) if b.get("rep_range"))
     assert _prescribed_snapshot(block)["rep_range"] == block["rep_range"]
+
+
+def _with_athlete(brief: dict, **snapshot) -> dict:
+    out = copy.deepcopy(brief)
+    out["athlete_snapshot"] = {**(out.get("athlete_snapshot") or {}), **snapshot}
+    return out
+
+
+def test_a_routine_weight_cut_weeks_out_does_not_freeze_progression(healthy):
+    plan, brief = healthy
+    routine = _with_athlete(brief, weight_cut_risk=True, cut_severity_bucket="low",
+                            readiness_flags=["active_weight_cut"])
+    blocks = [block for week, block in _strength_blocks(reconcile_exercise_keys(plan, routine))
+              if week["phase_label"] in {"GPP", "SPP"}]
+    assert any(block.get("rep_range") for block in blocks)
+
+
+@pytest.mark.parametrize("snapshot", [
+    {"weight_cut_risk": True, "cut_severity_bucket": "moderate"},
+    {"weight_cut_risk": True, "cut_severity_bucket": "high"},
+    {"weight_cut_risk": True, "cut_severity_bucket": "critical"},
+    {"weight_cut_risk": True, "cut_severity_bucket": "low", "readiness_flags": ["aggressive_weight_cut"]},
+    {"fatigue": "high"},
+], ids=["moderate_cut", "high_cut", "critical_cut", "flagged_aggressive_cut", "high_fatigue"])
+def test_a_capacity_restricting_cut_or_high_fatigue_still_holds_everything(healthy, snapshot):
+    plan, brief = healthy
+    out = reconcile_exercise_keys(plan, _with_athlete(brief, **snapshot))
+    blocks = [block for _, block in _strength_blocks(out)]
+    assert blocks and all(block.get("progression_hold") is True and "rep_range" not in block for block in blocks)
+
+
+def test_jumps_and_ballistic_lifts_are_held_even_when_labelled_strength(healthy):
+    plan, brief = healthy
+    out = reconcile_exercise_keys(plan, brief)
+    hops = [block for _, block in _strength_blocks(out) if block.get("exercise_key") == "single-leg-forward-hops"]
+    assert hops, "the generated camp should place the plyometric as a strength block"
+    assert all(block["block_type"] == "strength" for block in hops)
+    assert all(block.get("progression_hold") is True and "rep_range" not in block for block in hops)
+    # An ordinary lift beside it keeps its range.
+    squats = [block for week, block in _strength_blocks(out)
+              if block.get("exercise_key") == "back-squat" and week["phase_label"] in {"GPP", "SPP"}]
+    assert squats and all(block.get("rep_range") for block in squats)

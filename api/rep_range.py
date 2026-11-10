@@ -8,8 +8,9 @@ model call is made: both fields are re-derived from the planning brief on
 every read.
 
 ``progression_hold`` marks a block whose exposure must not progress at all
-(taper, the final fortnight, an injury, a weight cut, a capped or protected
-dose); the log then suggests neither a rep nor a weight.
+(taper, the final fortnight, an injury, a capacity-restricting weight cut, a
+capped or protected dose, or a jumping / ballistic movement); the log then
+suggests neither a rep nor a weight.
 """
 from __future__ import annotations
 
@@ -50,6 +51,12 @@ def _block_reps(block: Mapping[str, Any]) -> int | None:
     return None
 
 
+# Jumps, hops, throws and ballistic lifts progress on movement quality and
+# planned difficulty, never on reps or bar weight, whatever block type the plan
+# gave them. Read from the bank's own mechanical tags on the assignment.
+_REACTIVE_TAGS = frozenset({"mech_ballistic", "mech_reactive", "mech_lower_jump", "mech_landing_impact"})
+
+
 def progression_context(
     block: Mapping[str, Any],
     role: Mapping[str, Any] | None,
@@ -63,6 +70,8 @@ def progression_context(
     if role is None or assignment is None or block.get("prescription_source") == "athlete":
         return {}
     if progression_prohibited(dict(role), dict(assignment), phase, d_day, dict(athlete)):
+        return {"progression_hold": True}
+    if _REACTIVE_TAGS.intersection(assignment.get("mechanical_risk_tags") or ()):
         return {"progression_hold": True}
     base = assignment.get("base_prescription") or assignment.get("prescription")
     effective = assignment.get("effective_prescription")
