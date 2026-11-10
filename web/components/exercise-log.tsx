@@ -163,7 +163,7 @@ export function ExerciseLogTick({
     try {
       await logging.save({
         block_id: blockId,
-        ...withLastLoad(block, { status: "as_prescribed" }, logging.recentLoads, logging.recentPerformances),
+        ...withLastLoad(block, { status: "as_prescribed", ...(log ? { actual: log.actual } : {}) }, logging.recentLoads, logging.recentPerformances),
       });
       // No weight on record for this lift: open the row, where it is asked once.
       if (needsFirstLoad(block, logging.recentLoads) && !firstLoadDeclined(block)) onOpen();

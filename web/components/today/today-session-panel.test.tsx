@@ -13,6 +13,8 @@ import { AuthProvider, AppSessionContext } from "@/components/auth-provider";
 import { previewUnlockCopy, TodaySessionBlocks, TodaySessionPanel } from "./today-session-panel";
 import { resolveCurrentDay, resolveTrainingDay, toISODate } from "@/lib/camp-map";
 import type { StructuredPlan, TodayCommandView } from "@/lib/types";
+import { withHistoricalTimerLoads } from "@/lib/session-timer/history";
+import type { ExerciseLogRecord } from "@/lib/types";
 import { buildTimerItems } from "@/lib/session-timer/plan";
 import { createTimerState, endSession } from "@/lib/session-timer/engine";
 import { SHEET_EXIT_MS } from "@/lib/use-sheet-exit";
@@ -1401,7 +1403,10 @@ test("finished mixed rehab run survives a failed batch and opens populated revie
   state.live_prescription = {revision: "a".repeat(64), frozen: false, safety_hold: false, changes: [],
     session: {session_id: state.today.next_session.session_id!, session_type: "strength", title: "Strength and rehab", blocks}};
   const items = buildTimerItems([state.live_prescription.session]);
-  const run = endSession({...createTimerState(items), completed: [3, 0, 1, 0, 2], index: 4}, Date.now());
+  const rdl = items.find(item => item.blockId === "rdl")!;
+  const run = endSession({...createTimerState(items), completed: [3, 0, 1, 0, 2], index: 4,
+    setDrafts: { [rdl.id]: [{ reps: "8", load: "115", rpe: "6" }] },
+    confirmedSetLogs: { [rdl.id]: [1] } }, Date.now());
   const key = `unlxck.session-timer.run:plan-1:${state.today.next_session.session_id}:${state.today.training_day}`;
   window.localStorage.setItem(key, JSON.stringify({version: 2, key, itemIds: items.map(item => `${item.kind}:${item.id}`), state: run}));
   const originalFetch = globalThis.fetch;
@@ -1429,6 +1434,8 @@ test("finished mixed rehab run survives a failed batch and opens populated revie
       ["rope", "as_prescribed"], ["rdl", "modified"], ["bike", "skipped"],
     ]);
     assert.equal(batches[0].keep_existing, true);
+    assert.deepEqual((batches[0].entries.find(entry => entry.block_id === "rdl") as unknown as
+      { actual: { set_entries: { load: { value: number } }[] } }).actual.set_entries[0].load.value, 115);
     assert.match(container.textContent ?? "", /Save timer results/);
     assert.ok(window.localStorage.getItem(key));
     assert.equal(document.querySelector(".today-review-root"), null);
@@ -1443,6 +1450,13 @@ test("finished mixed rehab run survives a failed batch and opens populated revie
     assert.ok(window.localStorage.getItem(key));
     await act(async () => { pending[1](new Response(JSON.stringify({logs: batches[1].entries}), {status: 200})); });
     assert.equal(window.localStorage.getItem(key), null);
+    const savedRdl = batches[1].entries.find(entry => entry.block_id === "rdl")!;
+    const nextExposure = withHistoricalTimerLoads(buildTimerItems([{ blocks }]), blocks, [], [
+      { ...savedRdl, plan_id: "older-plan", prescribed: blocks[2] } as unknown as ExerciseLogRecord,
+    ]);
+    const nextRdl = nextExposure.find(item => item.blockId === "rdl");
+    assert.ok(nextRdl?.kind === "sets");
+    assert.equal(nextRdl.suggestedLoads?.[0], "115");
     assert.equal(document.querySelector(".st-root"), null);
     assert.match(document.querySelector(".today-review-root")?.textContent ?? "", /4 of 4 exercises logged/);
     assert.match(document.querySelector(".today-review-root")?.textContent ?? "", /Did you complete your rehab/);

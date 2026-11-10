@@ -391,10 +391,10 @@ test("a struggled weight is offered eased off, at any readiness, and stays edita
   await view.click("Log numbers");
   const load = view.container.querySelector<HTMLInputElement>('.ex-log-field input[id$="-load"]');
   assert.equal(load?.value, "90");
-  // "Done" records the eased weight on screen, not last time's.
+  // A suggestion is not a confirmed measurement.
   await view.click("Cancel");
   await view.click("Done");
-  assert.deepEqual(view.saved[0], { block_id: "blk-deadlift", status: "as_prescribed", actual: { load: { value: 90, unit: "kg" } } });
+  assert.deepEqual(view.saved[0], { block_id: "blk-deadlift", status: "as_prescribed" });
   view.unmount();
 });
 
@@ -486,7 +486,7 @@ test("the tick opens the row for the first weight, and only when there is none t
     { exercise_key: null, display_name: "Trap Bar Deadlift", load: { value: 80, unit: "kg" }, training_day: "2026-10-01" },
   ] });
   await known.press(known.container.querySelector<HTMLButtonElement>(".ex-log-tick")!);
-  assert.deepEqual(known.saved[0].actual?.load, { value: 80, unit: "kg" });
+  assert.equal(known.saved[0].actual?.load, undefined);
   assert.equal(known.toggled(), 0);
   known.unmount();
   // Holds and jumps are never asked what they weighed.

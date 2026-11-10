@@ -1,4 +1,5 @@
 "use client";
+import { withHistoricalTimerLoads } from "@/lib/session-timer/history";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
@@ -807,7 +808,9 @@ export function TodaySessionPanel({
         countdown: timerCountdown,
       })
     : [], [hasResolvedDaySessions, current.sessions, session.session_id, timerSourceText, timerCountdown]);
-  const timerItems = plannedTimerItems;
+  const timerItems = withHistoricalTimerLoads(plannedTimerItems,
+    current.sessions.flatMap(session => session.blocks ?? []),
+    exerciseLogging?.recentLoads, exerciseLogging?.recentPerformances);
   // The day's Fight Visualisation, offered as a voice-guided run. Only when the
   // session being logged is one of this day's, the same rule as the timer.
   const guidedVisualisation = useMemo(() =>
