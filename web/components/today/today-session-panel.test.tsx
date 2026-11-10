@@ -1808,7 +1808,7 @@ test("Start opens the normal round timer when a held session has no timed blocks
 });
 
 for (const saved of [null, "07:30"] as const) {
-  test(`the training time row ${saved ? "stays hidden once a time is saved" : "offers a time and reminder before training"}`, async () => {
+  test(`the training time row ${saved ? "stays hidden once a time is saved" : "saves a time without promising a reminder push can't deliver"}`, async () => {
     const originalFetch = globalThis.fetch;
     const puts: unknown[] = [];
     globalThis.fetch = (async (input: string, init?: RequestInit) => {
@@ -1843,12 +1843,16 @@ for (const saved of [null, "07:30"] as const) {
         </AppSessionContext.Provider>);
       });
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-      const row = container.querySelector<HTMLFormElement>('form[aria-label="Training time reminder"]');
+      const row = container.querySelector<HTMLFormElement>('form[aria-label="Training time"]');
       if (saved) {
         assert.equal(row, null);
         return;
       }
       assert.ok(row);
+      // Push is off on the server here: the row never promises a reminder.
+      assert.equal(row.querySelector('button[type="submit"]')?.textContent, "Save time");
+      assert.doesNotMatch(row.textContent ?? "", /Remind me/);
+      assert.match(row.textContent ?? "", /Reminders need notifications on this device\./);
       const input = row.querySelector<HTMLInputElement>('input[type="time"]')!;
       await act(async () => {
         Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), "value")!.set!.call(input, "06:45");
@@ -1856,7 +1860,7 @@ for (const saved of [null, "07:30"] as const) {
       });
       await act(async () => { row.requestSubmit(); await new Promise(resolve => setTimeout(resolve, 0)); });
       assert.deepEqual(puts, [{preferred_training_time: "06:45"}]);
-      assert.equal(container.querySelector('form[aria-label="Training time reminder"]'), null);
+      assert.equal(container.querySelector('form[aria-label="Training time"]'), null);
       assert.match(document.body.textContent ?? "", /Training time saved: 06:45/);
     } finally {
       await act(async () => { root.unmount(); });

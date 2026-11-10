@@ -389,17 +389,26 @@ function TrainingTimeReminder({ token }: { token: string }) {
     }
   }
 
+  // Only promise a reminder this device can deliver. Otherwise the same tap
+  // saves the time, and the row says what a reminder still needs.
+  const canRemind = offer.push !== "unavailable";
   return (
-    <form className="today-training-time" aria-label="Training time reminder"
+    <form className="today-training-time" aria-label="Training time"
       onSubmit={(event) => { event.preventDefault(); void save(); }}>
       <label className="today-training-time-label" htmlFor={fieldId}>Train at</label>
       <input id={fieldId} className="today-training-time-input" type="time" value={time} required
         disabled={busy} onChange={(event) => setTime(event.target.value)} />
-      <button type="submit" className="secondary-button today-training-time-save" disabled={busy || !time}>
-        {busy ? "Saving…" : "Remind me"}
+      <button type="submit" className="secondary-button today-training-time-save" disabled={busy || !time}
+        aria-describedby={canRemind ? undefined : `${fieldId}-note`}>
+        {busy ? "Saving…" : canRemind ? "Remind me" : "Save time"}
       </button>
-      <button type="button" className="today-training-time-dismiss" aria-label="Dismiss training time reminder"
+      <button type="button" className="today-training-time-dismiss" aria-label="Dismiss training time"
         disabled={busy} onClick={dismiss}>×</button>
+      {canRemind ? null : (
+        <p id={`${fieldId}-note`} className="today-training-time-note">
+          Reminders need notifications on this device.
+        </p>
+      )}
     </form>
   );
 }
