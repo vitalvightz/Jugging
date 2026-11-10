@@ -196,11 +196,11 @@ def _stage2_call_deadline_seconds(attempt_label: str) -> float | None:
     hold the job until the whole-finalize cap. Successful plans complete every
     pass well inside these defaults: on GPT-6 Luna the plan-text call takes
     55-86s and the structured-card call 121-193s (production, Nov 2026), so
-    the plan-text default remains 180s. Card calls allow 720s to accommodate
+    the plan-text default remains 180s. Card calls allow 480s to accommodate
     slower conversions. Environment overrides still apply; ``0``/``none`` disables.
     """
     if attempt_label.startswith("structured"):
-        return _env_deadline_seconds("UNLXCK_STAGE2_STRUCTURED_CALL_DEADLINE_SECONDS", 720.0)
+        return _env_deadline_seconds("UNLXCK_STAGE2_STRUCTURED_CALL_DEADLINE_SECONDS", 480.0)
     return _env_deadline_seconds("UNLXCK_STAGE2_CALL_DEADLINE_SECONDS", 180.0)
 
 
