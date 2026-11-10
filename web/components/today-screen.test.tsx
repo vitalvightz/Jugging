@@ -311,18 +311,14 @@ for (const lateCompletion of [false, true]) test(`new active programme summary w
     assert.equal(hasProgrammeArrival("plan-new"), true);
     assert.doesNotMatch(container.textContent ?? "", /Your camp is ready/);
     await act(async () => { release(json({outputs: {structured_plan: {
-      athlete_context: {sport_profile: "Boxing", experience_level: "Intermediate"},
+      athlete_context: {sport_profile: "Boxing, 3 x 3 rounds; primary focus speed, with footwork as the main limiter..", experience_level: "Intermediate"},
       weeks: [{week_index: 1, days: []}, {week_index: 2, days: []}],
     }}})); });
     assert.match(container.textContent ?? "", /Your camp is ready/);
-    assert.match(container.textContent ?? "", /2 weeks. Built for Boxing./);
+    assert.match(container.textContent ?? "", /2-week boxing camp/);
     assert.equal(hasProgrammeArrival("plan-new"), false);
-    const tip = container.querySelector<HTMLButtonElement>('[aria-label="Dismiss full plan tip"]');
-    assert.ok(tip);
-    assert.match(container.textContent ?? "", /Tap “View Full Plan” for plan details/);
-    await act(async () => tip.click());
+    assert.doesNotMatch(container.textContent ?? "", /primary focus|limiter|Tap “View Full Plan”/);
     assert.equal(container.querySelector('[aria-label="Dismiss full plan tip"]'), null);
-    assert.equal(window.localStorage.getItem("discovery-full-plan-seen"), "1");
     assert.equal(container.querySelectorAll('a[href="/plans/plan-new"]').length, 1);
     assert.doesNotMatch(container.textContent ?? "", /Go to Session/);
     assert.match(container.textContent ?? "", /No plan session today/);
