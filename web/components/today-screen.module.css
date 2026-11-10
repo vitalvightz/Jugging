@@ -453,3 +453,14 @@
   from { background-position: 200% 0; }
   to { background-position: -200% 0; }
 }
+
+/* Arrival lives in the existing header; compact links keep the session close. */
+.programmeArrival { max-width: 100%; min-width: 0; }
+.arrivalTitle { margin: 2px 0; font-size: 14px; font-weight: 600; }
+.arrivalLinks { display: flex; flex-wrap: wrap; gap: 0 16px; }
+.arrivalLinks a { display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; font-weight: 600; text-underline-offset: 3px; }
+.programmeArrival .arrivalTitle { font-size: 13px; line-height: 18px; }
+.programmeArrival .heroPhase { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hero:has(.programmeArrival) :global(.today-hero-copy) { flex: 1; }
+.hero:has(.programmeArrival) { position: relative; }
+.hero:has(.programmeArrival) .heroDate { position: absolute; top: 0; right: 0; }

@@ -280,3 +280,50 @@ test("arriving from a new plan re-reads Today until that plan is active, then dr
     window.history.replaceState(null, "", original);
   }
 });
+
+test("new active programme summary waits for metadata, consumes once, and preserves a rest day", async () => {
+  const { offerProgrammeArrival, hasProgrammeArrival } = await import("@/lib/programme-arrival");
+  const originalFetch = globalThis.fetch;
+  window.history.replaceState(null, "", "/today?plan=plan-new");
+  offerProgrammeArrival("plan-new");
+  let release!: (value: Response) => void;
+  const detail = new Promise<Response>(resolve => { release = resolve; });
+  const state = {...NO_PLAN_STATE, active_plan: {id: "plan-new", name: "Camp", phase: "GPP", fight_date: "2026-12-01"}};
+  const json = (body: unknown) => new Response(JSON.stringify(body), {status: 200});
+  globalThis.fetch = (async (input: string) => {
+    if (String(input).endsWith("/api/today")) return json(state);
+    if (String(input).includes("/api/plans/")) return detail;
+    if (String(input).includes("/api/training/history")) return json({sessions: []});
+    return json({logs: [], pending: [], rehab_response_prompts: []});
+  }) as typeof fetch;
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  let root = createRoot(container);
+  const render = () => <AppSessionContext.Provider value={{isReady: true, isMeHydrated: true,
+    hasTransientMeError: false, session: {access_token: "arrival-token"}, me: CONSENTED as never,
+    previewAppearanceMode: () => {}, refreshMe: async () => {}, replaceMe: () => {}, signOut: async () => {}}}>
+    <ToastProvider><TodayScreen /></ToastProvider></AppSessionContext.Provider>;
+  try {
+    await act(async () => { root.render(render()); });
+    assert.equal(hasProgrammeArrival("plan-new"), true);
+    assert.doesNotMatch(container.textContent ?? "", /Your camp is ready/);
+    await act(async () => { release(json({outputs: {structured_plan: {
+      athlete_context: {sport_profile: "Boxing", experience_level: "Intermediate"},
+      weeks: [{week_index: 1, days: []}, {week_index: 2, days: []}],
+    }}})); });
+    assert.match(container.textContent ?? "", /Your camp is ready/);
+    assert.match(container.textContent ?? "", /2 weeks · Boxing · Intermediate/);
+    assert.equal(hasProgrammeArrival("plan-new"), false);
+    assert.equal(container.querySelectorAll('a[href="/plans/plan-new"]').length, 1);
+    assert.doesNotMatch(container.textContent ?? "", /Start Training/);
+    assert.match(container.textContent ?? "", /No plan session today/);
+    await act(async () => { root.unmount(); });
+    root = createRoot(container);
+    await act(async () => { root.render(render()); });
+    assert.doesNotMatch(container.textContent ?? "", /Your camp is ready/);
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove(); globalThis.fetch = originalFetch;
+    window.history.replaceState(null, "", "/today"); window.sessionStorage.clear();
+  }
+});
