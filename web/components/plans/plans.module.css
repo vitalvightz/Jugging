@@ -37,7 +37,7 @@
 
 .eyebrow {
   margin: 0;
-  color: var(--brand-red);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: var(--type-label-sm);
   font-weight: 600;
@@ -48,8 +48,8 @@
 .activePill {
   padding: 4px 10px;
   border-radius: var(--radius-pill);
-  background: var(--brand-red-soft);
-  color: var(--brand-red);
+  background: var(--bg-stat);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: var(--type-label-sm);
   font-weight: 600;
@@ -95,7 +95,7 @@
 
 .countdownValue {
   margin: 0;
-  color: var(--brand-red);
+  color: var(--text-secondary);
   font-size: 30px;
   font-weight: 700;
   line-height: 1;
@@ -111,7 +111,7 @@
 .tools { display: grid; gap: 12px; padding-top: 8px; border-top: 1px solid var(--border-subtle); }
 .shortcuts > div { min-width: 0; }
 .shortcuts button[aria-label="Log session"],
-.shortcuts > a { min-height: 64px; padding: 12px; align-items: center; background: var(--bg-panel); border-color: var(--border-default); }
+.shortcuts > a { min-height: 48px; padding: 8px 12px; align-items: center; background: var(--bg-panel); border-color: var(--border-default); }
 .shortcuts button[aria-label="Log session"] strong,
 .shortcuts > a strong { font-size: var(--type-body-sm); }
 .shortcuts button[aria-label="Log session"] strong + span,

@@ -257,3 +257,34 @@ test("the tracker adds a missing target weight and weigh-in", async ({ page, bas
   await expect(summary).toContainText("Target 70.5 kg · Weigh-in Sat 21 Nov 2026 · 18:00");
   await expect(summary.getByRole("button", { name: "Add target weight" })).toHaveCount(0);
 });
+
+
+for (const theme of ["dark", "light"] as const) for (const width of [320, 390]) test(`compact Today keeps target setup, weight logging and every safety flag accessible (${width}px, ${theme})`, async ({ page, baseURL }) => {
+  await page.setViewportSize({ width, height: 844 });
+  await setup(page, baseURL!, { target: null, theme });
+  await page.goto("/today");
+  const card = page.getByRole("region", { name: "Weight cut" });
+  await expect(card).toContainText("19 days left");
+  await expect(card.getByRole("link", { name: "Add target weight" })).toHaveAttribute("href", "/nutrition");
+  await card.getByRole("button", { name: "Log today's weight" }).click();
+  await expect(page.getByRole("dialog", { name: "Log today's weight" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  const checkin = page.getByRole("region", { name: "Set today's recommendation" });
+  await checkin.getByRole("button", { name: "Poor", exact: true }).click();
+  await expect(checkin.getByRole("button", { name: "Poor", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const pain = checkin.getByRole("group", { name: "Pain", exact: true });
+  await pain.getByRole("button", { name: "Manageable", exact: true }).click();
+  await expect(pain.getByRole("button", { name: "Manageable", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(pain.getByRole("button", { name: "None", exact: true })).toHaveAttribute("aria-pressed", "false");
+  const positions = await pain.getByRole("button").evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().top));
+  expect(new Set(positions).size).toBe(1);
+  await checkin.scrollIntoViewIfNeeded();
+  await capture(page, `today-selected-${theme}-${width}`);
+  await checkin.getByText("Any red flags?", { exact: true }).click();
+  for (const name of ["Sharp pain", "Instability", "Swelling", "Neurological symptoms", "Illness symptoms", "Cannot warm into movement", "Worse next-day pain"]) {
+    await expect(checkin.getByRole("checkbox", { name, exact: true })).toBeVisible();
+  }
+  await checkin.getByRole("checkbox", { name: "Sharp pain", exact: true }).check();
+  await expect(checkin.getByRole("checkbox", { name: "Sharp pain", exact: true })).toBeChecked();
+  await capture(page, `today-compact-safety-${theme}-${width}`);
+});

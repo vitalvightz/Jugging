@@ -195,7 +195,7 @@ function TodayReadinessStrip({
       )}
       {hasPlan ? (
         <StatusTile
-          label="Today’s session"
+          label="Session"
           value={SESSION_TILE_VALUE[completionStatus] ?? getCompletionLabel(completionStatus)}
           modified={completionStatus === "modified"}
           tone={sessionTone}

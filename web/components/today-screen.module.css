@@ -241,33 +241,19 @@
   line-height: 1.2;
 }
 
-/* Three tiles on a phone: icon above the text so the words keep their room.
-   Kept short so the guidance and next session reach the first screen. */
+/* Keep icons beside their status text, including on phones. */
 @media (max-width: 480px) {
-  .tileLink,
-  .tile:not(:has(.tileLink)) {
-    position: relative;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-    min-height: 0;
-    padding: 10px;
-  }
-
-  .tileIcon .icon {
-    width: 20px;
-    height: 20px;
-  }
-
-  .tile .chevron {
-    position: absolute;
-    top: 16px;
-    right: 12px;
-  }
-
-  .tileLabel {
-    font-size: var(--type-label-sm);
-  }
+  .tileLink, .tile:not(:has(.tileLink)) { gap: 6px; min-height: 56px; padding: 8px; }
+  .tileIcon .icon { width: 16px; height: 16px; }
+  .tile .chevron { display: none; }
+  .tileLabel { font-size: 11px; }
+  .tileValue { font-size: 12px; white-space: nowrap; }
+}
+@media (max-width: 360px) {
+  .tiles { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .tileLink, .tile:not(:has(.tileLink)) { min-height: 44px; padding: 6px 10px; }
+  .tileText { flex: 1; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; }
+  .tile .chevron { display: block; }
 }
 
 /* -- Quick actions --------------------------------------------------------- */

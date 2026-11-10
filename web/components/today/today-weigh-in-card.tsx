@@ -81,7 +81,10 @@ export function TodayWeighInCard({ token, fightDate, trainingDay }: {
   return (
     <section className={styles.card} aria-label="Weight cut">
       <div className={styles.head}>
-        <p className={styles.kicker}>Weight cut{days != null ? ` · ${daysLeftLabel(days)}` : ""}</p>
+        <p className={styles.kicker}>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v18M7 21h10M4 7h16M5 7l-3 8h6L5 7Zm14 0-3 8h6l-3-8Z" /></svg>
+          <span>Weight cut{days != null ? <span className={styles.countdown}> · {daysLeftLabel(days)}</span> : null}</span>
+        </p>
         {status ? <span className={styles.status} data-tone={status.tone}><StatusIcon tone={status.tone} />{status.label}</span> : null}
       </div>
 
@@ -109,11 +112,7 @@ export function TodayWeighInCard({ token, fightDate, trainingDay }: {
           </div>
           {status && status.tone !== "green" ? <p className={styles.detail}>{status.detail}</p> : null}
         </>
-      ) : (
-        <p className={styles.meta}>
-          Add your target weight to see weight-to-target. <Link href="/nutrition" className={styles.link}>Add target weight</Link>
-        </p>
-      )}
+      ) : null}
 
       {weighIn ? (
         <div className={styles.weighIn}>
@@ -122,16 +121,19 @@ export function TodayWeighInCard({ token, fightDate, trainingDay }: {
         </div>
       ) : null}
 
-      {todays ? (
-        <div className={styles.done}>
-          <span>Logged today · <strong>{formatWeight(todays.weight_kg)}</strong></span>
-          <button type="button" className={styles.edit} aria-haspopup="dialog" onClick={() => setEditing({ sourceIndex: todays.sourceIndex })}>Edit</button>
-        </div>
-      ) : (
-        <button type="button" className={`cta ${styles.log} ${styles.streak}`} aria-haspopup="dialog" onClick={() => setEditing({ sourceIndex: null })}>
-          Log today&apos;s weight
-        </button>
-      )}
+      <div className={styles.actions}>
+        <Link href="/nutrition" className={styles.link}>{target == null ? "Add target weight" : "Manage target weight"}</Link>
+        {todays ? (
+          <div className={styles.done}>
+            <span>Logged today · <strong>{formatWeight(todays.weight_kg)}</strong></span>
+            <button type="button" className={styles.edit} aria-haspopup="dialog" onClick={() => setEditing({ sourceIndex: todays.sourceIndex })}>Edit</button>
+          </div>
+        ) : (
+          <button type="button" className={styles.log} aria-label="Log today's weight" aria-haspopup="dialog" onClick={() => setEditing({ sourceIndex: null })}>
+            Log weight <span aria-hidden="true">→</span>
+          </button>
+        )}
+      </div>
 
       {editing ? (
         <WeighInSheet
