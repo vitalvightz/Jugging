@@ -16,7 +16,7 @@ for (const training of [false, true]) for (const width of [320, 390, 1280]) test
       next_session: {session_id: "strength-1", title: "Strength", calendar_date: "2026-10-05", session_relation: "today", effective_load: "low"}};
   }
   const id = view.active_plan.id;
-  const key = "sb-stub-auth-token";
+  const key = `sb-${new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://stub.supabase.co").hostname.split(".")[0]}-auth-token`;
   await page.addInitScript(({key, id, profile}) => {
     localStorage.setItem(key, JSON.stringify({access_token: "fixture", refresh_token: "fixture", token_type: "bearer",
       expires_at: Date.now()/1000 + 86400, user: {id: profile.profile.athlete_id, email: "fixture@example.com", aud: "authenticated", role: "authenticated", app_metadata: {}, user_metadata: {}}}));
@@ -46,6 +46,7 @@ for (const training of [false, true]) for (const width of [320, 390, 1280]) test
   await page.goto(`/today?plan=${id}`);
   const summary = page.locator('[class*="programmeArrival"]');
   await expect(summary).toBeVisible();
+  await expect(page.getByText("Tap “View Full Plan” for plan details.", {exact: true})).toBeVisible();
   await expect(summary).toContainText(training ? "6 weeks. Built for Boxing." : "1 week of training. Built for Boxing.");
   expect((await summary.boundingBox())!.height).toBeLessThan(150);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -64,6 +65,7 @@ for (const training of [false, true]) for (const width of [320, 390, 1280]) test
   } else await expect(page.getByRole("link", {name: "Go to Session", exact: true})).toHaveCount(0);
   await page.getByRole("link", {name: "View Full Plan", exact: true}).click();
   await expect(page).toHaveURL(new RegExp(`/plans/${id}$`));
+  expect(await page.evaluate(() => localStorage.getItem("discovery-full-plan-seen"))).toBe("1");
   await page.goto(`/today?plan=${id}`);
   await expect(page.locator("h1")).toHaveText("Today");
   await expect(summary).toHaveCount(0);

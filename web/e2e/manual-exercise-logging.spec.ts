@@ -149,14 +149,17 @@ for (const width of [390, 1280]) {
     await expect(sheet.getByLabel("Sets", { exact: true })).toBeFocused();
     await expect(sheet.getByLabel("Load", { exact: true })).toHaveValue("");
     await sheet.getByLabel("Sets", { exact: true }).fill("3");
+    await expect(sheet.getByRole("button", { name: "Dismiss individual sets tip" })).toBeVisible();
     await sheet.getByLabel("Reps", { exact: true }).fill("5");
     await sheet.getByLabel("Load", { exact: true }).fill("80");
+    await expect(sheet.getByRole("button", { name: "Dismiss individual sets tip" })).toHaveCount(0);
     await shoot(page, "04-selected", width);
     await page.keyboard.press("Enter");
     const rows = sheet.getByRole("list", { name: "Exercises in this session" }).getByRole("listitem");
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText("Back Squat3 × 5 · 80 kg");
     await expect(search).toBeFocused();
+    await expect(sheet.getByRole("button", { name: "Dismiss saved exercise edit tip" })).toBeVisible();
     await shoot(page, "05-one-added", width);
 
     // A library movement with a known format, then optional details.

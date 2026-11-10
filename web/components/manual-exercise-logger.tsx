@@ -73,6 +73,8 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const [status, setStatus] = useState("");
+  const [editHint, dismissEditHint] = useSeenOnce("discovery-saved-exercise-edit-seen");
+  const [setsHint, dismissSetsHint] = useSeenOnce("discovery-individual-sets-seen");
   const [unitHint, dismissUnitHint] = useSeenOnce("discovery-weight-unit-seen");
   const [reuse, setReuse] = useState<ManualExerciseEntry[] | null>(null);
   const [reuseState, setReuseState] = useState<"idle" | "loading" | "error">("idle");
@@ -165,6 +167,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
 
   function startEdit(entry: ManualExerciseEntry) {
     if (unsaved && !window.confirm("Discard this exercise?")) return;
+    dismissEditHint();
     const draft = draftFromEntry(entry);
     setEditor({ entryId: entry.entry_id, revision: entry.revision, editing: true, picked: { name: entry.name, choice: choiceOf(entry), format: entry.format, reference: null },
       draft, formatMenu: false, original: snapshot(entry.format, draft) });
@@ -288,6 +291,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
   const individualSets = Boolean(editor.draft.setRows && (format === "strength" || format === "bodyweight"));
   const extras = format ? EXTRA_FIELDS[format].filter(field => !individualSets || !["load", "effort"].includes(field)) : [];
   const extraFilled = extras.some(field => editor.draft.values[field]?.trim()) || Boolean(editor.draft.notes.trim());
+  const hasSetEntry = Boolean(editor.draft.values.sets?.trim() || editor.draft.values.reps?.trim());
   const hasLoadEntry = Boolean(editor.draft.values.load?.trim() || editor.draft.setRows?.some(row => row.load.trim()));
 
   return <dialog ref={dialog} className={`${sheet.dialog} ${styles.dialog}`} aria-labelledby={`${fieldId}-title`} data-closing={closing || undefined}
@@ -313,6 +317,11 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
               {removing === entry.entry_id ? "…" : <span aria-hidden="true">×</span>}</button>
           </li>)}
         </ul> : null}
+
+        {editHint && Boolean(entries?.length) && !picked ? <div className={styles.discoveryHint} role="note">
+          <span>Tap the pencil beside a saved exercise to edit its results.</span>
+          <button type="button" onClick={dismissEditHint} aria-label="Dismiss saved exercise edit tip">×</button>
+        </div> : null}
 
         {reference && entries && !entries.length && reuse === null && !picked ? <button type="button" className={styles.reuse} disabled={reuseState === "loading"} onClick={() => void loadReuse()}>
           <span><strong>Reuse exercises from {formatAppDate(reference.training_day)}</strong><span className={styles.rowValues}>Names only. You enter today’s values.</span></span>
@@ -366,6 +375,9 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
           {unitHint && hasLoadEntry && (format === "strength" || format === "bodyweight") ? <div className={styles.discoveryHint} role="note">
             <span>Tap the load unit to switch between kg and lb.</span>
             <button type="button" onClick={dismissUnitHint} aria-label="Dismiss weight unit tip">×</button>
+          </div> : setsHint && hasSetEntry && !individualSets && (format === "strength" || format === "bodyweight") ? <div className={styles.discoveryHint} role="note">
+            <span>Tap “Edit sets individually” to record different reps or loads for each set.</span>
+            <button type="button" onClick={dismissSetsHint} aria-label="Dismiss individual sets tip">×</button>
           </div> : null}
           {format ? <>
             {editor.draft.setRows && (format === "strength" || format === "bodyweight") ? <SetRows
@@ -378,6 +390,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
                 {format === "strength" || format === "bodyweight" ? <button type="button" className={styles.textButton} disabled={busy} onClick={() => {
                   const count = Number(editor.draft.values.sets || 1);
                   if (!Number.isInteger(count) || count < 1 || count > 50) { setErrors({ sets: "Enter 1–50 sets" }); return; }
+                  dismissSetsHint();
                   setEditor(current => ({ ...current, draft: { ...current.draft, setRows: Array.from({ length: count }, () => ({ reps: current.draft.values.reps ?? "", load: current.draft.values.load ?? "", ...(current.draft.values.effort ? { rpe: current.draft.values.effort } : {}) })) } }));
                 }}>Edit sets individually</button> : null}
               </>}

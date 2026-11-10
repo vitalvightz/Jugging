@@ -1,5 +1,6 @@
 "use client";
 
+import { useSeenOnce } from "@/components/once-hint";
 import { Collapse } from "@/components/today/collapse";
 
 import Link from "next/link";
@@ -225,6 +226,7 @@ function TodayReadinessStrip({
 }
 
 export function TodayScreen() {
+  const [planHint, dismissPlanHint] = useSeenOnce("discovery-full-plan-seen");
   const { session, me } = useAppSession();
   const token = session?.access_token ?? null;
   const {
@@ -462,7 +464,7 @@ export function TodayScreen() {
                       arrivalAction.scrollIntoView({ block: "center", behavior: "auto" });
                       arrivalAction.focus({ preventScroll: true });
                     }}>Go to Session</a> : null}
-                    <Link href={`/plans/${activePlan.id}`}>View Full Plan <span aria-hidden="true">→</span></Link>
+                    <Link href={`/plans/${activePlan.id}`} onClick={dismissPlanHint}>View Full Plan <span aria-hidden="true">→</span></Link>
                   </div>
                 </div>
               ) : <p className={styles.heroPhase}>{planTitle}{weekLabel}</p>
@@ -472,6 +474,10 @@ export function TodayScreen() {
           </div>
           {trainingDayLabel !== "Today" ? <p className={styles.heroDate}>{trainingDayLabel.replace(/\s\d{4}$/, "")}</p> : null}
         </div>
+        {showProgrammeArrival && planHint ? <div className={styles.discoveryHint} role="note">
+          <span>Tap “View Full Plan” for plan details.</span>
+          <button type="button" onClick={dismissPlanHint} aria-label="Dismiss full plan tip">×</button>
+        </div> : null}
         <TodayReadinessStrip
           hasPlan={hasPlan}
           canCheckIn={canCheckIn}
@@ -580,7 +586,7 @@ export function TodayScreen() {
             </Link>
           )}
           {hasPlan ? (showProgrammeArrival ? null :
-            <Link href={`/plans/${activePlan.id}`} className={styles.quickAction}>
+            <Link href={`/plans/${activePlan.id}`} className={styles.quickAction} onClick={dismissPlanHint}>
               <TileIcon name="plan" />
               View plan
               <span className={styles.chevron} aria-hidden="true" />

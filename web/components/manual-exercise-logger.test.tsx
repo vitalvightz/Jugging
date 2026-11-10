@@ -93,6 +93,49 @@ test("entering a load reveals the unit switch once, and using it retires the tip
   } finally { ui.cleanup(); window.localStorage.removeItem("discovery-weight-unit-seen"); }
 });
 
+test("individual-set guidance waits for input, yields to unit guidance and retires on use", async () => {
+  const keys = ["discovery-individual-sets-seen", "discovery-weight-unit-seen"];
+  keys.forEach(key => window.localStorage.removeItem(key));
+  const ui = await mount();
+  try {
+    await ui.click("Back Squat");
+    const hint = () => ui.container.querySelector('[aria-label="Dismiss individual sets tip"]');
+    assert.equal(hint(), null);
+    await ui.type('[data-measure="sets"]', "3");
+    assert.ok(hint());
+    await ui.type('[data-measure="load"]', "80");
+    assert.equal(hint(), null, "only the unit tip shows while it has priority");
+    await ui.click("Dismiss weight unit tip");
+    assert.ok(hint());
+    await ui.click("Edit sets individually");
+    assert.equal(hint(), null);
+    assert.equal(window.localStorage.getItem(keys[0]), "1");
+    assert.equal(ui.container.querySelectorAll('ol[aria-label="Set results"] li').length, 3);
+  } finally { ui.cleanup(); keys.forEach(key => window.localStorage.removeItem(key)); }
+});
+
+test("saved exercise guidance appears after saving and dismissal survives reopening", async () => {
+  const key = "discovery-saved-exercise-edit-seen";
+  window.localStorage.removeItem(key);
+  const ui = await mount();
+  const tip = '[aria-label="Dismiss saved exercise edit tip"]';
+  try {
+    assert.equal(ui.container.querySelector(tip), null);
+    await ui.click("Back Squat");
+    await ui.submit();
+    assert.ok(ui.container.querySelector(tip));
+    await ui.click("Dismiss saved exercise edit tip");
+    assert.equal(ui.container.querySelector(tip), null);
+    assert.equal(window.localStorage.getItem(key), "1");
+  } finally { ui.cleanup(); }
+  const reopened = await mount();
+  try {
+    await reopened.click("Back Squat");
+    await reopened.submit();
+    assert.equal(reopened.container.querySelector(tip), null);
+  } finally { reopened.cleanup(); window.localStorage.removeItem(key); }
+});
+
 test("a recent exercise becomes a compact saved row and the logger is ready for the next", async () => {
   const ui = await mount();
   try {
