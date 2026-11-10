@@ -248,3 +248,17 @@ html[data-app-surface="brand"] .app-safety-footer {
   bottom: auto;
   left: 0;
 }
+
+/* Shared phone navigation: keep each icon and label on one row. */
+@media (max-width: 720px) {
+  .mobile-tab-bar-item { flex-direction: row; flex-wrap: nowrap; gap: 4px; padding: 8px 2px; font-family: var(--font-sans); font-size: 11px; letter-spacing: 0; text-transform: none; white-space: nowrap; }
+  .mobile-tab-bar-icon { flex: 0 0 18px; width: 18px; height: 18px; }
+  .mobile-tab-bar-icon svg { width: 18px; height: 18px; }
+  .mobile-tab-bar-item-active { color: var(--text-primary); }
+  .mobile-tab-bar-item-active::before { background: var(--text-primary); }
+}
+@media (max-width: 360px) {
+  .mobile-tab-bar-item { font-size: 10px; gap: 3px; }
+  .mobile-tab-bar-icon, .mobile-tab-bar-icon svg { width: 16px; height: 16px; }
+  .mobile-tab-bar-icon { flex-basis: 16px; }
+}

@@ -954,3 +954,21 @@ html[data-theme="light"] .today-segment.today-segment-chosen:hover:not(.today-se
   font-size: 13px;
   line-height: 1.4;
 }
+
+/* Compact daily readiness; scoped so clinical injury forms keep their layout. */
+.today-page .today-checkin-card { padding: 14px 16px; gap: 12px; }
+.today-checkin-card .today-card-head .kicker { color: var(--text-secondary); }
+.today-page .today-checkin-card h2 { font-size: clamp(18px, 4.5vw, 22px); line-height: 1.2; }
+.today-page .today-checkin-form { gap: 10px; }
+.today-checkin-card .today-field-label { margin: 0; }
+.today-checkin-card .today-segment-row { gap: 6px; }
+.today-page .today-checkin-form .today-segment { min-height: 44px; padding: 6px 8px; font-size: 14px; }
+.today-checkin-card .today-segment-active,
+html[data-theme="light"] .today-checkin-card .today-segment-active { background: var(--bg-surface-alt); border-color: var(--border-strong); color: var(--text-primary); box-shadow: none; }
+.today-checkin-card .today-red-flags { padding: 0 10px; }
+.today-checkin-card .today-red-flags summary { min-height: 44px; align-content: center; font-size: 14px; }
+.today-checkin-card .today-red-flags[open] { padding-bottom: 10px; }
+.today-checkin-card .today-flag-grid { gap: 6px; padding-top: 8px; }
+.today-checkin-card .today-flag-option { min-height: 44px; padding: 6px 8px; }
+.today-checkin-card .today-primary-action { min-height: 44px; padding: 8px 14px; background: var(--bg-surface-alt); border: 1px solid var(--border-strong); color: var(--text-primary); box-shadow: none; font-size: 14px; }
+.today-checkin-card .today-primary-action:hover:not(:disabled) { background: var(--bg-stat); box-shadow: none; }

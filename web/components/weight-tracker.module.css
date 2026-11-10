@@ -1,5 +1,5 @@
 .screen { gap: 16px; }
-.card { gap: 16px; }
+.card { gap: 12px; }
 .loading { display: grid; gap: 16px; }
 .lastLogged { font-size: 0.78rem; color: var(--text-muted); }
 .headline { display: flex; align-items: center; gap: 16px; margin: 2px 0; }
@@ -7,7 +7,8 @@
 .headline > span { font-size: 0.82rem; line-height: 1.7; color: var(--text-secondary); }
 .empty h2 { margin: 0 0 6px; font-size: 1.25rem; letter-spacing: -.02em; }
 .empty p { margin: 0; font-size: 0.88rem; line-height: 1.6; }
-.logButton { width: 100%; }
+.logButton { width: auto; justify-self: start; min-height: 44px; padding: 8px 16px; background: var(--bg-surface-alt); border: 1px solid var(--border-strong); color: var(--text-primary); box-shadow: none; }
+.logButton:hover:not(:disabled) { background: var(--bg-stat); box-shadow: none; }
 .targetRow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
 .targetRow p { margin: 0; font-size: 0.88rem; color: var(--text-secondary); }
 .sectionTitle { margin: 0; font-size: 1rem; font-weight: 700; letter-spacing: -.01em; color: var(--text-primary); }
@@ -31,8 +32,8 @@
 .line { fill: none; stroke: var(--text-primary); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; opacity: .8; }
 .guide { stroke: var(--border-strong); stroke-width: 1; }
 .point { fill: var(--bg-panel); stroke: var(--text-muted); stroke-width: 1.5; }
-/* The selected weigh-in (the latest until another is picked) carries the red accent. */
-.selectedPoint { fill: var(--brand-red); stroke: var(--bg-panel); stroke-width: 2; }
+/* Distinguish the selected weight without a danger cue. */
+.selectedPoint { fill: var(--progress-gold); stroke: var(--bg-panel); stroke-width: 2; }
 .latestPoint { fill: var(--text-primary); stroke: var(--bg-panel); stroke-width: 1.5; }
 .tooltip { position: absolute; padding: 4px 8px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-surface); color: var(--text-secondary); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none; }
 .tooltip[data-edge="top"] { top: 0; }
@@ -47,7 +48,7 @@
 .listSection { display: grid; gap: 12px; }
 .listSection > :global(.secondary-button) { justify-self: start; }
 .row { padding: 0; }
-.rowButton { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; padding: 14px 16px; border: 0; border-radius: inherit; background: transparent; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
+.rowButton { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 10px 14px; border: 0; border-radius: inherit; background: transparent; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
 .rowButton:hover { background: color-mix(in srgb, var(--text-primary) 4%, transparent); }
 .rowButton:focus-visible { outline: 2px solid var(--brand-red); outline-offset: -2px; }
 .rowMain { display: grid; gap: 4px; min-width: 0; }
