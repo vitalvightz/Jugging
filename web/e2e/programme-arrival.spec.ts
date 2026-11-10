@@ -32,7 +32,7 @@ for (const training of [false, true]) for (const width of [320, 390, 1280]) test
     if (path === "/api/me") body = profile;
     if (path === "/api/today") body = view;
     if (path === `/api/plans/${id}`) body = {plan_id: id, status: "ready", outputs: {structured_plan: {
-      athlete_context: {sport_profile: "Boxing", experience_level: "Intermediate"},
+      athlete_context: {sport_profile: "Boxing, 3 x 3 rounds; primary focus speed, with footwork as the main limiter..", experience_level: "Intermediate"},
       weeks: Array.from({length: training ? 6 : 1}, (_, index) => ({week_index: index + 1,
         days: [{date: new Date(Date.parse(`${view.today.training_day}T12:00:00Z`) + index * 7 * 86400000).toISOString().slice(0, 10),
           sessions: [view.live_prescription?.session ?? view.today.next_session]}]})),
@@ -46,9 +46,10 @@ for (const training of [false, true]) for (const width of [320, 390, 1280]) test
   await page.goto(`/today?plan=${id}`);
   const summary = page.locator('[class*="programmeArrival"]');
   await expect(summary).toBeVisible();
-  await expect(page.getByText("Tap “View Full Plan” for plan details.", {exact: true})).toBeVisible();
-  await expect(summary).toContainText(training ? "6 weeks. Built for Boxing." : "1 week of training. Built for Boxing.");
-  expect((await summary.boundingBox())!.height).toBeLessThan(150);
+  await expect(page.getByText("Tap “View Full Plan” for plan details.", {exact: true})).toHaveCount(0);
+  await expect(summary).toContainText(training ? "6-week boxing camp" : "1-week boxing programme");
+  expect((await summary.boundingBox())!.height).toBeLessThan(130);
+  await expect(summary).not.toContainText("primary focus");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await expect(page.getByRole("link", {name: "View Full Plan", exact: true})).toHaveAttribute("href", `/plans/${id}`);
   await expect(page.getByRole("link", {name: "View plan", exact: true})).toHaveCount(0);

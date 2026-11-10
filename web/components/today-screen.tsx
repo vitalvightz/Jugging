@@ -7,7 +7,7 @@ import Link from "next/link";
 import { TrainingHabitLog } from "@/components/training-habit-log";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ARRIVING_PLAN_PARAM } from "@/lib/generation-status-guards";
-import { hasProgrammeArrival, consumeProgrammeArrival, PROGRAMME_ARRIVAL_EVENT } from "@/lib/programme-arrival";
+import { hasProgrammeArrival, consumeProgrammeArrival, PROGRAMME_ARRIVAL_EVENT, programmeArrivalHeadline } from "@/lib/programme-arrival";
 import styles from "./today-screen.module.css";
 
 import { useAppSession } from "@/components/auth-provider";
@@ -226,7 +226,7 @@ function TodayReadinessStrip({
 }
 
 export function TodayScreen() {
-  const [planHint, dismissPlanHint] = useSeenOnce("discovery-full-plan-seen");
+  const [, dismissPlanHint] = useSeenOnce("discovery-full-plan-seen");
   const { session, me } = useAppSession();
   const token = session?.access_token ?? null;
   const {
@@ -294,9 +294,8 @@ export function TodayScreen() {
   const arrivalConfirmed = useRef<string | null>(null);
   const [arrivalAction, setArrivalAction] = useState<HTMLButtonElement | null>(null);
   const arrivalWeeks = structuredPlan?.weeks?.length ?? 0;
-  const arrivalSport = structuredPlan?.athlete_context?.sport_profile?.trim() || structuredPlan?.plan_metadata?.sport?.trim();
-  const arrivalDuration = arrivalWeeks ? `${arrivalWeeks} ${arrivalWeeks === 1 ? "week" : "weeks"}${openOngoing ? " of training" : ""}.` : "";
-  const arrivalMetadata = [arrivalDuration, arrivalSport ? `Built for ${arrivalSport}.` : null].filter(Boolean).join(" ");
+  const arrivalMetadata = programmeArrivalHeadline(arrivalWeeks, openOngoing,
+    structuredPlan?.plan_metadata?.sport, structuredPlan?.athlete_context?.sport_profile);
   const showProgrammeArrival = Boolean(offeredPlanId && offeredPlanId === state?.active_plan?.id
     && !isLoading && !error && !presentationPending && structuredPlan && arrivalMetadata);
   useEffect(() => {
@@ -466,7 +465,7 @@ export function TodayScreen() {
             {hasPlan ? (
               showProgrammeArrival ? (
                 <div className={styles.programmeArrival}>
-                  <p className={styles.arrivalTitle}><TileIcon name="check" ring />{openOngoing ? "Your programme is ready" : "Your camp is ready"}</p>
+                  <p className={styles.arrivalTitle}><TileIcon name="check" ring />{openOngoing ? "Programme ready" : "Your camp is ready"}</p>
                   <h1 className={styles.arrivalHeadline}>{arrivalMetadata}</h1>
                   <div className={styles.arrivalLinks}>
                     {arrivalAction ? <a className={`cta ${styles.arrivalStart}`} href="#today-session" onClick={event => {
@@ -484,10 +483,6 @@ export function TodayScreen() {
           </div>
           {trainingDayLabel !== "Today" ? <p className={styles.heroDate}>{trainingDayLabel.replace(/\s\d{4}$/, "")}</p> : null}
         </div>
-        {showProgrammeArrival && planHint ? <div className={styles.discoveryHint} role="note">
-          <span>Tap “View Full Plan” for plan details.</span>
-          <button type="button" onClick={dismissPlanHint} aria-label="Dismiss full plan tip">×</button>
-        </div> : null}
         <TodayReadinessStrip
           hasPlan={hasPlan}
           canCheckIn={canCheckIn}
