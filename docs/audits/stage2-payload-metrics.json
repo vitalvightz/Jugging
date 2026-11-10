@@ -1,0 +1,861 @@
+{
+  "baseline": "43db0aed",
+  "fixtures": [
+    {
+      "weeks": 2,
+      "planning_brief": {
+        "chars": 482867,
+        "estimated_tokens_chars_div_4": 120717
+      },
+      "handoff_before": {
+        "chars": 101909,
+        "estimated_tokens_chars_div_4": 25478
+      },
+      "handoff_after": {
+        "chars": 100897,
+        "estimated_tokens_chars_div_4": 25225
+      },
+      "structured_before": {
+        "chars": 18941,
+        "estimated_tokens_chars_div_4": 4736
+      },
+      "structured_after": {
+        "chars": 18432,
+        "estimated_tokens_chars_div_4": 4608
+      },
+      "sections_before": {
+        "You are Stage 2 (finalizer). Stage 1 has already made the training decisions. Your job is to render and coach the resolved plan, not redesign it.": {
+          "chars": 25341,
+          "estimated_tokens_chars_div_4": 6336
+        },
+        "UNLXCK FINAL RENDER CONTRACT": {
+          "chars": 5652,
+          "estimated_tokens_chars_div_4": 1413
+        },
+        "PAYLOAD MODE INSTRUCTIONS": {
+          "chars": 683,
+          "estimated_tokens_chars_div_4": 171
+        },
+        "LOCKED SESSION RENDER MANIFEST": {
+          "chars": 6524,
+          "estimated_tokens_chars_div_4": 1631
+        },
+        "FINALIZER PACKET": {
+          "chars": 58930,
+          "estimated_tokens_chars_div_4": 14733
+        },
+        "ATHLETE PROFILE": {
+          "chars": 3606,
+          "estimated_tokens_chars_div_4": 902
+        },
+        "INJURY CONTEXT": {
+          "chars": 169,
+          "estimated_tokens_chars_div_4": 43
+        },
+        "STAGE 1 DRAFT PLAN": {
+          "chars": 205,
+          "estimated_tokens_chars_div_4": 52
+        },
+        "FIRST-PASS COMPLETENESS CHECK": {
+          "chars": 743,
+          "estimated_tokens_chars_div_4": 186
+        }
+      },
+      "brief_sections": {
+        "schema_version": {
+          "chars": 19,
+          "estimated_tokens_chars_div_4": 5
+        },
+        "generator_mode": {
+          "chars": 41,
+          "estimated_tokens_chars_div_4": 11
+        },
+        "athlete_snapshot": {
+          "chars": 3870,
+          "estimated_tokens_chars_div_4": 968
+        },
+        "fight_demands": {
+          "chars": 140,
+          "estimated_tokens_chars_div_4": 35
+        },
+        "archetype_summary": {
+          "chars": 585,
+          "estimated_tokens_chars_div_4": 147
+        },
+        "main_limiter": {
+          "chars": 34,
+          "estimated_tokens_chars_div_4": 9
+        },
+        "compressed_priorities": {
+          "chars": 1974,
+          "estimated_tokens_chars_div_4": 494
+        },
+        "priority_focus": {
+          "chars": 464,
+          "estimated_tokens_chars_div_4": 116
+        },
+        "limiter_profile": {
+          "chars": 1013,
+          "estimated_tokens_chars_div_4": 254
+        },
+        "sport_load_profile": {
+          "chars": 704,
+          "estimated_tokens_chars_div_4": 176
+        },
+        "decision_hierarchy": {
+          "chars": 1347,
+          "estimated_tokens_chars_div_4": 337
+        },
+        "main_risks": {
+          "chars": 477,
+          "estimated_tokens_chars_div_4": 120
+        },
+        "global_priorities": {
+          "chars": 2108,
+          "estimated_tokens_chars_div_4": 527
+        },
+        "phase_strategy": {
+          "chars": 1266,
+          "estimated_tokens_chars_div_4": 317
+        },
+        "weekly_stress_map": {
+          "chars": 5671,
+          "estimated_tokens_chars_div_4": 1418
+        },
+        "week_by_week_progression": {
+          "chars": 9997,
+          "estimated_tokens_chars_div_4": 2500
+        },
+        "fight_week_override": {
+          "chars": 17,
+          "estimated_tokens_chars_div_4": 5
+        },
+        "weekly_role_map": {
+          "chars": 91570,
+          "estimated_tokens_chars_div_4": 22893
+        },
+        "restrictions": {
+          "chars": 2,
+          "estimated_tokens_chars_div_4": 1
+        },
+        "candidate_pools": {
+          "chars": 319149,
+          "estimated_tokens_chars_div_4": 79788
+        },
+        "omission_ledger": {
+          "chars": 218,
+          "estimated_tokens_chars_div_4": 55
+        },
+        "decision_rules": {
+          "chars": 10215,
+          "estimated_tokens_chars_div_4": 2554
+        },
+        "computed_support": {
+          "chars": 3336,
+          "estimated_tokens_chars_div_4": 834
+        },
+        "goal_preservation_version": {
+          "chars": 22,
+          "estimated_tokens_chars_div_4": 6
+        },
+        "goal_preservation": {
+          "chars": 1786,
+          "estimated_tokens_chars_div_4": 447
+        },
+        "primary_weakness_disposition": {
+          "chars": 134,
+          "estimated_tokens_chars_div_4": 34
+        },
+        "stage1_selection_summary": {
+          "chars": 26092,
+          "estimated_tokens_chars_div_4": 6523
+        }
+      },
+      "selected_plan_sections": {
+        "goal_preservation_version": {
+          "chars": 22,
+          "estimated_tokens_chars_div_4": 6
+        },
+        "goal_preservation": {
+          "chars": 1794,
+          "estimated_tokens_chars_div_4": 449
+        },
+        "session_sequence": {
+          "chars": 2,
+          "estimated_tokens_chars_div_4": 1
+        },
+        "weekly_role_map": {
+          "chars": 22493,
+          "estimated_tokens_chars_div_4": 5624
+        },
+        "late_fight_plan_spec": {
+          "chars": 2,
+          "estimated_tokens_chars_div_4": 1
+        },
+        "open_plan_spec": {
+          "chars": 21,
+          "estimated_tokens_chars_div_4": 6
+        },
+        "fight_week_override": {
+          "chars": 17,
+          "estimated_tokens_chars_div_4": 5
+        },
+        "week_by_week_progression": {
+          "chars": 8322,
+          "estimated_tokens_chars_div_4": 2081
+        },
+        "priority_focus": {
+          "chars": 464,
+          "estimated_tokens_chars_div_4": 116
+        },
+        "late_fight_tail_handoff": {
+          "chars": 8283,
+          "estimated_tokens_chars_div_4": 2071
+        }
+      },
+      "equivalence": "lossless profile reconstruction; all other handoff sections unchanged; structured JSON values identical"
+    },
+    {
+      "weeks": 4,
+      "planning_brief": {
+        "chars": 737553,
+        "estimated_tokens_chars_div_4": 184389
+      },
+      "handoff_before": {
+        "chars": 141533,
+        "estimated_tokens_chars_div_4": 35384
+      },
+      "handoff_after": {
+        "chars": 140535,
+        "estimated_tokens_chars_div_4": 35134
+      },
+      "structured_before": {
+        "chars": 19294,
+        "estimated_tokens_chars_div_4": 4824
+      },
+      "structured_after": {
+        "chars": 18752,
+        "estimated_tokens_chars_div_4": 4688
+      },
+      "sections_before": {
+        "You are Stage 2 (finalizer). Stage 1 has already made the training decisions. Your job is to render and coach the resolved plan, not redesign it.": {
+          "chars": 25341,
+          "estimated_tokens_chars_div_4": 6336
+        },
+        "UNLXCK FINAL RENDER CONTRACT": {
+          "chars": 5652,
+          "estimated_tokens_chars_div_4": 1413
+        },
+        "PAYLOAD MODE INSTRUCTIONS": {
+          "chars": 683,
+          "estimated_tokens_chars_div_4": 171
+        },
+        "LOCKED SESSION RENDER MANIFEST": {
+          "chars": 13344,
+          "estimated_tokens_chars_div_4": 3336
+        },
+        "FINALIZER PACKET": {
+          "chars": 91523,
+          "estimated_tokens_chars_div_4": 22881
+        },
+        "ATHLETE PROFILE": {
+          "chars": 3817,
+          "estimated_tokens_chars_div_4": 955
+        },
+        "INJURY CONTEXT": {
+          "chars": 169,
+          "estimated_tokens_chars_div_4": 43
+        },
+        "STAGE 1 DRAFT PLAN": {
+          "chars": 205,
+          "estimated_tokens_chars_div_4": 52
+        },
+        "FIRST-PASS COMPLETENESS CHECK": {
+          "chars": 743,
+          "estimated_tokens_chars_div_4": 186
+        }
+      },
+      "brief_sections": {
+        "schema_version": {
+          "chars": 19,
+          "estimated_tokens_chars_div_4": 5
+        },
+        "generator_mode": {
+          "chars": 41,
+          "estimated_tokens_chars_div_4": 11
+        },
+        "athlete_snapshot": {
+          "chars": 4098,
+          "estimated_tokens_chars_div_4": 1025
+        },
+        "fight_demands": {
+          "chars": 141,
+          "estimated_tokens_chars_div_4": 36
+        },
+        "archetype_summary": {
+          "chars": 585,
+          "estimated_tokens_chars_div_4": 147
+        },
+        "main_limiter": {
+          "chars": 34,
+          "estimated_tokens_chars_div_4": 9
+        },
+        "compressed_priorities": {
+          "chars": 2216,
+          "estimated_tokens_chars_div_4": 554
+        },
+        "priority_focus": {
+          "chars": 464,
+          "estimated_tokens_chars_div_4": 116
+        },
+        "limiter_profile": {
+          "chars": 1013,
+          "estimated_tokens_chars_div_4": 254
+        },
+        "sport_load_profile": {
+          "chars": 704,
+          "estimated_tokens_chars_div_4": 176
+        },
+        "decision_hierarchy": {
+          "chars": 1347,
+          "estimated_tokens_chars_div_4": 337
+        },
+        "main_risks": {
+          "chars": 279,
+          "estimated_tokens_chars_div_4": 70
+        },
+        "global_priorities": {
+          "chars": 2322,
+          "estimated_tokens_chars_div_4": 581
+        },
+        "phase_strategy": {
+          "chars": 1793,
+          "estimated_tokens_chars_div_4": 449
+        },
+        "weekly_stress_map": {
+          "chars": 7871,
+          "estimated_tokens_chars_div_4": 1968
+        },
+        "week_by_week_progression": {
+          "chars": 17411,
+          "estimated_tokens_chars_div_4": 4353
+        },
+        "fight_week_override": {
+          "chars": 17,
+          "estimated_tokens_chars_div_4": 5
+        },
+        "weekly_role_map": {
+          "chars": 167457,
+          "estimated_tokens_chars_div_4": 41865
+        },
+        "restrictions": {
+          "chars": 2,
+          "estimated_tokens_chars_div_4": 1
+        },
+        "candidate_pools": {
+          "chars": 478332,
+          "estimated_tokens_chars_div_4": 119583
+        },
+        "omission_ledger": {
+          "chars": 136,
+          "estimated_tokens_chars_div_4": 34
+        },
+        "decision_rules": {
+          "chars": 10215,
+          "estimated_tokens_chars_div_4": 2554
+        },
+        "computed_support": {
+          "chars": 4559,
+          "estimated_tokens_chars_div_4": 1140
+        },
+        "goal_preservation_version": {
+          "chars": 22,
+          "estimated_tokens_chars_div_4": 6
+        },
+        "goal_preservation": {
+          "chars": 2028,
+          "estimated_tokens_chars_div_4": 507
+        },
+        "primary_weakness_disposition": {
+          "chars": 134,
+          "estimated_tokens_chars_div_4": 34
+        },
+        "stage1_selection_summary": {
+          "chars": 33697,
+          "estimated_tokens_chars_div_4": 8425
+        }
+      },
+      "selected_plan_sections": {
+        "goal_preservation_version": {
+          "chars": 22,
+          "estimated_tokens_chars_div_4": 6
+        },
+        "goal_preservation": {
+          "chars": 2036,
+          "estimated_tokens_chars_div_4": 509
+        },
+        "session_sequence": {
+          "chars": 2,
+          "estimated_tokens_chars_div_4": 1
+        },
+        "weekly_role_map": {
+          "chars": 50470,
+          "estimated_tokens_chars_div_4": 12618
+        },
+        "late_fight_plan_spec": {
+          "chars": 2,
+          "estimated_tokens_chars_div_4": 1
+        },
+        "open_plan_spec": {
+          "chars": 21,
+          "estimated_tokens_chars_div_4": 6
+        },
+        "fight_week_override": {
+          "chars": 17,
+          "estimated_tokens_chars_div_4": 5
+        },
+        "week_by_week_progression": {
+          "chars": 14050,
+          "estimated_tokens_chars_div_4": 3513
+        },
+        "priority_focus": {
+          "chars": 464,
+          "estimated_tokens_chars_div_4": 116
+        },
+        "late_fight_tail_handoff": {
+          "chars": 8283,
+          "estimated_tokens_chars_div_4": 2071
+        }
+      },
+      "equivalence": "lossless profile reconstruction; all other handoff sections unchanged; structured JSON values identical"
+    },
+    {
+      "weeks": 8,
+      "planning_brief": {
+        "chars": 911840,
+        "estimated_tokens_chars_div_4": 227960
+      },
+      "handoff_before": {
+        "chars": 228752,
+        "estimated_tokens_chars_div_4": 57188
+      },
+      "handoff_after": {
+        "chars": 227754,
+        "estimated_tokens_chars_div_4": 56939
+      },
+      "structured_before": {
+        "chars": 19293,
+        "estimated_tokens_chars_div_4": 4824
+      },
+      "structured_after": {
+        "chars": 18670,
+        "estimated_tokens_chars_div_4": 4668
+      },
+      "sections_before": {
+        "You are Stage 2 (finalizer). Stage 1 has already made the training decisions. Your job is to render and coach the resolved plan, not redesign it.": {
+          "chars": 25341,
+          "estimated_tokens_chars_div_4": 6336
+        },
+        "UNLXCK FINAL RENDER CONTRACT": {
+          "chars": 5652,
+          "estimated_tokens_chars_div_4": 1413
+        },
+        "PAYLOAD MODE INSTRUCTIONS": {
+          "chars": 683,
+          "estimated_tokens_chars_div_4": 171
+        },
+        "LOCKED SESSION RENDER MANIFEST": {
+          "chars": 26226,
+          "estimated_tokens_chars_div_4": 6557
+        },
+        "FINALIZER PACKET": {
+          "chars": 163223,
+          "estimated_tokens_chars_div_4": 40806
+        },
+        "ATHLETE PROFILE": {
+          "chars": 6480,
+          "estimated_tokens_chars_div_4": 1620
+        },
+        "INJURY CONTEXT": {
+          "chars": 169,
+          "estimated_tokens_chars_div_4": 43
+        },
+        "STAGE 1 DRAFT PLAN": {
+          "chars": 179,
+          "estimated_tokens_chars_div_4": 45
+        },
+        "FIRST-PASS COMPLETENESS CHECK": {
+          "chars": 743,
+          "estimated_tokens_chars_div_4": 186
+        }
+      },
+      "brief_sections": {
+        "schema_version": {
+          "chars": 19,
+          "estimated_tokens_chars_div_4": 5
+        },
+        "generator_mode": {
+          "chars": 41,
+          "estimated_tokens_chars_div_4": 11
+        },
+        "athlete_snapshot": {
+          "chars": 6970,
+          "estimated_tokens_chars_div_4": 1743
+        },
+        "fight_demands": {
+          "chars": 141,
+          "estimated_tokens_chars_div_4": 36
+        },
+        "archetype_summary": {
+          "chars": 585,
+          "estimated_tokens_chars_div_4": 147
+        },
+        "main_limiter": {
+          "chars": 34,
+          "estimated_tokens_chars_div_4": 9
+        },
+        "compressed_priorities": {
+          "chars": 5091,
+          "estimated_tokens_chars_div_4": 1273
+        },
+        "priority_focus": {
+          "chars": 464,
+          "estimated_tokens_chars_div_4": 116
+        },
+        "limiter_profile": {
+          "chars": 1013,
+          "estimated_tokens_chars_div_4": 254
+        },
+        "sport_load_profile": {
+          "chars": 704,
+          "estimated_tokens_chars_div_4": 176
+        },
+        "decision_hierarchy": {
+          "chars": 1347,
+          "estimated_tokens_chars_div_4": 337
+        },
+        "main_risks": {
+          "chars": 279,
+          "estimated_tokens_chars_div_4": 70
+        },
+        "global_priorities": {
+          "chars": 2322,
+          "estimated_tokens_chars_div_4": 581
+        },
+        "phase_strategy": {
+          "chars": 1619,
+          "estimated_tokens_chars_div_4": 405
+        },
+        "weekly_stress_map": {
+          "chars": 7871,
+          "estimated_tokens_chars_div_4": 1968
+        },
+        "week_by_week_progression": {
+          "chars": 34543,
+          "estimated_tokens_chars_div_4": 8636
+        },
+        "fight_week_override": {
+          "chars": 17,
+          "estimated_tokens_chars_div_4": 5
+        },
+        "weekly_role_map": {
+          "chars": 316118,
+          "estimated_tokens_chars_div_4": 79030
+        },
+        "restrictions": {
+          "chars": 2,
+          "estimated_tokens_chars_div_4": 1
+        },
+        "candidate_pools": {
+          "chars": 478332,
+          "estimated_tokens_chars_div_4": 119583
+        },
+        "omission_ledger": {
+          "chars": 136,
+          "estimated_tokens_chars_div_4": 34
+        },
+        "decision_rules": {
+          "chars": 10215,
+          "estimated_tokens_chars_div_4": 2554
+        },
+        "computed_support": {
+          "chars": 4559,
+          "estimated_tokens_chars_div_4": 1140
+        },
+        "goal_preservation_version": {
+          "chars": 22,
+          "estimated_tokens_chars_div_4": 6
+        },
+        "goal_preservation": {
+          "chars": 4903,
+          "estimated_tokens_chars_div_4": 1226
+        },
+        "primary_weakness_disposition": {
+          "chars": 134,
+          "estimated_tokens_chars_div_4": 34
+        },
+        "stage1_selection_summary": {
+          "chars": 33743,
+          "estimated_tokens_chars_div_4": 8436
+        }
+      },
+      "selected_plan_sections": {
+        "goal_preservation_version": {
+          "chars": 22,
+          "estimated_tokens_chars_div_4": 6
+        },
+        "goal_preservation": {
+          "chars": 4911,
+          "estimated_tokens_chars_div_4": 1228
+        },
+        "session_sequence": {
+          "chars": 2,
+          "estimated_tokens_chars_div_4": 1
+        },
+        "weekly_role_map": {
+          "chars": 110685,
+          "estimated_tokens_chars_div_4": 27672
+        },
+        "late_fight_plan_spec": {
+          "chars": 2,
+          "estimated_tokens_chars_div_4": 1
+        },
+        "open_plan_spec": {
+          "chars": 21,
+          "estimated_tokens_chars_div_4": 6
+        },
+        "fight_week_override": {
+          "chars": 17,
+          "estimated_tokens_chars_div_4": 5
+        },
+        "week_by_week_progression": {
+          "chars": 27168,
+          "estimated_tokens_chars_div_4": 6792
+        },
+        "priority_focus": {
+          "chars": 464,
+          "estimated_tokens_chars_div_4": 116
+        },
+        "late_fight_tail_handoff": {
+          "chars": 8283,
+          "estimated_tokens_chars_div_4": 2071
+        }
+      },
+      "equivalence": "lossless profile reconstruction; all other handoff sections unchanged; structured JSON values identical"
+    },
+    {
+      "weeks": 12,
+      "planning_brief": {
+        "chars": 1086392,
+        "estimated_tokens_chars_div_4": 271598
+      },
+      "handoff_before": {
+        "chars": 319720,
+        "estimated_tokens_chars_div_4": 79930
+      },
+      "handoff_after": {
+        "chars": 318721,
+        "estimated_tokens_chars_div_4": 79681
+      },
+      "structured_before": {
+        "chars": 15754,
+        "estimated_tokens_chars_div_4": 3939
+      },
+      "structured_after": {
+        "chars": 15499,
+        "estimated_tokens_chars_div_4": 3875
+      },
+      "sections_before": {
+        "You are Stage 2 (finalizer). Stage 1 has already made the training decisions. Your job is to render and coach the resolved plan, not redesign it.": {
+          "chars": 25341,
+          "estimated_tokens_chars_div_4": 6336
+        },
+        "UNLXCK FINAL RENDER CONTRACT": {
+          "chars": 5652,
+          "estimated_tokens_chars_div_4": 1413
+        },
+        "PAYLOAD MODE INSTRUCTIONS": {
+          "chars": 683,
+          "estimated_tokens_chars_div_4": 171
+        },
+        "LOCKED SESSION RENDER MANIFEST": {
+          "chars": 40406,
+          "estimated_tokens_chars_div_4": 10102
+        },
+        "FINALIZER PACKET": {
+          "chars": 237338,
+          "estimated_tokens_chars_div_4": 59335
+        },
+        "ATHLETE PROFILE": {
+          "chars": 9153,
+          "estimated_tokens_chars_div_4": 2289
+        },
+        "INJURY CONTEXT": {
+          "chars": 169,
+          "estimated_tokens_chars_div_4": 43
+        },
+        "STAGE 1 DRAFT PLAN": {
+          "chars": 179,
+          "estimated_tokens_chars_div_4": 45
+        },
+        "FIRST-PASS COMPLETENESS CHECK": {
+          "chars": 743,
+          "estimated_tokens_chars_div_4": 186
+        }
+      },
+      "brief_sections": {
+        "schema_version": {
+          "chars": 19,
+          "estimated_tokens_chars_div_4": 5
+        },
+        "generator_mode": {
+          "chars": 41,
+          "estimated_tokens_chars_div_4": 11
+        },
+        "athlete_snapshot": {
+          "chars": 9849,
+          "estimated_tokens_chars_div_4": 2463
+        },
+        "fight_demands": {
+          "chars": 142,
+          "estimated_tokens_chars_div_4": 36
+        },
+        "archetype_summary": {
+          "chars": 585,
+          "estimated_tokens_chars_div_4": 147
+        },
+        "main_limiter": {
+          "chars": 34,
+          "estimated_tokens_chars_div_4": 9
+        },
+        "compressed_priorities": {
+          "chars": 7969,
+          "estimated_tokens_chars_div_4": 1993
+        },
+        "priority_focus": {
+          "chars": 464,
+          "estimated_tokens_chars_div_4": 116
+        },
+        "limiter_profile": {
+          "chars": 1013,
+          "estimated_tokens_chars_div_4": 254
+        },
+        "sport_load_profile": {
+          "chars": 704,
+          "estimated_tokens_chars_div_4": 176
+        },
+        "decision_hierarchy": {
+          "chars": 1347,
+          "estimated_tokens_chars_div_4": 337
+        },
+        "main_risks": {
+          "chars": 279,
+          "estimated_tokens_chars_div_4": 70
+        },
+        "global_priorities": {
+          "chars": 2322,
+          "estimated_tokens_chars_div_4": 581
+        },
+        "phase_strategy": {
+          "chars": 1619,
+          "estimated_tokens_chars_div_4": 405
+        },
+        "weekly_stress_map": {
+          "chars": 7871,
+          "estimated_tokens_chars_div_4": 1968
+        },
+        "week_by_week_progression": {
+          "chars": 51123,
+          "estimated_tokens_chars_div_4": 12781
+        },
+        "fight_week_override": {
+          "chars": 17,
+          "estimated_tokens_chars_div_4": 5
+        },
+        "weekly_role_map": {
+          "chars": 465454,
+          "estimated_tokens_chars_div_4": 116364
+        },
+        "restrictions": {
+          "chars": 2,
+          "estimated_tokens_chars_div_4": 1
+        },
+        "candidate_pools": {
+          "chars": 478332,
+          "estimated_tokens_chars_div_4": 119583
+        },
+        "omission_ledger": {
+          "chars": 136,
+          "estimated_tokens_chars_div_4": 34
+        },
+        "decision_rules": {
+          "chars": 10215,
+          "estimated_tokens_chars_div_4": 2554
+        },
+        "computed_support": {
+          "chars": 4559,
+          "estimated_tokens_chars_div_4": 1140
+        },
+        "goal_preservation_version": {
+          "chars": 22,
+          "estimated_tokens_chars_div_4": 6
+        },
+        "goal_preservation": {
+          "chars": 7781,
+          "estimated_tokens_chars_div_4": 1946
+        },
+        "primary_weakness_disposition": {
+          "chars": 134,
+          "estimated_tokens_chars_div_4": 34
+        },
+        "stage1_selection_summary": {
+          "chars": 33743,
+          "estimated_tokens_chars_div_4": 8436
+        }
+      },
+      "selected_plan_sections": {
+        "goal_preservation_version": {
+          "chars": 22,
+          "estimated_tokens_chars_div_4": 6
+        },
+        "goal_preservation": {
+          "chars": 7789,
+          "estimated_tokens_chars_div_4": 1948
+        },
+        "session_sequence": {
+          "chars": 2,
+          "estimated_tokens_chars_div_4": 1
+        },
+        "weekly_role_map": {
+          "chars": 174054,
+          "estimated_tokens_chars_div_4": 43514
+        },
+        "late_fight_plan_spec": {
+          "chars": 2,
+          "estimated_tokens_chars_div_4": 1
+        },
+        "open_plan_spec": {
+          "chars": 21,
+          "estimated_tokens_chars_div_4": 6
+        },
+        "fight_week_override": {
+          "chars": 17,
+          "estimated_tokens_chars_div_4": 5
+        },
+        "week_by_week_progression": {
+          "chars": 40162,
+          "estimated_tokens_chars_div_4": 10041
+        },
+        "priority_focus": {
+          "chars": 464,
+          "estimated_tokens_chars_div_4": 116
+        },
+        "late_fight_tail_handoff": {
+          "chars": 8283,
+          "estimated_tokens_chars_div_4": 2071
+        }
+      },
+      "equivalence": "lossless profile reconstruction; all other handoff sections unchanged; structured JSON values identical"
+    }
+  ]
+}
