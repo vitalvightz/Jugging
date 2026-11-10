@@ -9,6 +9,7 @@ import {
   performanceSummary,
   progressionLoadFor,
   progressionOpen,
+  progressionRepRange,
   nextStepFor,
   nextStepLabel,
   needsFirstLoad,
@@ -482,4 +483,34 @@ test("a saved run time reads back as a clock", () => {
   assert.equal(draftFromLog(fields, saved).duration, "24:35");
   assert.equal(logSummary(fields, saved), "Done · 5 km · 24:35");
   assert.equal(performanceSummary(saved), "5 km · 24:35");
+});
+
+test("a fixed working number progresses inside the server's permitted range", () => {
+  // As generated: reps stays 8 (the prescription); rep_range is the bank's 8-12.
+  const squat: StructuredBlock = { ...deadlift, sets: 3, reps: 8, rep_range: [8, 12] };
+  assert.deepEqual(progressionRepRange(squat), [8, 12]);
+  const done = (actual: ExerciseLogRecord["actual"]) =>
+    log(squat, { prescribed: squat, actual: { load: { value: 60, unit: "kg" }, ...actual } });
+  // A one-tap done counts as the prescribed 8, never the top.
+  assert.deepEqual(nextStepFor(squat, done({ feel: "easy" }), true), { kind: "reps", reps: 9 });
+  assert.deepEqual(nextStepFor(squat, done({ reps: 11, feel: "easy" }), true), { kind: "reps", reps: 12 });
+  assert.equal(nextStepFor(squat, done({ reps: 12, feel: "easy" }), true)?.kind, "load");
+  // An explicit answer outranks the RPE; with no answer the RPE still counts.
+  assert.equal(nextStepFor(squat, done({ reps: 9, feel: "right", effort: { method: "RPE", value: 5 } }), true), null);
+  assert.deepEqual(nextStepFor(squat, done({ reps: 9, effort: { method: "RPE", value: 6 } }), true), { kind: "reps", reps: 10 });
+  // A range the prescription sits outside, or a malformed one, is ignored.
+  assert.deepEqual(progressionRepRange({ ...squat, rep_range: [10, 12] }), [8, 8]);
+  assert.deepEqual(progressionRepRange({ ...squat, rep_range: [12, 8] }), [8, 8]);
+  // A block logged before ranges existed is a different dose: nothing is guessed.
+  const legacy = log(squat, { prescribed: { ...squat, rep_range: null }, actual: { feel: "easy" } });
+  assert.equal(nextStepFor(squat, legacy, true), null);
+});
+
+test("the server's hold stops every suggestion, and only strength work progresses this way", () => {
+  const squat: StructuredBlock = { ...deadlift, sets: 3, reps: 8, rep_range: [8, 12] };
+  const done = log(squat, { prescribed: squat, actual: { load: { value: 60, unit: "kg" }, feel: "easy" } });
+  assert.equal(nextStepFor({ ...squat, progression_hold: true }, done, true), null);
+  for (const block_type of ["plyometric_power", "speed", "conditioning", "strength_speed"]) {
+    assert.equal(nextStepFor({ ...squat, block_type }, { ...done, prescribed: { ...squat, block_type } }, true), null);
+  }
 });

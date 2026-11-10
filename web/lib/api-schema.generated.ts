@@ -2342,6 +2342,8 @@ export type SessionBlock = {
   red_flags: RedFlagRule[];
   rehab_drill_id: string | null;
   exercise_key: string | null;
+  rep_range: number[] | null;
+  progression_hold: boolean | null;
   prescription_source: "athlete" | null;
   prescription_text: string | null;
   athlete_dose: Record<string, unknown> | null;

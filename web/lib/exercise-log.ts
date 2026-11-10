@@ -642,6 +642,24 @@ export function feelOf(log: ExerciseLogRecord): ExerciseFeel | null {
 }
 
 /**
+ * The rep range progression may move within: one the prescription writes
+ * ("6-8"), else the server's permitted range around a fixed working number.
+ * A permitted range is only used while `reps` sits inside it.
+ */
+export function progressionRepRange(block: StructuredBlock): [number, number] | null {
+  const written = prescribedReps(block.reps)?.range;
+  if (!written) return null;
+  const permitted = block.rep_range;
+  if (written[0] === written[1] && Array.isArray(permitted) && permitted.length === 2) {
+    const [low, high] = permitted;
+    if (Number.isInteger(low) && Number.isInteger(high) && low < high && low <= written[0] && written[0] <= high) {
+      return [written[0], high];
+    }
+  }
+  return written;
+}
+
+/**
  * The reps every set reached. Blank means the prescription was followed, which
  * counts as the bottom of a range, never its top. Null when sets were logged
  * one by one and any of them has no count.
@@ -691,10 +709,13 @@ export function progressionOpen(context: {
  */
 export function nextStepFor(block: StructuredBlock, log: ExerciseLogRecord | null, allowed: boolean): NextStep | null {
   if (!allowed || !log || log.status === "skipped" || (log.reason != null && log.reason !== "felt_strong")) return null;
-  if (HOLD_RULE.test(cleanText(block.progression_rule) ?? "")) return null;
+  // The server's hold (taper, final fortnight, injury, weight cut, capped dose) and the plan's own wording.
+  if (block.progression_hold === true || HOLD_RULE.test(cleanText(block.progression_rule) ?? "")) return null;
+  // Strength work only: jumps, sprints and holds progress on quality, not reps or weight.
+  if (!FIRST_LOAD_BLOCK_TYPES.has(cleanText(block.block_type)?.toLowerCase() ?? "")) return null;
   const before = log.prescribed as StructuredBlock;
-  const today = prescribedReps(block.reps)?.range;
-  const planned = prescribedReps(before.reps)?.range;
+  const today = progressionRepRange(block);
+  const planned = progressionRepRange(before);
   if (!today || !planned || today.join() !== planned.join()) return null;
   if (!finitePositiveNumber(block.sets) || block.sets !== before.sets) return null;
   const rpeToday = plannedRpe(block);

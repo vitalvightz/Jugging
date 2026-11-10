@@ -350,6 +350,12 @@ class SessionBlock(BaseModel):
     # never taken from the model. None on legacy plans and on blocks with no
     # deterministic identity, which fall back to display_name matching.
     exercise_key: str | None = None
+    # Server-owned progression context, re-derived from the planning brief on
+    # every read (api/rep_range.py). ``reps`` stays the prescription; rep_range
+    # is the bank range it was chosen from, and progression_hold marks a block
+    # that must not progress (taper, final fortnight, injury, weight cut, cap).
+    rep_range: list[int] | None = Field(default=None, min_length=2, max_length=2)
+    progression_hold: bool | None = None
     # Athlete-authored prescriptions retain their exact text and dose alongside
     # the shared numeric fields. No guessed load, coaching or movement metadata.
     prescription_source: Literal["athlete"] | None = None
@@ -368,7 +374,7 @@ class SessionBlock(BaseModel):
     @model_serializer(mode="wrap")
     def _omit_absent_athlete_change(self, handler):
         data = handler(self)
-        for field in ("athlete_change", "rest_note", "components"):
+        for field in ("athlete_change", "rest_note", "components", "rep_range", "progression_hold"):
             data = _omit_none(data, field)
         return data
 

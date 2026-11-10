@@ -437,6 +437,10 @@ export type StructuredBlock = {
   display_name?: string | null;
   /** Canonical exercise identity (server-stamped); demo videos resolve on it. Absent on legacy plans. */
   exercise_key?: string | null;
+  /** Server-owned: the bank rep range `reps` was chosen from. `reps` stays the prescription. */
+  rep_range?: [number, number] | number[] | null;
+  /** Server-owned: this exposure must not progress (taper, final fortnight, injury, weight cut, cap). */
+  progression_hold?: boolean | null;
   category?: string | null;
   order_index?: number | null;
   duration?: MeasuredValue | null;

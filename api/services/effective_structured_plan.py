@@ -271,6 +271,10 @@ def resolve_effective_structured_plan(
     resolved = deepcopy(resolved)
     mark_optional_support_inserts(resolved, brief)
     resolved = _with_coach_led_contact(resolved, brief)
+    # The permitted rep range and progression holds, re-derived from the brief
+    # so stored cards gain them and a hold always reflects the planner's view.
+    from api.exercise_identity import reconcile_progression_context
+    resolved = reconcile_progression_context(resolved, brief)
     resolved = ensure_structured_session_ids(resolved, plan_id=plan_row.get("id"))
     return ensure_structured_block_ids(resolved)
 

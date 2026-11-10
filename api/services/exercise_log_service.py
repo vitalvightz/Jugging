@@ -55,6 +55,9 @@ _PRESCRIBED_FIELDS: tuple[str, ...] = (
     "prescription_text",
     "athlete_dose",
     "notes",
+    # What the next suggestion is read against.
+    "rep_range",
+    "progression_hold",
 )
 
 _NOT_STARTED_DETAIL = "Start today's session before logging an exercise."
