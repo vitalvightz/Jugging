@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { offerProgrammeArrival } from "@/lib/programme-arrival";
 import { RequireAuth } from "@/components/auth-guard";
 import { useAppSession } from "@/components/auth-provider";
 import { createGenerationJob, getActiveGenerationJob, getActivePlan } from "@/lib/api";
@@ -134,9 +135,11 @@ export default function GeneratePage() {
         }
         // Today must not show a view read before this plan existed.
         clearSharedReads();
-        router.replace(resolvePostGenerationTarget({
+        const target = resolvePostGenerationTarget({
           planId, activePlanId, status, recovered, requiresAdminResume, stage2Status,
-        }));
+        });
+        if (target.startsWith("/today?")) offerProgrammeArrival(planId);
+        router.replace(target);
       })();
     },
   });
