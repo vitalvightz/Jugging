@@ -661,9 +661,8 @@ export function TodaySessionPanel({
     token,
     planId: activePlanId,
     trainingDay: state.today.training_day,
-    enabled:
-      resolvedDecision.sessionIsToday &&
-      (status === "started" || status === "done" || status === "modified"),
+    enabled: resolvedDecision.sessionIsToday,
+    canWrite: status === "started" || status === "done" || status === "modified",
     painReasonAllowed,
     allowProgression: progressionOpen({
       decisionTier: state.today.decision_tier,

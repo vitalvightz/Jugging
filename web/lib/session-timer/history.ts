@@ -18,7 +18,7 @@ export function withHistoricalTimerLoads(items: TimerItem[], blocks: StructuredB
     return { ...item, suggestedLoads: Array.from({ length: item.sets?.max ?? 1 }, (_, at) => {
       const entries = previous?.actual.set_entries;
       const load = entries?.find((row, index) => (row.set_number ?? index + 1) === at + 1)?.load
-        ?? (entries?.length ? null : previous?.actual.load ?? fallback);
+        ?? previous?.actual.load ?? (entries?.length ? null : fallback);
       return load && load.unit === unit && load.value > 0 ? String(load.value) : null;
     }) };
   });
