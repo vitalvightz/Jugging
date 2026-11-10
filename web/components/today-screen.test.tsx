@@ -281,12 +281,13 @@ test("arriving from a new plan re-reads Today until that plan is active, then dr
   }
 });
 
-test("new active programme summary waits for metadata, consumes once, and preserves a rest day", async () => {
+for (const lateCompletion of [false, true]) test(`new active programme summary waits for metadata, consumes once, and preserves a rest day (late completion: ${lateCompletion})`, async () => {
   const { offerProgrammeArrival, hasProgrammeArrival } = await import("@/lib/programme-arrival");
   const originalFetch = globalThis.fetch;
-  window.history.replaceState(null, "", "/today?plan=plan-new");
+  window.localStorage.removeItem("unlxck:programme-arrival-seen:plan-new");
+  window.history.replaceState(null, "", "/today");
   window.localStorage.removeItem("discovery-full-plan-seen");
-  offerProgrammeArrival("plan-new");
+  if (!lateCompletion) offerProgrammeArrival("plan-new");
   let release!: (value: Response) => void;
   const detail = new Promise<Response>(resolve => { release = resolve; });
   const state = {...NO_PLAN_STATE, active_plan: {id: "plan-new", name: "Camp", phase: "GPP", fight_date: "2026-12-01"}};
@@ -301,11 +302,12 @@ test("new active programme summary waits for metadata, consumes once, and preser
   document.body.appendChild(container);
   let root = createRoot(container);
   const render = () => <AppSessionContext.Provider value={{isReady: true, isMeHydrated: true,
-    hasTransientMeError: false, session: {access_token: "arrival-token"}, me: CONSENTED as never,
+    hasTransientMeError: false, session: {access_token: `arrival-token-${lateCompletion}`}, me: CONSENTED as never,
     previewAppearanceMode: () => {}, refreshMe: async () => {}, replaceMe: () => {}, signOut: async () => {}}}>
     <ToastProvider><TodayScreen /></ToastProvider></AppSessionContext.Provider>;
   try {
     await act(async () => { root.render(render()); });
+    if (lateCompletion) await act(async () => offerProgrammeArrival("plan-new"));
     assert.equal(hasProgrammeArrival("plan-new"), true);
     assert.doesNotMatch(container.textContent ?? "", /Your camp is ready/);
     await act(async () => { release(json({outputs: {structured_plan: {
