@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 
+import { useSeenOnce } from "@/components/once-hint";
 import { ExerciseDemo } from "@/components/exercise-demo";
 import { ExercisePrescriptionEditor } from "@/components/exercise-prescription-editor";
 import { usePastExercises } from "@/components/load-field";
@@ -448,6 +449,7 @@ function ExerciseOptionsSheet({
   const [loaded, setLoaded] = useState<{ key: string; response: ExerciseOptionsResponse } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
+  const [scopeHint, dismissScopeHint] = useSeenOnce("discovery-exercise-change-scope-seen");
   const [selectedScope, setSelectedScope] = useState<Scope>("occurrence");
   const [pending, setPending] = useState<string | null>(null);
   const [dosing, setDosing] = useState<string | null>(null);
@@ -502,6 +504,7 @@ function ExerciseOptionsSheet({
     setApplyError(null);
     try {
       await onApply(option, selectedScope, dose);
+      dismissScopeHint();
       onClose();
     } catch (caught) {
       setApplyError(messageOf(caught, "Couldn't save that change. Try again."));
@@ -548,13 +551,17 @@ function ExerciseOptionsSheet({
                   role="radio"
                   aria-checked={selectedScope === option.value}
                   className={styles.scope}
-                  onClick={() => setSelectedScope(option.value)}
+                  onClick={() => { dismissScopeHint(); setSelectedScope(option.value); }}
                 >
                   {option.label}
                 </button>
               ))}
             </div>
           ) : null}
+          {scopeHint && scopes.length > 1 ? <div className={styles.discoveryHint} role="note">
+            <span>Choose whether this change applies to this workout or future sessions.</span>
+            <button type="button" onClick={dismissScopeHint} aria-label="Dismiss exercise change scope tip">×</button>
+          </div> : null}
           {loading ? (
             <ul className={styles.options} aria-label="Loading options">
               {[0, 1, 2].map((index) => (

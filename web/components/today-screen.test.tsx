@@ -285,6 +285,7 @@ test("new active programme summary waits for metadata, consumes once, and preser
   const { offerProgrammeArrival, hasProgrammeArrival } = await import("@/lib/programme-arrival");
   const originalFetch = globalThis.fetch;
   window.history.replaceState(null, "", "/today?plan=plan-new");
+  window.localStorage.removeItem("discovery-full-plan-seen");
   offerProgrammeArrival("plan-new");
   let release!: (value: Response) => void;
   const detail = new Promise<Response>(resolve => { release = resolve; });
@@ -314,6 +315,12 @@ test("new active programme summary waits for metadata, consumes once, and preser
     assert.match(container.textContent ?? "", /Your camp is ready/);
     assert.match(container.textContent ?? "", /2 weeks. Built for Boxing./);
     assert.equal(hasProgrammeArrival("plan-new"), false);
+    const tip = container.querySelector<HTMLButtonElement>('[aria-label="Dismiss full plan tip"]');
+    assert.ok(tip);
+    assert.match(container.textContent ?? "", /Tap “View Full Plan” for plan details/);
+    await act(async () => tip.click());
+    assert.equal(container.querySelector('[aria-label="Dismiss full plan tip"]'), null);
+    assert.equal(window.localStorage.getItem("discovery-full-plan-seen"), "1");
     assert.equal(container.querySelectorAll('a[href="/plans/plan-new"]').length, 1);
     assert.doesNotMatch(container.textContent ?? "", /Go to Session/);
     assert.match(container.textContent ?? "", /No plan session today/);
@@ -325,5 +332,6 @@ test("new active programme summary waits for metadata, consumes once, and preser
     await act(async () => { root.unmount(); });
     container.remove(); globalThis.fetch = originalFetch;
     window.history.replaceState(null, "", "/today"); window.sessionStorage.clear();
+    window.localStorage.removeItem("discovery-full-plan-seen");
   }
 });
