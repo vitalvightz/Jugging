@@ -312,7 +312,7 @@ test("new active programme summary waits for metadata, consumes once, and preser
       weeks: [{week_index: 1, days: []}, {week_index: 2, days: []}],
     }}})); });
     assert.match(container.textContent ?? "", /Your camp is ready/);
-    assert.match(container.textContent ?? "", /2 weeks · Boxing · Intermediate/);
+    assert.match(container.textContent ?? "", /2 weeks. Built for Boxing./);
     assert.equal(hasProgrammeArrival("plan-new"), false);
     assert.equal(container.querySelectorAll('a[href="/plans/plan-new"]').length, 1);
     assert.doesNotMatch(container.textContent ?? "", /Start Training/);

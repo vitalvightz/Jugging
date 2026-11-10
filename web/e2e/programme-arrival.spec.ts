@@ -43,8 +43,8 @@ for (const training of [false, true]) for (const width of [320, 390, 1280]) test
   await page.goto(`/today?plan=${id}`);
   const summary = page.locator('[class*="programmeArrival"]');
   await expect(summary).toBeVisible();
-  await expect(summary).toContainText("1 week of training · Boxing · Intermediate");
-  expect((await summary.boundingBox())!.height).toBeLessThan(110);
+  await expect(summary).toContainText("1 week of training. Built for Boxing.");
+  expect((await summary.boundingBox())!.height).toBeLessThan(150);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await expect(page.getByRole("link", {name: "View Full Plan", exact: true})).toHaveAttribute("href", `/plans/${id}`);
   await expect(page.getByRole("link", {name: "View plan", exact: true})).toHaveCount(0);

@@ -282,9 +282,9 @@ export function TodayScreen() {
   const arrivalConfirmed = useRef(false);
   const [arrivalAction, setArrivalAction] = useState<HTMLButtonElement | null>(null);
   const arrivalWeeks = structuredPlan?.weeks?.length ?? 0;
-  const arrivalMetadata = [arrivalWeeks ? `${arrivalWeeks} ${arrivalWeeks === 1 ? "week" : "weeks"}${openOngoing ? " of training" : ""}` : null,
-    structuredPlan?.athlete_context?.sport_profile?.trim() || structuredPlan?.plan_metadata?.sport?.trim(),
-    structuredPlan?.athlete_context?.experience_level?.trim()].filter(Boolean).join(" · ");
+  const arrivalSport = structuredPlan?.athlete_context?.sport_profile?.trim() || structuredPlan?.plan_metadata?.sport?.trim();
+  const arrivalDuration = arrivalWeeks ? `${arrivalWeeks} ${arrivalWeeks === 1 ? "week" : "weeks"}${openOngoing ? " of training" : ""}.` : "";
+  const arrivalMetadata = [arrivalDuration, arrivalSport ? `Built for ${arrivalSport}.` : null].filter(Boolean).join(" ");
   const showProgrammeArrival = Boolean(arrivalOffered && arrivingPlanId === state?.active_plan?.id
     && !isLoading && !error && !presentationPending && structuredPlan && arrivalMetadata);
   useEffect(() => {
@@ -450,19 +450,19 @@ export function TodayScreen() {
       <section className={`panel today-shell ${styles.command} ${styles.contentReveal}`}>
         <div className={styles.hero}>
           <div className="today-hero-copy">
-            <h1>Today</h1>
+            {showProgrammeArrival ? null : <h1>Today</h1>}
             {hasPlan ? (
               showProgrammeArrival ? (
                 <div className={styles.programmeArrival}>
-                  <p className={styles.arrivalTitle}>{openOngoing ? "Your programme is ready" : "Your camp is ready"}</p>
-                  <p className={styles.heroPhase}>{arrivalMetadata}</p>
+                  <p className={styles.arrivalTitle}><TileIcon name="check" ring />{openOngoing ? "Your programme is ready" : "Your camp is ready"}</p>
+                  <h1 className={styles.arrivalHeadline}>{arrivalMetadata}</h1>
                   <div className={styles.arrivalLinks}>
-                    {arrivalAction ? <a href="#today-session" onClick={event => {
+                    {arrivalAction ? <a className={`cta ${styles.arrivalStart}`} href="#today-session" onClick={event => {
                       event.preventDefault();
                       arrivalAction.scrollIntoView({ block: "center", behavior: "auto" });
                       arrivalAction.focus({ preventScroll: true });
                     }}>Start Training</a> : null}
-                    <Link href={`/plans/${activePlan.id}`}>View Full Plan</Link>
+                    <Link href={`/plans/${activePlan.id}`}>View Full Plan <span aria-hidden="true">→</span></Link>
                   </div>
                 </div>
               ) : <p className={styles.heroPhase}>{planTitle}{weekLabel}</p>
