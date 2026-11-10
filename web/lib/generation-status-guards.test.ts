@@ -7,6 +7,7 @@ import {
   normalizeLegacyGenerationJobStatus,
   resolveGenerateAutoStartDecision,
   resolveMatchingPayloadGenerationAction,
+  resolvePostGenerationTarget,
   shouldBlockGenerateAutoStartForMatchingPayload,
 } from "./generation-status-guards.ts";
 import type { GenerationJobResponse } from "@/lib/types";
@@ -132,5 +133,23 @@ test("no intent and no active job redirects instead of auto-starting", () => {
   assert.equal(
     resolveGenerateAutoStartDecision({ hasActiveJob: false, hasIntent: false }),
     "redirect",
+  );
+});
+
+test("a finished generation opens Today only for the published, active plan", () => {
+  const planId = "plan-1";
+  assert.equal(resolvePostGenerationTarget({ planId, activePlanId: planId }), "/today?plan=plan-1");
+  assert.equal(resolvePostGenerationTarget({ planId, activePlanId: planId, recovered: true }), "/today?plan=plan-1");
+  // Not active (another saved plan is), or unknown: the plan page and its Set active.
+  assert.equal(resolvePostGenerationTarget({ planId, activePlanId: "plan-0" }), "/plans/plan-1");
+  assert.equal(resolvePostGenerationTarget({ planId, activePlanId: null, recovered: true }), "/plans/plan-1?recovered=1");
+  // Held outcomes keep their plan-page banners even when the plan reads active.
+  assert.equal(
+    resolvePostGenerationTarget({ planId, activePlanId: planId, status: "review_required" }),
+    "/plans/plan-1?review_required=1",
+  );
+  assert.equal(
+    resolvePostGenerationTarget({ planId, activePlanId: planId, requiresAdminResume: true, stage2Status: "triage_blocked" }),
+    "/plans/plan-1?protected_triage=1&stage2_status=triage_blocked",
   );
 });

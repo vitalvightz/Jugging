@@ -238,3 +238,45 @@ test("without consent a plan-free athlete is not asked for readiness data", asyn
     assert.match(container.querySelector('[aria-label="Today command status"]')?.textContent ?? "", /Readiness.*Not assessed/);
   } finally { await cleanup(); }
 });
+
+test("arriving from a new plan re-reads Today until that plan is active, then drops the param", async () => {
+  const originalFetch = globalThis.fetch;
+  const original = `${window.location.pathname}${window.location.search}`;
+  window.history.replaceState(null, "", "/today?plan=plan-new");
+  let todayReads = 0;
+  const lagging: TodayCommandView = {...NO_PLAN_STATE};
+  const ready: TodayCommandView = {...NO_PLAN_STATE, active_plan: {id: "plan-new", name: "Camp", phase: "GPP"}};
+  const json = (body: unknown) => new Response(JSON.stringify(body), {status: 200});
+  globalThis.fetch = (async (input: string) => {
+    if (String(input).endsWith("/api/today")) return json(++todayReads === 1 ? lagging : ready);
+    if (String(input).includes("/api/plans/")) return json({outputs: {}});
+    if (String(input).includes("/api/training/history")) return json({sessions: []});
+    return json({logs: [], pending: [], rehab_response_prompts: []});
+  }) as typeof fetch;
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => { root.render(<AppSessionContext.Provider value={{isReady: true,
+      isMeHydrated: true, hasTransientMeError: false, session: {access_token: "test-token"},
+      me: CONSENTED as never, previewAppearanceMode: () => {}, refreshMe: async () => {}, replaceMe: () => {},
+      signOut: async () => {}}}>
+      <ToastProvider><TodayScreen /></ToastProvider>
+    </AppSessionContext.Provider>); });
+    // The lagging read never surfaces as a plan-free Today.
+    assert.equal(todayReads, 1);
+    assert.ok(container.querySelector('[aria-label="Loading Today"]'));
+    assert.doesNotMatch(container.textContent ?? "", /Generate my S&C plan/);
+
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1700)); });
+    assert.equal(todayReads, 2);
+    assert.equal(container.querySelector('[aria-label="Loading Today"]'), null);
+    assert.match(container.textContent ?? "", /View plan/);
+    assert.equal(new URLSearchParams(window.location.search).get("plan"), null);
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+    globalThis.fetch = originalFetch;
+    window.history.replaceState(null, "", original);
+  }
+});

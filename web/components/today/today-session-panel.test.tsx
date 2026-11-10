@@ -1806,3 +1806,66 @@ test("Start opens the normal round timer when a held session has no timed blocks
     assert.ok(document.querySelector('.st-root[role="dialog"]'), "the round timer opens rather than only updating status");
   } finally { globalThis.fetch = original; act(() => root.unmount()); container.remove(); domWindow.localStorage.clear(); }
 });
+
+for (const saved of [null, "07:30"] as const) {
+  test(`the training time row ${saved ? "stays hidden once a time is saved" : "saves a time without promising a reminder push can't deliver"}`, async () => {
+    const originalFetch = globalThis.fetch;
+    const puts: unknown[] = [];
+    globalThis.fetch = (async (input: string, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/push/settings")) {
+        return new Response(JSON.stringify({enabled: false, public_key: "", preferences: {preferred_training_time: saved}}));
+      }
+      if (url.endsWith("/api/push/preferences")) {
+        puts.push(JSON.parse(String(init?.body)));
+        return new Response(JSON.stringify({preferred_training_time: "06:45"}));
+      }
+      return new Response(JSON.stringify({logs: [], pending: [], rehab_response_prompts: []}));
+    }) as typeof fetch;
+    const state: TodayCommandView = {
+      active_plan: {id: "plan-1", name: "Camp", phase: "GPP"},
+      today: {training_day: "2026-08-01", recommendation_state: "train_as_planned", decision_tier: "green", warnings: [],
+        next_session: {session_id: "session-1", title: "Strength", session_relation: "today", effective_load: "moderate"},
+        session_scope: "today", session_label: "Today's session", completion_status: "not_started"},
+      risk_watch: [], open_injuries: [], week_summary: {}, quick_actions: []};
+    try { domWindow.localStorage.removeItem("unlxck:training-time-row:dismissed"); } catch { /* optional */ }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+      await act(async () => {
+        root.render(<AppSessionContext.Provider value={{isReady: true, isMeHydrated: true, hasTransientMeError: false,
+          session: {access_token: "token"} as never, me: null, previewAppearanceMode: () => {}, refreshMe: async () => {},
+          replaceMe: () => {}, signOut: async () => {}}}>
+          <ToastProvider><FadeThroughProvider><RoundTimerProvider>
+            <TodaySessionPanel state={state} structuredPlan={null} token="token" onRefresh={async () => {}} />
+          </RoundTimerProvider></FadeThroughProvider></ToastProvider>
+        </AppSessionContext.Provider>);
+      });
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+      const row = container.querySelector<HTMLFormElement>('form[aria-label="Training time"]');
+      if (saved) {
+        assert.equal(row, null);
+        return;
+      }
+      assert.ok(row);
+      // Push is off on the server here: the row never promises a reminder.
+      assert.equal(row.querySelector('button[type="submit"]')?.textContent, "Save time");
+      assert.doesNotMatch(row.textContent ?? "", /Remind me/);
+      assert.match(row.textContent ?? "", /Reminders need notifications on this device\./);
+      const input = row.querySelector<HTMLInputElement>('input[type="time"]')!;
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), "value")!.set!.call(input, "06:45");
+        input.dispatchEvent(new Event("input", {bubbles: true}));
+      });
+      await act(async () => { row.requestSubmit(); await new Promise(resolve => setTimeout(resolve, 0)); });
+      assert.deepEqual(puts, [{preferred_training_time: "06:45"}]);
+      assert.equal(container.querySelector('form[aria-label="Training time"]'), null);
+      assert.match(document.body.textContent ?? "", /Training time saved: 06:45/);
+    } finally {
+      await act(async () => { root.unmount(); });
+      container.remove();
+      globalThis.fetch = originalFetch;
+    }
+  });
+}

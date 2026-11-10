@@ -845,3 +845,48 @@ html[data-theme="light"] .today-segment.today-segment-chosen:hover:not(.today-se
   align-items: center;
   min-height: 44px;
 }
+
+/* Training time + reminder: one quiet row under the session's actions. */
+.today-training-time {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin: 12px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.today-training-time-label {
+  color: var(--text-secondary);
+  font-size: 13.5px;
+}
+.today-training-time-input {
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-btn);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.today-training-time-input:focus-visible { outline: 2px solid var(--border-active); outline-offset: 2px; }
+.today-training-time-save { min-height: 44px; }
+.today-training-time-dismiss {
+  margin-left: auto;
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.today-training-time-dismiss:hover { color: var(--text-secondary); }
+.today-training-time-note {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}

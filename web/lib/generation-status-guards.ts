@@ -109,3 +109,38 @@ export function resolveMatchingPayloadGenerationAction(
     ? { type: "redirect", planId: completed.planId }
     : { type: "proceed" };
 }
+
+/** Query param Today reads to confirm the plan it was sent to show. */
+export const ARRIVING_PLAN_PARAM = "plan";
+
+/**
+ * Where a finished generation sends the athlete. A published plan that is
+ * already the active one opens on Today, so the first thing after building a
+ * camp is its first session. Every other outcome keeps the plan page: review
+ * holds and protected triage need its banners, and a plan that is not active
+ * (an athlete with other saved plans) needs its "Set active" action.
+ */
+export function resolvePostGenerationTarget(input: {
+  planId: string;
+  activePlanId: string | null;
+  status?: string | null;
+  recovered?: boolean;
+  requiresAdminResume?: boolean;
+  stage2Status?: string | null;
+}): string {
+  const { planId, activePlanId, status, recovered, requiresAdminResume, stage2Status } = input;
+  const held = status === "review_required" || requiresAdminResume === true
+    || (stage2Status || "").toLowerCase() === "triage_blocked";
+  if (!held && activePlanId === planId) {
+    return `/today?${ARRIVING_PLAN_PARAM}=${encodeURIComponent(planId)}`;
+  }
+  const search = new URLSearchParams();
+  if (status === "review_required") search.set("review_required", "1");
+  if (recovered) search.set("recovered", "1");
+  if (requiresAdminResume) {
+    search.set("protected_triage", "1");
+    if (stage2Status) search.set("stage2_status", stage2Status);
+  }
+  const query = search.toString();
+  return `/plans/${planId}${query ? `?${query}` : ""}`;
+}

@@ -4,7 +4,8 @@ import { Collapse } from "@/components/today/collapse";
 
 import Link from "next/link";
 import { TrainingHabitLog } from "@/components/training-habit-log";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ARRIVING_PLAN_PARAM } from "@/lib/generation-status-guards";
 import styles from "./today-screen.module.css";
 
 import { useAppSession } from "@/components/auth-provider";
@@ -38,6 +39,10 @@ import {
   withoutInjuryTrackingReminder,
 } from "@/lib/today-authoritative";
 import type { TodayCompletionStatus } from "@/lib/types";
+
+// Same window Plan Detail allows a just-saved plan (5 reads, 1.5s apart).
+const ARRIVAL_MAX_REREADS = 4;
+const ARRIVAL_REREAD_DELAY_MS = 1500;
 
 function TodayLoadingState() {
   return (
@@ -267,7 +272,35 @@ export function TodayScreen() {
     [exerciseMedia, state?.exercise_media],
   );
 
-  if (isLoading) {
+  // Arriving from a just-built plan (?plan=<id>): the saved plan can briefly
+  // lag its completion event. Re-read a few times instead of showing a
+  // plan-free Today, then fall back to the plan page, which has its own retry.
+  const [arrivingPlanId] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get(ARRIVING_PLAN_PARAM));
+  const arrivalReads = useRef(0);
+  const awaitingArrivingPlan = Boolean(arrivingPlanId && state && state.active_plan?.id !== arrivingPlanId);
+  useEffect(() => {
+    if (!arrivingPlanId || !state || isRefreshing) return;
+    if (state.active_plan?.id === arrivingPlanId) {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has(ARRIVING_PLAN_PARAM)) {
+        params.delete(ARRIVING_PLAN_PARAM);
+        const query = params.toString();
+        window.history.replaceState(window.history.state, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
+      }
+      return;
+    }
+    if (arrivalReads.current >= ARRIVAL_MAX_REREADS) {
+      // Rare fallback; a full load keeps Today free of a router dependency.
+      window.location.replace(`/plans/${encodeURIComponent(arrivingPlanId)}`);
+      return;
+    }
+    arrivalReads.current += 1;
+    const timer = window.setTimeout(() => void refresh(), ARRIVAL_REREAD_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [arrivingPlanId, state, isRefreshing, refresh]);
+
+  if (isLoading || awaitingArrivingPlan) {
     return <TodayLoadingState />;
   }
   if (error && (!state || /unauthorized|forbidden|not authenticated/i.test(error))) {
