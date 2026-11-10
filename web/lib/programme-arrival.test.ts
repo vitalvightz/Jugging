@@ -3,22 +3,26 @@ import assert from "node:assert/strict";
 import "../components/test-dom";
 import { offerProgrammeArrival, hasProgrammeArrival, consumeProgrammeArrival } from "./programme-arrival";
 
-test("handoff matches one plan, consumes once, and rejects a refreshed document", () => {
+test("completion survives navigation and refresh, matches one plan and cannot be reoffered after display", () => {
   window.sessionStorage.clear();
+  window.localStorage.clear();
   assert.equal(hasProgrammeArrival("new"), false);
   offerProgrammeArrival("new");
   assert.equal(consumeProgrammeArrival("other"), false);
+  window.history.replaceState(null, "", "/plans/new");
   assert.equal(hasProgrammeArrival("new"), true);
+  // The receipt has no document identity: an unshown receipt survives reload.
+  assert.deepEqual(JSON.parse(window.sessionStorage.getItem("unlxck:programme-arrival")!), {planId: "new"});
   assert.equal(consumeProgrammeArrival("new"), true);
-  assert.equal(consumeProgrammeArrival("new"), false);
   offerProgrammeArrival("new");
-  const key = "unlxck:programme-arrival";
-  const saved = JSON.parse(window.sessionStorage.getItem(key)!);
-  window.sessionStorage.setItem(key, JSON.stringify({...saved, document: saved.document - 1}));
   assert.equal(hasProgrammeArrival("new"), false);
-  window.sessionStorage.setItem(key, JSON.stringify({...saved, at: Date.now() - 300001}));
-  assert.equal(hasProgrammeArrival("new"), false);
-  window.sessionStorage.setItem(key, "invalid");
+  assert.equal(consumeProgrammeArrival("new"), false);
+  window.sessionStorage.setItem("unlxck:programme-arrival", "invalid");
   assert.equal(hasProgrammeArrival("new"), false);
   window.sessionStorage.clear();
+  // Copied URLs alone do not confer eligibility.
+  window.history.replaceState(null, "", "/today?plan=new");
+  assert.equal(hasProgrammeArrival("new"), false);
+  window.history.replaceState(null, "", "/today");
+  window.localStorage.clear();
 });

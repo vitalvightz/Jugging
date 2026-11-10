@@ -7,7 +7,7 @@ import Link from "next/link";
 import { TrainingHabitLog } from "@/components/training-habit-log";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ARRIVING_PLAN_PARAM } from "@/lib/generation-status-guards";
-import { hasProgrammeArrival, consumeProgrammeArrival } from "@/lib/programme-arrival";
+import { hasProgrammeArrival, consumeProgrammeArrival, PROGRAMME_ARRIVAL_EVENT } from "@/lib/programme-arrival";
 import styles from "./today-screen.module.css";
 
 import { useAppSession } from "@/components/auth-provider";
@@ -280,19 +280,29 @@ export function TodayScreen() {
   // plan-free Today, then fall back to the plan page, which has its own retry.
   const [arrivingPlanId] = useState<string | null>(() =>
     typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get(ARRIVING_PLAN_PARAM));
-  const [arrivalOffered] = useState(() => Boolean(arrivingPlanId && hasProgrammeArrival(arrivingPlanId)));
-  const arrivalConfirmed = useRef(false);
+  const [offeredPlanId, setOfferedPlanId] = useState<string | null>(null);
+  const activeArrivalId = state?.active_plan?.id ?? null;
+  useEffect(() => {
+    const check = () => {
+      if (activeArrivalId && hasProgrammeArrival(activeArrivalId)) setOfferedPlanId(activeArrivalId);
+    };
+    const onCompletion = () => { check(); void refresh(); };
+    check();
+    window.addEventListener(PROGRAMME_ARRIVAL_EVENT, onCompletion);
+    return () => window.removeEventListener(PROGRAMME_ARRIVAL_EVENT, onCompletion);
+  }, [activeArrivalId, refresh]);
+  const arrivalConfirmed = useRef<string | null>(null);
   const [arrivalAction, setArrivalAction] = useState<HTMLButtonElement | null>(null);
   const arrivalWeeks = structuredPlan?.weeks?.length ?? 0;
   const arrivalSport = structuredPlan?.athlete_context?.sport_profile?.trim() || structuredPlan?.plan_metadata?.sport?.trim();
   const arrivalDuration = arrivalWeeks ? `${arrivalWeeks} ${arrivalWeeks === 1 ? "week" : "weeks"}${openOngoing ? " of training" : ""}.` : "";
   const arrivalMetadata = [arrivalDuration, arrivalSport ? `Built for ${arrivalSport}.` : null].filter(Boolean).join(" ");
-  const showProgrammeArrival = Boolean(arrivalOffered && arrivingPlanId === state?.active_plan?.id
+  const showProgrammeArrival = Boolean(offeredPlanId && offeredPlanId === state?.active_plan?.id
     && !isLoading && !error && !presentationPending && structuredPlan && arrivalMetadata);
   useEffect(() => {
-    if (!showProgrammeArrival || !arrivingPlanId) return;
+    if (!showProgrammeArrival || !offeredPlanId) return;
     // Effects run after the matching plan's summary is committed to the DOM.
-    if (!arrivalConfirmed.current) arrivalConfirmed.current = consumeProgrammeArrival(arrivingPlanId);
+    if (arrivalConfirmed.current !== offeredPlanId && consumeProgrammeArrival(offeredPlanId)) arrivalConfirmed.current = offeredPlanId;
     const sessionPanel = document.getElementById("today-session");
     const updateAction = () => {
       const action = Array.from(sessionPanel?.querySelectorAll<HTMLButtonElement>(".today-session-actions button.cta") ?? [])
@@ -304,7 +314,7 @@ export function TodayScreen() {
     if (sessionPanel) observer.observe(sessionPanel, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled"] });
     const frame = window.requestAnimationFrame(updateAction);
     return () => { observer.disconnect(); window.cancelAnimationFrame(frame); };
-  }, [showProgrammeArrival, arrivingPlanId, state, presentationPending]);
+  }, [showProgrammeArrival, offeredPlanId, state, presentationPending]);
   const arrivalReads = useRef(0);
   const awaitingArrivingPlan = Boolean(arrivingPlanId && state && state.active_plan?.id !== arrivingPlanId);
   useEffect(() => {
