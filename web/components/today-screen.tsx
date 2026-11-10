@@ -461,7 +461,7 @@ export function TodayScreen() {
                       event.preventDefault();
                       arrivalAction.scrollIntoView({ block: "center", behavior: "auto" });
                       arrivalAction.focus({ preventScroll: true });
-                    }}>Start Training</a> : null}
+                    }}>Go to Session</a> : null}
                     <Link href={`/plans/${activePlan.id}`}>View Full Plan <span aria-hidden="true">→</span></Link>
                   </div>
                 </div>

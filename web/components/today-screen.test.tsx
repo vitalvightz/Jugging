@@ -315,7 +315,7 @@ test("new active programme summary waits for metadata, consumes once, and preser
     assert.match(container.textContent ?? "", /2 weeks. Built for Boxing./);
     assert.equal(hasProgrammeArrival("plan-new"), false);
     assert.equal(container.querySelectorAll('a[href="/plans/plan-new"]').length, 1);
-    assert.doesNotMatch(container.textContent ?? "", /Start Training/);
+    assert.doesNotMatch(container.textContent ?? "", /Go to Session/);
     assert.match(container.textContent ?? "", /No plan session today/);
     await act(async () => { root.unmount(); });
     root = createRoot(container);

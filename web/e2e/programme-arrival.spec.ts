@@ -9,6 +9,7 @@ for (const training of [false, true]) for (const width of [320, 390, 1280]) test
   const {profile} = structuredClone(fixtures.chest);
   const view = structuredClone(fixtures.chest.view) as TodayCommandView;
   if (training) {
+    view.active_plan!.fight_date = "2026-11-16";
     view.open_injuries = []; view.risk_watch = []; view.live_prescription = null;
     view.today = {training_day: "2026-10-05", recommendation_state: "train_as_planned", decision_tier: "green",
       warnings: [], completion_status: "not_started", session_scope: "today", session_label: "Today's session",
@@ -32,7 +33,9 @@ for (const training of [false, true]) for (const width of [320, 390, 1280]) test
     if (path === "/api/today") body = view;
     if (path === `/api/plans/${id}`) body = {plan_id: id, status: "ready", outputs: {structured_plan: {
       athlete_context: {sport_profile: "Boxing", experience_level: "Intermediate"},
-      weeks: [{week_index: 1, days: [{date: view.today.training_day, sessions: [view.live_prescription?.session ?? view.today.next_session]}]}],
+      weeks: Array.from({length: training ? 6 : 1}, (_, index) => ({week_index: index + 1,
+        days: [{date: new Date(Date.parse(`${view.today.training_day}T12:00:00Z`) + index * 7 * 86400000).toISOString().slice(0, 10),
+          sessions: [view.live_prescription?.session ?? view.today.next_session]}]})),
     }}};
     if (path === "/api/training/history") body = {sessions: []};
     if (/session-completions|sparring-logs|exercise-logs|pending/.test(path)) body = {completions: [], logs: [], response_sets: []};
@@ -43,14 +46,14 @@ for (const training of [false, true]) for (const width of [320, 390, 1280]) test
   await page.goto(`/today?plan=${id}`);
   const summary = page.locator('[class*="programmeArrival"]');
   await expect(summary).toBeVisible();
-  await expect(summary).toContainText("1 week of training. Built for Boxing.");
+  await expect(summary).toContainText(training ? "6 weeks. Built for Boxing." : "1 week of training. Built for Boxing.");
   expect((await summary.boundingBox())!.height).toBeLessThan(150);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await expect(page.getByRole("link", {name: "View Full Plan", exact: true})).toHaveAttribute("href", `/plans/${id}`);
   await expect(page.getByRole("link", {name: "View plan", exact: true})).toHaveCount(0);
-  await page.screenshot({path: `/tmp/programme-arrival-${training ? "training" : "rehab"}-${width}.png`});
+  await page.screenshot({path: `/tmp/programme-arrival-${training ? "six-week-camp" : "rehab"}-${width}.png`});
   if (training) {
-    const jump = page.getByRole("link", {name: "Start Training", exact: true});
+    const jump = page.getByRole("link", {name: "Go to Session", exact: true});
     await expect(jump).toBeVisible();
     await jump.click();
     const action = page.locator("#today-session .today-session-actions button.cta").first();
@@ -58,7 +61,7 @@ for (const training of [false, true]) for (const width of [320, 390, 1280]) test
     await expect(action).toBeInViewport();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(action).toContainText("Start");
-  } else await expect(page.getByRole("link", {name: "Start Training", exact: true})).toHaveCount(0);
+  } else await expect(page.getByRole("link", {name: "Go to Session", exact: true})).toHaveCount(0);
   await page.getByRole("link", {name: "View Full Plan", exact: true}).click();
   await expect(page).toHaveURL(new RegExp(`/plans/${id}$`));
   await page.goto(`/today?plan=${id}`);
