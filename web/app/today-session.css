@@ -846,47 +846,111 @@ html[data-theme="light"] .today-segment.today-segment-chosen:hover:not(.today-se
   min-height: 44px;
 }
 
-/* Training time + reminder: one quiet row under the session's actions. */
+/* Training time + reminder: a small utility row under the session's actions,
+   never another call to action. Everything stays on one line on a phone. */
 .today-training-time {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px 10px;
-  margin: 12px 0 0;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-subtle);
+  gap: 4px 8px;
+  margin: 4px 0 0;
+  padding: 2px 4px 2px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
 }
+.today-training-time > .today-tool-icon { flex: none; color: var(--text-muted); }
 .today-training-time-label {
   color: var(--text-secondary);
   font-size: 13.5px;
+  white-space: nowrap;
 }
 .today-training-time-input {
-  min-height: 44px;
-  padding: 0 10px;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 7.5em;
+  min-height: 36px;
+  padding: 0 8px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-btn);
   background: transparent;
   color: inherit;
   font: inherit;
+  font-size: 15px;
   font-variant-numeric: tabular-nums;
 }
 .today-training-time-input:focus-visible { outline: 2px solid var(--border-active); outline-offset: 2px; }
-.today-training-time-save { min-height: 44px; }
-.today-training-time-dismiss {
+.today-session-card .today-training-time-save {
+  width: auto;
   margin-left: auto;
-  min-width: 44px;
+  padding-inline: 12px;
+  color: var(--text-primary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.today-training-time-dismiss {
+  min-width: 36px;
   min-height: 44px;
   border: 0;
   background: transparent;
   color: var(--text-muted);
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1;
   cursor: pointer;
 }
 .today-training-time-dismiss:hover { color: var(--text-secondary); }
 .today-training-time-note {
   flex-basis: 100%;
-  margin: 0;
+  margin: 0 0 6px;
   color: var(--text-muted);
   font-size: 12.5px;
+}
+
+/* -- Compact tray: one lead action, everything else quieter ---------------- */
+/* A second start (the session beside the combat lead) is a smaller secondary. */
+.today-session-card .today-action-tray > .secondary-button {
+  width: 100%;
+  min-height: 44px;
+  border-color: var(--border-subtle);
+  background: transparent;
+  font-size: var(--type-body);
+  font-weight: 500;
+}
+.today-session-card .today-session-actions.today-action-tray { gap: 8px; }
+/* Free timer and Skip session share one short row. */
+.today-session-card .today-action-tools {
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: 4px;
+  padding-top: 4px;
+}
+.today-session-card .today-action-tools > .today-tool-button,
+.today-session-card .today-action-tools > .today-tool-link {
+  flex: 1 1 0;
+  min-height: 44px;
+  justify-content: center;
+}
+.today-session-card .today-action-tools > .today-tool-link { padding-inline: 8px; }
+
+/* Week intent sits tight under the actions instead of opening a new section. */
+.today-session-card .today-open-week-note { gap: 6px; line-height: 1.4; }
+
+/* Technical / light-combat note on Today: one compact line-pair, the full
+   explanation stays behind its (i). */
+.today-session-card .cm-day-context-contact {
+  margin-bottom: 8px;
+  padding: 8px 12px;
+}
+.today-session-card .cm-day-context-contact .cm-light-technical {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+}
+.today-session-card .cm-day-context-contact .cm-light-technical-head { gap: 6px; }
+.today-session-card .cm-day-context-contact .sp-today-note {
+  flex: 1 1 180px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
 }
