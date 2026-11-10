@@ -6,6 +6,8 @@ import {
   EXERCISE_LOG_REASONS,
   EXERCISE_LOG_REASON_LABELS,
   EXERCISE_LOG_STATUS_LABELS,
+  amendedLog,
+  asksForFirstLoad,
   backoffLoadFor,
   buildLogEntry,
   buildSetLogEntry,
@@ -15,12 +17,16 @@ import {
   isLoggableBlock,
   lastLoadFor,
   lastPerformanceFor,
+  exerciseIdentity,
+  needsFirstLoad,
+  nextStepFor,
+  nextStepLabel,
   performanceSummary,
-  progressionLoadFor,
   logFieldsForBlock,
   logSummary,
   loggedValues,
   withLastLoad,
+  type ExerciseFeel,
   type LogDraft,
 } from "@/lib/exercise-log";
 import { cleanText } from "@/lib/structured-plan";
@@ -54,6 +60,7 @@ export type ExerciseLogging = {
   /** Last weights per exercise, carried into a "done" so it never needs typing. */
   recentLoads?: readonly ExerciseRecentLoad[];
   recentPerformances?: readonly ExerciseLogRecord[];
+  /** Whether a raise may be suggested today (see `progressionOpen`). */
   allowProgression?: boolean;
   /** Where a failed one-tap save on a collapsed row is reported. */
   onError?: (message: string) => void;
@@ -96,6 +103,36 @@ function withLastLoadRecord(
   return load ? ({ actual: { load } } as ExerciseLogRecord) : null;
 }
 
+// Exercises the athlete chose not to give a first weight for (bodyweight work,
+// or simply not now), so the question is asked once, not every session. Kept on
+// the device: it is a convenience, and "Log numbers" still records a weight.
+const FIRST_LOAD_DECLINED_KEY = "unlxck:first-load-declined";
+
+function declinedFirstLoads(): string[] {
+  try {
+    const stored: unknown = JSON.parse(window.localStorage.getItem(FIRST_LOAD_DECLINED_KEY) ?? "[]");
+    return Array.isArray(stored) ? stored.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function firstLoadDeclined(block: StructuredBlock): boolean {
+  return declinedFirstLoads().includes(exerciseIdentity(block));
+}
+
+function declineFirstLoad(block: StructuredBlock): void {
+  try {
+    const next = [...new Set([...declinedFirstLoads(), exerciseIdentity(block)])].slice(-200);
+    window.localStorage.setItem(FIRST_LOAD_DECLINED_KEY, JSON.stringify(next));
+  } catch {
+    // Without storage the question simply returns next session.
+  }
+}
+
+const FEELS: readonly ExerciseFeel[] = ["easy", "right", "hard"];
+const FEEL_LABELS: Record<ExerciseFeel, string> = { easy: "Easy", right: "Right", hard: "Hard" };
+
 function errorMessage(caught: unknown): string {
   return caught instanceof Error ? caught.message : "Could not save. Try again.";
 }
@@ -128,6 +165,8 @@ export function ExerciseLogTick({
         block_id: blockId,
         ...withLastLoad(block, { status: "as_prescribed" }, logging.recentLoads, logging.recentPerformances),
       });
+      // No weight on record for this lift: open the row, where it is asked once.
+      if (needsFirstLoad(block, logging.recentLoads) && !firstLoadDeclined(block)) onOpen();
     } catch (caught) {
       logging.onError?.(errorMessage(caught));
     } finally {
@@ -220,16 +259,20 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
   const [error, setError] = useState<string | null>(null);
   // Entries far from the prescription that the athlete has been asked to confirm.
   const [confirming, setConfirming] = useState<string[] | null>(null);
+  const [firstLoad, setFirstLoad] = useState("");
+  const [firstLoadSkipped, setFirstLoadSkipped] = useState(false);
 
   if (!state) {
     return null;
   }
   const { logging, blockId, fields, log } = state;
   const previous = lastPerformanceFor(block, logging.recentPerformances);
-  const progression = progressionLoadFor(block, previous, logging.allowProgression === true);
-  // Easing off is offered at any readiness; it never needs a progression rule.
-  const backoff = progression ? null : backoffLoadFor(block, previous);
-  const suggested = progression ?? backoff;
+  const nextStep = nextStepFor(block, previous, logging.allowProgression === true);
+  // Easing off is offered at any readiness; it is never held back by a restriction.
+  const backoff = nextStep ? null : backoffLoadFor(block, previous);
+  const suggested = nextStep?.kind === "load" ? nextStep.load : backoff;
+  const loadField = fields.find(field => field.key === "load");
+  const askFirstLoad = !firstLoadSkipped && asksForFirstLoad(block, log, logging.recentLoads) && !firstLoadDeclined(block);
   const loadUnit = setUnit ?? fields.find(field => field.key === "load")?.apiUnit ?? "kg";
   const entry = setRows ? buildSetLogEntry(fields, setRows, loadUnit, draft) : buildLogEntry(fields, draft);
   const supportsSets = fields.some(field => field.key === "sets") && fields.some(field => field.key === "reps") && !fields.some(field => field.key === "rounds");
@@ -285,6 +328,21 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
       actual: entry.actual,
       reason: entry.status === "modified" ? reason : null,
     });
+  }
+
+  function saveFirstLoad() {
+    if (!log || !loadField) return;
+    const typed = buildLogEntry([loadField], { load: firstLoad });
+    if (!typed.actual.load || typed.invalid.length > 0) {
+      setError("Enter the weight as a number.");
+      return;
+    }
+    if (typed.outliers.length > 0 && confirming?.join("|") !== typed.outliers.join("|")) {
+      setError(null);
+      setConfirming(typed.outliers);
+      return;
+    }
+    void save(amendedLog(log, { load: typed.actual.load }));
   }
 
   const alert = error ? (
@@ -395,6 +453,78 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
           </svg>
         </button>
         {log.actual?.set_entries?.length ? <SetResults entries={log.actual.set_entries} completed={log.actual.sets} /> : null}
+        {/* Asked once, when there is no earlier weight to carry forward. Never required. */}
+        {askFirstLoad && loadField ? (
+          <div className="ex-log-first-load">
+            <label className="ex-log-field" htmlFor={`${fieldId}-first-load`}>
+              <span className="ex-log-field-label">
+                What weight did you use?
+                <span className="ex-log-field-unit"> {loadField.unit}</span>
+              </span>
+              <input
+                id={`${fieldId}-first-load`}
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                enterKeyHint="done"
+                maxLength={7}
+                value={firstLoad}
+                placeholder="–"
+                disabled={saving}
+                onChange={(event) => {
+                  setFirstLoad(event.target.value);
+                  setConfirming(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    saveFirstLoad();
+                  }
+                }}
+              />
+            </label>
+            {confirming ? (
+              <p className="ex-log-confirm" role="alert">
+                {confirming.join("; ")}?
+              </p>
+            ) : null}
+            <div className="ex-log-bar">
+              <button
+                type="button"
+                className="ex-log-link"
+                disabled={saving}
+                onClick={() => {
+                  declineFirstLoad(block);
+                  setFirstLoadSkipped(true);
+                  setError(null);
+                  setConfirming(null);
+                }}
+              >
+                Skip
+              </button>
+              <button type="button" className="ex-log-save" disabled={saving || !firstLoad.trim()} onClick={saveFirstLoad}>
+                {saving ? "Saving…" : confirming ? "Yes, save" : "Save weight"}
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {/* Optional: read beside the reps done, it shapes next time's suggestion. */}
+        {log.status !== "skipped" && fields.some(field => field.key === "reps" || field.key === "load") ? (
+          <div className="ex-log-reasons" role="group" aria-label="How did it feel? (optional)">
+            {FEELS.map((feel) => (
+              <button
+                key={feel}
+                type="button"
+                className="ex-log-chip"
+                aria-pressed={log.actual?.feel === feel}
+                disabled={saving}
+                onClick={() => void save(amendedLog(log, { feel: log.actual?.feel === feel ? null : feel }))}
+              >
+                {FEEL_LABELS[feel]}
+              </button>
+            ))}
+          </div>
+        ) : null}
         {/* A skip saves in one tap; why is a second, optional tap. */}
         {log.status === "skipped" ? (
           <ReasonChips
@@ -414,7 +544,8 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
     <div className="ex-log" data-mode="idle">
       {previous ? <p className="muted ex-log-previous">
         Last: {performanceSummary(previous)}
-        {suggested ? <span className="ex-log-suggestion"> · {backoff ? "Ease to" : "Try"} {suggested.value} {suggested.unit}</span> : null}
+        {nextStep ? <span className="ex-log-suggestion"> · {nextStepLabel(nextStep)}</span>
+          : backoff ? <span className="ex-log-suggestion"> · Ease to {backoff.value} {backoff.unit}</span> : null}
       </p> : null}
       <div className="ex-log-choices">
         <button

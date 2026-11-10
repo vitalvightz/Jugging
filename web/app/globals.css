@@ -22801,6 +22801,7 @@ html[data-theme="light"] .sp-status-tag[data-tone="neutral"] {
   background: var(--bg-surface-alt); color: var(--text-primary);
 }
 .ex-log-suggestion { white-space: nowrap; }
+.ex-log-first-load { display: grid; gap: 8px; }
 
 @media (max-width: 480px) {
   .history-tabs { grid-template-columns: repeat(6, minmax(0, 1fr)); border-radius: 20px; }

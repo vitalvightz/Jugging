@@ -2572,6 +2572,10 @@ class ExerciseLogActual(BaseModel):
     rest: ExerciseLogMeasure | None = None
     distance: ExerciseLogMeasure | None = None
     effort: ExerciseLogEffort | None = None
+    # Optional one-tap answer to "how did it feel?". It informs the next
+    # recommendation beside the completed reps; it is never an RPE and never
+    # raises a weight on its own.
+    feel: Literal["easy", "right", "hard"] | None = None
     set_entries: list[ExerciseSetResult] | None = Field(default=None, min_length=1, max_length=50)
 
     @model_validator(mode="after")

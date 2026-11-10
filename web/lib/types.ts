@@ -1431,6 +1431,8 @@ export type ExerciseLogActual = {
   rest?: ExerciseLogMeasure | null;
   distance?: ExerciseLogMeasure | null;
   effort?: ExerciseLogEffort | null;
+  /** Optional one-tap "how did it feel?"; informs the next suggestion. */
+  feel?: "easy" | "right" | "hard" | null;
 };
 export type ExerciseLogEffort = { method?: "RPE"; value: number };
 

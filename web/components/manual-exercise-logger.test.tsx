@@ -16,7 +16,7 @@ globalThis.requestAnimationFrame ??= ((callback: FrameRequestCallback) => setTim
 
 const session: TrainingHistorySession = { id: "session-1", source: "external", title: "Strength", training_day: "2026-10-19",
   status: "done", activity: "strength", plan_id: null, duration_minutes: 60, effort: "hard" };
-const blank = { sets: null, reps: null, rounds: null, load: null, duration: null, work: null, rest: null, distance: null, effort: null, set_entries: null };
+const blank = { sets: null, reps: null, rounds: null, load: null, duration: null, work: null, rest: null, distance: null, effort: null, feel: null, set_entries: null };
 const squatRecord = { id: "key:back-squat", name: "Back Squat", identity_kind: "canonical", latest_day: "2026-10-12",
   latest_values: { ...blank, sets: 3, reps: 5, load: { value: 75, unit: "kg" } }, latest_confirmed_as_prescribed: false,
   best_loads: [], latest_source: "manual", log_format: "strength" };

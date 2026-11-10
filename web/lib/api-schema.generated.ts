@@ -780,6 +780,7 @@ export type ExerciseLogActual = {
   rest: ExerciseLogMeasure | null;
   distance: ExerciseLogMeasure | null;
   effort: ExerciseLogEffort | null;
+  feel: "easy" | "hard" | "right" | null;
   set_entries: ExerciseSetResult[] | null;
 };
 
@@ -801,6 +802,7 @@ export type ExerciseLogActualRequest = {
   rest?: ExerciseLogMeasureRequest | null;
   distance?: ExerciseLogMeasureRequest | null;
   effort?: ExerciseLogEffortRequest | null;
+  feel?: "easy" | "hard" | "right" | null;
   set_entries?: ExerciseSetResultRequest[] | null;
 };
 

@@ -184,6 +184,20 @@ def test_work_done_as_prescribed_can_still_carry_the_weight_used():
     }
 
 
+def test_how_it_felt_is_an_optional_answer_kept_beside_the_numbers():
+    """Easy / right / hard informs the next suggestion; it is not an RPE or a change."""
+    client, store, _ = _build_client()
+    _seed_plan(store, blocks=[_squat()])
+    _start(client)
+
+    resp = _log(client, actual={"load": {"value": 100, "unit": "kg"}, "feel": "easy"})
+
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["log"]["status"] == "as_prescribed"
+    assert store.exercise_logs[0]["actual"] == {"load": {"value": 100.0, "unit": "kg"}, "feel": "easy"}
+    assert _log(client, actual={"feel": "brutal"}).status_code == 422
+
+
 def test_saving_the_same_block_again_corrects_the_log():
     client, store, _ = _build_client()
     _seed_plan(store, blocks=[_squat()])

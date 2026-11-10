@@ -8,6 +8,14 @@ import {
   lastPerformanceFor,
   performanceSummary,
   progressionLoadFor,
+  progressionOpen,
+  nextStepFor,
+  nextStepLabel,
+  needsFirstLoad,
+  asksForFirstLoad,
+  amendedLog,
+  exerciseIdentity,
+  feelOf,
   backoffLoadFor,
   plannedSessionRpe,
   withLastLoad,
@@ -271,19 +279,126 @@ test("exercise history follows a stable key across plans and rejects keyed varia
   assert.match(performanceSummary(previous), /80 kg.*3 × 8/);
 });
 
-test("load suggestions require explicit progression, complete dose and reported effort", () => {
-  const movement = { ...deadlift, progression_rule: "Add 2.5 kg when all sets complete." };
-  const previous = log(deadlift, { prescribed: deadlift, actual: { load: { value: 80, unit: "kg" }, effort: { method: "RPE", value: 6 } } });
-  assert.deepEqual(progressionLoadFor(movement, previous, true), { value: 82.5, unit: "kg" });
-  assert.equal(progressionLoadFor(movement, previous, false), null);
-  for (const patch of [
-    { status: "skipped" as const }, { reason: "pain" as const }, { reason: "fatigue" as const },
-    { actual: { ...previous.actual, sets: 3 } }, { actual: { ...previous.actual, effort: null } },
-    { actual: { ...previous.actual, effort: { method: "RPE" as const, value: 9 } } },
-  ]) assert.equal(progressionLoadFor(movement, { ...previous, ...patch }, true), null);
-  for (const patch of [{ reps: 10 }, { load: { value: 60, unit: "kg" } }, { progression_rule: "Increase if comfortable" }]) {
-    assert.equal(progressionLoadFor({ ...movement, ...patch }, previous, true), null);
+test("a raise is earned by the work done, not by the wording of a progression rule", () => {
+  const done = (actual: ExerciseLogRecord["actual"], patch: Partial<ExerciseLogRecord> = {}) =>
+    log(deadlift, { prescribed: deadlift, ...patch, actual: { load: { value: 80, unit: "kg" }, ...actual } });
+  // Every set and rep done and it felt easy: a small plate-friendly raise, with no rule on the block.
+  assert.deepEqual(nextStepFor(deadlift, done({ feel: "easy" }), true), { kind: "load", load: { value: 82.5, unit: "kg" } });
+  assert.deepEqual(progressionLoadFor(deadlift, done({ feel: "easy" }), true), { value: 82.5, unit: "kg" });
+  // A low reported RPE or "felt strong" reads as easy when the athlete gave no answer.
+  assert.equal(nextStepFor(deadlift, done({ effort: { method: "RPE", value: 6 } }), true)?.kind, "load");
+  assert.equal(nextStepFor(deadlift, done({ reps: 10 }, { status: "modified", reason: "felt_strong" }), true)?.kind, "load");
+  // A bare "done" is never taken as easy; "right" holds; "hard" is not a raise.
+  for (const actual of [{}, { feel: "right" as const }, { feel: "hard" as const }, { effort: { method: "RPE" as const, value: 8 } }]) {
+    assert.equal(nextStepFor(deadlift, done(actual), true), null);
   }
+  // The athlete's own answer outranks the RPE they typed.
+  assert.equal(nextStepFor(deadlift, done({ feel: "right", effort: { method: "RPE", value: 5 } }), true), null);
+  // Restrictions close the engine itself, whatever the performance.
+  assert.equal(nextStepFor(deadlift, done({ feel: "easy" }), false), null);
+  // Missed work, a deviation, a skip, or no weight on record earns nothing.
+  for (const previous of [
+    done({ feel: "easy", sets: 3 }), done({ feel: "easy", reps: 6 }),
+    done({ feel: "easy" }, { status: "skipped" }), done({ feel: "easy" }, { reason: "pain" }),
+    done({ feel: "easy" }, { reason: "fatigue" }), done({ feel: "easy" }, { reason: "equipment" }),
+    log(deadlift, { prescribed: deadlift, actual: { feel: "easy" } }),
+  ]) assert.equal(nextStepFor(deadlift, previous, true), null);
+  // A changed dose, a lower planned effort, a plan-set weight or a hold instruction is respected.
+  for (const patch of [
+    { reps: 10 }, { sets: 3 }, { effort: { method: "RPE", value: 5 } }, { load: { value: 60, unit: "kg" } },
+    { progression_rule: "Keep the same dose and make each rep sharp." }, { progression_rule: "none this block" },
+    { progression_rule: "Maintain the listed working dose." }, { progression_rule: "Do not add load this week." },
+  ]) assert.equal(nextStepFor({ ...deadlift, ...patch }, done({ feel: "easy" }), true), null);
+  // Other coaching copy does not gate it.
+  assert.equal(nextStepFor({ ...deadlift, progression_rule: "Increase if comfortable" }, done({ feel: "easy" }), true)?.kind, "load");
+  // About 3%, never less than one plate step; light dumbbells move in finer steps.
+  const raised = (value: number, unit = "kg") => progressionLoadFor(deadlift, done({ feel: "easy", load: { value, unit } }), true)?.value;
+  assert.deepEqual([40, 100, 140, 200, 12].map((value) => raised(value)), [42.5, 102.5, 145, 205, 12.5]);
+  assert.equal(progressionLoadFor({ ...deadlift, load: { method: "absolute", unit: "lb" } },
+    done({ feel: "easy", load: { value: 135, unit: "lb" } }), true)?.value, 140);
+});
+
+test("inside a rep range reps come first, and a one-tap done counts as the bottom of it", () => {
+  const squat: StructuredBlock = { ...deadlift, sets: 3, reps: "6-8" };
+  const done = (actual: ExerciseLogRecord["actual"]) =>
+    log(squat, { prescribed: squat, actual: { load: { value: 40, unit: "kg" }, ...actual } });
+  // 6 reps, easy: try 7. A bare done with "easy" is the prescribed floor, not the top.
+  assert.deepEqual(nextStepFor(squat, done({ reps: 6, feel: "easy" }), true), { kind: "reps", reps: 7 });
+  assert.deepEqual(nextStepFor(squat, done({ feel: "easy" }), true), { kind: "reps", reps: 7 });
+  assert.equal(nextStepLabel({ kind: "reps", reps: 7 }), "Try 7 reps");
+  // 8 on every set, easy: a little more weight.
+  assert.deepEqual(nextStepFor(squat, done({ reps: 8, feel: "easy" }), true), { kind: "load", load: { value: 42.5, unit: "kg" } });
+  assert.equal(nextStepLabel({ kind: "load", load: { value: 42.5, unit: "kg" } }), "Try 42.5 kg");
+  // 7 reps, right: maintain and build towards 8. Top of the range but only "right": hold.
+  assert.equal(nextStepFor(squat, done({ reps: 7, feel: "right" }), true), null);
+  assert.equal(nextStepFor(squat, done({ reps: 8, feel: "right" }), true), null);
+  // Sets logged one by one: the weakest set decides, and an uncounted set earns nothing.
+  const rows = (reps: (number | null)[]) => done({ feel: "easy", sets: reps.length,
+    set_entries: reps.map((count, index) => ({ set_number: index + 1, reps: count, load: { value: 40, unit: "kg" } })) });
+  assert.deepEqual(nextStepFor(squat, rows([8, 8, 7]), true), { kind: "reps", reps: 8 });
+  assert.equal(nextStepFor(squat, rows([8, 8, 8]), true)?.kind, "load");
+  assert.equal(nextStepFor(squat, rows([8, null, 8]), true), null);
+  // Rep steps need no weight on record (bodyweight work).
+  assert.deepEqual(nextStepFor(squat, log(squat, { prescribed: squat, actual: { reps: 6, feel: "easy" } }), true), { kind: "reps", reps: 7 });
+});
+
+test("how it felt is the athlete's answer first, then the RPE against the plan", () => {
+  const felt = (patch: Partial<ExerciseLogRecord>) => feelOf(log(deadlift, { prescribed: deadlift, ...patch }));
+  assert.equal(felt({ actual: { feel: "hard", effort: { method: "RPE", value: 5 } } }), "hard");
+  assert.equal(felt({ actual: { effort: { method: "RPE", value: 7 } } }), "easy");
+  assert.equal(felt({ actual: { effort: { method: "RPE", value: 8 } } }), "right");
+  assert.equal(felt({ actual: { effort: { method: "RPE", value: 9 } } }), "hard");
+  assert.equal(felt({ reason: "felt_strong", status: "modified", actual: { reps: 10 } }), "easy");
+  assert.equal(felt({}), null);
+});
+
+test("a green day never outranks taper, the final fortnight, an injury or a hold", () => {
+  const open = { decisionTier: "green", openInjuries: 0, phase: "SPP", safetyHold: false, fightDate: "2026-12-20", trainingDay: "2026-11-10" };
+  assert.equal(progressionOpen(open), true);
+  // An open plan has no fight date.
+  assert.equal(progressionOpen({ ...open, phase: "GPP", fightDate: undefined }), true);
+  for (const patch of [
+    { decisionTier: "modify" }, { decisionTier: "not_checked_in" }, { decisionTier: undefined },
+    { openInjuries: 1 }, { phase: "TAPER" }, { phase: "" }, { safetyHold: true },
+    { fightDate: "2026-11-24" }, { fightDate: "2026-11-12" }, { fightDate: "not a date" }, { trainingDay: "" },
+  ]) assert.equal(progressionOpen({ ...open, ...patch }), false, JSON.stringify(patch));
+  assert.equal(progressionOpen({ ...open, fightDate: "2026-11-25" }), true);
+});
+
+test("the first weight is asked once for weighted strength work with none on record", () => {
+  const done = log(deadlift, {});
+  const recent = [{ exercise_key: null, display_name: "trap bar deadlift", load: { value: 100, unit: "kg" }, training_day: "2026-10-01" }];
+  assert.equal(needsFirstLoad(deadlift, []), true);
+  assert.equal(asksForFirstLoad(deadlift, done, []), true);
+  // Not before the history has loaded, not with a weight on record, not before the exercise is logged.
+  assert.equal(needsFirstLoad(deadlift, undefined), false);
+  assert.equal(needsFirstLoad(deadlift, recent), false);
+  assert.equal(asksForFirstLoad(deadlift, null, []), false);
+  // A skip, a weight already given, or sets logged one by one are left alone.
+  assert.equal(asksForFirstLoad(deadlift, log(deadlift, { status: "skipped" }), []), false);
+  assert.equal(asksForFirstLoad(deadlift, log(deadlift, { actual: { load: { value: 60, unit: "kg" } } }), []), false);
+  assert.equal(asksForFirstLoad(deadlift, log(deadlift, { actual: { sets: 1, set_entries: [{ reps: 8 }] } }), []), false);
+  // Jumps, holds, bodyweight or band work, a plan-set weight and the athlete's own exercises are never asked.
+  for (const block of [
+    { ...deadlift, block_type: "plyometric_power" }, plank, { ...deadlift, load: { method: "bodyweight" } },
+    { ...deadlift, load: { method: "band" } }, { ...deadlift, load: { value: 80, unit: "kg" } },
+    { ...deadlift, prescription_source: "athlete" as const },
+  ]) assert.equal(needsFirstLoad(block, []), false);
+  // A percentage of an unknown max is not a weight: the real one is still asked for.
+  assert.equal(needsFirstLoad({ ...deadlift, load: { method: "percentage", value: 70, unit: "percent" } }, []), true);
+  assert.equal(exerciseIdentity({ ...deadlift, exercise_key: "trap-bar-deadlift" }), "trap-bar-deadlift");
+  assert.equal(exerciseIdentity(deadlift), "trap bar deadlift");
+});
+
+test("a saved log is amended in place, keeping everything else as stored", () => {
+  const saved = log(deadlift, { status: "modified", reason: "equipment", notes: "short bar",
+    actual: { sets: 3, reps: null, load: null, effort: { method: "RPE", value: 7 }, feel: "right" } });
+  assert.deepEqual(amendedLog(saved, { load: { value: 60, unit: "kg" } }), {
+    status: "modified", reason: "equipment", notes: "short bar",
+    actual: { sets: 3, effort: { method: "RPE", value: 7 }, feel: "right", load: { value: 60, unit: "kg" } },
+  });
+  // Tapping the chosen feel again clears it.
+  assert.deepEqual(amendedLog(saved, { feel: null }).actual, { sets: 3, effort: { method: "RPE", value: 7 } });
 });
 
 test("a struggled weight suggests easing off, never a raise", () => {
