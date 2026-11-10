@@ -22,12 +22,14 @@ import {
   nextStepFor,
   nextStepLabel,
   performanceSummary,
+  repeatRepsFor,
   logFieldsForBlock,
   logSummary,
   loggedValues,
   withLastLoad,
   type ExerciseFeel,
   type LogDraft,
+  type NextStep,
 } from "@/lib/exercise-log";
 import { cleanText } from "@/lib/structured-plan";
 import { draftsFromActual, type SetDraft } from "@/lib/set-entries";
@@ -165,8 +167,10 @@ export function ExerciseLogTick({
         block_id: blockId,
         ...withLastLoad(block, { status: "as_prescribed" }, logging.recentLoads, logging.recentPerformances),
       });
-      // No weight on record for this lift: open the row, where it is asked once.
-      if (needsFirstLoad(block, logging.recentLoads) && !firstLoadDeclined(block)) onOpen();
+      // Saved as written. Open the row where there is one thing left to confirm:
+      // a first weight, or reps above the prescription that were reached last time.
+      const previous = lastPerformanceFor(block, logging.recentPerformances);
+      if ((needsFirstLoad(block, logging.recentLoads) && !firstLoadDeclined(block)) || repeatRepsFor(block, previous) !== null) onOpen();
     } catch (caught) {
       logging.onError?.(errorMessage(caught));
     } finally {
@@ -272,6 +276,11 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
   const backoff = nextStep ? null : backoffLoadFor(block, previous);
   const suggested = nextStep?.kind === "load" ? nextStep.load : backoff;
   const loadField = fields.find(field => field.key === "load");
+  // Reps reached last time are never assumed: "done" records the prescription,
+  // and this is offered for the athlete to confirm they matched it again.
+  const repeatReps = log && log.status === "as_prescribed" && log.actual?.reps == null && !log.actual?.set_entries?.length
+    ? repeatRepsFor(block, previous)
+    : null;
   const askFirstLoad = !firstLoadSkipped && asksForFirstLoad(block, log, logging.recentLoads) && !firstLoadDeclined(block);
   const loadUnit = setUnit ?? fields.find(field => field.key === "load")?.apiUnit ?? "kg";
   const entry = setRows ? buildSetLogEntry(fields, setRows, loadUnit, draft) : buildLogEntry(fields, draft);
@@ -284,15 +293,18 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
     setConfirming(null);
   }
 
-  function openEditor() {
+  /** Opens the numbers, optionally set up with a suggested target to confirm once it is done. */
+  function openEditor(target?: NextStep) {
     setSetRows(log?.actual?.set_entries?.length ? draftsFromActual(log.actual) : null);
     setSetUnit(log?.actual?.set_entries?.find(row => row.load)?.load?.unit ?? null);
     // A fresh entry starts from last time's weight, so only a change is typed.
-    setDraft(
-      log ? draftFromLog(fields, log) : draftFromLog(fields, suggested
+    setDraft({
+      ...(log ? draftFromLog(fields, log) : draftFromLog(fields, suggested
         ? { actual: { load: suggested } } as ExerciseLogRecord
-        : previous?.status === "skipped" || previous?.reason === "pain" ? null : withLastLoadRecord(block, logging.recentLoads)),
-    );
+        : previous?.status === "skipped" || previous?.reason === "pain" ? null : withLastLoadRecord(block, logging.recentLoads))),
+      // Nothing is recorded yet: the athlete saves it after doing the work.
+      ...(target?.kind === "reps" ? { reps: String(target.reps) } : {}),
+    });
     setReason(log?.reason ?? null);
     setError(null);
     setConfirming(null);
@@ -508,6 +520,15 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
             </div>
           </div>
         ) : null}
+        {repeatReps !== null ? (
+          <div className="ex-log-bar">
+            <span className="muted ex-log-repeat">Last time you reached {repeatReps} reps.</span>
+            <button type="button" className="ex-log-save" disabled={saving}
+              onClick={() => void save(amendedLog(log, { reps: repeatReps }))}>
+              I did {repeatReps} again
+            </button>
+          </div>
+        ) : null}
         {/* Optional: read beside the reps done, it shapes next time's suggestion. */}
         {log.status !== "skipped" && fields.some(field => field.key === "reps" || field.key === "load") ? (
           <div className="ex-log-reasons" role="group" aria-label="How did it feel? (optional)">
@@ -544,9 +565,15 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
     <div className="ex-log" data-mode="idle">
       {previous ? <p className="muted ex-log-previous">
         Last: {performanceSummary(previous)}
-        {nextStep ? <span className="ex-log-suggestion"> · {nextStepLabel(nextStep)}</span>
-          : backoff ? <span className="ex-log-suggestion"> · Ease to {backoff.value} {backoff.unit}</span> : null}
+        {backoff ? <span className="ex-log-suggestion"> · Ease to {backoff.value} {backoff.unit}</span> : null}
       </p> : null}
+      {/* Sets the numbers up with the target; it is saved only once the athlete has done it. */}
+      {nextStep ? (
+        <button type="button" className="ex-log-suggest" disabled={saving} onClick={() => openEditor(nextStep)}>
+          {nextStepLabel(nextStep)}
+          <span className="ex-log-suggest-hint">Confirm when done</span>
+        </button>
+      ) : null}
       <div className="ex-log-choices">
         <button
           type="button"
@@ -557,7 +584,7 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
           Done
         </button>
         {hasLoggableNumbers(fields) ? (
-          <button type="button" className="ex-log-choice" disabled={saving} onClick={openEditor}>
+          <button type="button" className="ex-log-choice" disabled={saving} onClick={() => openEditor()}>
             Log numbers
           </button>
         ) : null}

@@ -22802,6 +22802,16 @@ html[data-theme="light"] .sp-status-tag[data-tone="neutral"] {
 }
 .ex-log-suggestion { white-space: nowrap; }
 .ex-log-first-load { display: grid; gap: 8px; }
+.ex-log-suggest {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  width: 100%; min-height: 44px; margin: 0 0 8px; padding: 0 14px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
+  background: transparent; color: var(--text-primary);
+  font: inherit; font-size: 0.86rem; font-weight: 600; cursor: pointer;
+}
+.ex-log-suggest:disabled { opacity: 0.45; cursor: not-allowed; }
+.ex-log-suggest-hint { color: var(--text-muted); font-size: 0.76rem; font-weight: 500; }
+.ex-log-repeat { flex: 1 1 auto; min-width: 0; font-size: 0.8rem; line-height: 1.4; }
 
 @media (max-width: 480px) {
   .history-tabs { grid-template-columns: repeat(6, minmax(0, 1fr)); border-radius: 20px; }

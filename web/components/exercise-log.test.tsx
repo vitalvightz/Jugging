@@ -17,6 +17,8 @@ const deadlift: StructuredBlock = {
   sets: 4,
   reps: 8,
   effort: { method: "RPE", value: 7 },
+  // The server has cleared this lift to progress (see api/rep_range.py).
+  progression_hold: false,
 };
 
 const plank: StructuredBlock = {
@@ -530,4 +532,60 @@ test("an easy session below the top of the rep range suggests a rep, not more we
   const held = mount(squat, { recentPerformances: [previous], allowProgression: false });
   assert.doesNotMatch(held.text(), /Try/);
   held.unmount();
+});
+
+test("tapping a suggestion sets the numbers up; nothing is recorded until the athlete saves", async () => {
+  const squat: StructuredBlock = { ...deadlift, sets: 3, reps: 8, rep_range: [8, 12] };
+  const previous = record(squat, { actual: { load: { value: 60, unit: "kg" }, reps: 9, feel: "easy" } });
+  const recentLoads = [{ exercise_key: null, display_name: "Trap Bar Deadlift", load: { value: 60, unit: "kg" }, training_day: "2026-10-05" }];
+  const view = mount(squat, { recentPerformances: [previous], recentLoads, allowProgression: true });
+  await view.press(view.container.querySelector<HTMLButtonElement>(".ex-log-suggest")!);
+  assert.deepEqual(view.saved, []);
+  assert.equal(view.container.querySelector<HTMLInputElement>('.ex-log-field input[id$="-reps"]')?.value, "10");
+  assert.equal(view.container.querySelector<HTMLInputElement>('.ex-log-field input[id$="-load"]')?.value, "60");
+  // Backing out records nothing.
+  await view.click("Cancel");
+  assert.deepEqual(view.saved, []);
+  await view.press(view.container.querySelector<HTMLButtonElement>(".ex-log-suggest")!);
+  await view.click("Save");
+  // Inside the permitted range it is the workout done, with no "why?" asked.
+  assert.deepEqual(view.saved, [{ block_id: "blk-deadlift", status: "as_prescribed", reason: null,
+    actual: { reps: 10, load: { value: 60, unit: "kg" } } }]);
+  view.unmount();
+});
+
+test("done records the prescription, then offers last time's reps to confirm", async () => {
+  const squat: StructuredBlock = { ...deadlift, sets: 3, reps: 8, rep_range: [8, 12] };
+  const previous = record(squat, { actual: { reps: 9 } });
+  const view = mount(squat, { recentPerformances: [previous] });
+  await view.click("Done");
+  assert.deepEqual(view.saved, [{ block_id: "blk-deadlift", status: "as_prescribed" }]);
+  assert.match(view.text(), /Last time you reached 9 reps\./);
+  await view.click("I did 9 again");
+  assert.deepEqual(view.saved[1], { block_id: "blk-deadlift", status: "as_prescribed", reason: null, notes: "", actual: { reps: 9 } });
+  // Confirmed: it is not asked again.
+  assert.doesNotMatch(view.text(), /Last time you reached/);
+  view.unmount();
+  // The tick saves as written and opens the row for the same confirmation.
+  const collapsed = mount(squat, { open: false, recentPerformances: [previous] });
+  await collapsed.press(collapsed.container.querySelector<HTMLButtonElement>(".ex-log-tick")!);
+  assert.deepEqual(collapsed.saved, [{ block_id: "blk-deadlift", status: "as_prescribed" }]);
+  assert.equal(collapsed.toggled(), 1);
+  collapsed.unmount();
+  // A held block, or a reduced prescription, is never offered it.
+  for (const block of [{ ...squat, progression_hold: true }, { ...squat, sets: 2 }]) {
+    const held = mount(block, { recentPerformances: [previous] });
+    await held.click("Done");
+    assert.doesNotMatch(held.text(), /Last time you reached/);
+    held.unmount();
+  }
+});
+
+test("a block the server has not cleared is never offered a next step", () => {
+  const previous = record(deadlift, { actual: { load: { value: 80, unit: "kg" }, feel: "easy" } });
+  for (const progression_hold of [true, undefined]) {
+    const view = mount({ ...deadlift, progression_hold }, { recentPerformances: [previous], allowProgression: true });
+    assert.equal(view.container.querySelector(".ex-log-suggest"), null);
+    view.unmount();
+  }
 });
