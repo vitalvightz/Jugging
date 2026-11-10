@@ -8,7 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { ExerciseLogProvider, type ExerciseLogging } from "./exercise-log";
 import { ExerciseRow } from "./structured-plan-renderer";
-import type { ExerciseLogRecord, ExerciseLogRequest, StructuredBlock } from "@/lib/types";
+import type { ExerciseLogRecord, ExerciseLogRequest, ExerciseRecentLoad, StructuredBlock } from "@/lib/types";
 
 const deadlift: StructuredBlock = {
   block_id: "blk-deadlift",
@@ -55,6 +55,7 @@ function mount(
     logs?: Record<string, ExerciseLogRecord>;
     painReasonAllowed?: boolean;
     recentPerformances?: ExerciseLogRecord[];
+    recentLoads?: ExerciseRecentLoad[];
     allowProgression?: boolean;
     fail?: string;
     open?: boolean;
@@ -72,6 +73,7 @@ function mount(
       logs,
       painReasonAllowed: options.painReasonAllowed ?? true,
       recentPerformances: options.recentPerformances,
+      recentLoads: options.recentLoads,
       allowProgression: options.allowProgression,
       onError: (message) => errors.push(message),
       save: async (request) => {
@@ -84,6 +86,7 @@ function mount(
           [request.block_id]: record(block, {
             status: request.status,
             reason: request.reason ?? null,
+            notes: request.notes ?? "",
             actual: request.actual ?? {},
           }),
         };
@@ -429,4 +432,102 @@ test("planned per-set editor exposes optional RPE and keeps it separate from agg
   assert.ok([...inputs].every(input => input.value === "7"));
   assert.equal(view.container.querySelector('.ex-log-field input[id$="-effort"]'), null);
   view.unmount();
+});
+
+test("a first weighted lift with no weight on record asks for it once, after the log is saved", async () => {
+  window.localStorage.clear();
+  const view = mount(deadlift, { recentLoads: [] });
+  assert.doesNotMatch(view.text(), /What weight did you use\?/);
+  await view.click("Done");
+  // Logging is never held up: the exercise is already saved as done.
+  assert.deepEqual(view.saved, [{ block_id: "blk-deadlift", status: "as_prescribed" }]);
+  assert.match(view.text(), /What weight did you use\?/);
+  await view.type("What weight did you use?", "abc");
+  await view.click("Save weight");
+  assert.match(view.text(), /Enter the weight as a number\./);
+  assert.equal(view.saved.length, 1);
+  await view.type("What weight did you use?", "60");
+  await view.click("Save weight");
+  assert.deepEqual(view.saved[1], {
+    block_id: "blk-deadlift", status: "as_prescribed", reason: null, notes: "",
+    actual: { load: { value: 60, unit: "kg" } },
+  });
+  assert.doesNotMatch(view.text(), /What weight did you use\?/);
+  view.unmount();
+});
+
+test("the first-weight question can be skipped and does not come back for that exercise", async () => {
+  window.localStorage.clear();
+  const view = mount(deadlift, { recentLoads: [] });
+  await view.click("Done");
+  await view.click("Skip");
+  assert.doesNotMatch(view.text(), /What weight did you use\?/);
+  assert.equal(view.saved.length, 1);
+  view.unmount();
+  // Next session: neither the open row nor the tick raises it again.
+  const later = mount(deadlift, { recentLoads: [], logs: { "blk-deadlift": record(deadlift) } });
+  assert.doesNotMatch(later.text(), /What weight did you use\?/);
+  later.unmount();
+  const collapsed = mount(deadlift, { open: false, recentLoads: [] });
+  await collapsed.press(collapsed.container.querySelector<HTMLButtonElement>(".ex-log-tick")!);
+  assert.equal(collapsed.toggled(), 0);
+  collapsed.unmount();
+  window.localStorage.clear();
+});
+
+test("the tick opens the row for the first weight, and only when there is none to carry", async () => {
+  window.localStorage.clear();
+  const view = mount(deadlift, { open: false, recentLoads: [] });
+  await view.press(view.container.querySelector<HTMLButtonElement>(".ex-log-tick")!);
+  assert.deepEqual(view.saved, [{ block_id: "blk-deadlift", status: "as_prescribed" }]);
+  assert.equal(view.toggled(), 1);
+  view.unmount();
+  const known = mount(deadlift, { open: false, recentLoads: [
+    { exercise_key: null, display_name: "Trap Bar Deadlift", load: { value: 80, unit: "kg" }, training_day: "2026-10-01" },
+  ] });
+  await known.press(known.container.querySelector<HTMLButtonElement>(".ex-log-tick")!);
+  assert.deepEqual(known.saved[0].actual?.load, { value: 80, unit: "kg" });
+  assert.equal(known.toggled(), 0);
+  known.unmount();
+  // Holds and jumps are never asked what they weighed.
+  const hold = mount(plank, { open: false, recentLoads: [] });
+  await hold.press(hold.container.querySelector<HTMLButtonElement>(".ex-log-tick")!);
+  assert.equal(hold.toggled(), 0);
+  hold.unmount();
+});
+
+test("how it felt is an optional tap on a saved lift and keeps the rest of the log", async () => {
+  const saved = record(deadlift, { actual: { load: { value: 80, unit: "kg" }, sets: null } });
+  const view = mount(deadlift, { logs: { "blk-deadlift": saved } });
+  const group = view.container.querySelector('[aria-label="How did it feel? (optional)"]');
+  assert.deepEqual(Array.from(group!.querySelectorAll("button")).map((node) => node.textContent), ["Easy", "Right", "Hard"]);
+  await view.click("Easy");
+  assert.deepEqual(view.saved[0], {
+    block_id: "blk-deadlift", status: "as_prescribed", reason: null, notes: "",
+    actual: { load: { value: 80, unit: "kg" }, feel: "easy" },
+  });
+  assert.equal(view.button("Easy")?.getAttribute("aria-pressed"), "true");
+  // Tapping it again clears the answer.
+  await view.click("Easy");
+  assert.deepEqual(view.saved[1].actual, { load: { value: 80, unit: "kg" } });
+  view.unmount();
+  // Not offered on a skip or on work with no reps or weight.
+  const skipped = mount(deadlift, { logs: { "blk-deadlift": record(deadlift, { status: "skipped" }) } });
+  assert.equal(skipped.container.querySelector('[aria-label="How did it feel? (optional)"]'), null);
+  skipped.unmount();
+  const hold = mount(plank, { logs: { "blk-plank": record(plank) } });
+  assert.equal(hold.container.querySelector('[aria-label="How did it feel? (optional)"]'), null);
+  hold.unmount();
+});
+
+test("an easy session below the top of the rep range suggests a rep, not more weight", () => {
+  const squat: StructuredBlock = { ...deadlift, sets: 3, reps: "6-8" };
+  const previous = record(squat, { actual: { load: { value: 40, unit: "kg" }, reps: 6, feel: "easy" } });
+  const view = mount(squat, { recentPerformances: [previous], allowProgression: true });
+  assert.match(view.text(), /Try 7 reps/);
+  view.unmount();
+  // The same performance under a restriction suggests nothing.
+  const held = mount(squat, { recentPerformances: [previous], allowProgression: false });
+  assert.doesNotMatch(held.text(), /Try/);
+  held.unmount();
 });

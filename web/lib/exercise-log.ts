@@ -591,26 +591,201 @@ export function performanceSummary(log: ExerciseLogRecord): string {
 }
 
 /** Only a literal, supported progression rule can propose an increase. */
-export function progressionLoadFor(block: StructuredBlock, log: ExerciseLogRecord | null, allowed: boolean): ExerciseLogMeasure | null {
-  if (!allowed || !log || log.status === "skipped" || (log.reason != null && log.reason !== "felt_strong") || logFieldsForBlock(block).find((field) => field.key === "load")?.prescribed) return null;
+export type ExerciseFeel = "easy" | "right" | "hard";
+
+/** What to attempt next time: one more rep inside the range, or a little more weight. */
+export type NextStep = { kind: "reps"; reps: number } | { kind: "load"; load: ExerciseLogMeasure };
+
+/** A raise is this share of the last weight, and never less than one plate step. */
+const PROGRESSION_RATIO = 0.03;
+/** No raise is offered inside this many days of the fight, whatever the phase label. */
+const PROGRESSION_FINAL_DAYS = 14;
+
+// The plan's own instruction to stay put ("Keep the same dose and make each rep
+// sharp", "none this block") outranks what the numbers suggest.
+const HOLD_RULE = /\b(?:same (?:dose|load|weight)|maintain|hold (?:the |this )?(?:dose|load|weight)|(?:do not|don't|no) (?:add|increase|progress)|no progression)\b|^none\b/i;
+
+/** Plate-friendly steps for bar work, finer ones for light dumbbells. */
+function plateStep(load: ExerciseLogMeasure): number {
+  const heavy = load.unit === "lb" ? load.value >= 55 : load.value >= 25;
+  return load.unit === "lb" ? (heavy ? 5 : 1) : heavy ? 2.5 : 0.5;
+}
+
+function plannedRpe(block: StructuredBlock): number | null {
+  const effort = block.effort;
+  return cleanText(effort?.method)?.toUpperCase() === "RPE" && typeof effort?.value === "number" && finitePositiveNumber(effort.value)
+    ? effort.value
+    : null;
+}
+
+/** An RPE at least two over the plan's (9+ when the plan gave none) was too much. */
+function rpeCeiling(before: StructuredBlock): number {
+  const planned = plannedRpe(before);
+  return planned === null ? 9 : Math.min(planned + 2, 10);
+}
+
+/**
+ * How the logged work felt. The athlete's own answer comes first; otherwise a
+ * reported RPE is read against the plan's, and "felt strong" counts as easy.
+ * Null when nothing was said: a bare "done" is never taken as easy.
+ */
+export function feelOf(log: ExerciseLogRecord): ExerciseFeel | null {
+  if (log.actual.feel) return log.actual.feel;
+  const effort = log.actual.effort;
+  if (effort && typeof effort.value === "number" && (effort.method ?? "RPE") === "RPE") {
+    const before = log.prescribed as StructuredBlock;
+    const planned = plannedRpe(before);
+    if (effort.value >= rpeCeiling(before)) return "hard";
+    return effort.value <= 7 && (planned === null || effort.value <= planned) ? "easy" : "right";
+  }
+  return log.reason === "felt_strong" ? "easy" : null;
+}
+
+/**
+ * The rep range progression may move within: one the prescription writes
+ * ("6-8"), else the server's permitted range around a fixed working number.
+ * A permitted range is only used while `reps` sits inside it.
+ */
+export function progressionRepRange(block: StructuredBlock): [number, number] | null {
+  const written = prescribedReps(block.reps)?.range;
+  if (!written) return null;
+  const permitted = block.rep_range;
+  if (written[0] === written[1] && Array.isArray(permitted) && permitted.length === 2) {
+    const [low, high] = permitted;
+    if (Number.isInteger(low) && Number.isInteger(high) && low < high && low <= written[0] && written[0] <= high) {
+      return [written[0], high];
+    }
+  }
+  return written;
+}
+
+/**
+ * The reps every set reached. Blank means the prescription was followed, which
+ * counts as the bottom of a range, never its top. Null when sets were logged
+ * one by one and any of them has no count.
+ */
+function repsReached(log: ExerciseLogRecord, planned: [number, number]): number | null {
+  const rows = log.actual.set_entries;
+  if (rows?.length) {
+    const counts = rows.map((row) => row.reps);
+    if (rows.length < (log.actual.sets ?? rows.length) || counts.some((count) => typeof count !== "number")) return null;
+    return Math.min(...(counts as number[]));
+  }
+  return typeof log.actual.reps === "number" ? log.actual.reps : planned[0];
+}
+
+/**
+ * Whether a raise may be offered at all today. Readiness is one condition among
+ * several: a green day never outranks taper, the final fortnight, an open
+ * injury or a safety hold.
+ */
+export function progressionOpen(context: {
+  decisionTier?: string | null;
+  openInjuries: number;
+  phase?: string | null;
+  safetyHold?: boolean;
+  fightDate?: string | null;
+  trainingDay?: string | null;
+}): boolean {
+  if (context.decisionTier !== "green" || context.openInjuries > 0 || context.safetyHold) return false;
+  if (!/^(GPP|SPP)$/i.test(context.phase ?? "")) return false;
+  if (context.fightDate) {
+    const days = (Date.parse(context.fightDate.slice(0, 10)) - Date.parse((context.trainingDay ?? "").slice(0, 10))) / 86_400_000;
+    // An unreadable date is treated as close to the fight.
+    if (!Number.isFinite(days) || days <= PROGRESSION_FINAL_DAYS) return false;
+  }
+  return true;
+}
+
+/**
+ * What to try next, read off what was actually done last time rather than off
+ * the wording of a progression rule. Only ever a suggestion.
+ *
+ * Earned in order: every set and rep done, and it felt easy. Below the top of a
+ * rep range that earns one more rep; at the top on every set it earns a small
+ * raise in weight. "Right" holds the dose, "hard" is left to the ease-off.
+ * Nothing is offered when today's dose differs from the one logged, when the
+ * plan asks for less effort than last time, or when the plan says to hold.
+ */
+export function nextStepFor(block: StructuredBlock, log: ExerciseLogRecord | null, allowed: boolean): NextStep | null {
+  if (!allowed || !log || log.status === "skipped" || (log.reason != null && log.reason !== "felt_strong")) return null;
+  // The server's hold (taper, final fortnight, injury, weight cut, capped dose) and the plan's own wording.
+  if (block.progression_hold === true || HOLD_RULE.test(cleanText(block.progression_rule) ?? "")) return null;
+  // Strength work only: jumps, sprints and holds progress on quality, not reps or weight.
+  if (!FIRST_LOAD_BLOCK_TYPES.has(cleanText(block.block_type)?.toLowerCase() ?? "")) return null;
+  const before = log.prescribed as StructuredBlock;
+  const today = progressionRepRange(block);
+  const planned = progressionRepRange(before);
+  if (!today || !planned || today.join() !== planned.join()) return null;
+  if (!finitePositiveNumber(block.sets) || block.sets !== before.sets) return null;
+  const rpeToday = plannedRpe(block);
+  const rpeBefore = plannedRpe(before);
+  if (rpeToday !== null && rpeBefore !== null && rpeToday < rpeBefore) return null;
+  if ((log.actual.sets ?? block.sets) < block.sets) return null;
+  const reps = repsReached(log, planned);
+  if (reps === null || reps < planned[0] || feelOf(log) !== "easy") return null;
+  if (reps < planned[1]) return { kind: "reps", reps: reps + 1 };
+
   const field = logFieldsForBlock(block).find((item) => item.key === "load");
   const load = log.actual.load;
-  const effort = log.actual.effort;
-  const rule = cleanText(block.progression_rule);
-  const match = rule?.match(/^(?:add|increase(?: load)? by)\s+(\d+(?:\.\d+)?)\s*(kg|lb)\s+when all (?:sets|reps)(?: (?:are )?complete(?:d)?)?[.!]?$/i);
-  if (!field || !load || load.unit !== field.apiUnit || !finitePositiveNumber(load.value) || !match || load.unit !== match[2].toLowerCase()
-      || !effort || effort.method !== "RPE" || effort.value > 7
-      || block.effort?.method !== "RPE" || typeof block.effort.value !== "number" || effort.value > block.effort.value) return null;
-  for (const key of ["sets", "reps"] as const) {
-    const planned = log.prescribed[key];
-    const current = block[key];
-    const done = log.actual[key] ?? planned;
-    if (typeof planned !== "number" || typeof done !== "number" || typeof current !== "number"
-        || done < planned || current !== planned) return null;
-  }
-  const increment = Number(match[1]);
-  if (!(increment > 0 && increment <= load.value * 0.05)) return null;
-  return { value: Math.round((load.value + increment) * 100) / 100, unit: load.unit };
+  // A weight the plan names is the plan's to change.
+  if (!field || field.prescribed || !load || load.unit !== field.apiUnit || !finitePositiveNumber(load.value)) return null;
+  const step = plateStep(load);
+  const raise = Math.max(1, Math.round((load.value * PROGRESSION_RATIO) / step)) * step;
+  return { kind: "load", load: { value: Math.round((load.value + raise) * 100) / 100, unit: load.unit } };
+}
+
+/** The raised weight to offer, when the next step is more weight. */
+export function progressionLoadFor(block: StructuredBlock, log: ExerciseLogRecord | null, allowed: boolean): ExerciseLogMeasure | null {
+  const step = nextStepFor(block, log, allowed);
+  return step?.kind === "load" ? step.load : null;
+}
+
+/** "Try 7 reps", "Try 82.5 kg". */
+export function nextStepLabel(step: NextStep): string {
+  return step.kind === "reps" ? `Try ${step.reps} reps` : `Try ${step.load.value} ${step.load.unit}`;
+}
+
+// Weighted work the first-weight question is asked for. Jumps, throws and
+// sprints also log reps, and nobody should be asked what a box jump weighed.
+const FIRST_LOAD_BLOCK_TYPES = new Set(["strength", "accessory"]);
+
+/** Stable name for an exercise across plans: the planner key, else its name. */
+export function exerciseIdentity(block: StructuredBlock): string {
+  return cleanText(block.exercise_key) ?? cleanText(block.display_name)?.toLowerCase() ?? "";
+}
+
+/**
+ * Whether this exercise has no weight on record to carry forward: weighted
+ * strength work, no weight named by the plan, none logged before. False until
+ * the history has loaded, so a slow read never asks needlessly.
+ */
+export function needsFirstLoad(block: StructuredBlock, recentLoads: readonly ExerciseRecentLoad[] | undefined): boolean {
+  if (!recentLoads || block.prescription_source === "athlete") return false;
+  if (!FIRST_LOAD_BLOCK_TYPES.has(cleanText(block.block_type)?.toLowerCase() ?? "")) return false;
+  const field = logFieldsForBlock(block).find((item) => item.key === "load");
+  return Boolean(field) && !field!.prescribed && lastLoadFor(block, recentLoads) === null;
+}
+
+/** Whether today's saved log should still be asked "What weight did you use?". */
+export function asksForFirstLoad(
+  block: StructuredBlock,
+  log: ExerciseLogRecord | null,
+  recentLoads: readonly ExerciseRecentLoad[] | undefined,
+): boolean {
+  if (!log || log.status === "skipped" || log.actual?.load || log.actual?.set_entries?.length) return false;
+  return needsFirstLoad(block, recentLoads);
+}
+
+/** A saved log resent with one thing added or changed; everything else as stored. */
+export function amendedLog(
+  log: ExerciseLogRecord,
+  patch: Pick<ExerciseLogActual, "load" | "feel">,
+): Omit<ExerciseLogRequest, "plan_id" | "block_id"> {
+  const actual = Object.fromEntries(
+    Object.entries({ ...log.actual, ...patch }).filter(([, value]) => value !== null && value !== undefined),
+  ) as ExerciseLogActual;
+  return { status: log.status, reason: log.reason, notes: log.notes, actual };
 }
 
 /** Last time's weight is eased by this share when the athlete struggled with it. */
@@ -644,17 +819,10 @@ export function backoffLoadFor(block: StructuredBlock, log: ExerciseLogRecord | 
     (plannedSets !== null && typeof doneSets === "number" && doneSets < plannedSets) ||
     (plannedReps !== undefined && typeof doneReps === "number" && doneReps < plannedReps[0]);
   const effort = log.actual.effort;
-  const plannedRpe = before.effort;
-  const ceiling =
-    cleanText(plannedRpe?.method)?.toUpperCase() === "RPE" && typeof plannedRpe?.value === "number" && finitePositiveNumber(plannedRpe.value)
-      ? Math.min(plannedRpe.value + 2, 10)
-      : 9;
-  const overreached = effort?.method === "RPE" && typeof effort.value === "number" && effort.value >= ceiling;
+  const overreached = effort?.method === "RPE" && typeof effort.value === "number" && effort.value >= rpeCeiling(before);
   if (log.reason !== "fatigue" && !missedDose && !overreached) return null;
 
-  // Plate-friendly steps for bar work, finer ones for light dumbbells.
-  const heavy = load.unit === "lb" ? load.value >= 55 : load.value >= 25;
-  const step = load.unit === "lb" ? (heavy ? 5 : 1) : heavy ? 2.5 : 0.5;
+  const step = plateStep(load);
   const eased = Math.round((load.value * BACKOFF_RATIO) / step) * step;
   if (!(eased > 0 && eased < load.value)) return null;
   return { value: Math.round(eased * 100) / 100, unit: load.unit };

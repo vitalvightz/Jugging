@@ -5,7 +5,7 @@ import { blankDraft, draftFromEntry, optionChoice, optionFormat, readDraft, sear
 
 const exercise = (id: string, name: string, latest_day = "2026-10-01", overrides: Partial<PersonalExercise> = {}): PersonalExercise => ({
   id, name, identity_kind: id.startsWith("custom:") ? "personal" : id.startsWith("log:") ? "legacy" : "canonical",
-  latest_day, latest_values: { sets: null, reps: null, rounds: null, load: null, duration: null, work: null, rest: null, distance: null, effort: null, set_entries: null },
+  latest_day, latest_values: { sets: null, reps: null, rounds: null, load: null, duration: null, work: null, rest: null, distance: null, effort: null, feel: null, set_entries: null },
   latest_confirmed_as_prescribed: false, best_loads: [], latest_source: "manual", log_format: "strength", ...overrides,
 });
 const entry = (name: string, exercise_key: string, log_format: LibraryEntry["log_format"] = "strength") =>
@@ -48,7 +48,7 @@ test("each invalid value has a message beside its own field", () => {
 
 test("editing restores stored values and units exactly", () => {
   const draft = draftFromEntry({ format: "intervals", notes: "Felt sharp", actual: {
-    sets: null, reps: null, rounds: 5, load: null, duration: null, work: { value: 2, unit: "minutes" }, rest: { value: 30, unit: "seconds" }, distance: null, effort: null, set_entries: null } });
+    sets: null, reps: null, rounds: 5, load: null, duration: null, work: { value: 2, unit: "minutes" }, rest: { value: 30, unit: "seconds" }, distance: null, effort: null, feel: null, set_entries: null } });
   assert.deepEqual(draft.values, { rounds: "5", work: "2", rest: "30" });
   assert.equal(draft.units.work, "minutes");
   assert.equal(draft.notes, "Felt sharp");

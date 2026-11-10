@@ -35,6 +35,8 @@ from fightcamp.exercise_identity import support_insert_exercise_key
 from fightcamp.fight_date_utils import parse_fight_date
 from fightcamp.structured_session_identity import match_sessions_to_roles
 
+from .rep_range import apply_progression_context, progression_context
+
 from .services.exercise_media import (
     NON_PHYSICAL_BLOCK_TYPES,
     normalize_exercise_key,
@@ -89,6 +91,16 @@ def _name_forms(name: Any) -> set[str]:
     forms = {normalize_exercise_key(text)}
     forms.update(normalize_exercise_key(part) for part in _NAME_PART_SPLIT_RE.split(text))
     return {form for form in forms if form}
+
+
+def _assignment_for(role: Mapping[str, Any] | None, key: str | None) -> Mapping[str, Any] | None:
+    """The role's one assignment with this planner key; None when absent or ambiguous."""
+    if role is None or not key:
+        return None
+    hits = [assignment for assignment in _as_list(role.get("selected_exercise_assignments"))
+            if isinstance(assignment, Mapping)
+            and (normalize_exercise_key(assignment.get("exercise_key")) or normalize_exercise_key(assignment.get("name"))) == key]
+    return hits[0] if len(hits) == 1 else None
 
 
 def _role_members(role: Mapping[str, Any]) -> list[_Member]:
@@ -267,8 +279,23 @@ def _stamp_session(
 def reconcile_exercise_keys(structured_plan: Any, planning_brief: Any) -> Any:
     """Stamp the planner's ``exercise_key`` on every block whose identity is known.
 
-    Returns the input object unchanged when nothing changes, else a deep copy.
+    Also stamps each block's server-owned progression context (see
+    api/rep_range.py). Returns the input object unchanged when nothing changes,
+    else a deep copy.
     """
+    return _reconcile(structured_plan, planning_brief, keys=True)
+
+
+def reconcile_progression_context(structured_plan: Any, planning_brief: Any) -> Any:
+    """Only the progression context (rep_range / progression_hold), on read.
+
+    Identity is left exactly as stored; a block's stored key wins over a
+    re-derived one, so an old card never changes which movement it is.
+    """
+    return _reconcile(structured_plan, planning_brief, keys=False)
+
+
+def _reconcile(structured_plan: Any, planning_brief: Any, *, keys: bool) -> Any:
     if not isinstance(structured_plan, dict):
         return structured_plan
     brief = planning_brief if isinstance(planning_brief, Mapping) else {}
@@ -277,6 +304,7 @@ def reconcile_exercise_keys(structured_plan: Any, planning_brief: Any) -> Any:
 
     repaired = copy.deepcopy(structured_plan)
     changed = False
+    athlete = brief.get("athlete_snapshot") if isinstance(brief.get("athlete_snapshot"), Mapping) else {}
     for week in _as_list(repaired.get("weeks")):
         if not isinstance(week, dict):
             continue
@@ -293,14 +321,26 @@ def reconcile_exercise_keys(structured_plan: Any, planning_brief: Any) -> Any:
                 stamped = _stamp_session(
                     session, session_roles.get(index), day_roles, day_members, pool_keys
                 )
+                role = session_roles.get(index)
+                phase = str(day.get("phase_label") or week.get("phase_label") or (role or {}).get("phase") or "")
                 for block, key in stamped:
                     if block.get("prescription_source") == "athlete":
+                        continue
+                    # The permitted rep range and any progression hold, from this
+                    # block's own planner assignment (never another role's).
+                    identity = key if keys else (normalize_exercise_key(block.get("exercise_key")) or key)
+                    assignment = _assignment_for(role, identity)
+                    changed = apply_progression_context(block, progression_context(
+                        block, role, assignment, phase=phase, d_day=d_day if d_day >= 0 else None, athlete=athlete,
+                    )) or changed
+                    if not keys:
                         continue
                     if block.get("exercise_key") == key or (key is None and "exercise_key" not in block):
                         continue
                     block["exercise_key"] = key
                     changed = True
-                changed = _stamp_component_groups(session, session_roles.get(index)) or changed
+                if keys:
+                    changed = _stamp_component_groups(session, session_roles.get(index)) or changed
     return repaired if changed else structured_plan
 
 

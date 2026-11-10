@@ -7,7 +7,7 @@ const suggestion = (value: Partial<CustomDoseSuggestion>): CustomDoseSuggestion 
   ({ dose: null, format_dose: null, original: "", ...value }) as CustomDoseSuggestion;
 const past = (latest_values: Record<string, unknown>) => ({
   id: "key:back_squat", name: "Back squat", identity_kind: "canonical", latest_day: "2026-10-30",
-  latest_values: { sets: null, reps: null, rounds: null, load: null, duration: null, work: null, rest: null, distance: null, effort: null, set_entries: null, ...latest_values },
+  latest_values: { sets: null, reps: null, rounds: null, load: null, duration: null, work: null, rest: null, distance: null, effort: null, feel: null, set_entries: null, ...latest_values },
   latest_confirmed_as_prescribed: true, best_loads: [], latest_source: "plan", log_format: "strength",
 }) as PersonalExercise;
 

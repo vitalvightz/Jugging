@@ -780,6 +780,7 @@ export type ExerciseLogActual = {
   rest: ExerciseLogMeasure | null;
   distance: ExerciseLogMeasure | null;
   effort: ExerciseLogEffort | null;
+  feel: "easy" | "hard" | "right" | null;
   set_entries: ExerciseSetResult[] | null;
 };
 
@@ -801,6 +802,7 @@ export type ExerciseLogActualRequest = {
   rest?: ExerciseLogMeasureRequest | null;
   distance?: ExerciseLogMeasureRequest | null;
   effort?: ExerciseLogEffortRequest | null;
+  feel?: "easy" | "hard" | "right" | null;
   set_entries?: ExerciseSetResultRequest[] | null;
 };
 
@@ -2340,6 +2342,8 @@ export type SessionBlock = {
   red_flags: RedFlagRule[];
   rehab_drill_id: string | null;
   exercise_key: string | null;
+  rep_range: number[] | null;
+  progression_hold: boolean | null;
   prescription_source: "athlete" | null;
   prescription_text: string | null;
   athlete_dose: Record<string, unknown> | null;

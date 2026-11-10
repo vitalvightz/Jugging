@@ -93,6 +93,15 @@ def test_recovery_and_injury_guards_override_numeric_authority(athlete):
     assert not coaching(brief, role, a).get("progression_rule")
 
 
+def test_a_low_severity_cut_alone_does_not_withhold_supported_progression():
+    """An active but routine cut weeks out is not a recovery restriction."""
+    brief, role, a = programme("3 x 8 reps; rest 120 sec", "3 x 9 reps; rest 120 sec",
+                               athlete={"weight_cut_risk": True, "cut_severity_bucket": "low",
+                                        "readiness_flags": ["active_weight_cut"]})
+    a["progression_rule"] = "Add 1 rep per set."
+    assert coaching(brief, role, a).get("progression_rule") == "Add 1 rep per set."
+
+
 @pytest.mark.parametrize("phase,next_day", [("TAPER", 28), ("SPP", 14), ("SPP", 13), ("SPP", 6)])
 def test_final_fortnight_and_taper_do_not_offer_advancement(phase, next_day):
     brief, role, a = programme("3 x 8 reps", "3 x 9 reps", phase=phase, next_day=next_day)

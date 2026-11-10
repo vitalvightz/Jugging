@@ -53,7 +53,7 @@ import {
   savedRoundFormat,
   type ContactTimerTarget,
 } from "@/lib/session-timer/contact";
-import { isLoggableBlock, withLastLoad } from "@/lib/exercise-log";
+import { isLoggableBlock, progressionOpen, withLastLoad } from "@/lib/exercise-log";
 import { timerExerciseLogs } from "@/lib/session-timer/logs";
 import { cleanText, getBlocks, isZeroLoadSupportSession } from "@/lib/structured-plan";
 import { dayTimerItems, timerSessionFor, type TimerItem } from "@/lib/session-timer/plan";
@@ -664,10 +664,14 @@ export function TodaySessionPanel({
       resolvedDecision.sessionIsToday &&
       (status === "started" || status === "done" || status === "modified"),
     painReasonAllowed,
-    allowProgression: state.today.decision_tier === "green"
-      && state.open_injuries.length === 0
-      && /^(GPP|SPP)$/i.test(state.active_plan.phase ?? "")
-      && !state.live_prescription?.safety_hold,
+    allowProgression: progressionOpen({
+      decisionTier: state.today.decision_tier,
+      openInjuries: state.open_injuries.length,
+      phase: state.active_plan.phase,
+      safetyHold: state.live_prescription?.safety_hold,
+      fightDate: state.active_plan.fight_date,
+      trainingDay: state.today.training_day,
+    }),
     onError: reportExerciseLogError,
   });
   // Center the structured blocks on whatever the backend command view targets:

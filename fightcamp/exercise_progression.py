@@ -78,7 +78,10 @@ def progression_prohibited(role: dict, assignment: dict, phase: str, day: int | 
         phase.upper() == "TAPER" or (day is not None and day <= 14)
         or any(state.values()) or athlete.get("injury_restrictions")
         or (athlete.get("has_active_injury") and not athlete.get("surface_injury_only"))
-        or athlete.get("weight_cut_risk")
+        # A weight cut blocks progression by its graded severity (moderate and
+        # above, an aggressive-cut flag via athlete_dose_state, or the role's cut
+        # pressure below), never merely because a cut exists: a low-severity
+        # cut weeks out does not freeze every lift.
         or str(athlete.get("cut_severity_bucket") or "none").lower() not in {"none", "low"}
         or assignment.get("slot_group") == "priority_microdose" or assignment.get("support_only")
         or role.get("pre_hard_contact_managed_stress") or role.get("goal_strength_retention")
