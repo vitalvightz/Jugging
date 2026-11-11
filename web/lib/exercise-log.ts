@@ -799,6 +799,7 @@ export function amendedLog(
 
 /** Last time's weight is eased by this share when the athlete struggled with it. */
 const BACKOFF_RATIO = 0.9;
+const HARD_COMPLETE_BACKOFF_RATIO = 0.95;
 
 /**
  * A lighter weight to offer when last time's was too much: the athlete flagged
@@ -837,7 +838,7 @@ export function backoffLoadFor(block: StructuredBlock, log: ExerciseLogRecord | 
   if (log.reason !== "fatigue" && !missedDose && !overreached) return null;
 
   const step = plateStep(load);
-  const eased = Math.round((load.value * BACKOFF_RATIO) / step) * step;
+  const eased = Math.round((load.value * (log.reason === "fatigue" || missedDose ? BACKOFF_RATIO : HARD_COMPLETE_BACKOFF_RATIO)) / step) * step;
   if (!(eased > 0 && eased < load.value)) return null;
   return { value: Math.round(eased * 100) / 100, unit: load.unit };
 }
