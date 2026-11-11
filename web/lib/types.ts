@@ -441,6 +441,8 @@ export type StructuredBlock = {
   rep_range?: [number, number] | number[] | null;
   /** Server-owned: this exposure must not progress (taper, final fortnight, injury, weight cut, cap). */
   progression_hold?: boolean | null;
+  /** Bank eligibility for rep-only progression; never an authored load. */
+  bodyweight_progression?: boolean | null;
   category?: string | null;
   order_index?: number | null;
   duration?: MeasuredValue | null;

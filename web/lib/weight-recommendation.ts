@@ -49,7 +49,7 @@ export function weightRecommendation(block: StructuredBlock, context: WeightCont
   const performanceAt = (load: ExerciseLogMeasure | null) => previous && load
     ? { ...previous, actual: { ...previous.actual, load } } : previous;
   const measuredWork = Boolean(measured || (entries?.length && entries.every(row => valid(row.load))));
-  const canProgress = context.allowProgression === true && !lower && (measuredWork || block.load?.method === "bodyweight");
+  const canProgress = context.allowProgression === true && !lower && (measuredWork || block.load?.method === "bodyweight" || (!block.load && block.bodyweight_progression === true));
   const next = nextStepFor(block, performanceAt(last), canProgress);
   const reduced = backoffLoadFor(block, performanceAt(last));
   // A varied or partially measured workout has no reliable straight-set draft.

@@ -20,16 +20,12 @@
         "value": 6,
         "scale": "1-10"
       },
-      "load": {
-        "method": "bodyweight",
-        "value": 0,
-        "unit": "bodyweight"
-      },
       "rep_range": [
         6,
         10
       ],
-      "progression_hold": false
+      "progression_hold": false,
+      "bodyweight_progression": true
     },
     {
       "block_type": "strength",
@@ -50,16 +46,12 @@
         "value": 6,
         "scale": "1-10"
       },
-      "load": {
-        "method": "bodyweight",
-        "value": 0,
-        "unit": "bodyweight"
-      },
       "rep_range": [
         6,
         10
       ],
-      "progression_hold": false
+      "progression_hold": false,
+      "bodyweight_progression": true
     },
     {
       "block_type": "strength",
@@ -72,16 +64,12 @@
         "value": 6,
         "scale": "1-10"
       },
-      "load": {
-        "method": "bodyweight",
-        "value": 0,
-        "unit": "bodyweight"
-      },
       "rep_range": [
         6,
         10
       ],
-      "progression_hold": false
+      "progression_hold": false,
+      "bodyweight_progression": true
     },
     {
       "block_type": "strength",
@@ -94,16 +82,12 @@
         "value": 6,
         "scale": "1-10"
       },
-      "load": {
-        "method": "bodyweight",
-        "value": 0,
-        "unit": "bodyweight"
-      },
       "rep_range": [
         6,
         10
       ],
-      "progression_hold": false
+      "progression_hold": false,
+      "bodyweight_progression": true
     }
   ]
 }

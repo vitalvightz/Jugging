@@ -4,7 +4,7 @@ The planner resolves a bank range ("2-3x6-10") to one working number ("2x6")
 before the plan is written, and that number stays the prescription. This only
 recovers the range the prescription was chosen from, so the Today log can
 suggest one more rep inside it. Nothing is widened, no dose changes, and no
-model call is made: both fields are re-derived from the planning brief on
+model call is made: progression fields are re-derived from the planning brief on
 every read.
 
 ``progression_hold`` is the server's verdict on whether the exposure may
@@ -15,6 +15,7 @@ progress (taper, the final fortnight, an injury, a capacity-restricting weight
 cut, a capped or protected dose, or a jumping / ballistic / power movement).
 Absent means the server has no verdict (an exercise it could not match or the
 bank does not know); automatic increases require explicit clearance.
+``bodyweight_progression`` carries bank eligibility separately from authored load.
 """
 from __future__ import annotations
 
@@ -153,6 +154,9 @@ def progression_context(
         from fightcamp.working_dose import working_dose
         if str(effective).strip() not in {working_dose(str(base or "")), working_dose(str(base or ""), development=True)}:
             return {"progression_hold": True}
+    # Movement eligibility is metadata, never a rewrite of the authored load.
+    if not block.get("load") and bank_uses_bodyweight(block):
+        cleared["bodyweight_progression"] = True
     span = authored_rep_range(base)
     reps = _block_reps(block)
     if span is None or reps is None or not span[0] <= reps <= span[1]:
@@ -183,7 +187,7 @@ def override_progression_hold(
 def apply_progression_context(block: dict[str, Any], context: Mapping[str, Any]) -> bool:
     """Set exactly the server-owned fields ``context`` names. True when changed."""
     changed = False
-    for key in ("rep_range", "progression_hold"):
+    for key in ("rep_range", "progression_hold", "bodyweight_progression"):
         value = context.get(key)
         if value is None:
             if key in block:

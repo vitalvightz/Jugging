@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { compactWeightAge, weightRecommendation } from "./weight-recommendation";
 import { withHistoricalTimerLoads } from "./session-timer/history";
 import { buildTimerItems } from "./session-timer/plan";
+import { logFieldsForBlock } from "./exercise-log";
 import type { ExerciseLogRecord, StructuredBlock } from "./types";
 
 const block: StructuredBlock = { block_id: "squat", exercise_key: "squat", block_type: "strength",
@@ -245,6 +246,8 @@ test("generated bodyweight blocks progress by reps inside authority, never by ex
     assert.equal(result.suggested, null);
     if (block.progression_hold !== false || !block.rep_range) { assert.equal(result.tryReps, null); continue; }
     assert.equal(result.tryReps, reps + 1);
+    assert.equal(block.load, undefined);
+    assert.equal(logFieldsForBlock(block).some(field => field.key === "load"), false);
     const measuredSets = Array.from({ length: Number(block.sets) }, () => ({ reps, load: null }));
     assert.equal(weightRecommendation(block, { recentPerformances: [{ ...history, actual: {
       sets: Number(block.sets), set_entries: measuredSets, feel: "easy" } }], allowProgression: true }).tryReps, reps + 1);

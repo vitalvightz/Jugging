@@ -2344,6 +2344,7 @@ export type SessionBlock = {
   exercise_key: string | null;
   rep_range: number[] | null;
   progression_hold: boolean | null;
+  bodyweight_progression: boolean | null;
   prescription_source: "athlete" | null;
   prescription_text: string | null;
   athlete_dose: Record<string, unknown> | null;
