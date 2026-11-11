@@ -1,4 +1,4 @@
-import { backoffLoadFor, lastLoadFor, lastPerformanceFor, logFieldsForBlock, nextStepFor, progressionOpen } from "./exercise-log";
+import { backoffLoadFor, lastLoadFor, lastPerformanceFor, logFieldsForBlock, nextStepFor, progressionOpen, progressionRepRange } from "./exercise-log";
 import type { ExerciseLogMeasure, ExerciseLogRecord, ExerciseRecentLoad, StructuredBlock } from "./types";
 
 export type WeightContext = {
@@ -26,7 +26,17 @@ export function weightRecommendation(block: StructuredBlock, context: WeightCont
   const last = measured ?? valid(entries?.findLast(row => valid(row.load))?.load) ?? valid(fallback);
   const prescription = field?.prescribed?.[0];
   const prescribed = prescription && field?.apiUnit ? { value: prescription, unit: field.apiUnit } : null;
-  const blocked = previous?.status === "skipped" || previous?.reason === "pain";
+  const before = previous?.prescribed as StructuredBlock | undefined;
+  const todayReps = progressionRepRange(block);
+  const beforeReps = before && progressionRepRange(before);
+  const legacy = beforeReps != null && todayReps != null && before?.rep_range == null
+    && beforeReps[0] === beforeReps[1] && beforeReps[0] === todayReps[0]
+    && beforeReps[0] <= todayReps[1];
+  // Compare known components independently; absent manual prescriptions still carry forward.
+  const incompatible = (typeof block.sets === "number" && typeof before?.sets === "number"
+    && block.sets !== before.sets)
+    || (todayReps != null && beforeReps != null && !legacy && todayReps.join() !== beforeReps.join());
+  const blocked = incompatible || previous?.status === "skipped" || previous?.reason === "pain";
   const beforeEffort = (previous?.prescribed as StructuredBlock | undefined)?.effort;
   const reducedEffort = block.effort?.method === "RPE" && beforeEffort?.method === "RPE"
     && Number(block.effort.value) < Number(beforeEffort.value);

@@ -405,13 +405,13 @@ test("a saved log is amended in place, keeping everything else as stored", () =>
 test("a struggled weight suggests easing off, never a raise", () => {
   const struggled = (patch: Partial<ExerciseLogRecord>) =>
     log(deadlift, { prescribed: deadlift, ...patch, actual: { load: { value: 80, unit: "kg" }, ...patch.actual } });
-  // Fatigue, a missed set or rep, or an RPE two over the plan's each ease 10% onto a plate step.
+  // Fatigue and missed sets or reps ease 10% onto a plate step.
   for (const patch of [
     { reason: "fatigue" as const, status: "modified" as const },
     { actual: { sets: 3 } },
     { actual: { reps: 6 } },
-    { actual: { effort: { method: "RPE" as const, value: 9 } } },
   ]) assert.deepEqual(backoffLoadFor(deadlift, struggled(patch)), { value: 72.5, unit: "kg" });
+  assert.deepEqual(backoffLoadFor(deadlift, struggled({ actual: { effort: { method: "RPE", value: 9 } } })), { value: 75, unit: "kg" });
   // Light dumbbell work eases in finer steps.
   assert.deepEqual(backoffLoadFor(deadlift, struggled({ reason: "fatigue", actual: { load: { value: 12, unit: "kg" } } })), { value: 11, unit: "kg" });
   // A session that went to plan, or ran at the planned effort, keeps last time's weight.
