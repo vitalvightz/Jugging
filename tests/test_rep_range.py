@@ -155,8 +155,8 @@ def test_jumps_and_ballistic_lifts_are_held_even_when_labelled_strength(healthy)
 
 # --- Fail-closed classification, older plans, and athlete changes -----------------
 
-from api.rep_range import bank_allows_progression, override_progression_hold  # noqa: E402
-from api.services.exercise_overrides import apply_exercise_overrides  # noqa: E402
+from api.rep_range import bank_allows_progression  # noqa: E402
+from api.services.exercise_overrides import _athlete_block, apply_exercise_overrides  # noqa: E402
 
 
 @pytest.mark.parametrize(("exercise", "expected"), [
@@ -297,7 +297,7 @@ def test_an_added_exercise_takes_the_sessions_hold_and_the_banks_class():
 
 def test_another_athlete_change_is_not_evidence_about_the_session():
     sibling = {**_GOBLET, "block_id": "x", "progression_hold": True, "athlete_change": {"action": "add"}}
-    assert override_progression_hold(_GOBLET, replaced=None, siblings=[sibling]) is False
+    assert _athlete_block({"block": _GOBLET}, replaced=None, siblings=[sibling])["progression_hold"] is False
 
 
 @pytest.mark.parametrize("effective", ["1x8 @ RPE 6", "3x4 @ RPE 6", "2x8 @ RPE 5"])

@@ -81,3 +81,22 @@ test("initial failures retry without claiming an empty performance record", asyn
     assert.equal(calls, 2); assert.equal(container.querySelectorAll("dialog ol > li").length, 1);
   } finally { act(() => root.unmount()); container.remove(); globalThis.fetch = fetch; }
 });
+
+test("library cards and details preserve the recorded exercise type", async () => {
+  const fetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ performances: [], next_cursor: null }));
+  const item = { ...library.exercises[0], latest_values: { sets: 3, reps: 8, load: { value: 120, unit: "kg" } },
+    progression_hold: false, allow_progression: true, latest_performance: {
+      exercise_key: "back-squat", training_day: "2026-10-01", status: "as_prescribed",
+      prescribed: { display_name: "Back Squat", block_type: "plyometric_power", sets: 3, reps: 8 },
+      actual: { sets: 3, reps: 8, load: { value: 120, unit: "kg" }, feel: "easy" },
+    },
+  } as unknown as ExerciseLibraryResponse["exercises"][number];
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(<ExerciseLibrary library={{ ...library, exercises: [item] }} token="token" cache={new Map()} />));
+    assert.ok(!container.textContent!.includes("122.5 kg"));
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="View Back Squat performance history"]')!.click());
+    assert.ok(!container.querySelector("dialog")!.textContent!.includes("122.5 kg"));
+  } finally { act(() => root.unmount()); container.remove(); globalThis.fetch = fetch; }
+});

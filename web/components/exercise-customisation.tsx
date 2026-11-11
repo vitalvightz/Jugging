@@ -468,7 +468,6 @@ function ExerciseOptionsSheet({
   function optionRecommendation(option: ExerciseAlternative) {
     const raw = { ...option.suggested_dose, mode: option.dose_mode ?? "text" } as DoseDraft;
     const dose = withPastDose(raw, past?.get(option.exercise_key));
-    const previousLoad = past?.get(option.exercise_key)?.latest_values.load;
     const recommendation = personalWeightRecommendation({
       exercise_key: option.exercise_key, display_name: option.name,
       block_type: dose.mode === "reps" ? "strength" : dose.mode,
@@ -481,11 +480,7 @@ function ExerciseOptionsSheet({
       effort: dose.rpe ? { method: "RPE", value: dose.rpe } : undefined,
     }, past?.get(option.exercise_key), { ...weightContext,
       lowerLoads: weightContext?.lowerLoads || Boolean(raw.load_or_intensity && !parseLoad(raw.load_or_intensity)),
-      recentLoads: [
-      ...(weightContext?.recentLoads ?? []),
-      ...(previousLoad ? [{ exercise_key: option.exercise_key, display_name: option.name,
-        load: previousLoad, training_day: "" }] : []),
-    ] });
+    });
     return { recommendation, dose: { ...dose,
       load_or_intensity: recommendation.suggested
         ? `${recommendation.suggested.value} ${recommendation.suggested.unit}`

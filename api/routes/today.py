@@ -989,10 +989,10 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
             brief = _mapping((plan or {}).get("planning_brief")) or {}
             allowed = allowed and not progression_prohibited({}, {}, phase, days, brief.get("athlete_snapshot") or {})
             blocks = (view.live_prescription or {}).get("session", {}).get("blocks", [])
-            if any(b.get("progression_hold") is True for b in blocks) and not any(b.get("progression_hold") is False for b in blocks):
+            held_keys = {b.get("exercise_key") for b in blocks if b.get("progression_hold") is True}
+            if held_keys and not any(b.get("progression_hold") is False for b in blocks):
                 allowed = False
             allowed = allowed and (view.today.decision_tier == "green" if view.active_plan.get("id") else view.today.decision_tier not in {"stop", "pull_back", "modify"})
-            held_keys = {b.get("exercise_key") for b in (view.live_prescription or {}).get("session", {}).get("blocks", []) if b.get("progression_hold") is True}
         except (HTTPException, ValueError, TypeError, KeyError, AttributeError):
             # History remains readable; unavailable safety context earns no increase.
             allowed = False

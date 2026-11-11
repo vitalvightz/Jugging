@@ -175,27 +175,6 @@ def progression_context(
     return {**cleared, "rep_range": [span[0], span[1]]}
 
 
-def override_progression_hold(
-    block: Mapping[str, Any], *, replaced: Mapping[str, Any] | None, siblings: list[Any]
-) -> bool | None:
-    """The verdict for a block the athlete swapped in, edited or added.
-
-    Held (True) when the block it replaces was held, when the session an
-    exercise is added to is held (planner blocks beside it are held and none
-    is cleared), or when the bank classes the new movement as jumping,
-    ballistic or power work. False for positively classified athlete strength
-    work when no inherited restriction applies. Otherwise None: no verdict, exactly as for any
-    exercise the server has not classified.
-    """
-    verdicts = [sibling.get("progression_hold") for sibling in siblings
-                if isinstance(sibling, Mapping) and not sibling.get("athlete_change")]
-    held = replaced.get("progression_hold") is True if replaced is not None else True in verdicts and False not in verdicts
-    context = progression_context({**block, "prescription_source": "athlete",
-                                   "progression_hold": held},
-                                  None, None, phase="", d_day=None, athlete={})
-    return context.get("progression_hold")
-
-
 def apply_progression_context(block: dict[str, Any], context: Mapping[str, Any]) -> bool:
     """Set exactly the server-owned fields ``context`` names. True when changed."""
     changed = False

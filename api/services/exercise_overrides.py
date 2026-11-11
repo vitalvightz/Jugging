@@ -197,19 +197,15 @@ def _athlete_block(entry: Mapping[str, Any], *, replaced: Mapping[str, Any] | No
     athlete fixed this dose themselves, and the hold is re-derived from the
     block being replaced or the session being added to.
     """
-    from api.rep_range import override_progression_hold
+    from api.rep_range import apply_progression_context, progression_context
 
     block = deepcopy(dict(entry["block"]))
-    block.pop("rep_range", None)
-    block.pop("progression_hold", None)
-    block.pop("bodyweight_progression", None)
-    from api.rep_range import bank_uses_bodyweight
-    hold = override_progression_hold(block, replaced=replaced, siblings=siblings)
+    verdicts = [sibling.get("progression_hold") for sibling in siblings
+                if isinstance(sibling, Mapping) and not sibling.get("athlete_change")]
+    block["progression_hold"] = (replaced.get("progression_hold") is True if replaced is not None
+                                 else True in verdicts and False not in verdicts)
     block["prescription_source"] = "athlete"
-    if hold is not None:
-        block["progression_hold"] = hold
-    if hold is False and not block.get("load") and (bank_uses_bodyweight(block) or block.get("exercise_type") == "bodyweight"):
-        block["bodyweight_progression"] = True
+    apply_progression_context(block, progression_context(block, None, None, phase="", d_day=None, athlete={}))
     return block
 
 

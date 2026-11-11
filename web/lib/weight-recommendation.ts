@@ -84,7 +84,8 @@ export function personalWeightRecommendation(
     progression_hold: block.progression_hold === true ? true : past?.progression_hold ?? block.progression_hold,
     bodyweight_progression: past?.bodyweight_progression ?? block.bodyweight_progression },
     { ...context, lowerLoads: context.lowerLoads || past?.allow_progression === false,
-      recentPerformances: past ? [personalPerformance(past, block.exercise_key)] : context.recentPerformances,
+      recentPerformances: [...(context.recentPerformances ?? []), ...(past ? [personalPerformance(past, block.exercise_key)] : [])]
+        .toSorted((a, b) => (b.training_day ?? "").localeCompare(a.training_day ?? "")),
       recentLoads: [...(context.recentLoads ?? []), ...(past?.latest_values.load ? [{ exercise_key: block.exercise_key ?? (past.id.startsWith("key:") ? past.id.slice(4) : null),
         display_name: past.name, load: past.latest_values.load, training_day: past.latest_day }] : [])],
       allowProgression: completeTarget && (past ? Boolean(past.latest_performance) && past.allow_progression === true && context.allowProgression !== false

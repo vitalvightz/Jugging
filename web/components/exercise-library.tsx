@@ -23,8 +23,8 @@ export type ExerciseHistoryCache = Map<string, Promise<ExercisePerformancesRespo
 
 function ExerciseCard({ exercise, onSelect }: { exercise: PersonalExercise; onSelect: () => void }) {
   const result = exerciseResult(exercise);
-  const recommendation = personalWeightRecommendation({ ...exercise.latest_performance?.prescribed,
-    block_type: "strength", sets: exercise.latest_values.sets,
+  const recommendation = personalWeightRecommendation({ block_type: "strength", ...exercise.latest_performance?.prescribed,
+    sets: exercise.latest_values.sets,
     reps: (exercise.latest_performance?.prescribed.reps as StructuredBlock["reps"]) ?? exercise.latest_values.reps,
   }, exercise);
   return <li className={`history-row ${styles.card}`} data-tone={exercise.identity_kind === "legacy" ? "grey" : "green"}>
@@ -134,8 +134,8 @@ export function ExerciseDetails({ exercise, asOf, token, cache, onDismiss }: {
     finally { loadingMore.current = false; if (alive.current) setBusy(false); }
   }
   const result = exerciseResult(exercise);
-  const recommendation = personalWeightRecommendation({ ...exercise.latest_performance?.prescribed,
-    block_type: "strength", sets: exercise.latest_values.sets,
+  const recommendation = personalWeightRecommendation({ block_type: "strength", ...exercise.latest_performance?.prescribed,
+    sets: exercise.latest_values.sets,
     reps: (exercise.latest_performance?.prescribed.reps as StructuredBlock["reps"]) ?? exercise.latest_values.reps,
   }, exercise);
   return <dialog ref={dialog} className={`${sheet.dialog} ${sheet.workspace}`} aria-labelledby={heading} data-closing={closing || undefined}

@@ -708,7 +708,7 @@ export function progressionOpen(context: {
 function sameWorkload(block: StructuredBlock, before: StructuredBlock, actual?: ExerciseLogActual): [number, number] | null {
   const today = progressionRepRange(block);
   const planned = progressionRepRange(before);
-  if (!today) return null;
+  if (!today || (before.block_type && !FIRST_LOAD_BLOCK_TYPES.has(before.block_type.toLowerCase()))) return null;
   const oldLoad = before.load?.value ?? actual?.load?.value;
   const oldUnit = before.load?.unit ?? actual?.load?.unit;
   if (block.load?.value != null && oldLoad != null && (block.load.value !== oldLoad || block.load.unit !== oldUnit)) return null;

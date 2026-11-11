@@ -136,8 +136,7 @@ def exercise_library(store, athlete_id: str, *, now: datetime | None = None, all
             if not _performed(row, actual):
                 continue
             values = performed_values(row, actual)
-            identity = exercise_identity(row)
-            _record(summaries, latest, identity, (row["training_day"], row["id"]), values,
+            _record(summaries, latest, identity, order, values,
                 name=_text(_map(row.get("prescribed")).get("display_name")) or (row.get("exercise_key") or "Legacy exercise record"),
                 source="plan", kind="canonical" if identity.startswith("key:") else "legacy",
                 confirmed=row["status"] == "as_prescribed",

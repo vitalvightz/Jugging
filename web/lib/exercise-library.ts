@@ -36,10 +36,7 @@ export function pastExercisesByKey(token: string, read: (token: string) => Promi
       || item.latest_performance?.prescribed.prescription_source === "athlete")
       .map(item => [item.identity_kind === "canonical" ? item.id.slice("key:".length)
         : `custom-name:${item.name.trim().toLowerCase().replace(/\s+/g, " ")}`, item] as const)))
-    .catch(() => {
-      if (past?.request === request) past = null;
-      return new Map<string, PersonalExercise>();
-    }).finally(() => { if (past?.request === request) past = null; });
+    .catch(() => new Map<string, PersonalExercise>()).finally(() => { if (past?.request === request) past = null; });
   past = { token, request };
   return request;
 }
