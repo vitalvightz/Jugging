@@ -312,6 +312,28 @@ def exercise_history_context(store: AppStore, *, athlete_id: str, before_day: st
             return list(latest.values()), loads
 
 
+def _well_formed_load(load: Any) -> bool:
+    return (
+        isinstance(load, Mapping)
+        and isinstance(load.get("value"), (int, float))
+        and not isinstance(load.get("value"), bool)
+        and load["value"] > 0
+        and bool(_clean(load.get("unit")))
+    )
+
+
+def _set_loads(entries: list[Any]) -> list[dict[str, Any] | None]:
+    """Each set's own load by set position; ``None`` where a set was unmeasured."""
+    loads: dict[int, dict[str, Any] | None] = {}
+    for index, entry in enumerate(entries):
+        number = entry.get("set_number") if isinstance(entry, Mapping) else None
+        if not isinstance(number, int) or isinstance(number, bool) or not 1 <= number <= 50:
+            number = index + 1
+        load = entry.get("load") if isinstance(entry, Mapping) else None
+        loads.setdefault(number, {"value": load["value"], "unit": load["unit"]} if _well_formed_load(load) else None)
+    return [loads.get(number) for number in range(1, max(loads, default=0) + 1)]
+
+
 def recent_exercise_loads(
     store: AppStore, *, athlete_id: str, before_day: str, performances: list[dict[str, Any]] | None = None
 ) -> list[dict[str, Any]]:
@@ -328,19 +350,15 @@ def recent_exercise_loads(
             continue
         actual = row.get("actual") if isinstance(row.get("actual"), Mapping) else {}
         load = actual.get("load")
-        # A varied workout has no single load. Carry only its last measured set
-        # as a suggestion, never as the load for every historical set.
+        # A varied workout has no single load. Its last measured set is the
+        # summary; every set's own load is kept beside it, so a later
+        # unmeasured log cannot flatten the history into one weight.
+        set_loads = None
         if isinstance(actual.get("set_entries"), list):
-            load = next((entry.get("load") for entry in reversed(actual["set_entries"])
-                         if isinstance(entry, Mapping) and entry.get("load") is not None), None)
+            set_loads = _set_loads(actual["set_entries"])
+            load = next((entry for entry in reversed(set_loads) if entry is not None), None)
         # Only a well-formed weight is carried forward; anything else is skipped.
-        if (
-            not isinstance(load, Mapping)
-            or not isinstance(load.get("value"), (int, float))
-            or isinstance(load.get("value"), bool)
-            or load["value"] <= 0
-            or not _clean(load.get("unit"))
-        ):
+        if not _well_formed_load(load):
             continue
         prescribed = row.get("prescribed") if isinstance(row.get("prescribed"), Mapping) else {}
         exercise_key = _clean(row.get("exercise_key")) or None
@@ -355,6 +373,7 @@ def recent_exercise_loads(
                 "display_name": display_name,
                 "load": {"value": load.get("value"), "unit": load.get("unit")},
                 "training_day": str(row.get("training_day") or "")[:10],
+                "set_loads": set_loads,
             }
         )
     return loads

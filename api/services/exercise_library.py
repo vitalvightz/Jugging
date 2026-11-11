@@ -203,7 +203,9 @@ def _record(summaries, latest, identity, order, values, *, name, source, kind, c
         if load is None or load.value <= 0:
             continue
         before = next((entry for entry in summary.best_loads if entry.unit == load.unit), None)
-        if before is None or load.value > before.value:
+        # A reported weight outranks an equal one only inferred from a confirmed prescription.
+        if before is None or load.value > before.value or (
+                load.value == before.value and basis == "reported" and before.basis != "reported"):
             summary.best_loads = [entry for entry in summary.best_loads if entry.unit != load.unit] + [RecordedExerciseLoad(
                 value=load.value, unit=load.unit, training_day=day, basis=basis)]
 

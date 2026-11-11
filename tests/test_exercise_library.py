@@ -101,6 +101,14 @@ def test_actual_and_explicit_confirmed_loads_only_and_each_unit_has_its_own_maxi
     assert result.best_loads[1].basis == "reported"
 
 
+def test_a_reported_load_outranks_an_equal_confirmed_prescription_in_either_order():
+    prescribed = {"display_name": "Squat", "load": {"method": "absolute", "value": 100, "unit": "kg", "display": "100 kg"}}
+    reported = {"load": {"value": 100, "unit": "kg"}}
+    for rows in ([entry(1, actual=reported), entry(2, prescribed=prescribed)],
+                 [entry(1, prescribed=prescribed), entry(2, actual=reported)]):
+        assert [(load.value, load.basis) for load in library(*rows).exercises[0].best_loads] == [(100, "reported")]
+
+
 @pytest.mark.parametrize("changes", [
     {"status": "skipped"}, {"status": "modified", "actual": {}}, {"status": "modified", "actual": {"sets": None}},
     {"status": "modified", "actual": {"sets": 0, "load": {"value": 100, "unit": "kg"}}},

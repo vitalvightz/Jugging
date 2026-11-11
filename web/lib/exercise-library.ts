@@ -4,10 +4,21 @@ import { detailMeasurements } from "./session-details";
 import { compactTimeUnits } from "./structured-plan";
 
 export function exerciseResult(exercise: PersonalExercise): { label: string; value: string } {
-  if (exercise.best_loads.length) return {
-    label: exercise.identity_kind === "legacy" ? "Recorded load" : exercise.best_loads.length > 1 ? "Best recorded loads · by unit" : "Best recorded load",
-    value: exercise.best_loads.map(load => `${load.value} ${load.unit}`).join(" · "),
-  };
+  if (exercise.best_loads.length) {
+    // A weight the athlete entered is "recorded"; one inferred from marking a prescribed
+    // workout Done still counts as a best, but is named as prescribed, never as recorded.
+    const inferred = exercise.best_loads.filter(load => load.basis === "confirmed_prescription").length;
+    const many = exercise.best_loads.length > 1;
+    const mixed = inferred > 0 && inferred < exercise.best_loads.length;
+    const kind = mixed ? "" : inferred ? "prescribed " : "recorded ";
+    const label = exercise.identity_kind === "legacy" ? (mixed ? "Loads" : inferred ? "Prescribed load" : "Recorded load")
+      : `Best ${kind}load${many ? "s · by unit" : ""}`;
+    return {
+      label: inferred && !mixed ? `${label} · marked Done` : label,
+      value: exercise.best_loads.map(load => `${load.value} ${load.unit}${mixed
+        ? load.basis === "confirmed_prescription" ? " (prescribed, marked Done)" : " (recorded)" : ""}`).join(" · "),
+    };
+  }
   const values = exercise.latest_values;
   const unreported = countOnlySetSummary(values);
   if (unreported) return { label: "Measurements unreported", value: `${values.sets} ${values.sets === 1 ? "set" : "sets"} completed` };

@@ -27,10 +27,15 @@ export function weightRecommendation(block: StructuredBlock, context: WeightCont
   const entries = previous?.actual.set_entries;
   const fallback = lastLoadFor({ ...block, load: block.load ? { ...block.load, value: undefined } : undefined }, context.recentLoads);
   const measured = valid(previous?.actual.load);
-  const last = measured ?? valid(entries?.findLast(row => valid(row.load))?.load) ?? valid(fallback);
+  // Only the assessed workout's own loads are evidence; a recalled older weight is a draft.
+  const confirmed = measured ?? valid(entries?.findLast(row => valid(row.load))?.load);
+  const last = confirmed ?? valid(fallback);
   const key = block.exercise_key?.trim();
   const fallbackRecord = (key ? context.recentLoads?.find(row => row.exercise_key === key) : undefined)
     ?? context.recentLoads?.find(row => !row.exercise_key && row.display_name.trim().toLowerCase() === block.display_name?.trim().toLowerCase());
+  // Set-by-set history recalled from an older workout, used only when the latest one measured nothing.
+  const recalledSets = !confirmed && !entries?.length && valid(fallback) && fallbackRecord?.set_loads?.length
+    ? fallbackRecord.set_loads.map(row => valid(row)) : null;
   const lastDay = measured || entries?.some(row => valid(row.load)) ? previous?.training_day : fallbackRecord?.training_day;
   const prescription = field?.prescribed?.[0];
   const prescribed = prescription && field?.apiUnit ? { value: prescription, unit: field.apiUnit } : null;
@@ -56,21 +61,26 @@ export function weightRecommendation(block: StructuredBlock, context: WeightCont
     ? { ...previous, actual: { ...previous.actual, load } } : previous;
   const measuredWork = Boolean(measured || (entries?.length && entries.every(row => valid(row.load))));
   const canProgress = context.allowProgression === true && !lower && (measuredWork || block.load?.method === "bodyweight" || (!block.load && block.bodyweight_progression === true));
-  const next = nextStepFor(block, performanceAt(last), canProgress);
-  const reduced = backoffLoadFor(block, performanceAt(last));
+  // Progression and reductions read confirmed loads only, never the historical fallback.
+  const next = nextStepFor(block, performanceAt(confirmed), canProgress);
+  const reduced = backoffLoadFor(block, performanceAt(confirmed));
   // A varied or partially measured workout has no reliable straight-set draft.
   const individualLoads = Boolean(entries?.length && (entries.length < (Number(block.sets) || 1) || !entries.every(row => valid(row.load))
-    || new Set(entries.map(row => row.load?.value)).size > 1));
+    || new Set(entries.map(row => row.load?.value)).size > 1))
+    || Boolean(recalledSets && (recalledSets.length < (Number(block.sets) || 1) || recalledSets.some(row => !row)
+      || new Set(recalledSets.map(row => row?.value)).size > 1));
   const suggested = blocked || lower || individualLoads ? prescribed : reduced ?? (next?.kind === "load" ? next.load : prescribed ?? last);
   const sets = Array.from({ length: Math.min(50, Math.max(1, Number(block.sets) || 1)) }, (_, at) => {
     const row = entries?.find((row, index) => (row.set_number ?? index + 1) === at + 1);
-    const lastSet = valid(row?.load) ?? measured ?? (entries?.length ? null : valid(fallback));
-    const setPerformance = performanceAt(lastSet);
+    const confirmedSet = valid(row?.load) ?? measured;
+    // Recalled history keeps each set's own load, or stays blank; one load is never spread over varied sets.
+    const lastSet = confirmedSet ?? (entries?.length ? null : recalledSets ? recalledSets[at] ?? null : valid(fallback));
+    const setPerformance = performanceAt(confirmedSet);
     const setNext = nextStepFor(block, setPerformance, canProgress);
     const setReduction = backoffLoadFor(block, setPerformance);
     return { last: lastSet, suggested: blocked || lower || !lastSet ? prescribed :
       setReduction ?? (setNext?.kind === "load" ? setNext.load : prescribed ?? lastSet),
-      calculated: !blocked && !lower && Boolean(lastSet && (setReduction || setNext?.kind === "load")) };
+      calculated: !blocked && !lower && Boolean(confirmedSet && (setReduction || setNext?.kind === "load")) };
   });
   return { last, lastDay, suggested, calculated: !blocked && !lower && !individualLoads && Boolean(reduced || next?.kind === "load"), tryReps: !blocked && !lower && next?.kind === "reps" ? next.reps : null, sets };
 }

@@ -941,6 +941,7 @@ export type ExerciseRecentLoad = {
   display_name: string;
   load: ExerciseLogMeasure;
   training_day: string;
+  set_loads: (ExerciseLogMeasure | null)[] | null;
 };
 
 /** One confirmed set. Missing measurements stay unknown. */

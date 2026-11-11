@@ -12,6 +12,17 @@ test("best recorded kg and lb remain separate and legacy results make no cross-d
   assert.equal(exerciseResult(exercise({ best_loads, identity_kind: "legacy" })).label, "Recorded load");
 });
 
+test("a load inferred from a prescription marked Done is never labelled as a recorded load", () => {
+  const kg = { value: 100, unit: "kg", basis: "confirmed_prescription" };
+  const lb = { value: 200, unit: "lb", basis: "reported" };
+  const loads = (...items: object[]) => exercise({ best_loads: items as PersonalExercise["best_loads"] });
+  assert.deepEqual(exerciseResult(loads(kg)), { label: "Best prescribed load · marked Done", value: "100 kg" });
+  assert.deepEqual(exerciseResult(loads(lb)), { label: "Best recorded load", value: "200 lb" });
+  assert.deepEqual(exerciseResult(loads(kg, lb)),
+    { label: "Best loads · by unit", value: "100 kg (prescribed, marked Done) · 200 lb (recorded)" });
+  assert.equal(exerciseResult({ ...loads(kg), identity_kind: "legacy" }).label, "Prescribed load · marked Done");
+});
+
 test("bodyweight, duration and interval results do not require a weight or fabricate a best", () => {
   assert.equal(exerciseResult(exercise({ latest_values: { sets: 3, reps: 15 } as PersonalExercise["latest_values"] })).value, "3 × 15");
   assert.equal(exerciseResult(exercise({ latest_values: { duration: { value: 120, unit: "seconds" } } as PersonalExercise["latest_values"] })).value, "2 min");
