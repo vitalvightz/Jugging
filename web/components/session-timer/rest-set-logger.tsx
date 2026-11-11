@@ -27,14 +27,7 @@ export function RestSetLogger({ timer, target }: { timer: SessionTimerController
   const recommendation = item.weightRecommendation
     ? <WeightRecommendation subtle value={{ ...item.weightRecommendation, ...item.weightRecommendation.sets[target.set - 1] }} />
     : null;
-  if (confirmed || unreported) return <div className="st-log-confirmed" role="status">
-    <span>{unreported ? `${transition ? `${item.title} · ` : ""}Set ${target.set} · measurements unreported` : <><span aria-hidden="true">✓</span> {transition ? `${item.title} · ` : ""}Set {target.set} logged <span className="st-log-result">· {weighed && row.load ? `${row.load} ${unit} × ` : ""}{row.reps || "–"}{row.rpe ? ` · RPE ${row.rpe}` : ""}</span></>}</span>
-    <button type="button" className="st-link" aria-label={`Edit set ${target.set}`} onClick={() => timer.update(s => ({ ...s, unreportedSetLogs: { ...s.unreportedSetLogs, [item.id]: (s.unreportedSetLogs?.[item.id] ?? []).filter(set => set !== target.set) }, confirmedSetLogs: { ...s.confirmedSetLogs, [item.id]: (s.confirmedSetLogs?.[item.id] ?? []).filter(set => set !== target.set) } }))}>Edit</button>
-  </div>;
-  return <section className="st-rest-sheet" aria-label="Log completed set">
-    <div className="st-rest-sheet-head"><h3>{transition ? `${item.title} · set ${target.set}` : "Log completed set"}</h3><span>{targetText ? `Target: ${targetText}` : `Set ${target.set}`}</span></div>
-    <div className="st-rest-fields" data-count={weighed ? 3 : 2}>
-      {([...(weighed ? ["load" as const] : []), "reps" as const, "rpe" as const]).map(field => <label key={field}>
+  const renderField = (field: "load" | "reps" | "rpe") => <label key={field}>
         <span>{field === "load" ? unit : field === "rpe" ? "RPE" : "Reps"}</span>
         <input type="text" inputMode={field === "reps" ? "numeric" : "decimal"} autoComplete="off" enterKeyHint="done" maxLength={8}
           aria-label={`${field === "load" ? `Load ${unit}` : field === "rpe" ? "RPE" : "Reps"}, set ${target.set}`}
@@ -45,9 +38,22 @@ export function RestSetLogger({ timer, target }: { timer: SessionTimerController
             timer.update(s => ({ ...s, setDrafts: { ...s.setDrafts, [item.id]: rows.map((entry, at) => at === target.set - 1 ? { ...entry, [field]: value } : entry) },
               confirmedSetLogs: { ...s.confirmedSetLogs, [item.id]: (s.confirmedSetLogs?.[item.id] ?? []).filter(set => set !== target.set) } }));
           }} />
-      </label>)}
-    </div>
+      </label>;
+  if (confirmed || unreported) return <div className="st-log-confirmed" role="status">
+    <span>{unreported ? `${transition ? `${item.title} · ` : ""}Set ${target.set} · measurements unreported` : <><span aria-hidden="true">✓</span> {transition ? `${item.title} · ` : ""}Set {target.set} logged <span className="st-log-result">· {weighed && row.load ? `${row.load} ${unit} × ` : ""}{row.reps || "–"}{row.rpe ? ` · RPE ${row.rpe}` : ""}</span></>}</span>
+    <button type="button" className="st-link" aria-label={`Edit set ${target.set}`} onClick={() => timer.update(s => ({ ...s, unreportedSetLogs: { ...s.unreportedSetLogs, [item.id]: (s.unreportedSetLogs?.[item.id] ?? []).filter(set => set !== target.set) }, confirmedSetLogs: { ...s.confirmedSetLogs, [item.id]: (s.confirmedSetLogs?.[item.id] ?? []).filter(set => set !== target.set) } }))}>Edit</button>
+  </div>;
+  return <section className="st-rest-sheet" aria-label="Log completed set">
+    <div className="st-rest-sheet-head"><h3>{transition ? `${item.title} · set ${target.set}` : "Log completed set"}</h3><span>{targetText ? `Target: ${targetText}` : `Set ${target.set}`}</span></div>
     {recommendation}
+    <div className="st-rest-fields" data-count={weighed ? 2 : 1}>
+      {([...(weighed ? ["load" as const] : []), "reps" as const]).map(field => renderField(field))}
+    </div>
+    <details className="st-rest-effort" key={`${item.id}:${target.set}`}
+      open={read.invalid.length && Boolean(row.rpe) ? true : undefined}>
+      <summary>{row.rpe ? `RPE ${row.rpe} · optional` : "Add RPE (optional)"}</summary>
+      <div className="st-rest-fields" data-count="1">{renderField("rpe")}</div>
+    </details>
     {read.invalid.length ? <p className="st-log-error" role="alert">Check the values. RPE is 1–10 in whole or half steps.</p> : null}
     <button type="button" className="st-primary st-confirm-set" disabled={read.invalid.length > 0}
       onClick={() => { timer.update(s => confirmSetLog(s, target.itemId, target.set)); }}>✓ Confirm set</button>

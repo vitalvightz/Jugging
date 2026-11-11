@@ -77,6 +77,15 @@ test("historical Back Squat → preview → planned timer → confirmed sets →
     await timer.getByRole("button", { name: `Set ${index + 1} done`, exact: true }).click();
     const field = timer.getByLabel(`Load kg, set ${index + 1}`, { exact: true });
     await expect(field).toHaveValue(String(expected));
+    await expect(timer.locator(".st-rest-effort")).not.toHaveAttribute("open");
+    await expect(timer.getByLabel(`RPE, set ${index + 1}`, { exact: true })).not.toBeVisible();
+    if (index === 0) {
+      await expect(timer.locator(".st-clock-digits")).toBeVisible();
+      expect(await timer.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+      if (process.env.WEIGHT_QA_DIR) await timer.screenshot({ path: `${process.env.WEIGHT_QA_DIR}/between-sets-390.png` });
+      await timer.locator(".st-rest-effort summary").click();
+      await timer.getByLabel("RPE, set 1", { exact: true }).fill("7.5");
+    }
     if (index === 1) await field.fill("110");
     expect(batches).toHaveLength(0);
     await timer.getByRole("button", { name: /Confirm set/ }).click();
@@ -89,6 +98,7 @@ test("historical Back Squat → preview → planned timer → confirmed sets →
   await expect(page.locator(".today-review-root")).toBeVisible();
   expect(batches).toHaveLength(1);
   expect(batches[0].entries[0].actual.set_entries.map(row => row.load.value)).toEqual([115, 110, 125]);
+  expect((batches[0].entries[0].actual.set_entries[0] as { rpe?: number }).rpe).toBe(7.5);
   const review = page.locator(".today-review-root");
   await expect(review).toContainText("110–125 kg");
   await review.getByRole("button", { name: "Back Squat", exact: true }).click();

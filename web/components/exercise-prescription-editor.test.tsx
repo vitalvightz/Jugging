@@ -171,3 +171,22 @@ test("history arriving after the editor opens fills an untouched dose but never 
     host.remove();
   }
 });
+
+
+test("weight stays visible with the dose while effort and tempo remain optional", async () => {
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<ExercisePrescriptionEditor
+      initial={{ mode: "reps", sets: 3, reps: 8, load_or_intensity: "95 kg" }}
+      action="Add" busy={false} onSubmit={() => {}} />));
+    const weight = host.querySelector<HTMLInputElement>('[aria-label="Weight"]')!;
+    assert.equal(weight.value, "95");
+    assert.equal(weight.closest("details"), null);
+    const more = host.querySelector("details")!;
+    assert.equal(more.querySelector("summary")?.textContent, "More options");
+    assert.equal(more.open, false);
+    assert.ok(more.querySelector('[aria-label="RPE (optional)"]'));
+    assert.ok(more.querySelector('[aria-label="Tempo"]'));
+  } finally { await act(async () => root.unmount()); }
+});

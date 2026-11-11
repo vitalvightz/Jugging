@@ -65,6 +65,12 @@ test("historical weight flows through rendered timer confirmation, Session Revie
     await act(async () => renderLogger());
     assert.equal(node.querySelector<HTMLInputElement>('[aria-label="Load kg, set 1"]')?.value, "115");
     assert.match(node.textContent ?? "", /115 kg · Try 9 reps/);
+    const effort = node.querySelector<HTMLDetailsElement>(".st-rest-effort")!;
+    assert.equal(effort.open, false);
+    assert.equal(node.querySelectorAll(".st-rest-sheet > .st-rest-fields input").length, 2);
+    await act(async () => effort.querySelector("summary")!.click());
+    assert.equal(effort.open, true);
+    assert.ok(effort.querySelector('[aria-label="RPE, set 1"]'));
     assert.equal(state.confirmedSetLogs?.[items[0].id], undefined);
     await act(async () => Array.from(node.querySelectorAll("button")).find(b => b.textContent?.includes("Confirm set"))!.click());
     const entry = timerExerciseLogs(endSession(state, 0))[0];
