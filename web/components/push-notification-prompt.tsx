@@ -53,7 +53,7 @@ export function DevicePushPrompt({ token, athleteId }: { token: string; athleteI
           if (document.visibilityState !== "visible" || document.querySelector('dialog[open], [aria-modal="true"]')) return;
           clearInterval(timer);
           timer = undefined;
-          if (cancelled || Notification.permission !== "default") return;
+          if (cancelled || Notification.permission === "denied") return;
           setSetup(prepared);
         }, 500);
       } catch { /* An optional prompt must never interrupt a saved workout. */ }

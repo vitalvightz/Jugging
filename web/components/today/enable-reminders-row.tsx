@@ -4,18 +4,19 @@ import { useEffect, useRef, useState } from "react";
 
 import { useToast } from "@/components/toast-provider";
 import { trackProductEvent } from "@/lib/api";
-import { preparePushOffer, subscribeToPushNotifications, type PreparedPush } from "@/lib/push";
+import { isInstalledApp, preparePushOffer, subscribeToPushNotifications, type PreparedPush } from "@/lib/push";
 import { pushPromptSeenKey } from "@/lib/push-prompt";
 
 const SNOOZED_UNTIL_KEY = "unlxck:enable-reminders-row:snoozed-until";
 const SNOOZE_MS = 14 * 24 * 60 * 60 * 1000;
 
 /**
- * The way back for an athlete who passed on the one automatic notification
- * offer: a quiet Today row with a single Enable reminders button, so turning
- * reminders on later never needs a trip through Settings. Shown only while
- * this device can still be asked and has no subscription; hiding it snoozes
- * it for two weeks. Never a modal.
+ * A quiet Today row with a single Enable reminders button, so turning
+ * reminders on never needs a trip through Settings. Shown in the installed
+ * app straight away, and in a browser tab once the automatic offer has had
+ * its moment. Only while this device can be offered reminders and nothing
+ * reaches it: undecided permission, or permission granted with the
+ * subscription lost. Hiding it snoozes it for two weeks. Never a modal.
  */
 export function EnableRemindersRow({ token, athleteId }: { token: string; athleteId: string }) {
   const { showToast } = useToast();
@@ -26,7 +27,7 @@ export function EnableRemindersRow({ token, athleteId }: { token: string; athlet
   useEffect(() => {
     let cancelled = false;
     try {
-      if (window.localStorage.getItem(pushPromptSeenKey(athleteId)) !== "seen") return;
+      if (!isInstalledApp() && window.localStorage.getItem(pushPromptSeenKey(athleteId)) !== "seen") return;
       if (Date.now() < Number(window.localStorage.getItem(SNOOZED_UNTIL_KEY) ?? 0)) return;
     } catch { return; /* Without device storage the automatic offer repeats instead. */ }
     void preparePushOffer(token).then((prepared) => {
@@ -52,7 +53,7 @@ export function EnableRemindersRow({ token, athleteId }: { token: string; athlet
     } catch (caught) {
       showToast(caught instanceof Error ? caught.message : "Couldn't enable reminders.", { tone: "error" });
       // A blocked permission cannot be asked again from here.
-      if (Notification.permission !== "default") setSetup(null);
+      if (Notification.permission === "denied") setSetup(null);
     } finally {
       working.current = false;
       setBusy(false);

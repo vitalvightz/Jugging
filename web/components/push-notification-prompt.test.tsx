@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client";
 import { DevicePushPrompt } from "./push-notification-prompt";
 import { INSTALL_PROMPT_EVENT, offerPushNotifications } from "@/lib/push-prompt";
 
-async function mount(options: { permission?: string; enabled?: boolean; subscribed?: boolean; paused?: boolean; failSave?: boolean; beforeOpen?: () => void } = {}) {
+async function mount(options: { permission?: string; enabled?: boolean; subscribed?: boolean; serverEndpoints?: string[]; paused?: boolean; failSave?: boolean; beforeOpen?: () => void } = {}) {
   window.localStorage.clear();
   const originalFetch = globalThis.fetch;
   let requests = 0;
@@ -20,7 +20,7 @@ async function mount(options: { permission?: string; enabled?: boolean; subscrib
   Object.defineProperty(window, "PushManager", { configurable: true, value: function () {} });
   Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: {
     getRegistration: async () => ({ active: {}, pushManager: {
-      getSubscription: async () => options.subscribed ? { endpoint: "existing" } : null,
+      getSubscription: async () => options.subscribed ? { endpoint: "existing", unsubscribe: async () => true } : null,
       subscribe: async () => ({ toJSON: () => ({ endpoint: "https://push.test/device", keys: { auth: "auth", p256dh: "key" } }) }),
     } }),
   } });
@@ -34,6 +34,7 @@ async function mount(options: { permission?: string; enabled?: boolean; subscrib
     }
     if (String(input).endsWith("/api/push/settings")) return new Response(JSON.stringify({
       enabled: options.enabled !== false, public_key: "AQAB", preferences: { push_enabled: !options.paused },
+      ...(options.serverEndpoints ? { subscription_endpoints: options.serverEndpoints } : {}),
     }));
     return new Response(null, { status: options.failSave ? 503 : 204 });
   }) as typeof fetch;
@@ -68,8 +69,8 @@ test("waits behind an existing modal; dismissing prevents another offer", async 
   } finally { safety.remove(); await app.cleanup(); }
 });
 
-test("suppresses blocked, granted, subscribed, disabled and paused devices", async () => {
-  for (const options of [{ permission: "denied" }, { permission: "granted" }, { subscribed: true }, { enabled: false }, { paused: true }]) {
+test("suppresses blocked, subscribed, disabled and paused devices", async () => {
+  for (const options of [{ permission: "denied" }, { subscribed: true }, { permission: "granted", subscribed: true, serverEndpoints: ["existing"] }, { enabled: false }, { paused: true }]) {
     const app = await mount(options);
     try { await saved(); assert.equal(app.container.querySelector("dialog"), null); assert.equal(app.requests(), 0); }
     finally { await app.cleanup(); }
@@ -211,4 +212,19 @@ test("records shown, accepted and subscribed so activation drop-off is measurabl
     assert.deepEqual(app.events, ["push_prompt_shown", "push_prompt_accepted", "push_subscribed"]);
     assert.equal(app.container.querySelector("dialog"), null);
   } finally { await app.cleanup(); }
+});
+
+test("recovers a lost subscription on a granted device without asking for permission again", async () => {
+  // Granted with no browser subscription, then granted with one the server pruned.
+  for (const options of [{ permission: "granted" }, { permission: "granted", subscribed: true, serverEndpoints: [] }]) {
+    const app = await mount(options);
+    try {
+      await saved();
+      assert.ok(app.container.querySelector("dialog[open]"), "a granted device with nothing reaching it is offered reminders");
+      const enable = Array.from(app.container.querySelectorAll("button")).find(button => button.textContent === "Enable reminders")!;
+      await act(async () => { enable.click(); await new Promise(resolve => setTimeout(resolve, 50)); });
+      assert.equal(app.requests(), 0, "permission is never requested again");
+      assert.ok(app.events.includes("push_subscribed"));
+    } finally { await app.cleanup(); }
+  }
 });

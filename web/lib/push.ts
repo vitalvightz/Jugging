@@ -28,27 +28,53 @@ export function isPushSupported(): boolean {
   );
 }
 
-/** iPhone and iPad deliver web push only to the installed app, so a browser
- * tab there is never asked: install guidance comes first. */
-export function pushNeedsInstall(): boolean {
-  if (typeof window === "undefined" || !isIosDevice(navigator.userAgent ?? "", navigator.maxTouchPoints)) return false;
-  return !isStandaloneDisplay(
+/** Running as the installed app (Home Screen or desktop install). */
+export function isInstalledApp(): boolean {
+  if (typeof window === "undefined") return false;
+  return isStandaloneDisplay(
     window.matchMedia?.(PWA_DISPLAY_MODE_QUERY).matches ?? false,
     (navigator as Navigator & { standalone?: boolean }).standalone,
   );
 }
 
-/** Synchronous: whether this device could be asked for notifications right now. */
+/** iPhone and iPad deliver web push only to the installed app, so a browser
+ * tab there is never asked: install guidance comes first. */
+export function pushNeedsInstall(): boolean {
+  if (typeof window === "undefined" || !isIosDevice(navigator.userAgent ?? "", navigator.maxTouchPoints)) return false;
+  return !isInstalledApp();
+}
+
+// Set when the athlete turns this device's notifications off in Settings, so
+// a granted-but-unsubscribed device is not offered them straight back.
+const DEVICE_OPTED_OUT_KEY = "unlxck:push-device-opted-out";
+
+function deviceOptedOut(): boolean {
+  try { return window.localStorage.getItem(DEVICE_OPTED_OUT_KEY) === "1"; } catch { return false; }
+}
+
+function rememberDeviceOptOut(optedOut: boolean): void {
+  try {
+    if (optedOut) window.localStorage.setItem(DEVICE_OPTED_OUT_KEY, "1");
+    else window.localStorage.removeItem(DEVICE_OPTED_OUT_KEY);
+  } catch { /* Device storage is optional. */ }
+}
+
+/** Synchronous: whether this device could be offered notifications right now.
+ * Permission may be undecided, or already granted with the subscription since
+ * lost (cleared site data, an expired or pruned endpoint): that device is
+ * recovered without asking for permission again. */
 export function canAskForPush(): boolean {
   return isPushSupported() && !pushNeedsInstall() && !isInstagramBrowser(navigator.userAgent ?? "")
-    && Notification.permission === "default";
+    && Notification.permission !== "denied" && !deviceOptedOut();
 }
 
 export type PreparedPush = { public_key: string; registration: ServiceWorkerRegistration };
 
 /** Everything an "Enable reminders" button needs, resolved before the tap so
  * the native permission request keeps its user activation. Null when there is
- * nothing to offer: unsupported, already decided, paused, or subscribed. */
+ * nothing to offer: unsupported, blocked, paused, or already subscribed here
+ * and known to the server. A browser subscription the server no longer has
+ * (e.g. pruned as a dead endpoint) is offered again, since nothing reaches it. */
 export async function preparePushOffer(token: string): Promise<PreparedPush | null> {
   if (!canAskForPush()) return null;
   const [settings, registration] = await Promise.all([
@@ -56,7 +82,10 @@ export async function preparePushOffer(token: string): Promise<PreparedPush | nu
   ]);
   if (!settings.enabled || !settings.public_key || !registration?.active) return null;
   if ((settings as typeof settings & { preferences?: { push_enabled?: boolean } }).preferences?.push_enabled === false) return null;
-  if (await registration.pushManager.getSubscription()) return null;
+  const existing = await registration.pushManager.getSubscription();
+  const endpoints = settings.subscription_endpoints;
+  // Unknown server state (lookup failed) trusts the browser rather than nagging.
+  if (existing && (!Array.isArray(endpoints) || endpoints.includes(existing.endpoint))) return null;
   return { public_key: settings.public_key, registration };
 }
 
@@ -160,7 +189,8 @@ export async function subscribeToPushNotifications(
   if (!registration) {
     throw new Error("Install the app first to enable notifications.");
   }
-  const permission = await Notification.requestPermission();
+  // Already granted (a lost subscription being recovered): never ask again.
+  const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
   if (permission !== "granted") {
     throw new Error("Notifications blocked. Enable them in browser settings.");
   }
@@ -183,10 +213,12 @@ export async function subscribeToPushNotifications(
     keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
     timezone: deviceTimezone(),
   });
+  rememberDeviceOptOut(false);
   void trackProductEvent(token, "push_subscribed", "onboarding");
 }
 
 export async function unsubscribeFromPushNotifications(token: string): Promise<void> {
+  rememberDeviceOptOut(true);
   const subscription = await getExistingPushSubscription();
   if (!subscription) {
     return;
