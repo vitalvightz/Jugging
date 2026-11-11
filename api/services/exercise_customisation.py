@@ -620,6 +620,8 @@ def _base_block(record: Mapping[str, Any], *, block_type: str) -> dict[str, Any]
         "block_type": block_type, "display_name": entry["name"], "exercise_key": entry["exercise_key"],
         "catalogue_id": entry["catalogue_id"],
     }
+    if record["summary"].get("content_type") in {"strength", "power"}:
+        block["exercise_type"] = record["summary"]["content_type"]
     for field in ("mechanical_load_regions", "tags", "contact_level", "mechanical_risk_tags"):
         if raw.get(field) is not None:
             block[field] = deepcopy(raw[field])
@@ -654,6 +656,8 @@ class Candidate:
         self.suggested_dose = suggested_dose
 
     def payload(self, media: Mapping[str, Any]) -> dict[str, Any]:
+        from api.rep_range import progression_context
+
         entry = self.record["entry"]
         return {
             "catalogue_id": entry["catalogue_id"], "exercise_key": entry["exercise_key"], "name": entry["name"],
@@ -663,6 +667,9 @@ class Candidate:
             "prescription": None if self.dose_required else prescription_summary(self.fields),
             "dose_required": self.dose_required, "dose_mode": self.dose_mode,
             "suggested_dose": self.suggested_dose,
+            **progression_context({**_base_block(self.record, block_type=self.block_type or "accessory"),
+                                   "prescription_source": "athlete"},
+                                  None, None, phase="", d_day=None, athlete={}),
         }
 
 

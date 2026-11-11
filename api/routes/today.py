@@ -974,7 +974,29 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
     @router.get("/api/history/exercise-library", response_model=ExerciseLibraryResponse)
     def personal_exercise_library(profile: ProfileRecord = Depends(require_profile),
                                   store: AppStore = Depends(get_store)):
-        return exercise_library(store, profile.athlete_id)
+        # Reuse current Today restrictions; a plan-free athlete needs no AI programme.
+        allowed, held_keys = False, set()
+        try:
+            view = build_today_command_view(store, athlete_id=profile.athlete_id, athlete_timezone=profile.athlete_timezone)
+            phase = str(view.active_plan.get("phase") or "")
+            day = view.today.training_day
+            fight = view.active_plan.get("fight_date")
+            days = (date.fromisoformat(str(fight)[:10]) - date.fromisoformat(day)).days if fight else None
+            from fightcamp.exercise_progression import progression_prohibited
+            allowed = not view.open_injuries and not (view.live_prescription or {}).get("safety_hold")
+            plan = store.get_training_plan_for_athlete(view.active_plan["id"], profile.athlete_id) if view.active_plan.get("id") else None
+            from api.services.effective_structured_plan import _mapping
+            brief = _mapping((plan or {}).get("planning_brief")) or {}
+            allowed = allowed and not progression_prohibited({}, {}, phase, days, brief.get("athlete_snapshot") or {})
+            blocks = (view.live_prescription or {}).get("session", {}).get("blocks", [])
+            held_keys = {b.get("exercise_key") for b in blocks if b.get("progression_hold") is True}
+            if held_keys and not any(b.get("progression_hold") is False for b in blocks):
+                allowed = False
+            allowed = allowed and (view.today.decision_tier == "green" if view.active_plan.get("id") else view.today.decision_tier not in {"stop", "pull_back", "modify"})
+        except (HTTPException, ValueError, TypeError, KeyError, AttributeError):
+            # History remains readable; unavailable safety context earns no increase.
+            allowed = False
+        return exercise_library(store, profile.athlete_id, allow_progression=allowed, held_keys=held_keys)
 
     @router.get("/api/history/exercise-performances", response_model=ExercisePerformancesResponse)
     def personal_exercise_performances(exercise: str = Query(min_length=5, max_length=124),

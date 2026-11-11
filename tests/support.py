@@ -3088,7 +3088,7 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
     def list_exercise_index_page(self, athlete_id: str, *, as_of: str, after_id: str | None,
                                  limit: int = 500) -> list[dict]:
         rows = [dict(row) for row in self.exercise_logs if row["athlete_id"] == athlete_id
-                and row.get("status") != "skipped" and row.get("created_at", "") <= as_of
+                and row.get("created_at", "") <= as_of
                 and (after_id is None or row["id"] > after_id)]
         return sorted(rows, key=lambda row: row["id"])[:limit]
 

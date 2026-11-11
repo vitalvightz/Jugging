@@ -443,6 +443,7 @@ export type StructuredBlock = {
   progression_hold?: boolean | null;
   /** Bank eligibility for rep-only progression; never an authored load. */
   bodyweight_progression?: boolean | null;
+  exercise_type?: "strength" | "bodyweight" | "power" | "other" | null;
   category?: string | null;
   order_index?: number | null;
   duration?: MeasuredValue | null;
@@ -508,6 +509,8 @@ export type AthleteRemovedExercise = {
 export type ExerciseChangeScope = { value: "occurrence" | "future"; label: string };
 
 export type ExerciseAlternative = {
+  progression_hold?: boolean | null;
+  bodyweight_progression?: boolean | null;
   catalogue_id: string;
   exercise_key: string;
   name: string;

@@ -83,7 +83,8 @@ export function withPastDose<T extends DoseShape>(dose: T, past: PersonalExercis
   }
   if (unformatted) {
     fill("rest_seconds", seconds(values.rest));
-    if (values.effort?.method === "RPE") fill("rpe", values.effort.value);
+    const target = past.latest_performance?.prescribed.effort as { method?: string; value?: number } | undefined;
+    if (target?.method === "RPE") fill("rpe", target.value);
   }
   const load = values.load;
   if (load && load.value > 0 && (load.unit === "kg" || load.unit === "lb")) fill("load_or_intensity", formatLoad(load.value, load.unit));

@@ -358,6 +358,7 @@ class SessionBlock(BaseModel):
     progression_hold: bool | None = None
     # Bank eligibility for rep-only progression; not an authored load.
     bodyweight_progression: bool | None = None
+    exercise_type: Literal["strength", "bodyweight", "power", "other"] | None = None
     # Athlete-authored prescriptions retain their exact text and dose alongside
     # the shared numeric fields. No guessed load, coaching or movement metadata.
     prescription_source: Literal["athlete"] | None = None
@@ -376,7 +377,7 @@ class SessionBlock(BaseModel):
     @model_serializer(mode="wrap")
     def _omit_absent_athlete_change(self, handler):
         data = handler(self)
-        for field in ("athlete_change", "rest_note", "components", "rep_range", "progression_hold", "bodyweight_progression"):
+        for field in ("athlete_change", "rest_note", "components", "rep_range", "progression_hold", "bodyweight_progression", "exercise_type"):
             data = _omit_none(data, field)
         return data
 

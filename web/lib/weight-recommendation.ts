@@ -41,7 +41,10 @@ export function weightRecommendation(block: StructuredBlock, context: WeightCont
   const incompatible = (typeof block.sets === "number" && typeof before?.sets === "number"
     && block.sets !== before.sets)
     || (todayReps != null && beforeReps != null && !legacy && todayReps.join() !== beforeReps.join());
-  const blocked = incompatible || previous?.status === "skipped" || previous?.reason === "pain";
+  const oldLoad = before?.load?.value ?? previous?.actual.load?.value;
+  const oldUnit = before?.load?.unit ?? previous?.actual.load?.unit;
+  const changedLoad = prescription != null && oldLoad != null && (prescription !== oldLoad || field?.apiUnit !== oldUnit);
+  const blocked = incompatible || changedLoad || previous?.status === "skipped" || previous?.reason === "pain";
   const beforeEffort = (previous?.prescribed as StructuredBlock | undefined)?.effort;
   const reducedEffort = block.effort?.method === "RPE" && beforeEffort?.method === "RPE"
     && Number(block.effort.value) < Number(beforeEffort.value);
@@ -55,33 +58,44 @@ export function weightRecommendation(block: StructuredBlock, context: WeightCont
   // A varied or partially measured workout has no reliable straight-set draft.
   const individualLoads = Boolean(entries?.length && (entries.length < (Number(block.sets) || 1) || !entries.every(row => valid(row.load))
     || new Set(entries.map(row => row.load?.value)).size > 1));
-  const suggested = prescribed ?? (blocked || lower || individualLoads ? null : reduced ?? (next?.kind === "load" ? next.load : last));
+  const suggested = blocked || lower || individualLoads ? prescribed : reduced ?? (next?.kind === "load" ? next.load : prescribed ?? last);
   const sets = Array.from({ length: Math.min(50, Math.max(1, Number(block.sets) || 1)) }, (_, at) => {
     const row = entries?.find((row, index) => (row.set_number ?? index + 1) === at + 1);
     const lastSet = valid(row?.load) ?? measured ?? (entries?.length ? null : valid(fallback));
     const setPerformance = performanceAt(lastSet);
     const setNext = nextStepFor(block, setPerformance, canProgress);
     const setReduction = backoffLoadFor(block, setPerformance);
-    return { last: lastSet, suggested: prescribed ?? (blocked || lower || !lastSet ? null :
-      setReduction ?? (setNext?.kind === "load" ? setNext.load : lastSet)) };
+    return { last: lastSet, suggested: blocked || lower || !lastSet ? prescribed :
+      setReduction ?? (setNext?.kind === "load" ? setNext.load : prescribed ?? lastSet) };
   });
-  return { last, lastDay, suggested, tryReps: !prescribed && !lower && next?.kind === "reps" ? next.reps : null, sets };
+  return { last, lastDay, suggested, tryReps: !blocked && !lower && next?.kind === "reps" ? next.reps : null, sets };
 }
 
-/** Library values are measured evidence, but lack a saved prescription/readiness:
- * carry their weights through the shared engine without inventing earned progression. */
+/** Route confirmed library evidence and current clearance through the same engine. */
 export function personalWeightRecommendation(
   block: StructuredBlock,
   past?: import("./api-schema.generated").PersonalExercise | null,
+  context: WeightContext = {},
 ): WeightRecommendation {
-  return weightRecommendation({ ...block, prescription_source: undefined,
-    exercise_key: block.exercise_key ?? (past?.id.startsWith("key:") ? past.id.slice(4) : null) },
-    { recentPerformances: past ? [personalPerformance(past, block.exercise_key)] : [], allowProgression: false });
+  // A placeholder exposes historical load on unfinished editors; it never earns progression.
+  const completeTarget = block.sets != null && block.reps != null;
+  return weightRecommendation({ ...block, reps: block.reps ?? 1, prescription_source: "athlete",
+    exercise_key: block.exercise_key ?? (past?.id.startsWith("key:") ? past.id.slice(4) : null),
+    progression_hold: block.progression_hold === true ? true : past?.progression_hold ?? block.progression_hold,
+    bodyweight_progression: past?.bodyweight_progression ?? block.bodyweight_progression },
+    { ...context, lowerLoads: context.lowerLoads || past?.allow_progression === false,
+      recentPerformances: [...(context.recentPerformances ?? []), ...(past ? [personalPerformance(past, block.exercise_key)] : [])]
+        .toSorted((a, b) => (b.training_day ?? "").localeCompare(a.training_day ?? "")),
+      recentLoads: [...(context.recentLoads ?? []), ...(past?.latest_values.load ? [{ exercise_key: block.exercise_key ?? (past.id.startsWith("key:") ? past.id.slice(4) : null),
+        display_name: past.name, load: past.latest_values.load, training_day: past.latest_day }] : [])],
+      allowProgression: completeTarget && (past ? Boolean(past.latest_performance) && past.allow_progression === true && context.allowProgression !== false
+        : context.allowProgression === true) });
 }
 
 
-/** Library evidence has no historic prescription. Do not reconstruct one from today's dose. */
+/** Preserve authentic snapshots; never reconstruct a historical workload from today's dose. */
 export function personalPerformance(past: import("./api-schema.generated").PersonalExercise, key?: string | null): ExerciseLogRecord {
+  if (past.latest_performance) return past.latest_performance;
   return {
     id: past.id, athlete_id: "", plan_id: null, session_id: null, block_id: "",
     training_day: past.latest_day, reason: null, notes: "", created_at: "", updated_at: "",
@@ -98,7 +112,9 @@ export function withManualWeightHistory(history: readonly ExerciseLogRecord[] | 
   for (const past of library?.values() ?? []) {
     if (past.latest_source !== "manual" || !beforeDay || past.latest_day > beforeDay) continue;
     const manual = personalPerformance(past);
-    const previous = records.find(row => row.exercise_key === manual.exercise_key);
+    if (manual.training_day > beforeDay) continue;
+    const previous = lastPerformanceFor({ exercise_key: manual.exercise_key,
+      display_name: String(manual.prescribed.display_name ?? past.name) }, records);
     if (!previous || manual.training_day > previous.training_day) records.unshift(manual);
   }
   return records;

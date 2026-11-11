@@ -259,3 +259,52 @@ test("generated bodyweight blocks progress by reps inside authority, never by ex
     assert.equal(weightRecommendation({ ...block, progression_hold: undefined }, { recentPerformances: [history], allowProgression: true }).tryReps, null);
   }
 });
+
+test("equivalent generated, custom and unplanned completed work shares earned progression", () => {
+  const target = { ...block, sets: 3, reps: 10, load: load(80), effort: { method: "RPE" as const, value: 7 } };
+  const actual = { sets: 3, reps: 10, load: load(80), effort: { method: "RPE" as const, value: 6 } };
+  for (const source of [undefined, "athlete"] as const) {
+    const today = { ...target, prescription_source: source };
+    for (const prescribed of [today, {}]) {
+      const history = { ...previous(actual), prescribed };
+      const result = weightRecommendation(today, { allowProgression: true, recentPerformances: [history] });
+      assert.deepEqual(result.suggested, load(82.5));
+      assert.deepEqual(today.load, load(80));
+      assert.deepEqual(history.prescribed, prescribed);
+    }
+  }
+});
+
+test("unplanned evidence needs complete counts and genuine effort; matching a target is Right", () => {
+  const target = { ...block, sets: 3, reps: 10, load: load(80), effort: { method: "RPE" as const, value: 7 } };
+  for (const actual of [{ load: load(80) }, { sets: 3, reps: 10, load: load(80) },
+    { sets: 3, reps: 10, load: load(80), effort: { method: "RPE" as const, value: 7 } },
+    { sets: 2, reps: 10, load: load(80), effort: { method: "RPE" as const, value: 6 } }]) {
+    assert.deepEqual(weightRecommendation(target, { allowProgression: true, recentPerformances: [
+      { ...previous(actual), prescribed: {} }] }).suggested, load(80));
+  }
+  assert.equal(weightRecommendation({ ...target, progression_hold: true }, { allowProgression: true,
+    recentPerformances: [{ ...previous({ sets: 3, reps: 10, load: load(80), feel: "easy" }), prescribed: {} }] }).tryReps, null);
+});
+
+test("a library snapshot cannot replace a newer context skip or pain result", async () => {
+  const { personalWeightRecommendation } = await import("./weight-recommendation");
+  const old = { ...previous({ sets: 3, reps: 8, load: load(120), feel: "easy" }), training_day: "2026-10-01" };
+  const past = { id: "key:squat", name: block.display_name, latest_day: old.training_day,
+    latest_values: old.actual, latest_performance: old, progression_hold: false, allow_progression: true,
+  } as unknown as import("./api-schema.generated").PersonalExercise;
+  for (const change of [{ status: "skipped" as const }, { reason: "pain" as const }]) {
+    const latest = { ...old, ...change, training_day: "2026-10-02" };
+    const result = personalWeightRecommendation(block, past, { allowProgression: true, recentPerformances: [latest] });
+    assert.equal(result.suggested, null);
+    assert.ok(result.sets.every(row => row.suggested === null));
+  }
+});
+
+test("reusing a protected movement as strength does not earn generic progression or backoff", () => {
+  for (const feel of ["easy", "hard"] as const) {
+    const history = { ...previous({ sets: 3, reps: 8, load: load(120), feel }),
+      prescribed: { ...block, block_type: "plyometric_power" } };
+    assert.deepEqual(weightRecommendation(block, { allowProgression: true, recentPerformances: [history] }).suggested, load(120));
+  }
+});

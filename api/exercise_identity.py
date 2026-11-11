@@ -324,8 +324,6 @@ def _reconcile(structured_plan: Any, planning_brief: Any, *, keys: bool) -> Any:
                 role = session_roles.get(index)
                 phase = str(day.get("phase_label") or week.get("phase_label") or (role or {}).get("phase") or "")
                 for block, key in stamped:
-                    if block.get("prescription_source") == "athlete":
-                        continue
                     # The permitted rep range and any progression hold, from this
                     # block's own planner assignment (never another role's).
                     identity = key if keys else (normalize_exercise_key(block.get("exercise_key")) or key)
@@ -333,7 +331,8 @@ def _reconcile(structured_plan: Any, planning_brief: Any, *, keys: bool) -> Any:
                     changed = apply_progression_context(block, progression_context(
                         block, role, assignment, phase=phase, d_day=d_day if d_day >= 0 else None, athlete=athlete,
                     )) or changed
-                    if not keys:
+                    # Athlete identities came from the saved catalogue/custom editor.
+                    if not keys or block.get("prescription_source") == "athlete":
                         continue
                     if block.get("exercise_key") == key or (key is None and "exercise_key" not in block):
                         continue

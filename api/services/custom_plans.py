@@ -92,7 +92,9 @@ def custom_open_plan_result(draft: dict, profile, *, training_day: str) -> dict:
             for order, exercise in enumerate(session["exercises"], 1):
                 dose = exercise["dose"]
                 snapshot = exercise.get("snapshot") or {}
-                content_type = snapshot.get("content_type")
+                content_type = snapshot.get("content_type") or {
+                    "strength": "strength", "bodyweight": "strength", "power": "power",
+                }.get(exercise.get("exercise_type"))
                 block_type = {"conditioning": "conditioning", "skill": "skill",
                               "strength": "strength", "power": "plyometric_power",
                               "speed": "speed"}.get(content_type) or {
@@ -110,6 +112,7 @@ def custom_open_plan_result(draft: dict, profile, *, training_day: str) -> dict:
                     "community_revision_id": exercise.get("community_revision_id"),
                     "source_session_id": session_id,
                     "prescription_source": "athlete", "athlete_dose": deepcopy(dose),
+                    "exercise_type": exercise.get("exercise_type") if exercise.get("origin") == "manual" else content_type if content_type in {"strength", "power"} else None,
                     "prescription_text": _dose_text(dose),
                 }
                 if exercise.get("origin") == "catalogue":
@@ -200,6 +203,13 @@ def custom_open_plan_result(draft: dict, profile, *, training_day: str) -> dict:
 def dose_block_fields(dose: dict) -> dict:
     """The shared numeric block fields for one athlete dose (CustomDose shape)."""
     fields: dict = {}
+    if dose.get("mode") == "text":
+        from api.rep_range import authored_rep_range
+        from api.structured_plan_deterministic_fallback import _lift_dose_fields
+        span = authored_rep_range(dose.get("prescription"))
+        parsed, _ = _lift_dose_fields(dose.get("prescription") or "") if span else ({}, "")
+        if parsed.get("sets") and parsed.get("reps") and span:
+            fields = {**parsed, "reps": f"{span[0]}-{span[1]}"}
     for field in ("sets", "reps", "rounds"):
         if dose.get(field) is not None:
             fields[field] = dose[field]
@@ -331,6 +341,8 @@ def plan_fields(store, body: CustomPlanInput, previous: dict | None = None, *, a
             )
         exercise["incomplete"] = dose_incomplete(exercise["dose"])
         if exercise["origin"] == "manual":
+            if prior and "exercise_type" not in supplied[exercise["id"]]:
+                exercise["exercise_type"] = prior.get("exercise_type")
             # Older clients know nothing about media_id; omission preserves the
             # saved attachment. Explicit null is the owner's remove action.
             if prior and "media_id" not in supplied[exercise["id"]]:

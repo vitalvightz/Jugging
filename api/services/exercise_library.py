@@ -18,7 +18,8 @@ from api.contracts.exercise_library import (
     ExerciseLibraryResponse, ExercisePerformance, ExercisePerformancesResponse,
     PersonalExercise, RecordedExerciseLoad,
 )
-from api.models import ExerciseLogActual
+from api.models import ExerciseLogActual, ExerciseLogRecord
+from api.rep_range import progression_context
 from api.services.manual_exercises import entry_actual, entry_identity, values_format
 from api.services.session_details import _exercise, _manual_block, _map, _text
 
@@ -39,7 +40,7 @@ def _actual(row: dict) -> ExerciseLogActual | None:
         if not isinstance(row.get("actual"), dict):
             return None
         for key, value in row["actual"].items():
-            if key == "set_entries":
+            if key in {"set_entries", "feel"}:
                 continue
             number = value.get("value") if isinstance(value, dict) else value
             if number is not None and (isinstance(number, bool) or not isinstance(number, (int, float))):
@@ -99,9 +100,10 @@ def performed_values(row: dict, actual: ExerciseLogActual) -> ExerciseLogActual:
     return ExerciseLogActual.model_validate(values)
 
 
-def exercise_library(store, athlete_id: str, *, now: datetime | None = None) -> ExerciseLibraryResponse:
+def exercise_library(store, athlete_id: str, *, now: datetime | None = None, allow_progression: bool = False, held_keys: set[str] | None = None) -> ExerciseLibraryResponse:
     as_of = (now or datetime.now(timezone.utc)).isoformat()
     summaries: dict[str, PersonalExercise] = {}
+    performances: dict[str, tuple[tuple[str, str], ExerciseLogRecord]] = {}
     latest: dict[str, tuple[str, str]] = {}
     after_id = None
     while True:
@@ -115,11 +117,26 @@ def exercise_library(store, athlete_id: str, *, now: datetime | None = None) -> 
             if row.get("athlete_id") != athlete_id:
                 continue
             actual = _actual(row)
+            identity = exercise_identity(row)
+            order = (row["training_day"], row["id"])
+            if (row.get("status") in {"as_prescribed", "modified", "skipped"} and actual is not None
+                    and _map(row.get("prescribed")).get("block_type") not in _EXCLUDED_TYPES
+                    and (identity not in performances or order > performances[identity][0])):
+                snapshot = {k: v for k, v in _map(row.get("prescribed")).items() if k in {
+                    "display_name", "block_type", "prescription_source", "sets", "reps", "rep_range",
+                    "load", "effort", "progression_hold", "exercise_type"}}
+                performances[identity] = (order, ExerciseLogRecord(**{
+                    **row, "block_id": row.get("block_id") or "", "notes": "",
+                    "prescribed": snapshot, "actual": actual}))
+                # Private plan movements use the logger's existing exact-name identity.
+                if not row.get("exercise_key") and snapshot.get("prescription_source") == "athlete":
+                    name_identity = "athlete-name:" + str(snapshot.get("display_name") or "").strip().casefold()
+                    if name_identity not in performances or order > performances[name_identity][0]:
+                        performances[name_identity] = performances[identity]
             if not _performed(row, actual):
                 continue
             values = performed_values(row, actual)
-            identity = exercise_identity(row)
-            _record(summaries, latest, identity, (row["training_day"], row["id"]), values,
+            _record(summaries, latest, identity, order, values,
                 name=_text(_map(row.get("prescribed")).get("display_name")) or (row.get("exercise_key") or "Legacy exercise record"),
                 source="plan", kind="canonical" if identity.startswith("key:") else "legacy",
                 confirmed=row["status"] == "as_prescribed",
@@ -133,11 +150,38 @@ def exercise_library(store, athlete_id: str, *, now: datetime | None = None) -> 
         identity = entry_identity(row)
         day = str(row["training_day"])[:10]
         order = (day, str(row["id"]))
+        if identity not in performances or order > performances[identity][0]:
+            performances[identity] = (order, ExerciseLogRecord(id=str(row["id"]), athlete_id=athlete_id,
+                block_id="", exercise_key=row.get("exercise_key"), training_day=day,
+                status="modified", prescribed={"display_name": row["display_name"]}, actual=values))
         _record(summaries, latest, identity, order, values, name=row["display_name"], source="manual",
                 kind="canonical" if identity.startswith("key:") else "personal", confirmed=False, basis="reported")
         if identity not in manual_formats or order > manual_formats[identity][0]:
             manual_formats[identity] = (order, row["measurement_format"])
     for identity, summary in summaries.items():
+        summary.latest_performance = performances.get(identity, (None, None))[1]
+        if (identity.startswith("log:") and summary.latest_performance
+                and summary.latest_performance.prescribed.get("prescription_source") == "athlete"):
+            summary.latest_performance = performances.get("athlete-name:" + summary.name.strip().casefold(),
+                                                         (None, summary.latest_performance))[1]
+        # A saved private movement has the athlete's explicitly chosen recording type.
+        # Catalogue layouts alone cannot override unknown or protected bank metadata.
+        manual_type = manual_formats.get(identity, (None, None))[1] if identity.startswith("custom:") else None
+        authored_type = (summary.latest_performance.prescribed.get("exercise_type")
+                         if summary.latest_performance else None)
+        context = progression_context({"exercise_key": identity[4:] if identity.startswith("key:") else None,
+            "display_name": summary.name, "prescription_source": "athlete",
+            "exercise_type": authored_type or (manual_type if manual_type in {"strength", "bodyweight"} else None),
+            "progression_hold": (summary.latest_performance.prescribed.get("progression_hold")
+                                 if summary.latest_performance else None)},
+            None, None, phase="", d_day=None, athlete={})
+        summary.progression_hold = context.get("progression_hold")
+        summary.bodyweight_progression = context.get("bodyweight_progression")
+        summary.allow_progression = allow_progression
+        if identity[4:] in (held_keys or set()) or (summary.latest_performance and summary.latest_performance.reason == "pain"):
+            summary.progression_hold = True
+        if summary.latest_performance and summary.latest_performance.reason == "pain":
+            summary.latest_performance = summary.latest_performance.model_copy(update={"reason": None})
         summary.best_loads.sort(key=lambda entry: entry.unit)
         # The athlete's own last layout for this movement, else what the record shows.
         summary.log_format = manual_formats[identity][1] if identity in manual_formats else values_format(summary.latest_values)

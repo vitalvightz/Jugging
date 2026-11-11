@@ -158,6 +158,7 @@ export async function setup(page: Page, baseURL: string, role = "athlete") {
           if (exercise.origin === "manual")
             return {
               ...exercise,
+              exercise_type: exercise.exercise_type ?? null,
               coaching_cues: exercise.coaching_cues ?? null, stop_rules: exercise.stop_rules ?? null,
               equipment: exercise.equipment ?? null,
               notes: exercise.notes ?? null,

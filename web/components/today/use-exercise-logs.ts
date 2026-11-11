@@ -21,7 +21,7 @@ export function useTodayExerciseLogs({
   canWrite = true,
   lowerLoads = false,
   painReasonAllowed,
-  allowProgression = false,
+  allowProgression,
   onError,
 }: {
   token: string;
@@ -116,9 +116,10 @@ export function useTodayExerciseLogs({
   const recentPerformances = useMemo(() => rawPerformances === undefined ? undefined
     : withManualWeightHistory(rawPerformances, personalHistory, trainingDay),
     [rawPerformances, personalHistory, trainingDay]);
+  const cleared = allowProgression ?? [...(personalHistory?.values() ?? [])].some(entry => entry.allow_progression === true);
   return useMemo(
-    () => (active ? { lowerLoads, canWrite, logs, save, saveMany, recentLoads, recentPerformances, allowProgression, painReasonAllowed, onError } : null),
-    [lowerLoads, canWrite, active, logs, save, saveMany, recentLoads, recentPerformances, allowProgression, painReasonAllowed, onError],
+    () => (active ? { lowerLoads, canWrite, logs, save, saveMany, recentLoads, recentPerformances, allowProgression: cleared, painReasonAllowed, onError } : null),
+    [lowerLoads, canWrite, active, logs, save, saveMany, recentLoads, recentPerformances, cleared, painReasonAllowed, onError],
   );
 }
 

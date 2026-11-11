@@ -497,3 +497,30 @@ def test_manual_sparse_set_results_preserve_positions_and_fit_the_bounded_storag
     assert [entry["set_number"] for entry in saved["actual"]["set_entries"]] == [entry["set_number"] for entry in sets]
     assert saved["actual"]["load"] is None and saved["actual"]["reps"] is None
     assert len(json.dumps(saved["actual"]).encode()) < 8192
+
+
+def test_manual_completion_supplies_actual_progression_evidence_without_a_historical_target(api):
+    client, store = api
+    parent = session(client)
+    add(client, parent["id"], actual={**squat(3, 10, 80), "effort": {"method": "RPE", "value": 6}})
+    response = client.get("/api/history/exercise-library", headers=AUTH)
+    assert response.status_code == 200, response.text
+    item = next(row for row in response.json()["exercises"] if row["id"] == "key:back-squat")
+    assert item["latest_performance"]["prescribed"] == {"display_name": "Back Squat"}
+    assert item["latest_performance"]["actual"]["sets"] == 3
+    assert item["latest_performance"]["actual"]["effort"]["value"] == 6
+    assert item["progression_hold"] is False
+    assert item["allow_progression"] is True
+
+
+@pytest.mark.parametrize("name,format,held", [("Bench Press", "strength", False), ("My Push-Up", "bodyweight", False),
+    ("Single-Leg Forward Hops", "strength", True), ("Unclassified movement", "intervals", None)])
+def test_private_exercise_uses_recorded_type_without_extending_the_bank(api, name, format, held):
+    client, _ = api
+    parent = session(client)
+    saved = add(client, parent["id"], exercise={"name": name}, format=format,
+                actual={"sets": 3, "reps": 10, "load": {"value": 80, "unit": "kg"}, "effort": {"method": "RPE", "value": 6}} if format == "strength" else {})
+    item = next(row for row in client.get("/api/history/exercise-library", headers=AUTH).json()["exercises"] if row["id"] == saved["exercise_id"])
+    assert item["progression_hold"] is held
+    assert item["bodyweight_progression"] is (True if format == "bodyweight" else None)
+    assert item["latest_performance"]["prescribed"] == {"display_name": name}

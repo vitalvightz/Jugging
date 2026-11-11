@@ -39,6 +39,8 @@ from .today_service import (
 # rules) is left out: it is not what the athlete's numbers are compared against.
 _PRESCRIBED_FIELDS: tuple[str, ...] = (
     "display_name",
+    "prescription_source",
+    "exercise_type",
     "block_type",
     "category",
     "sets",

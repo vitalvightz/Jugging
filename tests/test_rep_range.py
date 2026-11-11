@@ -7,7 +7,7 @@ import datetime
 import pytest
 
 from api.exercise_identity import reconcile_exercise_keys, reconcile_progression_context
-from api.rep_range import authored_rep_range
+from api.rep_range import authored_rep_range, progression_context
 from api.services.exercise_log_service import _prescribed_snapshot
 from api.structured_plan_deterministic_fallback import build_deterministic_structured_plan
 from api.structured_plan_models import safe_parse_structured_plan
@@ -155,8 +155,8 @@ def test_jumps_and_ballistic_lifts_are_held_even_when_labelled_strength(healthy)
 
 # --- Fail-closed classification, older plans, and athlete changes -----------------
 
-from api.rep_range import bank_allows_progression, override_progression_hold  # noqa: E402
-from api.services.exercise_overrides import apply_exercise_overrides  # noqa: E402
+from api.rep_range import bank_allows_progression  # noqa: E402
+from api.services.exercise_overrides import _athlete_block, apply_exercise_overrides  # noqa: E402
 
 
 @pytest.mark.parametrize(("exercise", "expected"), [
@@ -245,9 +245,9 @@ def test_bank_fixture_names_exist():
 
 
 @pytest.mark.parametrize(("original_hold", "new_block", "expected"), [
-    (False, _GOBLET, None),     # nothing held: no verdict, as for any unclassified block
+    (False, _GOBLET, False),     # nothing held: no verdict, as for any unclassified block
     (True, _GOBLET, True),      # an existing hold survives the swap
-    (None, _GOBLET, None),
+    (None, _GOBLET, False),
     (False, _HOPS, True),       # ballistic by the bank
     (True, _UNKNOWN, True),     # a hold survives even onto an exercise the bank does not know
     (False, _UNKNOWN, None),    # unknown stays unknown
@@ -270,7 +270,7 @@ def test_a_stored_change_cannot_carry_its_own_verdict_or_range():
     assert "bodyweight_progression" not in edited
     # And a stale hold saved on a taper day does not follow the edit into a cleared week.
     freed = _changed("edit", {**stale, "progression_hold": True}, original={**_SQUAT, "progression_hold": False})["blocks"][0]
-    assert "progression_hold" not in freed and "rep_range" not in freed
+    assert freed["progression_hold"] is False and "rep_range" not in freed
 
 
 def test_an_added_exercise_takes_the_sessions_hold_and_the_banks_class():
@@ -286,18 +286,18 @@ def test_an_added_exercise_takes_the_sessions_hold_and_the_banks_class():
     assert added(_GOBLET, held).get("progression_hold") is True       # taper, cut, injury: the session is held
     assert added(_UNKNOWN, held).get("progression_hold") is True
     assert added(_HOPS, cleared).get("progression_hold") is True      # ballistic by the bank
-    assert "progression_hold" not in added(_GOBLET, cleared)
-    assert "progression_hold" not in added(_GOBLET, _SQUAT)
+    assert added(_GOBLET, cleared)["progression_hold"] is False
+    assert added(_GOBLET, _SQUAT)["progression_hold"] is False
     assert "progression_hold" not in added(_UNKNOWN, cleared)
     # One held jump beside a cleared lift does not hold the whole session.
-    assert "progression_hold" not in added(_GOBLET, cleared, {**_HOPS, "block_id": "h", "progression_hold": True})
+    assert added(_GOBLET, cleared, {**_HOPS, "block_id": "h", "progression_hold": True})["progression_hold"] is False
     # A claim on the added block itself counts for nothing.
     assert added({**_GOBLET, "progression_hold": False, "rep_range": [1, 30]}, held)["progression_hold"] is True
 
 
 def test_another_athlete_change_is_not_evidence_about_the_session():
     sibling = {**_GOBLET, "block_id": "x", "progression_hold": True, "athlete_change": {"action": "add"}}
-    assert override_progression_hold(_GOBLET, replaced=None, siblings=[sibling]) is None
+    assert _athlete_block({"block": _GOBLET}, replaced=None, siblings=[sibling])["progression_hold"] is False
 
 
 @pytest.mark.parametrize("effective", ["1x8 @ RPE 6", "3x4 @ RPE 6", "2x8 @ RPE 5"])
@@ -379,3 +379,22 @@ def test_generated_power_movements_keep_their_original_load_representation(healt
         assert ("load" in after) == ("load" in before)
         assert after.get("load") == before.get("load")
         assert after["progression_hold"] is True
+
+
+@pytest.mark.parametrize("exercise_type,expected", [("strength", False), ("bodyweight", False), ("power", True), (None, None)])
+def test_athlete_confirmed_type_does_not_need_a_bank_match(exercise_type, expected):
+    block = {"display_name": "Private Bench Press", "prescription_source": "athlete", "exercise_type": exercise_type}
+    context = progression_context(block, None, None, phase="GPP", d_day=None, athlete={})
+    assert context.get("progression_hold") is expected
+    assert context.get("bodyweight_progression") is (True if exercise_type == "bodyweight" else None)
+    assert progression_context({**block, "progression_hold": True}, None, None, phase="GPP", d_day=None, athlete={})["progression_hold"] is True
+    assert progression_context({**block, "display_name": "Single-Leg Forward Hops"}, None, None, phase="GPP", d_day=None, athlete={})["progression_hold"] is True
+
+
+def test_progression_reconciliation_does_not_restamp_an_athlete_catalogue_identity():
+    block = {"block_id": "private", "block_type": "strength", "display_name": "My label",
+             "exercise_key": "back-squat", "prescription_source": "athlete", "sets": 3, "reps": 10}
+    plan = {"weeks": [{"days": [{"sessions": [{"blocks": [block]}]}]}]}
+    after = reconcile_exercise_keys(plan, {})["weeks"][0]["days"][0]["sessions"][0]["blocks"][0]
+    assert after["exercise_key"] == "back-squat"
+    assert after["progression_hold"] is False

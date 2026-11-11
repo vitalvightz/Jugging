@@ -133,9 +133,20 @@ def progression_context(
     ``{}`` (unknown) when the block could not be matched to its planner
     assignment or the bank does not know the movement.
     """
-    if bank_allows_progression(block) is False:
+    if (bank_allows_progression(block) is False or block.get("exercise_type") in {"power", "other"}
+            or _REACTIVE_TAGS.intersection(block.get("tags") or ())
+            or _REACTIVE_TAGS.intersection(block.get("mechanical_risk_tags") or ())):
         return {"progression_hold": True}
-    if role is None or assignment is None or block.get("prescription_source") == "athlete":
+    if block.get("prescription_source") == "athlete":
+        if block.get("progression_hold") is True or progression_prohibited(dict(role or {}), dict(assignment or {}), phase, d_day, dict(athlete)):
+            return {"progression_hold": True}
+        if bank_allows_progression(block) is not True and block.get("exercise_type") not in {"strength", "bodyweight"}:
+            return {}
+        context: dict[str, Any] = {"progression_hold": False}
+        if not block.get("load") and (bank_uses_bodyweight(block) or block.get("exercise_type") == "bodyweight"):
+            context["bodyweight_progression"] = True
+        return context
+    if role is None or assignment is None:
         return {}
     if progression_prohibited(dict(role), dict(assignment), phase, d_day, dict(athlete)):
         return {"progression_hold": True}
@@ -162,26 +173,6 @@ def progression_context(
     if span is None or reps is None or not span[0] <= reps <= span[1]:
         return cleared
     return {**cleared, "rep_range": [span[0], span[1]]}
-
-
-def override_progression_hold(
-    block: Mapping[str, Any], *, replaced: Mapping[str, Any] | None, siblings: list[Any]
-) -> bool | None:
-    """The verdict for a block the athlete swapped in, edited or added.
-
-    Held (True) when the block it replaces was held, when the session an
-    exercise is added to is held (planner blocks beside it are held and none
-    is cleared), or when the bank classes the new movement as jumping,
-    ballistic or power work. Otherwise None: no verdict, exactly as for any
-    exercise the server has not classified.
-    """
-    if bank_allows_progression(block) is False:
-        return True
-    if replaced is not None:
-        return True if replaced.get("progression_hold") is True else None
-    verdicts = [sibling.get("progression_hold") for sibling in siblings
-                if isinstance(sibling, Mapping) and not sibling.get("athlete_change")]
-    return True if True in verdicts and False not in verdicts else None
 
 
 def apply_progression_context(block: dict[str, Any], context: Mapping[str, Any]) -> bool:

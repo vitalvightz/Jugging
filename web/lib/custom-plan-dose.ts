@@ -77,9 +77,8 @@ export function libraryPrefill(
     display_name: past?.name ?? "Exercise", block_type: "strength", sets: filledDose.sets, reps: filledDose.reps,
     load: parseLoad(start.load_or_intensity),
   }, compatiblePast);
-  const dose = { ...filledDose, load_or_intensity: recommendation.suggested
-    ? `${recommendation.suggested.value} ${recommendation.suggested.unit}`
-    : start.load_or_intensity || null };
+  const dose = { ...filledDose, load_or_intensity: start.load_or_intensity || (recommendation.suggested
+    ? `${recommendation.suggested.value} ${recommendation.suggested.unit}` : null) };
   if (!filled(dose) && (dose.mode === "reps" || dose.mode === "text")) return null;
   const fromLibrary = Boolean(format && (filled(format) || (format.mode !== "reps" && format.mode !== "text")));
   const fromPast = JSON.stringify(dose) !== JSON.stringify(start);

@@ -31,3 +31,28 @@ test("custom Add and Edit share history, leave edits intact and apply weights on
     assert.equal(node.querySelector<HTMLInputElement>('[aria-label="Weight"]')!.value, "110");
   } finally { await act(async () => { actualRoot.unmount(); }); }
 });
+
+test("earned custom weights stay optional and editable until explicitly applied", async () => {
+  const node = document.createElement("div");
+  const root = createRoot(node);
+  const past = { id: "custom:bench", name: "Bench Press", latest_day: "2026-10-01",
+    latest_values: { sets: 3, reps: 10, load: { value: 80, unit: "kg" } },
+    progression_hold: false, allow_progression: true,
+    latest_performance: { prescribed: { display_name: "Bench Press" }, status: "modified",
+      actual: { sets: 3, reps: 10, load: { value: 80, unit: "kg" }, effort: { method: "RPE", value: 6 } } },
+  } as unknown as PersonalExercise;
+  let dose: CustomDose = { ...blankDose(), sets: 3, reps: 10, load_or_intensity: "80 kg", rpe: 7 };
+  let changes = 0;
+  const render = () => root.render(<CustomDoseEditor dose={dose} past={past}
+    onChange={next => { changes++; dose = next; render(); }} />);
+  try {
+    await act(async () => render());
+    assert.match(node.textContent!, /Suggested 82.5 kg/);
+    assert.equal(dose.load_or_intensity, "80 kg");
+    assert.equal(changes, 0);
+    await act(async () => [...node.querySelectorAll("button")].find(b => b.textContent?.includes("Use suggested weight"))!.click());
+    assert.equal(changes, 1);
+    assert.equal(dose.load_or_intensity, "82.5 kg");
+    assert.equal(past.latest_values.load!.value, 80);
+  } finally { await act(async () => root.unmount()); }
+});

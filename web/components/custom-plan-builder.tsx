@@ -63,7 +63,8 @@ const nameOf = (e: Exercise) => (e.origin === "manual" ? e.name : e.snapshot.nam
 function draftBlock(exercise: Exercise, session: Session): StructuredBlock {
   const dose = exercise.dose;
   const snapshot = exercise.origin === "catalogue" ? exercise.snapshot : null;
-  const type = snapshot?.content_type;
+  const type = snapshot?.content_type ?? (exercise.origin === "manual"
+    ? ({ strength: "strength", bodyweight: "strength", power: "power", other: "" }[exercise.exercise_type ?? "other"]) : undefined);
   const blockType = ({ conditioning: "conditioning", skill: "skill", strength: "strength", power: "plyometric_power", speed: "speed" } as Record<string, string>)[type ?? ""]
     ?? ({ strength_power: "strength", conditioning: "conditioning", skill: "skill", sparring: "sparring", recovery: "cooldown_recovery" } as Record<string, string>)[session.session_type ?? "mixed"]
     ?? "accessory";
@@ -71,6 +72,7 @@ function draftBlock(exercise: Exercise, session: Session): StructuredBlock {
   return {
     block_id: exercise.id, display_name: nameOf(exercise), prescription_source: "athlete",
     block_type: blockType,
+    exercise_type: exercise.origin === "manual" ? exercise.exercise_type : undefined,
     exercise_key: snapshot?.exercise_key, catalogue_id: exercise.origin === "catalogue" ? exercise.catalogue_id : null,
     private_media_id: exercise.origin === "manual" ? exercise.media_id : null,
     community_revision_id: exercise.origin === "manual" ? exercise.community_revision_id : null,
@@ -456,7 +458,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   }
   function createManual(sessionId: string, name = "") {
     edit(sessionId, {
-      id: crypto.randomUUID(), origin: "manual", name, equipment: null, notes: null, media_id: null,
+      id: crypto.randomUUID(), origin: "manual", exercise_type: null, name, equipment: null, notes: null, media_id: null,
       community_id: null, community_revision_id: null, dose: blankDose(), incomplete: true,
       coaching_cues: null, stop_rules: null,
     }, true);
@@ -486,11 +488,15 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
           <ExerciseMediaProvider media={Object.fromEntries(s.exercises.flatMap(e => e.origin === "catalogue" && e.snapshot.media && e.snapshot.exercise_key
             ? [[`exercise:${e.snapshot.exercise_key}`, e.snapshot.media]] : []))}>
             <ExerciseLogProvider logging={{ logs: {}, canWrite: false, painReasonAllowed: false, save: async () => {},
-              recentPerformances: [...(past?.values() ?? [])].map(entry => personalPerformance(entry)) }}>
+              recentPerformances: [...(past?.values() ?? [])].map(entry => personalPerformance(entry)),
+              allowProgression: [...(past?.values() ?? [])].some(entry => entry.allow_progression === true) }}>
             <ol className={`sp-blocks ex-rows ${styles.exercises}`}>
               {s.exercises.map((e) => (
                 <li key={e.id}>
-                  <ExerciseRow block={draftBlock(e, s)} open={openExercise === e.id}
+                  <ExerciseRow block={{ ...draftBlock(e, s),
+                    progression_hold: e.origin === "manual" && (e.exercise_type === "power" || e.exercise_type === "other") ? true : past?.get(e.origin === "catalogue" ? e.snapshot.exercise_key ?? "" : `custom-name:${e.name.trim().toLowerCase().replace(/\s+/g, " ")}`)?.progression_hold,
+                    bodyweight_progression: past?.get(e.origin === "catalogue" ? e.snapshot.exercise_key ?? "" : `custom-name:${e.name.trim().toLowerCase().replace(/\s+/g, " ")}`)?.bodyweight_progression,
+                  }} open={openExercise === e.id}
                     onToggle={() => setOpenExercise(current => current === e.id ? null : e.id)} actions={
                       <button type="button" className={`${styles.editButton} ${styles.cardAction}`}
                         data-exercise-actions
@@ -550,6 +556,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
                     origin: e.origin,
                     name: e.name,
                     equipment: e.equipment,
+                    exercise_type: e.exercise_type,
                     notes: e.notes,
                     media_id: e.media_id,
                     community_id: e.community_id,
@@ -622,7 +629,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
         onSelectCommunity={(entry) => {
           if (!canAdd(selecting.sessionId)) return;
           const id = crypto.randomUUID();
-          sessionChange(selecting.sessionId, s => s.exercises.length >= 100 ? s : ({ ...s, exercises: [...s.exercises, { id, origin: 'manual', name: entry.name,
+          sessionChange(selecting.sessionId, s => s.exercises.length >= 100 ? s : ({ ...s, exercises: [...s.exercises, { id, origin: 'manual', exercise_type: null, name: entry.name,
             equipment: entry.equipment, notes: entry.notes, media_id: null, community_id: null, community_revision_id: entry.revision_id,
             incomplete: true, dose: blankDose(), coaching_cues: null, stop_rules: null }] }));
           noteAdded(selecting.sessionId, id);
@@ -921,6 +928,17 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
                     }}
                   />
                 </label>
+                <label><span>Exercise type (optional)</span>
+                  <select value={editing.exercise.exercise_type ?? ""} onChange={event => {
+                    const exercise_type = (event.target.value || null) as ManualExercise["exercise_type"];
+                    setEditing(current => current?.exercise.origin === "manual"
+                      ? { ...current, exercise: { ...current.exercise, exercise_type } } : current);
+                  }}>
+                    <option value="">Not classified</option><option value="strength">Strength</option>
+                    <option value="bodyweight">Bodyweight strength</option><option value="power">Jumps / power</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
                 {/* Video and sharing are optional extras: folded, with their state in the summary. */}
                 <details className={styles.advanced}>
                   <summary><span>Video &amp; sharing</span>
@@ -1023,9 +1041,9 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
             ) : null}
             <CustomDoseEditor
               dose={editing.exercise.dose}
-              movement={editing.exercise.origin === "catalogue" ? editing.exercise.snapshot : null}
-              past={editing.exercise.origin === "catalogue" && editing.exercise.snapshot.exercise_key
-                ? past?.get(editing.exercise.snapshot.exercise_key) : null}
+              movement={editing.exercise.origin === "catalogue" ? editing.exercise.snapshot : editing.exercise}
+              past={past?.get(editing.exercise.origin === "catalogue" ? editing.exercise.snapshot.exercise_key ?? ""
+                : `custom-name:${editing.exercise.name.trim().toLowerCase().replace(/\s+/g, " ")}`)}
               onChange={(dose) =>
                 setEditing({
                   ...editing,
