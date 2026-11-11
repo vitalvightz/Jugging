@@ -513,8 +513,8 @@ def quarantine_duplicate_profiles():
     # Historical or already-held duplicates must not replace their original
     # record on the next poll. For uncontacted stages, keep the oldest row.
     priority = {
-        "Rejected": 0, "Screened Out": 0, "Inactive": 0,
-        "Activated": 1, "Accepted": 2, "Replied": 3, "Contacted": 4,
+        "Activated": 0, "Accepted": 1, "Replied": 2, "Contacted": 3,
+        "Rejected": 4, "Screened Out": 4, "Inactive": 4,
     }
     held = 0
     for handle, pages in grouped.items():
@@ -528,6 +528,8 @@ def quarantine_duplicate_profiles():
             if page["id"] == keep["id"]:
                 continue
             stage = (page["properties"]["Stage (AI Fills First)"].get("select") or {}).get("name")
+            if stage not in ("Ready to Send", "Needs Research", "AI Queue", "Review Hold", None):
+                continue  # Never overwrite human-owned post-contact or terminal history.
             if stage == "Review Hold":
                 continue
             fresh = request("GET", f"/pages/{page['id']}")
