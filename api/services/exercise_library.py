@@ -128,6 +128,11 @@ def exercise_library(store, athlete_id: str, *, now: datetime | None = None, all
                 performances[identity] = (order, ExerciseLogRecord(**{
                     **row, "block_id": row.get("block_id") or "", "notes": "",
                     "prescribed": snapshot, "actual": actual}))
+                # Private plan movements use the logger's existing exact-name identity.
+                if not row.get("exercise_key") and snapshot.get("prescription_source") == "athlete":
+                    name_identity = "athlete-name:" + str(snapshot.get("display_name") or "").strip().casefold()
+                    if name_identity not in performances or order > performances[name_identity][0]:
+                        performances[name_identity] = performances[identity]
             if not _performed(row, actual):
                 continue
             values = performed_values(row, actual)
@@ -156,6 +161,10 @@ def exercise_library(store, athlete_id: str, *, now: datetime | None = None, all
             manual_formats[identity] = (order, row["measurement_format"])
     for identity, summary in summaries.items():
         summary.latest_performance = performances.get(identity, (None, None))[1]
+        if (identity.startswith("log:") and summary.latest_performance
+                and summary.latest_performance.prescribed.get("prescription_source") == "athlete"):
+            summary.latest_performance = performances.get("athlete-name:" + summary.name.strip().casefold(),
+                                                         (None, summary.latest_performance))[1]
         # A saved private movement has the athlete's explicitly chosen recording type.
         # Catalogue layouts alone cannot override unknown or protected bank metadata.
         manual_type = manual_formats.get(identity, (None, None))[1] if identity.startswith("custom:") else None
@@ -173,7 +182,7 @@ def exercise_library(store, athlete_id: str, *, now: datetime | None = None, all
         if identity[4:] in (held_keys or set()) or (summary.latest_performance and summary.latest_performance.reason == "pain"):
             summary.progression_hold = True
         if summary.latest_performance and summary.latest_performance.reason == "pain":
-            summary.latest_performance.reason = None
+            summary.latest_performance = summary.latest_performance.model_copy(update={"reason": None})
         summary.best_loads.sort(key=lambda entry: entry.unit)
         # The athlete's own last layout for this movement, else what the record shows.
         summary.log_format = manual_formats[identity][1] if identity in manual_formats else values_format(summary.latest_values)

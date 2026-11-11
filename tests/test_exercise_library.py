@@ -289,3 +289,17 @@ def test_library_reuses_readiness_and_injury_restrictions_without_requiring_a_pl
     response = client.get("/api/history/exercise-library", headers={"Authorization": "Bearer athlete-token"})
     assert response.status_code == 200, response.text
     assert response.json()["exercises"][0]["allow_progression"] is allowed
+
+
+def test_private_plan_history_uses_the_latest_result_including_skip_and_pain():
+    prescribed = {"display_name": "Private Bench", "prescription_source": "athlete", "exercise_type": "strength",
+                  "sets": 3, "reps": 10}
+    for barrier in ({"status": "skipped"}, {"reason": "pain"}):
+        rows = [entry(1, exercise_key=None, prescribed=prescribed,
+                      actual={"sets": 3, "reps": 10, "load": {"value": 80, "unit": "kg"}, "feel": "easy"}),
+                entry(2, exercise_key=None, prescribed=prescribed, training_day="2026-10-11", **barrier)]
+        items = exercise_library(store_with(*rows), ATHLETE, now=NOW, allow_progression=True).exercises
+        assert items
+        for item in items:
+            assert item.latest_performance.training_day == "2026-10-11"
+            assert item.latest_performance.status == "skipped" or item.progression_hold is True

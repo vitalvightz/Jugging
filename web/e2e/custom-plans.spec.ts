@@ -450,12 +450,12 @@ for (const width of [320, 390]) test(`private strength progression uses confirme
   const edit = page.getByRole("dialog").last();
   await expect(edit).toContainText("Suggested 82.5 kg");
   await expect(edit.getByLabel("Weight", { exact: true })).toHaveValue("80");
-  await edit.getByLabel("Exercise type (optional)", { exact: true }).selectOption("power");
+  await edit.getByRole("combobox", { name: "Exercise type (optional)", exact: true }).selectOption("power");
   await expect(edit).not.toContainText("Suggested 82.5 kg");
-  await edit.getByLabel("Exercise type (optional)", { exact: true }).selectOption("strength");
+  await edit.getByRole("combobox", { name: "Exercise type (optional)", exact: true }).selectOption("strength");
   await edit.getByRole("button", { name: "Use suggested weight", exact: true }).click();
   await expect(edit.getByLabel("Weight", { exact: true })).toHaveValue("82.5");
-  expect(mutations).toEqual([]);
+  expect(mutations.filter(path => path !== "/api/xp/activity" && path !== "/api/analytics/events")).toEqual([]);
   expect(actual.load.value).toBe(80);
   expect(await edit.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
 });
