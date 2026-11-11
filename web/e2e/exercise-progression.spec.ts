@@ -108,7 +108,8 @@ test("Today: first weight is asked once, persists, and progression is confirmed 
   expect((await todayLog(page, planId)).recentLoads).toEqual([expect.objectContaining({ exercise_key: "back-squat", load: { value: 60, unit: "kg" } })]);
   await startSession(page, planId);
   await page.getByRole("button", { name: "Back Squat", exact: true }).click();
-  await expect(page.getByText(/Last: 60 kg/)).toBeVisible();
+  // The remembered weight is shown on the row's recommendation.
+  await expect(page.getByText("60 kg").first()).toBeVisible();
   const suggestion = page.getByRole("button", { name: /Try 9 reps/ });
   await expect(suggestion).toBeVisible();
   await shot(page, "3-next-exposure-suggestion");
@@ -126,17 +127,19 @@ test("Today: first weight is asked once, persists, and progression is confirmed 
   // Inside the permitted range it is the workout done, not a modification.
   expect(saved.status).toBe("as_prescribed");
 
-  // Exposure 3: one tap records the prescription with the remembered weight,
-  // and last time's 9 reps is offered to confirm, never assumed.
+  // Exposure 3: one tap records the prescription only. Neither the remembered
+  // weight nor last time's 9 reps is assumed; the reps are offered to confirm.
   expect((await page.request.post(`${api}/__e2e/next_exposure`)).ok()).toBe(true);
   await startSession(page, planId);
   await page.getByRole("button", { name: "Mark Back Squat done as written", exact: true }).click();
   await expect(page.getByText("Last time you reached 9 reps.")).toBeVisible();
   saved = (await todayLog(page, planId)).squat;
   expect(saved.actual.reps).toBeNull();
-  expect(saved.actual.load).toEqual({ value: 60, unit: "kg" });
-  // No first-weight question now that one is on record.
-  await expect(page.getByLabel(/What weight did you use\?/)).toHaveCount(0);
+  expect(saved.actual.load).toBeNull();
+  // The weight is still on record for this lift, so it is not asked for again.
+  expect((await todayLog(page, planId)).recentLoads).toEqual([expect.objectContaining({ exercise_key: "back-squat", load: { value: 60, unit: "kg" } })]);
+  // Done never assumes the weight either, so it is asked for (optional, as before).
+  await expect(page.getByLabel(/What weight did you use\?/)).toBeVisible();
   await shot(page, "5-confirm-last-reps");
   await page.getByRole("button", { name: "I did 9 again", exact: true }).click();
   await expect(page.getByText("Last time you reached 9 reps.")).toHaveCount(0);
