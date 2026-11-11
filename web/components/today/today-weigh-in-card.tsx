@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { useToast } from "@/components/toast-provider";
+import { Skeleton } from "@/components/skeleton";
 import { WeighInSheet } from "@/components/weigh-in-sheet";
 import { getNutritionCurrent, updateNutritionCurrent } from "@/lib/api";
 import { formatWeight, getBodyweightEntriesWithIndex, getCampWeight } from "@/lib/nutrition-bodyweight";
@@ -55,7 +56,16 @@ export function TodayWeighInCard({ token, fightDate, trainingDay }: {
   }, [token]);
 
   // A failed read leaves Today as it was; the tracker stays one tap away on Home.
-  if (failed || !workspace) return null;
+  if (failed) return null;
+  // Reserve the card's slot while nutrition loads so the session below stays put.
+  if (!workspace) return (
+    <section className={styles.card} aria-label="Weight cut" aria-busy="true">
+      <Skeleton variant="text" width="65%" height={20} />
+      <Skeleton variant="text" width="35%" height={28} />
+      <Skeleton variant="text" width="100%" height={20} />
+      <Skeleton variant="block" width="100%" height={44} />
+    </section>
+  );
 
   const entries = workspace.nutrition_monitoring.daily_bodyweight_log;
   const today = localDateValue();

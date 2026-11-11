@@ -10,6 +10,7 @@ const TODAY = "2026-11-03";
 const storageKey = `sb-${new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://stub.supabase.co").hostname.split(".")[0]}-auth-token`;
 
 type Options = {
+  nutritionReady?: Promise<void>;
   fightDate?: string;
   isMinor?: boolean;
   theme?: "dark" | "light";
@@ -67,6 +68,7 @@ async function setup(page: Page, baseURL: string, options: Options = {}) {
     const path = new URL(request.url()).pathname;
     const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     if (path === "/api/nutrition/current") {
+      await options.nutritionReady;
       if (request.method() === "PUT") {
         const body = request.postDataJSON();
         puts.push(body);
@@ -107,6 +109,30 @@ async function capture(page: Page, name: string) {
   await page.waitForTimeout(250);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   if (shots) await page.screenshot({ path: `${shots}/${name}.png` });
+}
+
+for (const width of [390, 1280]) {
+  test(`nutrition loading reserves Weight cut's slot without remounting the session (${width}px)`, async ({ page, baseURL }) => {
+    await page.setViewportSize({ width, height: 844 });
+    let release!: () => void;
+    const nutritionReady = new Promise<void>(resolve => { release = resolve; });
+    await setup(page, baseURL!, { nutritionReady });
+    await page.goto("/today");
+    const card = page.getByRole("region", { name: "Weight cut" });
+    await expect(card).toHaveAttribute("aria-busy", "true");
+    const session = page.locator("#today-session");
+    await expect(session).toBeAttached();
+    const original = await session.elementHandle();
+    const before = await session.boundingBox();
+    if (shots) await page.screenshot({ path: `${shots}/today-weight-loading-${width}.png` });
+    release();
+    await expect(card).not.toHaveAttribute("aria-busy", "true");
+    await expect(card).toContainText("2.4");
+    expect(await original!.evaluate(node => node === document.getElementById("today-session"))).toBe(true);
+    const after = await session.boundingBox();
+    expect(Math.abs(after!.y - before!.y)).toBeLessThan(2);
+    if (shots) await page.screenshot({ path: `${shots}/today-weight-loaded-${width}.png` });
+  });
 }
 
 for (const [width, height, theme] of [[390, 844, "dark"], [1280, 800, "dark"], [390, 844, "light"]] as const) {
