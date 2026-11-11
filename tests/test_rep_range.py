@@ -296,3 +296,28 @@ def test_an_added_exercise_takes_the_sessions_hold_and_the_banks_class():
 def test_another_athlete_change_is_not_evidence_about_the_session():
     sibling = {**_GOBLET, "block_id": "x", "progression_hold": True, "athlete_change": {"action": "add"}}
     assert override_progression_hold(_GOBLET, replaced=None, siblings=[sibling]) is None
+
+
+@pytest.mark.parametrize("effective", ["1x8 @ RPE 6", "3x4 @ RPE 6", "2x8 @ RPE 5"])
+def test_restricted_effective_doses_hold_swapped_and_added_exercises(effective):
+    from api.rep_range import progression_context
+
+    assignment = {"name": "Back Squat", "base_prescription": "3x8-12 @ RPE 6",
+                  "effective_prescription": effective}
+    context = progression_context(_SQUAT, {}, assignment, phase="GPP", d_day=50, athlete={})
+    assert context == {"progression_hold": True}
+    original = {**_SQUAT, **context}
+    assert _changed("swap", _GOBLET, original=original)["blocks"][0]["progression_hold"] is True
+    assert _changed("add", _GOBLET, original=original)["blocks"][-1]["progression_hold"] is True
+
+
+@pytest.mark.parametrize("development", [False, True])
+def test_authorised_working_doses_remain_cleared(development):
+    from api.rep_range import progression_context
+    from fightcamp.working_dose import working_dose
+
+    base = "3-4x8-12 @ RPE 6-7"
+    assignment = {"name": "Back Squat", "base_prescription": base,
+                  "effective_prescription": working_dose(base, development=development)}
+    assert progression_context(_SQUAT, {}, assignment, phase="GPP", d_day=50, athlete={}) == {
+        "progression_hold": False, "rep_range": [8, 12]}

@@ -22811,7 +22811,6 @@ html[data-theme="light"] .sp-status-tag[data-tone="neutral"] {
 }
 .ex-log-suggest:disabled { opacity: 0.45; cursor: not-allowed; }
 .ex-log-suggest-hint { color: var(--text-muted); font-size: 0.76rem; font-weight: 500; }
-.ex-log-repeat { flex: 1 1 auto; min-width: 0; font-size: 0.8rem; line-height: 1.4; }
 
 @media (max-width: 480px) {
   .history-tabs { grid-template-columns: repeat(6, minmax(0, 1fr)); border-radius: 20px; }

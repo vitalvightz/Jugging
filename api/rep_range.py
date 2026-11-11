@@ -135,7 +135,7 @@ def progression_context(
         # A resolved dose that differs from the bank (a cap, a primer) is fixed.
         from fightcamp.working_dose import working_dose
         if str(effective).strip() not in {working_dose(str(base or "")), working_dose(str(base or ""), development=True)}:
-            return cleared
+            return {"progression_hold": True}
     span = authored_rep_range(base)
     reps = _block_reps(block)
     if span is None or reps is None or not span[0] <= reps <= span[1]:

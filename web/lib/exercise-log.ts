@@ -727,23 +727,6 @@ function sameWorkload(block: StructuredBlock, before: StructuredBlock): [number,
 }
 
 /**
- * Reps reached last time, above today's prescribed number, that the athlete
- * can confirm they repeated, so a "done" does not slide back down the range.
- * Never recorded on its own: it is only offered for the athlete to confirm.
- *
- * Offered only inside today's permitted range, for the same workload, never
- * on a held block, and not after a struggle, a skip or pain.
- */
-export function repeatRepsFor(block: StructuredBlock, log: ExerciseLogRecord | null): number | null {
-  if (!log || log.status === "skipped" || block.progression_hold === true) return null;
-  if (log.reason === "pain" || log.reason === "fatigue" || feelOf(log) === "hard") return null;
-  const planned = sameWorkload(block, log.prescribed as StructuredBlock);
-  if (!planned || !finitePositiveNumber(block.sets) || (log.actual.sets ?? block.sets) < block.sets) return null;
-  const reps = repsReached(log, planned);
-  return reps !== null && reps > planned[0] && reps <= planned[1] ? reps : null;
-}
-
-/**
  * What to try next, read off what was actually done last time rather than off
  * the wording of a progression rule. Only ever a suggestion.
  *

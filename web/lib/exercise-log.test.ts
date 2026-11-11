@@ -10,7 +10,6 @@ import {
   progressionLoadFor,
   progressionOpen,
   progressionRepRange,
-  repeatRepsFor,
   nextStepFor,
   nextStepLabel,
   needsFirstLoad,
@@ -539,35 +538,6 @@ test("reps inside the permitted range are the workout done, not a change", () =>
   assert.equal(loggedValues(fields, saved).find((value) => value.key === "reps")?.insteadOf, null);
 });
 
-test("reps reached last time are offered to confirm, never assumed", () => {
-  const squat: StructuredBlock = { ...deadlift, sets: 3, reps: 8, rep_range: [8, 12] };
-  const last = (actual: ExerciseLogRecord["actual"], patch: Partial<ExerciseLogRecord> = {}) =>
-    log(squat, { prescribed: squat, ...patch, actual });
-  assert.equal(repeatRepsFor(squat, last({ reps: 9 })), 9);
-  assert.equal(repeatRepsFor(squat, last({ reps: 12 })), 12);
-  // Nothing above the prescription was reached, or it was outside today's range.
-  assert.equal(repeatRepsFor(squat, last({})), null);
-  assert.equal(repeatRepsFor(squat, last({ reps: 8 })), null);
-  assert.equal(repeatRepsFor(squat, last({ reps: 14 }, { status: "modified" })), null);
-  // Today's prescription deliberately asks for less: fewer sets, a narrower range, a lower effort target.
-  for (const patch of [{ sets: 2 }, { rep_range: [8, 10] }, { rep_range: null }, { effort: { method: "RPE", value: 5 } }]) {
-    assert.equal(repeatRepsFor({ ...squat, ...patch }, last({ reps: 9 })), null, JSON.stringify(patch));
-  }
-  // A held block, a struggle, pain, a skip or a short session.
-  assert.equal(repeatRepsFor({ ...squat, progression_hold: true }, last({ reps: 9 })), null);
-  assert.equal(repeatRepsFor({ ...squat, progression_hold: undefined }, last({ reps: 9 })), 9);
-  for (const previous of [
-    last({ reps: 9, feel: "hard" }), last({ reps: 9 }, { reason: "fatigue", status: "modified" }),
-    last({ reps: 9 }, { reason: "pain", status: "modified" }), last({ reps: 9 }, { status: "skipped" }),
-    last({ reps: 9, sets: 2 }, { status: "modified" }),
-  ]) assert.equal(repeatRepsFor(squat, previous), null);
-  assert.equal(repeatRepsFor(squat, null), null);
-  // The weakest set decides when sets were logged one by one.
-  assert.equal(repeatRepsFor(squat, last({ sets: 3, set_entries: [{ reps: 10 }, { reps: 9 }, { reps: 9 }] })), 9);
-  // Confirming it amends the saved log and nothing else.
-  assert.deepEqual(amendedLog(log(squat, { actual: { load: { value: 60, unit: "kg" } } }), { reps: 9 }).actual,
-    { load: { value: 60, unit: "kg" }, reps: 9 });
-});
 
 test("per-set progression needs every prescribed set, valid effort and known weights", () => {
   const block = { ...deadlift, sets: 3, reps: 8, rep_range: [8, 12] };

@@ -18,7 +18,6 @@ import {
   exerciseIdentity,
   needsFirstLoad,
   nextStepLabel,
-  repeatRepsFor,
   logFieldsForBlock,
   logSummary,
   loggedValues,
@@ -161,10 +160,8 @@ export function ExerciseLogTick({
         block_id: blockId,
         ...withLastLoad(block, { status: "as_prescribed", ...(log ? { actual: log.actual } : {}) }, logging.recentLoads, logging.recentPerformances),
       });
-      // Saved as written. Open the row where there is one thing left to confirm:
-      // a first weight, or reps above the prescription that were reached last time.
-      const previous = lastPerformanceFor(block, logging.recentPerformances);
-      if ((needsFirstLoad(block, logging.recentLoads) && !firstLoadDeclined(block)) || repeatRepsFor(block, previous) !== null) onOpen();
+      // Saved as written. Open the row only for the optional first weight.
+      if (needsFirstLoad(block, logging.recentLoads) && !firstLoadDeclined(block)) onOpen();
     } catch (caught) {
       logging.onError?.(errorMessage(caught));
     } finally {
@@ -288,11 +285,6 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
       ? { kind: "load", load: suggested }
       : null;
   const loadField = fields.find(field => field.key === "load");
-  // Reps reached last time are never assumed: "done" records the prescription,
-  // and this is offered for the athlete to confirm they matched it again.
-  const repeatReps = log && log.status === "as_prescribed" && log.actual?.reps == null && !log.actual?.set_entries?.length
-    ? repeatRepsFor(block, previous)
-    : null;
   const askFirstLoad = !firstLoadSkipped && asksForFirstLoad(block, log, logging.recentLoads) && !firstLoadDeclined(block);
   const loadUnit = setUnit ?? fields.find(field => field.key === "load")?.apiUnit ?? "kg";
   const entry = setRows ? buildSetLogEntry(fields, setRows, loadUnit, draft) : buildLogEntry(fields, draft);
@@ -534,15 +526,6 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
                 {saving ? "Saving…" : confirming ? "Yes, save" : "Save weight"}
               </button>
             </div>
-          </div>
-        ) : null}
-        {repeatReps !== null ? (
-          <div className="ex-log-bar">
-            <span className="muted ex-log-repeat">Last time you reached {repeatReps} reps.</span>
-            <button type="button" className="ex-log-save" disabled={saving}
-              onClick={() => void save(amendedLog(log, { reps: repeatReps }))}>
-              I did {repeatReps} again
-            </button>
           </div>
         ) : null}
         {/* Optional: read beside the reps done, it shapes next time's suggestion. */}

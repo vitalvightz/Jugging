@@ -128,23 +128,29 @@ test("Today: first weight is asked once, persists, and progression is confirmed 
   expect(saved.status).toBe("as_prescribed");
 
   // Exposure 3: one tap records the prescription only. Neither the remembered
-  // weight nor last time's 9 reps is assumed; the reps are offered to confirm.
+  // weight nor last time's 9 reps is assumed.
   expect((await page.request.post(`${api}/__e2e/next_exposure`)).ok()).toBe(true);
   await startSession(page, planId);
   await page.getByRole("button", { name: "Mark Back Squat done as written", exact: true }).click();
-  await expect(page.getByText("Last time you reached 9 reps.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "I did 9 again", exact: true })).toHaveCount(0);
   saved = (await todayLog(page, planId)).squat;
   expect(saved.actual.reps).toBeNull();
   expect(saved.actual.load).toBeNull();
-  // The weight is still on record for this lift, so it is not asked for again.
+  // The weight is still on record for this lift.
   expect((await todayLog(page, planId)).recentLoads).toEqual([expect.objectContaining({ exercise_key: "back-squat", load: { value: 60, unit: "kg" } })]);
-  // Done never assumes the weight either, so it is asked for (optional, as before).
+  // Done leaves the row collapsed; the athlete opens the existing logger.
+  await expect(page.getByRole("button", { name: "Log numbers", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Back Squat", exact: true }).click();
+  // The optional weight question remains available inside the open row.
   await expect(page.getByLabel(/What weight did you use\?/)).toBeVisible();
-  await shot(page, "5-confirm-last-reps");
-  await page.getByRole("button", { name: "I did 9 again", exact: true }).click();
-  await expect(page.getByText("Last time you reached 9 reps.")).toHaveCount(0);
+  await page.locator(".ex-log-edit").click();
+  await page.getByRole("button", { name: "Log numbers", exact: true }).click();
+  await page.getByLabel("Reps", { exact: true }).fill("9");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.locator(".ex-log-status")).toContainText("9 reps");
   saved = (await todayLog(page, planId)).squat;
   expect(saved.actual.reps).toBe(9);
   expect(saved.status).toBe("as_prescribed");
+  await shot(page, "5-additional-reps-saved-in-logger");
   expect(errors).toEqual([]);
 });
