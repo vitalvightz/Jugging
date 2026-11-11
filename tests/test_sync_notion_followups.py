@@ -1352,3 +1352,46 @@ def test_duplicate_guard_does_not_patch_changed_or_distinct_profiles(monkeypatch
     assert writes == []
     monkeypatch.setattr(sync, "all_pipeline_rows", lambda: [a, changed])
     assert sync.quarantine_duplicate_profiles() == 0
+
+
+
+def test_duplicate_guard_keeps_activated_and_preserves_human_history(monkeypatch):
+    activated = duplicate_candidate("activated", "Person", "same_handle",
+                                    "https://instagram.com/same_handle", stage="Activated")
+    rejected = duplicate_candidate("rejected", "Person", "same_handle",
+                                   "https://instagram.com/same_handle", stage="Rejected")
+    contacted = duplicate_candidate("contacted", "Person", "same_handle",
+                                    "https://instagram.com/same_handle", stage="Contacted")
+    candidate = duplicate_candidate("candidate", "Person", "same_handle",
+                                    "https://instagram.com/same_handle?x=2", stage="Ready to Send")
+    writes = []
+    monkeypatch.setattr(sync, "all_pipeline_rows", lambda: [rejected, contacted, candidate, activated])
+    def request(method, path, body=None):
+        if method == "GET":
+            assert path == "/pages/candidate"
+            return copy.deepcopy(candidate)
+        writes.append((path, body["properties"]))
+    monkeypatch.setattr(sync, "request", request)
+    assert sync.quarantine_duplicate_profiles() == 1
+    assert len(writes) == 1
+    assert writes[0][0] == "/pages/candidate"
+    assert writes[0][1]["Stage (AI Fills First)"]["select"]["name"] == "Review Hold"
+
+
+def test_preexisting_review_hold_blocks_new_sendable_duplicate(monkeypatch):
+    held = duplicate_candidate("held", "Person", "same_handle",
+                               "https://instagram.com/same_handle", stage="Review Hold",
+                               created="2026-10-10T00:00:00Z")
+    incoming = duplicate_candidate("incoming", "Person", "same_handle",
+                                   "https://instagram.com/same_handle?new=true",
+                                   created="2026-11-10T00:00:00Z")
+    writes = []
+    monkeypatch.setattr(sync, "all_pipeline_rows", lambda: [held, incoming])
+    def request(method, path, body=None):
+        if method == "GET":
+            assert path == "/pages/incoming"
+            return copy.deepcopy(incoming)
+        writes.append((path, body["properties"]))
+    monkeypatch.setattr(sync, "request", request)
+    assert sync.quarantine_duplicate_profiles() == 1
+    assert writes[0][0] == "/pages/incoming"
