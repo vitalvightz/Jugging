@@ -1,4 +1,6 @@
 "use client";
+import { ExerciseLogProvider } from "./exercise-log";
+import { personalPerformance } from "@/lib/weight-recommendation";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -483,6 +485,8 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
         {s.session_type !== "rest" ? <PrivateExerciseMediaProvider token={accessToken}>
           <ExerciseMediaProvider media={Object.fromEntries(s.exercises.flatMap(e => e.origin === "catalogue" && e.snapshot.media && e.snapshot.exercise_key
             ? [[`exercise:${e.snapshot.exercise_key}`, e.snapshot.media]] : []))}>
+            <ExerciseLogProvider logging={{ logs: {}, canWrite: false, painReasonAllowed: false, save: async () => {},
+              recentPerformances: [...(past?.values() ?? [])].map(entry => personalPerformance(entry)) }}>
             <ol className={`sp-blocks ex-rows ${styles.exercises}`}>
               {s.exercises.map((e) => (
                 <li key={e.id}>
@@ -496,7 +500,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
                     } />
                 </li>
               ))}
-            </ol></ExerciseMediaProvider></PrivateExerciseMediaProvider> : <p className="muted">{REST_DAY_REMINDER}</p>}
+            </ol></ExerciseLogProvider></ExerciseMediaProvider></PrivateExerciseMediaProvider> : <p className="muted">{REST_DAY_REMINDER}</p>}
         {!s.exercises.length && s.session_type !== "rest" ? <p className="muted">{s.session_type === "recovery" ? REST_DAY_REMINDER : ["sparring", "skill"].includes(s.session_type ?? "mixed") ? "Coach-led day — Add editable rounds if useful." : "Workout needs exercises."}</p> : null}
         {s.session_type === "recovery" && s.exercises.length ? <p className="muted">Optional recovery work. No completion required.</p> : null}
         {s.session_type !== "rest" ? (

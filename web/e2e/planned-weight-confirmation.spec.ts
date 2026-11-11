@@ -70,7 +70,7 @@ test("historical Back Squat → preview → planned timer → confirmed sets →
     await route.fulfill({ json: body });
   });
   await page.goto(`/today?plan=${id}`);
-  await expect(page.locator(".ex-row").filter({ hasText: "Back Squat" })).toContainText("Last");
+  await expect(page.locator(".ex-row").filter({ hasText: "Back Squat" })).toContainText("Same as last");
   await page.locator(".st-mini").click();
   const timer = page.locator(".st-root");
   for (const [index, expected] of [115, 120, 125].entries()) {

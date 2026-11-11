@@ -19,7 +19,7 @@ test("custom Add and Edit share history, leave edits intact and apply weights on
     onChange={next => { changes++; dose = next; render(essential); }} />);
   try {
     await act(async () => render(true));
-    assert.match(node.textContent!, /Suggested120 kgLast120 kg/);
+    assert.match(node.textContent!, /Suggested 120 kg · Same as last/);
     assert.equal(changes, 0);
     assert.equal(dose.sets, null);
     assert.equal(dose.reps, null);
@@ -27,7 +27,7 @@ test("custom Add and Edit share history, leave edits intact and apply weights on
     assert.equal(node.querySelector<HTMLInputElement>('[aria-label="Weight"]')!.value, "120");
     dose = { ...dose, load_or_intensity: "110 kg" };
     await act(async () => render(false));
-    assert.match(node.textContent!, /Suggested110 kgLast120 kg/);
+    assert.match(node.textContent!, /Suggested 110 kg · Last 120 kg/);
     assert.equal(node.querySelector<HTMLInputElement>('[aria-label="Weight"]')!.value, "110");
   } finally { await act(async () => { actualRoot.unmount(); }); }
 });

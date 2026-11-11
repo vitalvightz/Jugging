@@ -648,7 +648,7 @@ function ExerciseOptionsSheet({
                       </button>
                     ) : null}
                   </div>
-                  <div className={styles.optionRecommendation}><WeightRecommendation value={recommendation} dose={dose.sets && dose.reps ? `${dose.sets} sets × ${dose.reps} reps` : undefined} /></div>
+                  <div className={styles.optionRecommendation}><WeightRecommendation value={recommendation} /></div>
                   {/* The demo and the dose editor ease open under their option. */}
                   <Collapse show={preview === option.catalogue_id && Boolean(option.media)}>
                     {preview === option.catalogue_id && option.media ? (

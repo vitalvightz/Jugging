@@ -268,7 +268,7 @@ test("several library exercises go in from one sheet, each starting from its ver
       const session = reopened.host.querySelector<HTMLElement>('[aria-label="Session 1"]')!;
       assert.match(session.textContent!, /Wednesday/);
       assert.match(session.textContent!, /Bike sprints[\s\S]*5 × 5 min · rest 30s/);
-      assert.match(session.textContent!, /Back squat[\s\S]*3 × 5 · 100 kg/);
+      assert.match(session.textContent!, /Back squat[\s\S]*3 × 5Suggested 100 kg/);
       assert.match(reopened.host.textContent!, /Saved/);
     } finally { await reopened.unmount(); }
   } finally {
@@ -289,7 +289,7 @@ test("a saved plan reopens with its days, sessions and doses", async () => {
     const session = ui.host.querySelector<HTMLElement>('[aria-label="Session 1"]')!;
     assert.match(session.textContent!, /Wednesday/);
     assert.match(session.textContent!, /Back squat/);
-    assert.match(session.textContent!, /3 × 5 · 100 kg/);
+    assert.match(session.textContent!, /3 × 5Suggested 100 kg/);
     assert.match(ui.host.textContent!, /Saved/);
   } finally {
     await ui.unmount();

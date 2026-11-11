@@ -1,16 +1,18 @@
 import type { WeightRecommendation as Recommendation } from "@/lib/weight-recommendation";
 import styles from "./weight-recommendation.module.css";
 
-/** The same hierarchy and spacing on rows, sheets, pickers and rest screens. */
-export function WeightRecommendation({ value, dose }: { value: Recommendation; dose?: string }) {
+/** Compact guidance only; never a record of completed measurements. */
+export function WeightRecommendation({ value, subtle = false }: { value: Recommendation; subtle?: boolean }) {
   if (!value.last && !value.suggested) return null;
-  const format = (load: Recommendation["last"]) => load ? `${load.value} ${load.unit}` : "—";
-  return <span className={styles.card}>
-    <span className={styles.numbers}>
-      <span className={styles.primary}><span className={styles.label}>Suggested</span><strong>{format(value.suggested)}</strong></span>
-      <span className={styles.secondary}><span className={styles.label}>Last</span><span>{format(value.last)}</span></span>
-    </span>
-    {value.tryReps ? <span className={styles.reps}>Try {value.tryReps} reps</span> : null}
-    {dose ? <span className={styles.dose}>{dose} · Editable</span> : null}
+  const format = (load: NonNullable<Recommendation["last"]>) => `${load.value} ${load.unit}`;
+  const same = value.last && value.suggested
+    && value.last.value === value.suggested.value && value.last.unit === value.suggested.unit;
+  return <span className={styles.card} data-subtle={subtle || undefined}>
+    {value.suggested ? <span className={styles.primary}>
+      {value.tryReps ? "" : "Suggested "}<strong>{format(value.suggested)}</strong>
+    </span> : null}
+    {value.suggested && (value.tryReps || value.last) ? " · " : null}
+    {value.tryReps ? <span className={styles.secondary}>Try {value.tryReps} reps</span>
+      : value.last ? <span className={styles.secondary}>{same ? "Same as last" : `Last ${format(value.last)}`}</span> : null}
   </span>;
 }
