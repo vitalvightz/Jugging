@@ -14,6 +14,7 @@ import time
 import traceback
 from datetime import date, datetime, time as datetime_time, timedelta, timezone
 from urllib.error import HTTPError
+from urllib.parse import unquote, urlsplit
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
@@ -490,6 +491,62 @@ def all_pipeline_rows():
         cursor = result["next_cursor"]
 
 
+# A repeated Instagram account must not appear in more than one sendable row.
+# Notion does not enforce unique property values, so fail closed at the worker.
+def outreach_handle(properties):
+    handle = plain(properties, "Instagram Handle").strip().lower().lstrip("@")
+    raw = (properties.get("Verified Profile URL", {}).get("url") or "").strip()
+    parsed = urlsplit(raw)
+    if parsed.hostname and parsed.hostname.lower().removeprefix("www.") in ("instagram.com", "m.instagram.com"):
+        slug = unquote(parsed.path).strip("/").split("/", 1)[0].lower()
+        if slug and slug not in ("p", "reel", "reels", "stories", "explore", "tv", "direct", "accounts"):
+            return slug
+    return handle
+
+
+def quarantine_duplicate_profiles():
+    grouped = {}
+    for page in all_pipeline_rows():
+        handle = outreach_handle(page["properties"])
+        if handle:
+            grouped.setdefault(handle, []).append(page)
+    # Historical or already-held duplicates must not replace their original
+    # record on the next poll. For uncontacted stages, keep the oldest row.
+    priority = {
+        "Activated": 0, "Accepted": 1, "Replied": 2, "Contacted": 3,
+        "Rejected": 4, "Screened Out": 4, "Inactive": 4,
+    }
+    held = 0
+    for handle, pages in grouped.items():
+        if len(pages) < 2:
+            continue
+        def order(page):
+            stage = (page["properties"]["Stage (AI Fills First)"].get("select") or {}).get("name")
+            return priority.get(stage, 5), page.get("created_time") or "", page["id"]
+        keep = min(pages, key=order)
+        for page in pages:
+            if page["id"] == keep["id"]:
+                continue
+            stage = (page["properties"]["Stage (AI Fills First)"].get("select") or {}).get("name")
+            if stage not in ("Ready to Send", "Needs Research", "AI Queue", "Review Hold", None):
+                continue  # Never overwrite human-owned post-contact or terminal history.
+            if stage == "Review Hold":
+                continue
+            fresh = request("GET", f"/pages/{page['id']}")
+            actual = (fresh["properties"]["Stage (AI Fills First)"].get("select") or {}).get("name")
+            if actual != stage or outreach_handle(fresh["properties"]) != handle:
+                continue  # Changed while scanning: retry next poll, never patch stale data.
+            notes = plain(fresh["properties"], "Notes")
+            marker = f"Duplicate Instagram @{handle}; primary record {keep['id']}. Review before outreach."
+            note = notes + ("\n" if notes else "") + marker if marker not in notes else notes
+            request("PATCH", f"/pages/{page['id']}", {"properties": {
+                "Stage (AI Fills First)": {"select": {"name": "Review Hold"}},
+                "Notes": rich(note),
+            }})
+            held += 1
+    return held
+
+
 def block_children(parent_id):
     cursor = None
     while True:
@@ -707,6 +764,8 @@ def run():
             traceback.print_exc()
         try:
             # Scheduling depends on the stage observations from this poll.
+            held = quarantine_duplicate_profiles()
+            print(f"Notion duplicates: held {held} repeated profiles", flush=True)
             checked, updated = sync_stage_history()
             print(f"Notion stages: examined {checked}, updated {updated}", flush=True)
             total, changed = sync()
