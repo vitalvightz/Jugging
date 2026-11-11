@@ -664,6 +664,9 @@ export function TodaySessionPanel({
     enabled: resolvedDecision.sessionIsToday,
     canWrite: status === "started" || status === "done" || status === "modified",
     painReasonAllowed,
+    lowerLoads: state.live_prescription?.safety_hold === true
+      || state.today.decision_tier === "pull_back" || state.today.decision_tier === "stop"
+      || /taper|weight.?cut|fight.?week/i.test(state.active_plan.phase ?? ""),
     allowProgression: progressionOpen({
       decisionTier: state.today.decision_tier,
       openInjuries: state.open_injuries.length,
@@ -809,7 +812,7 @@ export function TodaySessionPanel({
     : [], [hasResolvedDaySessions, current.sessions, session.session_id, timerSourceText, timerCountdown]);
   const timerItems = withHistoricalTimerLoads(plannedTimerItems,
     current.sessions.flatMap(session => session.blocks ?? []),
-    exerciseLogging?.recentLoads, exerciseLogging?.recentPerformances);
+    exerciseLogging?.recentLoads, exerciseLogging?.recentPerformances, exerciseLogging ?? {});
   // The day's Fight Visualisation, offered as a voice-guided run. Only when the
   // session being logged is one of this day's, the same rule as the timer.
   const guidedVisualisation = useMemo(() =>

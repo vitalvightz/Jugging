@@ -389,7 +389,7 @@ test("a struggled weight is offered eased off, at any readiness, and stays edita
     actual: { load: { value: 100, unit: "kg" }, effort: { method: "RPE", value: 9 } },
   });
   const view = mount(deadlift, { recentPerformances: [previous], allowProgression: false });
-  assert.match(view.text(), /Last: 100 kg.*Ease to 90 kg/);
+  assert.match(view.text(), /Suggested90 kgLast100 kg/);
   await view.click("Log numbers");
   const load = view.container.querySelector<HTMLInputElement>('.ex-log-field input[id$="-load"]');
   assert.equal(load?.value, "90");
@@ -412,10 +412,10 @@ test("last performance is visible collapsed and the suggested load remains edita
   const block = { ...deadlift, progression_rule: "Add 2.5 kg when all sets complete." };
   const previous = record(deadlift, { plan_id: "previous-plan", actual: { load: { value: 80, unit: "kg" }, effort: { method: "RPE", value: 6 } } });
   const collapsed = mount(block, { open: false, recentPerformances: [previous], allowProgression: true });
-  assert.equal(collapsed.text().includes("Last:"), true);
+  assert.equal(collapsed.text().includes("Last"), true);
   collapsed.unmount();
   const view = mount(block, { recentPerformances: [previous], allowProgression: true });
-  assert.match(view.text(), /Last: 80 kg.*4 × 8.*Try 82.5 kg/);
+  assert.match(view.text(), /Suggested82.5 kgLast80 kg.*4 sets × 8 reps/);
   await view.click("Log numbers");
   const load = view.container.querySelector<HTMLInputElement>('.ex-log-field input[id$="-load"]');
   assert.equal(load?.value, "82.5");
@@ -539,7 +539,7 @@ test("recommendations appear on the collapsed workout before Start without loggi
   const view = mount(block, { open: false, canWrite: false, allowProgression: true,
     recentPerformances: [record(block, { plan_id: "older-plan", actual: { reps: 8,
       load: { value: 115, unit: "kg" }, feel: "easy" } })] });
-  assert.match(view.text(), /Last:.*115 kg.*Try 9 reps/);
+  assert.match(view.text(), /Suggested115 kgLast115 kgTry 9 reps/);
   assert.equal(view.container.querySelector(".ex-log-tick"), null);
   assert.equal(view.saved.length, 0);
   view.unmount();
@@ -564,6 +564,23 @@ test("review weight confirmation fills only missing set weights and reaches next
   const items = withHistoricalTimerLoads(buildTimerItems([{ blocks: [deadlift] }]), [deadlift], [],
     [{ ...existing, actual }]);
   assert.ok(items[0].kind === "sets");
-  assert.deepEqual(items[0].suggestedLoads, ["115", "125", null, null]);
+  assert.deepEqual(items[0].weightRecommendation?.sets.map(row => row.last?.value ?? null), [115, 125, null, null]);
+  // This historical session missed prescribed sets/reps: the shared engine eases off.
+  assert.deepEqual(items[0].suggestedLoads, ["102.5", "112.5", null, null]);
+  view.unmount();
+});
+
+test("completed details retain previous Suggested and Last separately from today's actual", () => {
+  const today = record(deadlift, { actual: { sets: 4, reps: 8, load: { value: 75, unit: "kg" } } });
+  const historical = record(deadlift, { plan_id: "older-plan",
+    actual: { sets: 4, reps: 8, load: { value: 80, unit: "kg" }, feel: "easy" } });
+  const view = mount(deadlift, { logs: { "blk-deadlift": today },
+    recentPerformances: [historical], allowProgression: true });
+  assert.match(view.text(), /Suggested82.5 kgLast80 kg/);
+  const actual = view.container.querySelector('[aria-label="Today\'s actual"]')!;
+  assert.match(actual.textContent ?? "", /75 kg/);
+  assert.doesNotMatch(actual.textContent ?? "", /82.5 kg|Last80 kg/);
+  assert.equal(view.saved.length, 0);
+  assert.equal(today.actual.load?.value, 75);
   view.unmount();
 });

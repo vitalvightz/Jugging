@@ -1456,7 +1456,10 @@ test("finished mixed rehab run survives a failed batch and opens populated revie
     ]);
     const nextRdl = nextExposure.find(item => item.blockId === "rdl");
     assert.ok(nextRdl?.kind === "sets");
-    assert.equal(nextRdl.suggestedLoads?.[0], "115");
+    assert.equal(nextRdl.weightRecommendation?.last?.value, 115);
+    // Only one of three prescribed sets was completed: Last stays measured,
+    // while the next attempt follows the existing reduction rule.
+    assert.equal(nextRdl.suggestedLoads?.[0], "102.5");
     assert.equal(document.querySelector(".st-root"), null);
     assert.match(document.querySelector(".today-review-root")?.textContent ?? "", /4 of 4 exercises logged/);
     assert.match(document.querySelector(".today-review-root")?.textContent ?? "", /Did you complete your rehab/);

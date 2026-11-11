@@ -49,7 +49,7 @@ test("historical weight flows through rendered timer confirmation, Session Revie
     display_name: "Back Squat", sets: 1, reps: 8, rep_range: [8, 12], effort: { method: "RPE", value: 7 } };
   const previous = { plan_id: "older", exercise_key: "back-squat", prescribed: block,
     status: "as_prescribed", actual: { load: { value: 115, unit: "kg" }, reps: 8, feel: "easy" } } as unknown as import("@/lib/types").ExerciseLogRecord;
-  const items = withHistoricalTimerLoads(buildTimerItems([{ blocks: [block] }]), [block], [], [previous]);
+  const items = withHistoricalTimerLoads(buildTimerItems([{ blocks: [block] }]), [block], [], [previous], { allowProgression: true });
   let state = { ...createTimerState(items), completed: [1] };
   const root = createRoot(document.createElement("div"));
   const node = document.createElement("div");
@@ -64,6 +64,7 @@ test("historical weight flows through rendered timer confirmation, Session Revie
   try {
     await act(async () => renderLogger());
     assert.equal(node.querySelector<HTMLInputElement>('[aria-label="Load kg, set 1"]')?.value, "115");
+    assert.match(node.textContent ?? "", /Suggested115 kgLast115 kgTry 9 reps/);
     assert.equal(state.confirmedSetLogs?.[items[0].id], undefined);
     await act(async () => Array.from(node.querySelectorAll("button")).find(b => b.textContent?.includes("Confirm set"))!.click());
     const entry = timerExerciseLogs(endSession(state, 0))[0];
