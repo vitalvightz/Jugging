@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { weightRecommendation } from "./weight-recommendation";
+import { compactWeightAge, weightRecommendation } from "./weight-recommendation";
 import { withHistoricalTimerLoads } from "./session-timer/history";
 import { buildTimerItems } from "./session-timer/plan";
 import type { ExerciseLogRecord, StructuredBlock } from "./types";
@@ -215,5 +215,44 @@ test("bodyweight reps need no load evidence, while weighted raises and unknown a
   for (const guarded of [ { ...bodyweight, progression_hold: undefined }, { ...bodyweight, progression_hold: true },
     { ...bodyweight, block_type: "plyometric_power" } ]) {
     assert.equal(weightRecommendation(guarded, { allowProgression: true, recentPerformances: [history] }).tryReps, null);
+  }
+});
+
+test("history dates follow the measured weight, including an older fallback after unmeasured Done", () => {
+  const measured = { ...previous({ load: load(80) }), training_day: "2026-11-01" };
+  assert.equal(weightRecommendation(block, { recentPerformances: [measured] }).lastDay, "2026-11-01");
+  assert.equal(weightRecommendation(block, { recentPerformances: [{ ...measured, training_day: "2026-11-10", actual: {} }],
+    recentLoads: [{ exercise_key: "squat", display_name: "Back Squat", load: load(80), training_day: "2026-11-01" }] }).lastDay, "2026-11-01");
+});
+
+
+test("compact weight age uses only d/w/mo and hides missing, invalid or future dates", () => {
+  const now = new Date("2026-11-11T20:30:00Z");
+  for (const [day, expected] of [["2026-11-05", "6d"], ["2026-10-28", "2w"], ["2026-08-13", "3mo"],
+    ["2026-11-11", "0d"], [null, null], [undefined, null], ["bad", null], ["2026-02-30", null],
+    ["2026-11-12", null]] as const) assert.equal(compactWeightAge(day, now), expected);
+});
+
+test("generated bodyweight blocks progress by reps inside authority, never by external load", async () => {
+  const fixture = (await import("../test/fixtures/generated-bodyweight.json")).default;
+  const blocks = fixture.blocks as StructuredBlock[];
+  assert.ok(blocks.some(block => block.display_name === "Feet-Elevated Push-Up"));
+  assert.ok(blocks.some(block => block.display_name === "Slow-Lowered Pull-Up"));
+  for (const block of blocks) {
+    const reps = Number(block.reps);
+    const history = { ...previous({ sets: Number(block.sets), reps, feel: "easy" }), exercise_key: block.exercise_key ?? null, prescribed: block };
+    const result = weightRecommendation(block, { recentPerformances: [history], allowProgression: true });
+    assert.equal(result.suggested, null);
+    if (block.progression_hold !== false || !block.rep_range) { assert.equal(result.tryReps, null); continue; }
+    assert.equal(result.tryReps, reps + 1);
+    const measuredSets = Array.from({ length: Number(block.sets) }, () => ({ reps, load: null }));
+    assert.equal(weightRecommendation(block, { recentPerformances: [{ ...history, actual: {
+      sets: Number(block.sets), set_entries: measuredSets, feel: "easy" } }], allowProgression: true }).tryReps, reps + 1);
+    for (const actual of [{ sets: Number(block.sets) - 1, reps, feel: "easy" as const },
+      { sets: Number(block.sets), set_entries: Array.from({ length: Number(block.sets) }, (_, at) => ({ reps: at ? reps : reps - 1, load: null })), feel: "easy" as const },
+      { sets: Number(block.sets), reps: block.rep_range[1], feel: "easy" as const }]) {
+      assert.equal(weightRecommendation(block, { recentPerformances: [{ ...history, actual }], allowProgression: true }).tryReps, null);
+    }
+    assert.equal(weightRecommendation({ ...block, progression_hold: undefined }, { recentPerformances: [history], allowProgression: true }).tryReps, null);
   }
 });

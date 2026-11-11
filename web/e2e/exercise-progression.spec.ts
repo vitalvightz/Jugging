@@ -157,7 +157,7 @@ test("Today: first weight is asked once, persists, and progression is confirmed 
   expect(errors).toEqual([]);
 });
 
-test("Today timer preserves varied confirmed loads through review and the next exposure", async ({ page, baseURL }) => {
+for (const width of [320, 390]) test(`Today timer preserves varied confirmed loads before and after Done (${width}px)`, async ({ page, baseURL }) => {
   test.skip(!api, "Requires the real API in-memory harness");
   test.setTimeout(120_000);
   expect((await page.request.post(`${api}/__e2e/reset?progression=true&strength_only=true`)).ok()).toBe(true);
@@ -165,7 +165,7 @@ test("Today timer preserves varied confirmed loads through review and the next e
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await setup(page, baseURL!);
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width, height: 844 });
   await page.clock.install();
   expect((await page.request.post(`${api}/api/today/checkin`, { headers,
     data: { plan_id: planId, sleep: "good", body: "normal", pain: "none", phase: "GPP" } })).ok()).toBe(true);
@@ -196,6 +196,15 @@ test("Today timer preserves varied confirmed loads through review and the next e
     await expect(page.getByLabel(`Load kg, set ${set}`, { exact: true })).toHaveValue(String(90 + set * 10));
   }
   expect((await todayLog(page, planId)).squat).toBeUndefined();
-  await shot(page, "7-varied-history-unconfirmed-drafts");
+  await shot(page, `7-varied-history-unconfirmed-drafts-${width}`);
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(page.locator(".ex-log-status")).toBeVisible();
+  expect((await todayLog(page, planId)).squat.actual.load).toBeNull();
+  await page.locator(".ex-log-edit").click();
+  await page.getByRole("button", { name: "Log numbers", exact: true }).click();
+  for (let set = 1; set <= 3; set++) await expect(page.getByLabel(`Load kg, set ${set}`, { exact: true })).toHaveValue(String(90 + set * 10));
+  expect((await todayLog(page, planId)).squat.actual.set_entries).toBeNull();
+  await shot(page, `8-after-done-drafts-${width}`);
   expect(errors).toEqual([]);
 });

@@ -23,3 +23,12 @@ test("missing suggestions never appear as a completed weight or an invented sugg
 test("rep-only guidance renders without a load", () => {
   assert.equal(text(null, null, 9), "Try 9 reps");
 });
+
+test("historical age appears once beside Last, without long labels", () => {
+  const day = new Date(Date.now() - 6 * 86_400_000).toISOString().slice(0, 10);
+  const html = renderToStaticMarkup(<WeightRecommendation value={{ last: load(80), lastDay: day, suggested: load(82.5), tryReps: null, sets: [] }} />);
+  const text = html.replace(/<[^>]*>/g, "");
+  assert.equal(text, "Suggested 82.5 kg · Last 80 kg · 6d");
+  assert.equal(text.split("6d").length, 2);
+  assert.doesNotMatch(html, /title=|days ago|tooltip/);
+});

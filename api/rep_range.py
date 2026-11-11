@@ -69,10 +69,11 @@ _PROGRESSIVE_METHODS = frozenset({"strength", "strength_conditioning", "rehab"})
 
 
 @lru_cache(maxsize=1)
-def _bank_classes() -> dict[str, bool | None]:
-    """exercise key -> may progress by reps/load; None when the bank disagrees with itself."""
+def _bank_classes() -> tuple[dict[str, bool | None], frozenset[str]]:
+    """Progression verdicts and unweighted movement keys from one bank read."""
     rows = json.loads((DATA_DIR / "exercise_bank.json").read_text(encoding="utf-8"))
     classes: dict[str, bool | None] = {}
+    bodyweight: set[str] = set()
     for row in rows:
         if not isinstance(row, Mapping):
             continue
@@ -85,7 +86,11 @@ def _bank_classes() -> dict[str, bool | None]:
             and not _REACTIVE_TAGS.intersection(row.get("tags") or ())
         )
         classes[key] = progressive if classes.get(key, progressive) == progressive else None
-    return classes
+        equipment = row.get("equipment")
+        if equipment == "bodyweight" or (equipment in ("pullup_bar", "towel")
+                and ("pull-up" in key or "chin-up" in key) and not key.startswith("weighted-")):
+            bodyweight.add(key)
+    return classes, frozenset(bodyweight)
 
 
 def bank_allows_progression(exercise: Mapping[str, Any]) -> bool | None:
@@ -94,13 +99,23 @@ def bank_allows_progression(exercise: Mapping[str, Any]) -> bool | None:
     True: ordinary strength work. False: jumping, ballistic or power work.
     None: not in the strength bank, so unclassified.
     """
-    classes = _bank_classes()
+    classes, _ = _bank_classes()
     for key in (normalize_exercise_key(exercise.get("exercise_key")),
                 normalize_exercise_key(exercise.get("name")),
                 normalize_exercise_key(exercise.get("display_name"))):
         if key and key in classes:
             return classes[key]
     return None
+
+
+def bank_uses_bodyweight(exercise: Mapping[str, Any]) -> bool:
+    """Known unweighted bank movements; explicit authored loads always win."""
+    classes, keys = _bank_classes()
+    for field in ("exercise_key", "name", "display_name"):
+        key = normalize_exercise_key(exercise.get(field))
+        if key in classes:
+            return key in keys
+    return False
 
 
 def progression_context(

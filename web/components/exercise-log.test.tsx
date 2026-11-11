@@ -681,3 +681,21 @@ test("varied historical loads open as unconfirmed individual drafts, preserving 
   assert.deepEqual(Array.from(edited.container.querySelectorAll<HTMLInputElement>('input[aria-label^="Load kg, set"]')).map(node => node.value), ["80", "90", "100"]);
   edited.unmount();
 });
+
+test("Done keeps varied and partial historical drafts available without saving inferred measurements", async () => {
+  const block = { ...deadlift, sets: 3 };
+  for (const weights of [[100, 110, 120], [100, null, 120]]) {
+    const previous = record(block, { actual: { sets: 3, set_entries: weights.map(value =>
+      ({ reps: 8, load: value === null ? null : { value, unit: "kg" } })) } });
+    const view = mount(block, { recentPerformances: [previous] });
+    await view.click("Done");
+    assert.deepEqual(view.saved[0].actual, undefined);
+    await view.press(view.container.querySelector<HTMLButtonElement>(".ex-log-edit")!);
+    await view.click("Log numbers");
+    assert.deepEqual(Array.from(view.container.querySelectorAll<HTMLInputElement>('input[aria-label^="Load kg, set"]')).map(node => node.value), weights.map(value => value === null ? "" : String(value)));
+    assert.equal(view.saved.length, 1);
+    await view.click("Save");
+    assert.deepEqual(view.saved[1].actual?.set_entries?.map(row => row.load?.value ?? null), weights);
+    view.unmount();
+  }
+});

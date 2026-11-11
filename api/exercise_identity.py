@@ -35,7 +35,7 @@ from fightcamp.exercise_identity import support_insert_exercise_key
 from fightcamp.fight_date_utils import parse_fight_date
 from fightcamp.structured_session_identity import match_sessions_to_roles
 
-from .rep_range import apply_progression_context, progression_context
+from .rep_range import apply_progression_context, bank_uses_bodyweight, progression_context
 
 from .services.exercise_media import (
     NON_PHYSICAL_BLOCK_TYPES,
@@ -287,7 +287,7 @@ def reconcile_exercise_keys(structured_plan: Any, planning_brief: Any) -> Any:
 
 
 def reconcile_progression_context(structured_plan: Any, planning_brief: Any) -> Any:
-    """Only the progression context (rep_range / progression_hold), on read.
+    """Progression context and absent bodyweight load classification, on read.
 
     Identity is left exactly as stored; a block's stored key wins over a
     re-derived one, so an old card never changes which movement it is.
@@ -330,6 +330,9 @@ def _reconcile(structured_plan: Any, planning_brief: Any, *, keys: bool) -> Any:
                     # block's own planner assignment (never another role's).
                     identity = key if keys else (normalize_exercise_key(block.get("exercise_key")) or key)
                     assignment = _assignment_for(role, identity)
+                    if assignment is not None and not block.get("load") and bank_uses_bodyweight(block):
+                        block["load"] = {"method": "bodyweight", "value": 0, "unit": "bodyweight"}
+                        changed = True
                     changed = apply_progression_context(block, progression_context(
                         block, role, assignment, phase=phase, d_day=d_day if d_day >= 0 else None, athlete=athlete,
                     )) or changed
