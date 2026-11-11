@@ -112,28 +112,36 @@ async function capture(page: Page, name: string) {
 }
 
 for (const width of [390, 1280]) {
-  test(`nutrition loading reserves Weight cut's slot without remounting the session (${width}px)`, async ({ page, baseURL }) => {
+  test(`nutrition settles before Today reveals naturally sized cards (${width}px)`, async ({ page, baseURL }) => {
     await page.setViewportSize({ width, height: 844 });
     let release!: () => void;
     const nutritionReady = new Promise<void>(resolve => { release = resolve; });
     await setup(page, baseURL!, { nutritionReady });
     await page.goto("/today");
     const card = page.getByRole("region", { name: "Weight cut" });
-    await expect(card).toHaveAttribute("aria-busy", "true");
     const session = page.locator("#today-session");
-    await expect(session).toBeAttached();
-    const original = await session.elementHandle();
-    const before = await session.boundingBox();
+    await expect(page.getByLabel("Loading Today")).toBeVisible();
+    await expect(card).toHaveCount(0);
+    await expect(session).toHaveCount(0);
     if (shots) await page.screenshot({ path: `${shots}/today-weight-loading-${width}.png` });
     release();
-    await expect(card).not.toHaveAttribute("aria-busy", "true");
     await expect(card).toContainText("2.4");
-    expect(await original!.evaluate(node => node === document.getElementById("today-session"))).toBe(true);
-    const after = await session.boundingBox();
-    expect(Math.abs(after!.y - before!.y)).toBeLessThan(2);
+    await expect(session).toBeAttached();
+    await expect(page.getByLabel("Loading Today")).toHaveCount(0);
+    expect(await card.evaluate(node => getComputedStyle(node).minBlockSize)).toBe("auto");
     if (shots) await page.screenshot({ path: `${shots}/today-weight-loaded-${width}.png` });
   });
 }
+
+test("a failed nutrition read still reveals Today without a Weight cut gap", async ({ page, baseURL }) => {
+  await setup(page, baseURL!);
+  await page.route("**/api/nutrition/current", route => route.fulfill({ status: 400, contentType: "application/json", body: '{"detail":"Unavailable"}' }));
+  await page.goto("/today");
+  await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
+  await expect(page.locator("#today-session")).toBeAttached();
+  await expect(page.getByLabel("Loading Today")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Weight cut" })).toHaveCount(0);
+});
 
 for (const [width, height, theme] of [[390, 844, "dark"], [1280, 800, "dark"], [390, 844, "light"]] as const) {
   test(`Today's weight-cut card: weight-to-target and a one-tap weight entry (${width}px, ${theme})`, async ({ page, baseURL }) => {

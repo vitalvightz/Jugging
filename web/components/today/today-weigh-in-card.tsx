@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { useToast } from "@/components/toast-provider";
-import { Skeleton } from "@/components/skeleton";
 import { WeighInSheet } from "@/components/weigh-in-sheet";
-import { getNutritionCurrent, updateNutritionCurrent } from "@/lib/api";
+import { updateNutritionCurrent } from "@/lib/api";
 import { formatWeight, getBodyweightEntriesWithIndex, getCampWeight } from "@/lib/nutrition-bodyweight";
 import { localDateValue, withBodyweightLog } from "@/lib/nutrition-workspace";
 import type { NutritionBodyweightLogEntry, NutritionWorkspaceState } from "@/lib/types";
@@ -37,35 +36,15 @@ function CalendarIcon() {
  * (lib/weight-cut-status inFinalWeeks), so no other Today load reads nutrition.
  * The status is the API's, from the plan's own weight-cut severity score.
  */
-export function TodayWeighInCard({ token, fightDate, trainingDay }: {
+export function TodayWeighInCard({ token, fightDate, trainingDay, workspace, onWorkspaceChange }: {
   token: string;
   fightDate: string;
   trainingDay: string;
+  workspace: NutritionWorkspaceState;
+  onWorkspaceChange: (workspace: NutritionWorkspaceState) => void;
 }) {
   const { showToast } = useToast();
-  const [workspace, setWorkspace] = useState<NutritionWorkspaceState | null>(null);
-  const [failed, setFailed] = useState(false);
   const [editing, setEditing] = useState<{ sourceIndex: number | null } | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    getNutritionCurrent(token)
-      .then(next => { if (active) setWorkspace(next); })
-      .catch(() => { if (active) setFailed(true); });
-    return () => { active = false; };
-  }, [token]);
-
-  // A failed read leaves Today as it was; the tracker stays one tap away on Home.
-  if (failed) return null;
-  // Reserve the card's slot while nutrition loads so the session below stays put.
-  if (!workspace) return (
-    <section className={styles.card} aria-label="Weight cut" aria-busy="true">
-      <Skeleton variant="text" width="65%" height={20} />
-      <Skeleton variant="text" width="35%" height={28} />
-      <Skeleton variant="text" width="100%" height={20} />
-      <Skeleton variant="block" width="100%" height={44} />
-    </section>
-  );
 
   const entries = workspace.nutrition_monitoring.daily_bodyweight_log;
   const today = localDateValue();
@@ -83,7 +62,7 @@ export function TodayWeighInCard({ token, fightDate, trainingDay }: {
   const progress = cutProgress({ trend: derived.bodyweight_trend, fightDate: shared.fight_date || fightDate, currentKg: campWeight, targetKg: target });
 
   async function save(next: NutritionBodyweightLogEntry[], message: string) {
-    setWorkspace(await updateNutritionCurrent(token, withBodyweightLog(workspace!, next)));
+    onWorkspaceChange(await updateNutritionCurrent(token, withBodyweightLog(workspace, next)));
     setEditing(null);
     showToast(message, { tone: "success" });
   }

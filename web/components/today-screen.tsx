@@ -14,6 +14,7 @@ import { useAppSession } from "@/components/auth-provider";
 import { EnableRemindersRow } from "@/components/today/enable-reminders-row";
 import { useConnectivity, useOnReconnect } from "@/components/connection-status-banner";
 import { hasHealthDataConsent } from "@/lib/compliance";
+import { getNutritionCurrent } from "@/lib/api";
 import { ContextualFeedback } from "@/components/feedback/contextual-feedback";
 import { Skeleton } from "@/components/skeleton";
 import { formatTrainingDay } from "@/components/today/format";
@@ -41,7 +42,7 @@ import {
   shouldShowTodayCheckin,
   withoutInjuryTrackingReminder,
 } from "@/lib/today-authoritative";
-import type { TodayCompletionStatus } from "@/lib/types";
+import type { NutritionWorkspaceState, TodayCompletionStatus } from "@/lib/types";
 
 // Same window Plan Detail allows a just-saved plan (5 reads, 1.5s apart).
 const ARRIVAL_MAX_REREADS = 4;
@@ -264,6 +265,18 @@ export function TodayScreen() {
   // and under-18s have no weight-cut feature, so both gate it.
   const showWeighIn = Boolean(token && hasPlan && !openOngoing && activePlan.fight_date && trainingDate
     && inFinalWeeks(activePlan.fight_date, trainingDate) && me && !me.profile.is_minor && hasHealthDataConsent(me));
+  const [nutrition, setNutrition] = useState<NutritionWorkspaceState | null>();
+  useEffect(() => {
+    if (!showWeighIn || !token) return;
+    let active = true;
+    getNutritionCurrent(token)
+      .then(workspace => { if (active) setNutrition(workspace); })
+      .catch(() => { if (active) setNutrition(null); });
+    return () => { active = false; };
+  }, [showWeighIn, token]);
+  // Settle the optional card before the initial reveal, rather than inserting
+  // it above an already-mounted session. Refreshes keep the loaded page intact.
+  const nutritionPending = showWeighIn && nutrition === undefined;
   // Unknown (null) until shared history confirms it; never assumed.
   const [loggedToday, setLoggedToday] = useState<boolean | null>(null);
   const trainingDayLabel = useMemo(
@@ -338,7 +351,7 @@ export function TodayScreen() {
     return () => window.clearTimeout(timer);
   }, [arrivingPlanId, state, isRefreshing, refresh]);
 
-  if (isLoading || awaitingArrivingPlan) {
+  if (isLoading || awaitingArrivingPlan || nutritionPending) {
     return <TodayLoadingState />;
   }
   if (error && (!state || /unauthorized|forbidden|not authenticated/i.test(error))) {
@@ -535,7 +548,7 @@ export function TodayScreen() {
         ) : null}
       </section>
 
-      {showWeighIn ? <TodayWeighInCard token={token!} fightDate={String(activePlan.fight_date)} trainingDay={trainingDate!} /> : null}
+      {showWeighIn && nutrition ? <TodayWeighInCard token={token!} fightDate={String(activePlan.fight_date)} trainingDay={trainingDate!} workspace={nutrition} onWorkspaceChange={setNutrition} /> : null}
 
       {/* The session keeps one slot, so a change of order never remounts it
           (and loses a running timer); only the check-in moves around it. */}
