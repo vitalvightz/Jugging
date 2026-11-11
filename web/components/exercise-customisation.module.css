@@ -433,8 +433,8 @@
 
 .prescriptionEditor {
   display: grid;
-  gap: 12px;
-  padding: 12px 14px 14px;
+  gap: 10px;
+  padding: 4px 14px 14px;
 }
 .formatField select {
   min-height: 40px;

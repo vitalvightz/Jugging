@@ -1063,6 +1063,8 @@ function ExerciseDetail({
   const easier = execution.regressions.map(compactCoachLine);
   const swap = execution.substitutions[0] ?? null;
   const sessionRunning = useExerciseLoggingActive();
+  const logging = useWeightContext();
+  const hasSavedResult = Boolean(logging?.logs[block.block_id || ""]);
   // Banked injury rehab has an authoritative prescription to guide, led by the
   // plan's shared demo when one exists. Legacy prehab/training blocks retain
   // their ordinary exercise adjustments/logging.
@@ -1090,6 +1092,7 @@ function ExerciseDetail({
         {tagLabel ? (
           <p className="ex-detail-summary">{tagLabel}</p>
         ) : null}
+        {hasSavedResult ? <ExerciseLogPanel block={block} /> : null}
         {stopLine}
         {steps.length > 0 ? (
           <div className="sp-block-aside ex-detail-steps">
@@ -1097,13 +1100,18 @@ function ExerciseDetail({
             <ol>{steps.map(step => <li key={step}>{step}</li>)}</ol>
           </div>
         ) : null}
-        <div className="ex-detail-prescription">
+        {hasSavedResult ? <details className="ex-detail-section">
+          <summary>Planned</summary>
           <BlockCard block={block} openWeekIntent={openWeekIntent}
             sourceCountdown={sourceCountdown} embedded hideCues hideStopRule hideAdjustments
             hideInstructions={Boolean(media || block.private_media_id || block.community_revision_id)} />
-        </div>
+        </details> : <div className="ex-detail-prescription">
+          <BlockCard block={block} openWeekIntent={openWeekIntent}
+            sourceCountdown={sourceCountdown} embedded hideCues hideStopRule hideAdjustments
+            hideInstructions={Boolean(media || block.private_media_id || block.community_revision_id)} />
+        </div>}
         <ExerciseProgressionPreview block={block} />
-          <ExerciseLogPanel block={block} />
+        {!hasSavedResult ? <ExerciseLogPanel block={block} /> : null}
       </div>
     );
   }

@@ -73,6 +73,11 @@ for (const width of [390, 1280]) for (const completed of [false, true]) test(`we
   if (completed) {
     const actual = detail.getByRole("group", { name: "Today's actual", exact: true });
     await expect(actual).toContainText("110 kg");
+    await expect(detail.locator("details").filter({ hasText: "Planned" })).not.toHaveAttribute("open");
+    expect(await actual.evaluate(node => {
+      const planned = node.parentElement?.querySelector("details");
+      return Boolean(planned && (node.compareDocumentPosition(planned) & Node.DOCUMENT_POSITION_FOLLOWING));
+    })).toBe(true);
     await expect(actual).not.toContainText("122.5 kg");
     expect(errors).toEqual([]);
     return;
@@ -86,8 +91,9 @@ for (const width of [390, 1280]) for (const completed of [false, true]) test(`we
   await expect(picker).toContainText("120 kg");
   expect(await picker.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
   await picker.getByRole("button", { name: /Back Squat/ }).click();
-  await picker.locator("summary").filter({ hasText: "Load & effort" }).click();
+  await expect(picker.getByRole("spinbutton", { name: "Weight", exact: true })).toBeVisible();
   await expect(picker.getByRole("spinbutton", { name: "Weight", exact: true })).toHaveValue("122.5");
+  if (process.env.WEIGHT_QA_DIR) await picker.screenshot({ path: `${process.env.WEIGHT_QA_DIR}/weight-picker-prefilled-${width}.png` });
   await picker.getByRole("spinbutton", { name: "Weight", exact: true }).fill("");
   await expect(picker.getByRole("spinbutton", { name: "Weight", exact: true })).toHaveValue("");
   await expect(picker).toContainText("Last");

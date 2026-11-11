@@ -96,7 +96,7 @@ export function LoadField({ value, onChange, weighed, last, className }: {
         {asWeight ? (
           <>
             <input aria-label="Weight" type="number" inputMode="decimal" min={0} max={1000} step="any"
-              placeholder={last ? String(last.value) : "0"} value={amount}
+              placeholder={last ? String(last.value) : "Enter weight"} value={amount}
               onChange={e => changeAmount(e.target.value)} />
             <select aria-label="Weight unit" value={unit} onChange={e => {
               const next = e.target.value as LoadUnit;
