@@ -1,7 +1,5 @@
 .card { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-support, 14px); background: var(--bg-panel); color: var(--text-primary); }
 .head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
-/* Share the loading reservation with the loaded card, including its optional rows. */
-.card { min-block-size: 16rem; align-content: start; }
 .kicker { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 0.95rem; font-weight: 700; color: var(--text-primary); }
 .status { display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
 .status[data-tone="green"] { color: var(--success-ink); }
