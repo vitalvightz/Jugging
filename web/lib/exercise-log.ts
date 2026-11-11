@@ -501,20 +501,16 @@ export function lastLoadFor(
   return { value: match.load.value, unit: match.load.unit };
 }
 
-/** A log of work done, with the last weight (eased after a struggle) filled in when none was given. */
+/** Completion never converts a historical suggestion into a measurement. */
 export function withLastLoad<T extends Omit<ExerciseLogRequest, "plan_id" | "block_id">>(
   block: StructuredBlock,
   request: T,
   recentLoads: readonly ExerciseRecentLoad[] | undefined,
   history?: readonly ExerciseLogRecord[],
 ): T {
-  if (block.prescription_source === "athlete") return request;
-  const previous = lastPerformanceFor(block, history);
-  if (previous?.status === "skipped" || previous?.reason === "pain") return request;
-  if (request.status === "skipped" || request.actual?.load || request.actual?.set_entries) return request;
-  // After a struggle the row offers an eased weight, so "done" records that one.
-  const load = backoffLoadFor(block, previous) ?? lastLoadFor(block, recentLoads);
-  return load ? { ...request, actual: { ...(request.actual ?? {}), load } } : request;
+  // History is a draft suggestion, never evidence of work performed.
+  void block; void recentLoads; void history;
+  return request;
 }
 
 /**
@@ -631,8 +627,11 @@ function rpeCeiling(before: StructuredBlock): number {
  */
 export function feelOf(log: ExerciseLogRecord): ExerciseFeel | null {
   if (log.actual.feel) return log.actual.feel;
-  const effort = log.actual.effort;
-  if (effort && typeof effort.value === "number" && (effort.method ?? "RPE") === "RPE") {
+  const rows = log.actual.set_entries;
+  const measuredRpe = rows?.length && rows.every(row => typeof row.rpe === "number" && row.rpe >= 1 && row.rpe <= 10)
+    ? Math.max(...rows.map(row => row.rpe!)) : null;
+  const effort = log.actual.effort ?? (measuredRpe === null ? null : { method: "RPE", value: measuredRpe });
+  if (effort && typeof effort.value === "number" && effort.value >= 1 && effort.value <= 10 && (effort.method ?? "RPE") === "RPE") {
     const before = log.prescribed as StructuredBlock;
     const planned = plannedRpe(before);
     if (effort.value >= rpeCeiling(before)) return "hard";
@@ -668,7 +667,7 @@ function repsReached(log: ExerciseLogRecord, planned: [number, number]): number 
   const rows = log.actual.set_entries;
   if (rows?.length) {
     const counts = rows.map((row) => row.reps);
-    if (rows.length < (log.actual.sets ?? rows.length) || counts.some((count) => typeof count !== "number")) return null;
+    if (rows.length < Math.max(log.actual.sets ?? 0, Number(log.prescribed.sets) || 0) || counts.some((count) => typeof count !== "number")) return null;
     return Math.min(...(counts as number[]));
   }
   return typeof log.actual.reps === "number" ? log.actual.reps : planned[0];
@@ -716,18 +715,26 @@ export function nextStepFor(block: StructuredBlock, log: ExerciseLogRecord | nul
   const before = log.prescribed as StructuredBlock;
   const today = progressionRepRange(block);
   const planned = progressionRepRange(before);
-  if (!today || !planned || today.join() !== planned.join()) return null;
+  if (!today || !planned) return null;
+  const legacy = before.rep_range == null && planned[0] === planned[1]
+    && planned[0] === today[0] && planned[0] <= today[1];
+  if (!legacy && today.join() !== planned.join()) return null;
+  const comparable = legacy ? today : planned;
   if (!finitePositiveNumber(block.sets) || block.sets !== before.sets) return null;
   const rpeToday = plannedRpe(block);
   const rpeBefore = plannedRpe(before);
   if (rpeToday !== null && rpeBefore !== null && rpeToday < rpeBefore) return null;
   if ((log.actual.sets ?? block.sets) < block.sets) return null;
-  const reps = repsReached(log, planned);
+  const reps = repsReached(log, comparable);
   if (reps === null || reps < planned[0] || feelOf(log) !== "easy") return null;
-  if (reps < planned[1]) return { kind: "reps", reps: reps + 1 };
+  if (reps < comparable[1]) return { kind: "reps", reps: reps + 1 };
 
   const field = logFieldsForBlock(block).find((item) => item.key === "load");
-  const load = log.actual.load;
+  const entries = log.actual.set_entries;
+  const perSetLoads = entries?.map(row => row.load);
+  const load = log.actual.load ?? (perSetLoads?.length && perSetLoads.every(value =>
+    value && value.unit === perSetLoads[0]?.unit && finitePositiveNumber(value.value))
+    ? { value: Math.min(...perSetLoads.map(value => value!.value)), unit: perSetLoads[0]!.unit } : null);
   // A weight the plan names is the plan's to change.
   if (!field || field.prescribed || !load || load.unit !== field.apiUnit || !finitePositiveNumber(load.value)) return null;
   const step = plateStep(load);
@@ -767,14 +774,16 @@ export function needsFirstLoad(block: StructuredBlock, recentLoads: readonly Exe
   return Boolean(field) && !field!.prescribed && lastLoadFor(block, recentLoads) === null;
 }
 
-/** Whether today's saved log should still be asked "What weight did you use?". */
+/** Missing weights stay reviewable even when a historical suggestion exists. */
 export function asksForFirstLoad(
   block: StructuredBlock,
   log: ExerciseLogRecord | null,
   recentLoads: readonly ExerciseRecentLoad[] | undefined,
 ): boolean {
-  if (!log || log.status === "skipped" || log.actual?.load || log.actual?.set_entries?.length) return false;
-  return needsFirstLoad(block, recentLoads);
+  if (!log || log.status === "skipped" || log.actual?.load || (log.actual?.set_entries?.length && log.actual.set_entries.every(row => row.load != null))) return false;
+  return recentLoads !== undefined && block.prescription_source !== "athlete"
+    && FIRST_LOAD_BLOCK_TYPES.has(cleanText(block.block_type)?.toLowerCase() ?? "")
+    && logFieldsForBlock(block).some(field => field.key === "load");
 }
 
 /** A saved log resent with one thing added or changed; everything else as stored. */

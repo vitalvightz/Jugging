@@ -46,6 +46,7 @@ import type {
  * no provider and the rows render exactly as before.
  */
 export type ExerciseLogging = {
+  canWrite?: boolean;
   /** Today's saved logs, keyed by block id. */
   logs: Readonly<Record<string, ExerciseLogRecord>>;
   /** Saves (or corrects) one block's log. Rejects with a message to show. */
@@ -57,7 +58,7 @@ export type ExerciseLogging = {
   ) => Promise<void>;
   /** Pain is health data: the reason is only offered with health consent. */
   painReasonAllowed: boolean;
-  /** Last weights per exercise, carried into a "done" so it never needs typing. */
+  /** Last measured weights, offered as unconfirmed drafts. */
   recentLoads?: readonly ExerciseRecentLoad[];
   recentPerformances?: readonly ExerciseLogRecord[];
   /** Whether a raise may be suggested today (see `progressionOpen`). */
@@ -81,14 +82,15 @@ export function ExerciseLogProvider({
 /** True while the owning surface (Today) has the session running and provides
  * logging; false in a preview or anywhere without a provider. */
 export function useExerciseLoggingActive(): boolean {
-  return useContext(ExerciseLogContext) !== null;
+  const logging = useContext(ExerciseLogContext);
+  return logging !== null && logging.canWrite !== false;
 }
 
 function useBlockLogging(block: StructuredBlock) {
   const logging = useContext(ExerciseLogContext);
   const blockId = cleanText(block.block_id);
   const fields = useMemo(() => logFieldsForBlock(block), [block]);
-  if (!logging || !blockId || !isLoggableBlock(block)) {
+  if (!logging || logging.canWrite === false || !blockId || !isLoggableBlock(block)) {
     return null;
   }
   return { logging, blockId, fields, log: logging.logs[blockId] ?? null };
@@ -163,7 +165,7 @@ export function ExerciseLogTick({
     try {
       await logging.save({
         block_id: blockId,
-        ...withLastLoad(block, { status: "as_prescribed" }, logging.recentLoads, logging.recentPerformances),
+        ...withLastLoad(block, { status: "as_prescribed", ...(log ? { actual: log.actual } : {}) }, logging.recentLoads, logging.recentPerformances),
       });
       // No weight on record for this lift: open the row, where it is asked once.
       if (needsFirstLoad(block, logging.recentLoads) && !firstLoadDeclined(block)) onOpen();
@@ -188,6 +190,20 @@ export function ExerciseLogTick({
   );
 }
 
+/** Visible on the workout row before starting; suggestions never change the plan. */
+export function ExerciseProgressionPreview({ block }: { block: StructuredBlock }) {
+  const logging = useContext(ExerciseLogContext);
+  if (!logging || block.prescription_source === "athlete") return null;
+  const previous = lastPerformanceFor(block, logging.recentPerformances);
+  const next = nextStepFor(block, previous, logging.allowProgression === true);
+  const load = lastLoadFor(block, logging.recentLoads);
+  if (!previous && !load) return null;
+  return <span className="ex-row-log">
+    {previous ? `Last: ${performanceSummary(previous)}` : `Last: ${load!.value} ${load!.unit}`}
+    {next ? <span className="ex-log-suggestion"> · {nextStepLabel(next)}</span> : null}
+  </span>;
+}
+
 /** The numbers behind a saved log on a collapsed row: "80 kg", "Changed · 3 sets". */
 export function ExerciseLogBadge({ block }: { block: StructuredBlock }) {
   const state = useBlockLogging(block);
@@ -196,12 +212,14 @@ export function ExerciseLogBadge({ block }: { block: StructuredBlock }) {
   }
   const summary = logSummary(state.fields, state.log);
   // The tick already says "done"; a line is only worth it when there is more.
-  if (state.log.status === "as_prescribed" && summary === EXERCISE_LOG_STATUS_LABELS.as_prescribed) {
+  if (state.log.status === "as_prescribed" && summary === EXERCISE_LOG_STATUS_LABELS.as_prescribed
+    && !asksForFirstLoad(block, state.log, state.logging.recentLoads)) {
     return null;
   }
   return (
     <span className="ex-row-log" data-status={state.log.status}>
       {summary}
+      {asksForFirstLoad(block, state.log, state.logging.recentLoads) ? " · Weight missing — open to add or skip" : ""}
     </span>
   );
 }
@@ -342,7 +360,11 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
       setConfirming(typed.outliers);
       return;
     }
-    void save(amendedLog(log, { load: typed.actual.load }));
+    const actual = log.actual.set_entries?.length
+      ? { ...log.actual, set_entries: log.actual.set_entries.map(row =>
+          row.load == null ? { ...row, load: typed.actual.load } : row) }
+      : { ...log.actual, load: typed.actual.load };
+    void save({ status: log.status, reason: log.reason, notes: log.notes, actual });
   }
 
   const alert = error ? (
@@ -458,7 +480,7 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
           <div className="ex-log-first-load">
             <label className="ex-log-field" htmlFor={`${fieldId}-first-load`}>
               <span className="ex-log-field-label">
-                What weight did you use?
+                {log.actual.set_entries?.length ? "Weight used for sets with missing weights" : "What weight did you use?"}
                 <span className="ex-log-field-unit"> {loadField.unit}</span>
               </span>
               <input

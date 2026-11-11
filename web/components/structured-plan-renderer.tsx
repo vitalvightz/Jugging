@@ -94,7 +94,7 @@ import { WhyTooltip } from "@/components/why-tooltip";
 import { ExerciseDemo, ExerciseMediaProvider, useExerciseMedia } from "@/components/exercise-demo";
 import { RehabExerciseGuide, RehabExerciseLimits, RehabPrescription } from "@/components/rehab-prescription";
 import { PrivateExerciseMediaProvider, PrescribedPrivateVideo, PrescribedPrivateVideoThumbnail } from "@/components/private-exercise-video";
-import { ExerciseLogBadge, ExerciseLogPanel, ExerciseLogTick, useExerciseLoggingActive } from "@/components/exercise-log";
+import { ExerciseProgressionPreview, ExerciseLogBadge, ExerciseLogPanel, ExerciseLogTick, useExerciseLoggingActive } from "@/components/exercise-log";
 import { ExerciseActions, ExerciseSessionScope, SessionChangesFoot } from "@/components/exercise-customisation";
 import { demoThumbnailUrl } from "@/lib/exercise-demo";
 import { SafetyNote } from "@/components/safety-note";
@@ -899,6 +899,7 @@ export function ExerciseRow({
             {media || block.private_media_id || block.community_revision_id ? <span className="sr-only"> Has demo video.</span> : null}
           </button>
           {!compact ? metadata : null}
+          {!open ? <ExerciseProgressionPreview block={block} /> : null}
           {/* What was logged for it today; open, the log panel below says so. */}
           {rowCollapsed ? <ExerciseLogBadge block={block} /> : null}
           {/* Stop criteria are safety instructions: never hidden behind the tap.

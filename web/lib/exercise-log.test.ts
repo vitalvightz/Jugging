@@ -248,14 +248,14 @@ test("the session effort starts at the plan's middle RPE, on the 1-9 scale", () 
   assert.equal(plannedSessionRpe([{ session_id: "s", blocks: [plank] }]), null);
 });
 
-test("last time's weight is carried into a done log, only when the plan names none", () => {
+test("last weight is available as a suggestion but never added by completion", () => {
   const recent = [
     { exercise_key: null, display_name: "trap bar deadlift", load: { value: 100, unit: "kg" }, training_day: "2026-10-01" },
   ];
   assert.deepEqual(lastLoadFor(deadlift, recent), { value: 100, unit: "kg" });
   assert.deepEqual(withLastLoad(deadlift, { status: "as_prescribed" }, recent), {
     status: "as_prescribed",
-    actual: { load: { value: 100, unit: "kg" } },
+
   });
   // A weight already given, a skip, a held plank, or a prescribed load is left alone.
   const given = { status: "modified" as const, actual: { load: { value: 90, unit: "kg" } } };
@@ -378,7 +378,7 @@ test("the first weight is asked once for weighted strength work with none on rec
   // A skip, a weight already given, or sets logged one by one are left alone.
   assert.equal(asksForFirstLoad(deadlift, log(deadlift, { status: "skipped" }), []), false);
   assert.equal(asksForFirstLoad(deadlift, log(deadlift, { actual: { load: { value: 60, unit: "kg" } } }), []), false);
-  assert.equal(asksForFirstLoad(deadlift, log(deadlift, { actual: { sets: 1, set_entries: [{ reps: 8 }] } }), []), false);
+  assert.equal(asksForFirstLoad(deadlift, log(deadlift, { actual: { sets: 1, set_entries: [{ reps: 8 }] } }), []), true);
   // Jumps, holds, bodyweight or band work, a plan-set weight and the athlete's own exercises are never asked.
   for (const block of [
     { ...deadlift, block_type: "plyometric_power" }, plank, { ...deadlift, load: { method: "bodyweight" } },
@@ -421,12 +421,12 @@ test("a struggled weight suggests easing off, never a raise", () => {
   // A stated reason outranks the numbers: missing kit or a strong day is not the weight being too much.
   assert.equal(backoffLoadFor(deadlift, struggled({ reason: "equipment", status: "modified", actual: { sets: 2 } })), null);
   assert.equal(backoffLoadFor(deadlift, struggled({ reason: "felt_strong", status: "modified", actual: { effort: { method: "RPE", value: 9 } } })), null);
-  // "Done" records the eased weight the row offered, not last time's.
+  // Completion never records an unconfirmed suggestion.
   const recent = [{ exercise_key: null, display_name: deadlift.display_name!, load: { value: 80, unit: "kg" }, training_day: "2026-10-01" }];
   assert.deepEqual(withLastLoad(deadlift, { status: "as_prescribed" }, recent, [struggled({ reason: "fatigue", status: "modified" })]),
-    { status: "as_prescribed", actual: { load: { value: 72.5, unit: "kg" } } });
+    { status: "as_prescribed" });
   assert.deepEqual(withLastLoad(deadlift, { status: "as_prescribed" }, recent, [struggled({})]),
-    { status: "as_prescribed", actual: { load: { value: 80, unit: "kg" } } });
+    { status: "as_prescribed" });
   // Pain and skips are handled by not carrying the weight over at all.
   for (const patch of [{ reason: "pain" as const }, { status: "skipped" as const }]) {
     assert.equal(backoffLoadFor(deadlift, struggled({ ...patch, actual: { sets: 2 } })), null);
@@ -501,9 +501,9 @@ test("a fixed working number progresses inside the server's permitted range", ()
   // A range the prescription sits outside, or a malformed one, is ignored.
   assert.deepEqual(progressionRepRange({ ...squat, rep_range: [10, 12] }), [8, 8]);
   assert.deepEqual(progressionRepRange({ ...squat, rep_range: [12, 8] }), [8, 8]);
-  // A block logged before ranges existed is a different dose: nothing is guessed.
+  // Legacy fixed reps can be compared with the current permitted range.
   const legacy = log(squat, { prescribed: { ...squat, rep_range: null }, actual: { feel: "easy" } });
-  assert.equal(nextStepFor(squat, legacy, true), null);
+  assert.deepEqual(nextStepFor(squat, legacy, true), { kind: "reps", reps: 9 });
 });
 
 test("the server's hold stops every suggestion, and only strength work progresses this way", () => {
@@ -513,4 +513,22 @@ test("the server's hold stops every suggestion, and only strength work progresse
   for (const block_type of ["plyometric_power", "speed", "conditioning", "strength_speed"]) {
     assert.equal(nextStepFor({ ...squat, block_type }, { ...done, prescribed: { ...squat, block_type } }, true), null);
   }
+});
+
+test("per-set progression needs every prescribed set, valid effort and known weights", () => {
+  const block = { ...deadlift, sets: 3, reps: 8, rep_range: [8, 12] };
+  const previous = log(block, { prescribed: { ...block, rep_range: null },
+    actual: { sets: 3, set_entries: [115, 120, 125].map(value => ({
+      reps: 12, load: { value, unit: "kg" }, rpe: 6,
+    })) } });
+  assert.equal(nextStepFor(block, previous, true)?.kind, "load");
+  assert.equal(nextStepFor(block, { ...previous, actual: { ...previous.actual,
+    set_entries: previous.actual.set_entries!.slice(0, 2) } }, true), null);
+  for (const rpe of [0, -1, 11, NaN]) {
+    assert.equal(nextStepFor(block, { ...previous, actual: { ...previous.actual,
+      effort: { method: "RPE", value: rpe },
+      set_entries: previous.actual.set_entries!.map(row => ({ ...row, rpe })) } }, true), null);
+  }
+  assert.equal(nextStepFor(block, { ...previous, actual: { ...previous.actual,
+    set_entries: previous.actual.set_entries!.map(row => ({ ...row, rpe: undefined })) } }, true), null);
 });

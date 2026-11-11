@@ -8,14 +8,15 @@ import type { ExerciseLogRecord, ExerciseRecentLoad } from "@/lib/types";
 
 /**
  * Today's exercise logs for the active plan, and the save that writes one.
- * Returns null while logging is closed (no started session today), so the
- * exercise rows render without any log controls.
+ * Fetches history before Start; canWrite keeps measurement controls closed
+ * until the session starts.
  */
 export function useTodayExerciseLogs({
   token,
   planId,
   trainingDay,
   enabled,
+  canWrite = true,
   painReasonAllowed,
   allowProgression = false,
   onError,
@@ -26,6 +27,7 @@ export function useTodayExerciseLogs({
   trainingDay: string;
   /** The server only accepts a log for a session started or completed today. */
   enabled: boolean;
+  canWrite?: boolean;
   painReasonAllowed: boolean;
   allowProgression?: boolean;
   /** Reports a failed one-tap save from a collapsed row. */
@@ -105,8 +107,8 @@ export function useTodayExerciseLogs({
   const recentLoads = loaded.scope === scope ? loaded.recentLoads : undefined;
   const recentPerformances = loaded.scope === scope ? loaded.recentPerformances : undefined;
   return useMemo(
-    () => (active ? { logs, save, saveMany, recentLoads, recentPerformances, allowProgression, painReasonAllowed, onError } : null),
-    [active, logs, save, saveMany, recentLoads, recentPerformances, allowProgression, painReasonAllowed, onError],
+    () => (active ? { canWrite, logs, save, saveMany, recentLoads, recentPerformances, allowProgression, painReasonAllowed, onError } : null),
+    [canWrite, active, logs, save, saveMany, recentLoads, recentPerformances, allowProgression, painReasonAllowed, onError],
   );
 }
 

@@ -254,6 +254,21 @@ export function useSessionTimer({
     [storageKey, keepFinishedRun, analyticsToken],
   );
 
+  // History can arrive after opening or resuming the timer. Refresh suggestions
+  // only: recorded drafts, confirmations and adjusted timer targets stay intact.
+  useEffect(() => {
+    const current = stateRef.current;
+    let changed = false;
+    const refreshed = current.items.map(item => {
+      if (item.kind !== "sets") return item;
+      const incoming = items.find(candidate => candidate.id === item.id);
+      if (incoming?.kind !== "sets" || JSON.stringify(incoming.suggestedLoads) === JSON.stringify(item.suggestedLoads)) return item;
+      changed = true;
+      return { ...item, suggestedLoads: incoming.suggestedLoads };
+    });
+    if (changed) commit({ ...current, items: refreshed });
+  }, [items, commit]);
+
   const run = useCallback(
     (action: (current: TimerState, at: number) => TimerStep) => {
       const at = Date.now();

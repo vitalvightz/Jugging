@@ -57,6 +57,7 @@ function mount(
     recentPerformances?: ExerciseLogRecord[];
     recentLoads?: ExerciseRecentLoad[];
     allowProgression?: boolean;
+    canWrite?: boolean;
     fail?: string;
     open?: boolean;
   } = {},
@@ -71,6 +72,7 @@ function mount(
   const render = () => {
     const logging: ExerciseLogging = {
       logs,
+      canWrite: options.canWrite,
       painReasonAllowed: options.painReasonAllowed ?? true,
       recentPerformances: options.recentPerformances,
       recentLoads: options.recentLoads,
@@ -391,10 +393,10 @@ test("a struggled weight is offered eased off, at any readiness, and stays edita
   await view.click("Log numbers");
   const load = view.container.querySelector<HTMLInputElement>('.ex-log-field input[id$="-load"]');
   assert.equal(load?.value, "90");
-  // "Done" records the eased weight on screen, not last time's.
+  // A suggestion is not a confirmed measurement.
   await view.click("Cancel");
   await view.click("Done");
-  assert.deepEqual(view.saved[0], { block_id: "blk-deadlift", status: "as_prescribed", actual: { load: { value: 90, unit: "kg" } } });
+  assert.deepEqual(view.saved[0], { block_id: "blk-deadlift", status: "as_prescribed" });
   view.unmount();
 });
 
@@ -406,11 +408,11 @@ test("a stated reason other than fatigue is not read as the weight being too muc
   view.unmount();
 });
 
-test("last performance stays inside the open row and the suggested load is editable", async () => {
+test("last performance is visible collapsed and the suggested load remains editable", async () => {
   const block = { ...deadlift, progression_rule: "Add 2.5 kg when all sets complete." };
   const previous = record(deadlift, { plan_id: "previous-plan", actual: { load: { value: 80, unit: "kg" }, effort: { method: "RPE", value: 6 } } });
   const collapsed = mount(block, { open: false, recentPerformances: [previous], allowProgression: true });
-  assert.equal(collapsed.text().includes("Last:"), false);
+  assert.equal(collapsed.text().includes("Last:"), true);
   collapsed.unmount();
   const view = mount(block, { recentPerformances: [previous], allowProgression: true });
   assert.match(view.text(), /Last: 80 kg.*4 × 8.*Try 82.5 kg/);
@@ -486,7 +488,7 @@ test("the tick opens the row for the first weight, and only when there is none t
     { exercise_key: null, display_name: "Trap Bar Deadlift", load: { value: 80, unit: "kg" }, training_day: "2026-10-01" },
   ] });
   await known.press(known.container.querySelector<HTMLButtonElement>(".ex-log-tick")!);
-  assert.deepEqual(known.saved[0].actual?.load, { value: 80, unit: "kg" });
+  assert.equal(known.saved[0].actual?.load, undefined);
   assert.equal(known.toggled(), 0);
   known.unmount();
   // Holds and jumps are never asked what they weighed.
@@ -530,4 +532,38 @@ test("an easy session below the top of the rep range suggests a rep, not more we
   const held = mount(squat, { recentPerformances: [previous], allowProgression: false });
   assert.doesNotMatch(held.text(), /Try/);
   held.unmount();
+});
+
+test("recommendations appear on the collapsed workout before Start without logging controls", () => {
+  const block = { ...deadlift, rep_range: [8, 12] };
+  const view = mount(block, { open: false, canWrite: false, allowProgression: true,
+    recentPerformances: [record(block, { plan_id: "older-plan", actual: { reps: 8,
+      load: { value: 115, unit: "kg" }, feel: "easy" } })] });
+  assert.match(view.text(), /Last:.*115 kg.*Try 9 reps/);
+  assert.equal(view.container.querySelector(".ex-log-tick"), null);
+  assert.equal(view.saved.length, 0);
+  view.unmount();
+});
+
+test("review weight confirmation fills only missing set weights and reaches next exposure", async () => {
+  const existing = record(deadlift, { actual: { sets: 2, set_entries: [
+    { set_number: 1, reps: 8, load: { value: 115, unit: "kg" }, rpe: 6 },
+    { set_number: 2, reps: 7, load: null, rpe: 7 },
+  ] } });
+  const view = mount(deadlift, { logs: { [deadlift.block_id!]: existing }, recentLoads: [] });
+  assert.match(view.text(), /Weight used for sets with missing weights/);
+  await view.type("Weight used for sets with missing weights", "125");
+  await view.click("Save weight");
+  const actual = view.saved[0].actual!;
+  assert.deepEqual(actual.set_entries, [
+    existing.actual.set_entries![0],
+    { ...existing.actual.set_entries![1], load: { value: 125, unit: "kg" } },
+  ]);
+  const { withHistoricalTimerLoads } = await import("@/lib/session-timer/history");
+  const { buildTimerItems } = await import("@/lib/session-timer/plan");
+  const items = withHistoricalTimerLoads(buildTimerItems([{ blocks: [deadlift] }]), [deadlift], [],
+    [{ ...existing, actual }]);
+  assert.ok(items[0].kind === "sets");
+  assert.deepEqual(items[0].suggestedLoads, ["115", "125", null, null]);
+  view.unmount();
 });
