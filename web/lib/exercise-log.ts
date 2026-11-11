@@ -639,7 +639,7 @@ export function feelOf(log: ExerciseLogRecord): ExerciseFeel | null {
     if (log.actual.feel === "hard") return planned !== null && effort.value <= planned ? "right" : "hard";
     if (log.actual.feel === "right") return "right";
     if (log.actual.feel === "easy") return planned !== null && effort.value >= planned ? "right" : "easy";
-    return effort.value <= 7 && (planned === null || effort.value <= planned) ? "easy" : "right";
+    return effort.value <= 7 && (planned === null || effort.value < planned) ? "easy" : "right";
   }
   return log.actual.feel ?? (log.reason === "felt_strong" ? "easy" : null);
 }

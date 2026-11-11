@@ -339,11 +339,28 @@ test("inside a rep range reps come first, and a one-tap done counts as the botto
 test("feedback is interpreted consistently with recorded RPE against the plan", () => {
   const felt = (patch: Partial<ExerciseLogRecord>) => feelOf(log(deadlift, { prescribed: deadlift, ...patch }));
   assert.equal(felt({ actual: { feel: "hard", effort: { method: "RPE", value: 5 } } }), "right");
-  assert.equal(felt({ actual: { effort: { method: "RPE", value: 7 } } }), "easy");
+  assert.equal(felt({ actual: { effort: { method: "RPE", value: 7 } } }), "right");
   assert.equal(felt({ actual: { effort: { method: "RPE", value: 8 } } }), "right");
   assert.equal(felt({ actual: { effort: { method: "RPE", value: 9 } } }), "hard");
   assert.equal(felt({ reason: "felt_strong", status: "modified", actual: { reps: 10 } }), "easy");
   assert.equal(felt({}), null);
+});
+
+test("matching planned RPE without feedback holds progression for summary and per-set effort", () => {
+  for (const effort of [
+    { effort: { method: "RPE", value: 7 } },
+    { sets: 4, set_entries: Array.from({ length: 4 }, () => ({ reps: 8, rpe: 7, load: { value: 100, unit: "kg" } })) },
+  ] satisfies ExerciseLogRecord["actual"][]) {
+    const completed = log(deadlift, { actual: { reps: 8, load: { value: 100, unit: "kg" }, ...effort } });
+    assert.equal(feelOf(completed), "right");
+    assert.equal(nextStepFor(deadlift, completed, true), null);
+    assert.equal(backoffLoadFor(deadlift, completed), null);
+    const unplanned = { ...deadlift, effort: undefined };
+    const withoutTarget = { ...completed, prescribed: unplanned };
+    assert.equal(feelOf(withoutTarget), "easy");
+    assert.equal(nextStepFor(unplanned, withoutTarget, true)?.kind, "load");
+  }
+  assert.equal(feelOf(log(deadlift, { actual: { effort: { method: "RPE", value: 6 } } })), "easy");
 });
 
 test("a green day never outranks taper, the final fortnight, an injury or a hold", () => {
