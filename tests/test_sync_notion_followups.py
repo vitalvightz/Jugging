@@ -1279,3 +1279,76 @@ def test_shared_counter_works_without_retired_onboarding_fields():
     changes = sync.get_changes(page, OBSERVED_NOW)
     assert changes["Synced Signup Nudges Sent"] == {"number": 1}
     assert changes["Signup Nudge 1 At"] == sync.date_patch(OBSERVED_NOW.isoformat())
+
+
+def duplicate_candidate(identifier, name, handle, verified, stage="Ready to Send", created="2026-11-01T00:00:00Z"):
+    page = row(stage=stage)
+    page["id"] = identifier
+    page["created_time"] = created
+    page["properties"].update({
+        "Candidate": {"title": [{"plain_text": name}]},
+        "Instagram Handle": {"rich_text": [{"plain_text": handle}]},
+        "Verified Profile URL": {"url": verified},
+        "Notes": {"rich_text": []},
+    })
+    return page
+
+
+def test_duplicate_instagram_url_variants_and_misspelling_are_held(monkeypatch):
+    old = duplicate_candidate("old", "Austin Lenehan", "lenehandz",
+                              "https://www.instagram.com/lenehandz/#", created="2026-10-30T10:00:00Z")
+    new = duplicate_candidate("new", "Austin lenehab", "lenehandz",
+                              "https://www.instagram.com/lenehandz?rpxt=123", created="2026-11-07T10:00:00Z")
+    pages = {"old": old, "new": new}
+    writes = []
+    def request(method, path, body=None):
+        identifier = path.rsplit("/", 1)[-1]
+        if method == "GET":
+            return copy.deepcopy(pages[identifier])
+        assert method == "PATCH"
+        writes.append((identifier, body["properties"]))
+        pages[identifier]["properties"].update(body["properties"])
+    monkeypatch.setattr(sync, "all_pipeline_rows", lambda: list(pages.values()))
+    monkeypatch.setattr(sync, "request", request)
+    assert sync.quarantine_duplicate_profiles() == 1
+    assert writes[0][0] == "new"
+    assert writes[0][1]["Stage (AI Fills First)"] == {"select": {"name": "Review Hold"}}
+    assert "old" in sync.plain(writes[0][1], "Notes")
+    assert sync.quarantine_duplicate_profiles() == 0  # Idempotent.
+
+
+def test_existing_reply_wins_over_older_sendable_duplicate(monkeypatch):
+    sendable = duplicate_candidate("older", "Christian Paez", "210.sonic",
+                                   "https://instagram.com/210.sonic/", created="2026-10-01T00:00:00Z")
+    replied = duplicate_candidate("replied", "Christian Sonic Paez", "210.sonic",
+                                  "https://instagram.com/210.sonic", stage="Replied",
+                                  created="2026-11-01T00:00:00Z")
+    writes = []
+    monkeypatch.setattr(sync, "all_pipeline_rows", lambda: [sendable, replied])
+    def request(method, path, body=None):
+        if method == "GET":
+            return copy.deepcopy(sendable)
+        writes.append((path, body))
+    monkeypatch.setattr(sync, "request", request)
+    assert sync.quarantine_duplicate_profiles() == 1
+    assert writes[0][0] == "/pages/older"
+    assert writes[0][1]["properties"]["Stage (AI Fills First)"]["select"]["name"] == "Review Hold"
+
+
+def test_duplicate_guard_does_not_patch_changed_or_distinct_profiles(monkeypatch):
+    a = duplicate_candidate("a", "Person A", "person_a", "https://instagram.com/person_a")
+    b = duplicate_candidate("b", "Person B", "person_a", "https://instagram.com/person_a?x=1",
+                            created="2026-11-02T00:00:00Z")
+    changed = copy.deepcopy(b)
+    changed["properties"]["Verified Profile URL"]["url"] = "https://instagram.com/someone_else"
+    monkeypatch.setattr(sync, "all_pipeline_rows", lambda: [a, b])
+    writes = []
+    def request(method, path, body=None):
+        if method == "GET":
+            return changed
+        writes.append(body)
+    monkeypatch.setattr(sync, "request", request)
+    assert sync.quarantine_duplicate_profiles() == 0
+    assert writes == []
+    monkeypatch.setattr(sync, "all_pipeline_rows", lambda: [a, changed])
+    assert sync.quarantine_duplicate_profiles() == 0
