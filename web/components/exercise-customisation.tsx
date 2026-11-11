@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useId, useMemo, useS
 import Link from "next/link";
 import { useWeightContext } from "./exercise-log";
 import { WeightRecommendation } from "./weight-recommendation";
-import { weightRecommendation } from "@/lib/weight-recommendation";
+import { personalWeightRecommendation } from "@/lib/weight-recommendation";
 
 import { useSeenOnce } from "@/components/once-hint";
 import { ExerciseDemo } from "@/components/exercise-demo";
@@ -469,16 +469,17 @@ function ExerciseOptionsSheet({
     const raw = { ...option.suggested_dose, mode: option.dose_mode ?? "text" } as DoseDraft;
     const dose = withPastDose(raw, past?.get(option.exercise_key));
     const previousLoad = past?.get(option.exercise_key)?.latest_values.load;
-    const recommendation = weightRecommendation({
+    const recommendation = personalWeightRecommendation({
       exercise_key: option.exercise_key, display_name: option.name,
       block_type: dose.mode === "reps" ? "strength" : dose.mode,
       sets: dose.sets, reps: dose.reps, load: parseLoad(raw.load_or_intensity),
       progression_hold: (mode === "swap"
         ? scope?.session.blocks?.find(block => block.block_id === blockId)?.progression_hold === true
         : scope?.session.blocks?.some(block => block.progression_hold === true)
-          && !scope?.session.blocks?.some(block => block.progression_hold === false)) || undefined,
+          && !scope?.session.blocks?.some(block => block.progression_hold === false)) || option.progression_hold,
+      bodyweight_progression: option.bodyweight_progression,
       effort: dose.rpe ? { method: "RPE", value: dose.rpe } : undefined,
-    }, { ...weightContext,
+    }, past?.get(option.exercise_key), { ...weightContext,
       lowerLoads: weightContext?.lowerLoads || Boolean(raw.load_or_intensity && !parseLoad(raw.load_or_intensity)),
       recentLoads: [
       ...(weightContext?.recentLoads ?? []),

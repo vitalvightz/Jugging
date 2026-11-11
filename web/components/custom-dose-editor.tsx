@@ -1,4 +1,5 @@
 "use client";
+import { useWeightContext } from "./exercise-log";
 import { WeightRecommendation } from "./weight-recommendation";
 import { personalWeightRecommendation } from "@/lib/weight-recommendation";
 import { parseLoad } from "@/lib/load-entry";
@@ -63,14 +64,18 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
   /** Only the fields that complete the dose, for quick entry while adding exercises. */
   essential?: boolean;
 }) {
+  const context = useWeightContext();
+  const exerciseType = movement && "exercise_type" in movement ? movement.exercise_type : null;
   const recommendation = personalWeightRecommendation({
     display_name: past?.name ?? "Exercise", block_type: "strength",
+    progression_hold: exerciseType === "power" || exerciseType === "other" ? true : undefined,
     // Eligibility for the weight field does not fill any unfinished rep/set inputs.
-    sets: dose.sets, reps: dose.mode === "reps" ? dose.reps ?? 1 : dose.reps,
+    sets: dose.sets, reps: dose.reps,
     load: parseLoad(dose.load_or_intensity),
-  }, past);
+    effort: dose.rpe ? { method: "RPE", value: dose.rpe } : null,
+  }, past, context ?? {});
   const weightPreview = <><WeightRecommendation value={recommendation} />
-    {!dose.load_or_intensity && recommendation.suggested ? <button type="button" className="ghost-button"
+    {recommendation.suggested && dose.load_or_intensity !== `${recommendation.suggested.value} ${recommendation.suggested.unit}` ? <button type="button" className="ghost-button"
       onClick={() => onChange({ ...dose, load_or_intensity: `${recommendation.suggested!.value} ${recommendation.suggested!.unit}` })}>
       Use suggested weight
     </button> : null}</>;

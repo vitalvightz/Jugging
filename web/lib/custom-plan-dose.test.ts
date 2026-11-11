@@ -8,7 +8,7 @@ const suggestion = (value: Partial<CustomDoseSuggestion>): CustomDoseSuggestion 
 const past = (latest_values: Record<string, unknown>) => ({
   id: "key:back_squat", name: "Back squat", identity_kind: "canonical", latest_day: "2026-10-30",
   latest_values: { sets: null, reps: null, rounds: null, load: null, duration: null, work: null, rest: null, distance: null, effort: null, feel: null, set_entries: null, ...latest_values },
-  latest_confirmed_as_prescribed: true, best_loads: [], latest_source: "plan", log_format: "strength",
+  latest_performance: null, progression_hold: null, bodyweight_progression: null, allow_progression: true, latest_confirmed_as_prescribed: true, best_loads: [], latest_source: "plan", log_format: "strength",
 }) as PersonalExercise;
 
 test("the library's source dose wins over its format", () => {

@@ -20,7 +20,7 @@ test("only a number with kg or lb is a weight; other text stays text", () => {
 
 test("an exercise with no suggested format starts from what the athlete did last time", () => {
   const dose = withPastDose({ mode: "reps" as const }, past({ sets: 4, reps: 6, load: { value: 80, unit: "kg" }, effort: { method: "RPE", value: 8 } }));
-  assert.deepEqual(dose, { mode: "reps", sets: 4, reps: 6, rpe: 8, load_or_intensity: "80 kg" });
+  assert.deepEqual(dose, { mode: "reps", sets: 4, reps: 6, load_or_intensity: "80 kg" });
   const run = withPastDose(blankDose(), past({ distance: { value: 5, unit: "km" } }));
   assert.equal(run.mode, "distance");
   assert.equal(run.distance, 5);

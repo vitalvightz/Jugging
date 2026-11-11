@@ -4,6 +4,9 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useSeenOnce } from "./once-hint";
 import { EmptyState } from "./empty-state";
 import { TrainingBlock } from "./session-details";
+import { WeightRecommendation } from "./weight-recommendation";
+import { personalWeightRecommendation } from "@/lib/weight-recommendation";
+import type { StructuredBlock } from "@/lib/types";
 import { ExerciseProgress } from "./exercise-progress";
 import { getExercisePerformances } from "@/lib/api";
 import type { ExerciseLibraryResponse, ExercisePerformancesResponse, PersonalExercise } from "@/lib/api-schema.generated";
@@ -20,10 +23,15 @@ export type ExerciseHistoryCache = Map<string, Promise<ExercisePerformancesRespo
 
 function ExerciseCard({ exercise, onSelect }: { exercise: PersonalExercise; onSelect: () => void }) {
   const result = exerciseResult(exercise);
+  const recommendation = personalWeightRecommendation({ ...exercise.latest_performance?.prescribed,
+    block_type: "strength", sets: exercise.latest_values.sets,
+    reps: (exercise.latest_performance?.prescribed.reps as StructuredBlock["reps"]) ?? exercise.latest_values.reps,
+  }, exercise);
   return <li className={`history-row ${styles.card}`} data-tone={exercise.identity_kind === "legacy" ? "grey" : "green"}>
     <button className={styles.open} type="button" aria-haspopup="dialog" aria-label={`View ${exercise.name} performance history${exercise.identity_kind === "legacy" ? ` for ${formatAppDate(exercise.latest_day)}` : ""}`} onClick={onSelect}>
       <span className={styles.cardHeading}><span className="history-row-title">{exercise.name}</span><span className={styles.chevron} aria-hidden="true">›</span></span>
       <span className={styles.resultLabel}>{result.label}</span><strong className={styles.result} data-weight={exercise.best_loads.length > 0 || undefined}>{result.value}</strong>
+      <WeightRecommendation value={{ ...recommendation, lastDay: undefined }} />
       <span className={styles.date}>{exercise.identity_kind === "legacy" ? "Unlinked record" : exercise.identity_kind === "personal" ? "Your exercise · Last performed" : "Last performed"} · {formatAppDate(exercise.latest_day)}</span>
     </button>
   </li>;
@@ -126,6 +134,10 @@ export function ExerciseDetails({ exercise, asOf, token, cache, onDismiss }: {
     finally { loadingMore.current = false; if (alive.current) setBusy(false); }
   }
   const result = exerciseResult(exercise);
+  const recommendation = personalWeightRecommendation({ ...exercise.latest_performance?.prescribed,
+    block_type: "strength", sets: exercise.latest_values.sets,
+    reps: (exercise.latest_performance?.prescribed.reps as StructuredBlock["reps"]) ?? exercise.latest_values.reps,
+  }, exercise);
   return <dialog ref={dialog} className={`${sheet.dialog} ${sheet.workspace}`} aria-labelledby={heading} data-closing={closing || undefined}
     onCancel={event => { event.preventDefault(); dismiss(); }}
     onClick={event => { if (event.target === event.currentTarget) {
@@ -136,6 +148,7 @@ export function ExerciseDetails({ exercise, asOf, token, cache, onDismiss }: {
       <div><p className={styles.resultLabel}>{result.label}</p><strong className={styles.detailResult} data-weight={exercise.best_loads.length > 0 || undefined}>{result.value}</strong></div></div>
       <button type="button" className={sheet.close} aria-label="Close exercise history" onClick={() => dismiss()}>×</button></header>
     <div className={sheet.body} tabIndex={0} role="region" aria-label="Exercise performance record">
+      <WeightRecommendation value={recommendation} />
       {/* Opens near its loaded size (skeletons of the chart and the list),
           glides the rest of the way, and fades the record in without moving
           the sheet. */}

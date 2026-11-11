@@ -21,6 +21,8 @@ class ExerciseAlternative(BaseModel):
     equipment: list[str] | None = None
     media: ExerciseMedia | None = None
     prescription: str | None = None
+    progression_hold: bool | None = None
+    bodyweight_progression: bool | None = None
     dose_required: bool = False
     dose_mode: Literal["reps", "duration", "intervals", "distance", "text"] = "reps"
     suggested_dose: dict[str, Any] | None = None

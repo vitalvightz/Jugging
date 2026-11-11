@@ -2281,8 +2281,7 @@ export function PlanViewer({
     trainingDay: planCompletions?.current_training_day ?? plan.schedule_context?.current_training_day ?? "",
     enabled: viewerRole === "athlete" && plan.athlete_id === viewerProfileId,
     canWrite: false, painReasonAllowed: false,
-    // Plan browsing has no current readiness decision. Never assume it is safe to increase.
-    allowProgression: false,
+    // The history response supplies current readiness when this view has no live decision.
     ...currentOperationalState?.weightContext,
   });
   const exerciseCustomisation = useMemo<ExerciseCustomisation | null>(() => {

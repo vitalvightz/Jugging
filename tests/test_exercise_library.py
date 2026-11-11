@@ -227,7 +227,7 @@ def test_owner_scoping_in_api_includes_index_detail_and_legacy_uuid():
 
 def test_store_index_is_owner_scoped_compact_keyset_and_fails_closed():
     client = MagicMock()
-    query = client.table.return_value.select.return_value.eq.return_value.neq.return_value.lte.return_value
+    query = client.table.return_value.select.return_value.eq.return_value.lte.return_value
     query.gt.return_value.order.return_value.limit.return_value.execute.return_value = SimpleNamespace(data=[])
     store = SupabaseAppStore(client=client, admin_emails=set())
     assert store.list_exercise_index_page(ATHLETE, as_of=NOW.isoformat(), after_id=entry()["id"]) == []
@@ -254,3 +254,38 @@ def test_performance_query_requires_owner_and_exact_key_or_original_log_uuid(leg
     selector.eq.return_value.or_.assert_called_once_with(f"training_day.lt.2026-10-10,and(training_day.eq.2026-10-10,id.lt.{entry(5)['id']})")
     query.order.assert_called_once_with("training_day", desc=True)
     query.order.return_value.order.assert_called_once_with("id", desc=True)
+
+
+def test_progression_evidence_keeps_reported_effort_separate_from_the_target():
+    row = entry(actual={"sets": 3, "reps": 5, "load": {"value": 80, "unit": "kg"}, "feel": "easy"},
+                prescribed={"display_name": "Back Squat", "block_type": "strength", "sets": 3, "reps": 5,
+                            "effort": {"method": "RPE", "value": 7}, "notes": "private"})
+    item = exercise_library(store_with(row), ATHLETE, now=NOW, allow_progression=True).exercises[0]
+    assert item.progression_hold is False and item.allow_progression
+    assert item.latest_performance.actual.feel == "easy"
+    assert item.latest_performance.actual.effort is None
+    assert item.latest_performance.prescribed["effort"]["value"] == 7
+    assert "notes" not in item.latest_performance.prescribed
+
+
+def test_a_later_skip_or_pain_prevents_successful_history_from_earning_progression():
+    for changes in [{"status": "skipped"}, {"reason": "pain"}]:
+        rows = [entry(1, actual={"sets": 3, "reps": 5, "load": {"value": 80, "unit": "kg"}}),
+                entry(2, training_day="2026-10-11", **changes)]
+        item = exercise_library(store_with(*rows), ATHLETE, now=NOW, allow_progression=True).exercises[0]
+        assert item.latest_performance.training_day == "2026-10-11"
+        assert item.latest_performance.status == "skipped" or item.progression_hold is True
+
+
+@pytest.mark.parametrize("tier,injuries,allowed", [("not_checked_in", [], True), ("stop", [], False), ("green", [{"id": "injury"}], False)])
+def test_library_reuses_readiness_and_injury_restrictions_without_requiring_a_plan(monkeypatch, tier, injuries, allowed):
+    from tests.test_api_service_role_authorization import _create_two_athletes
+    import api.routes.today as routes
+    client, store, _ = _build_client()
+    _create_two_athletes(client, store)
+    store.exercise_logs = [entry(actual={"sets": 3, "reps": 5, "load": {"value": 80, "unit": "kg"}, "effort": {"method": "RPE", "value": 6}})]
+    view = SimpleNamespace(active_plan={}, today=SimpleNamespace(training_day="2026-10-19", decision_tier=tier), open_injuries=injuries, live_prescription=None)
+    monkeypatch.setattr(routes, "build_today_command_view", lambda *a, **k: view)
+    response = client.get("/api/history/exercise-library", headers={"Authorization": "Bearer athlete-token"})
+    assert response.status_code == 200, response.text
+    assert response.json()["exercises"][0]["allow_progression"] is allowed

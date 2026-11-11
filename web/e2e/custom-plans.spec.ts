@@ -422,3 +422,40 @@ test("custom Back Squat Add/Edit shares Suggested and Last without replacing ath
   await expect(edit).toContainText("Last");
   await expect(edit).toContainText("120 kg");
 });
+
+for (const width of [320, 390]) test(`private strength progression uses confirmed performance without a bank match (${width}px)`, async ({ page, baseURL }) => {
+  await page.setViewportSize({ width, height: 900 });
+  const { saved, mutations } = await setup(page, baseURL!);
+  const id = "00000000-0000-4000-8000-000000000030";
+  const actual = { sets: 3, reps: 10, load: { value: 80, unit: "kg" }, effort: { method: "RPE", value: 6 } };
+  await page.route("**/api/history/exercise-library", route => route.fulfill({ json: { exercises: [{
+    id: "custom:bench", name: "Bench Press", identity_kind: "personal", latest_day: "2026-10-01",
+    latest_values: actual, latest_confirmed_as_prescribed: false, latest_source: "manual", best_loads: [], log_format: "strength",
+    allow_progression: true, progression_hold: false, latest_performance: {
+      prescribed: { display_name: "Bench Press" }, actual, status: "modified", training_day: "2026-10-01",
+    },
+  }] } }));
+  saved.set(id, { id, name: "Private strength", kind: "self_directed", incomplete: false,
+    created_at: "2026-10-01T12:00:00Z", updated_at: "2026-10-01T12:00:00Z", sessions: [{
+      id: "00000000-0000-4000-8000-000000000031", name: "Strength", weekday: "Monday", session_type: "strength_power",
+      exercises: [{ id: "00000000-0000-4000-8000-000000000032", origin: "manual", name: "Bench Press", exercise_type: "strength",
+        equipment: null, notes: null, media_id: null, community_id: null, community_revision_id: null,
+        coaching_cues: null, stop_rules: null, incomplete: false,
+        dose: { mode: "reps", sets: 3, reps: 10, rpe: 7, load_or_intensity: "80 kg" } as import("../lib/api-schema.generated").CustomDose,
+      }],
+    }] });
+  await page.goto(`/plans/custom?plan=${id}`);
+  await page.getByRole("button", { name: /^Monday,/ }).click();
+  await page.getByRole("button", { name: "Edit dose for Bench Press", exact: true }).click();
+  const edit = page.getByRole("dialog").last();
+  await expect(edit).toContainText("Suggested 82.5 kg");
+  await expect(edit.getByLabel("Weight", { exact: true })).toHaveValue("80");
+  await edit.getByLabel("Exercise type (optional)", { exact: true }).selectOption("power");
+  await expect(edit).not.toContainText("Suggested 82.5 kg");
+  await edit.getByLabel("Exercise type (optional)", { exact: true }).selectOption("strength");
+  await edit.getByRole("button", { name: "Use suggested weight", exact: true }).click();
+  await expect(edit.getByLabel("Weight", { exact: true })).toHaveValue("82.5");
+  expect(mutations).toEqual([]);
+  expect(actual.load.value).toBe(80);
+  expect(await edit.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+});

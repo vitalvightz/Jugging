@@ -394,3 +394,29 @@ def test_calendar_order_is_stable_on_save_and_legacy_reads(api):
     reopened = client.get(f"{URL}/{plan['id']}", headers=AUTH).json()
     listed = client.get(URL, headers=AUTH).json()[0]
     assert reopened['sessions'] == listed['sessions'] == plan['sessions']
+
+
+@pytest.mark.parametrize("exercise_type,held", [("strength", False), ("bodyweight", False), (None, None), ("power", True)])
+def test_private_custom_type_preserves_authored_dose_and_progression_clearance(exercise_type, held):
+    from api.services.custom_plans import custom_open_plan_result
+    from api.exercise_identity import reconcile_progression_context
+    from api.structured_plan_models import StructuredTrainingPlan
+    draft = {"id": str(uuid4()), "name": "Private training", "sessions": [{"id": str(uuid4()),
+        "name": "Strength", "weekday": "Monday", "session_type": "strength_power", "exercises": [{
+            "id": str(uuid4()), "origin": "manual", "name": "Private Bench Press", "exercise_type": exercise_type,
+            "dose": {"mode": "reps", "sets": 3, "reps": 10, "load_or_intensity": "80 kg"}}]}]}
+    profile = SimpleNamespace(technical_style=["boxing"], athlete_timezone="UTC", athlete_id="athlete-1")
+    result = custom_open_plan_result(draft, profile, training_day="2026-11-11")
+    plan = reconcile_progression_context(result["structured_plan"], result["planning_brief"])
+    block = plan["weeks"][0]["days"][0]["sessions"][0]["blocks"][0]
+    assert block.get("progression_hold") is held
+    assert block["sets"] == 3 and block["reps"] == 10 and block["load"]["value"] == 80
+    assert not block.get("rep_range")
+    assert block["athlete_dose"] == draft["sessions"][0]["exercises"][0]["dose"]
+    StructuredTrainingPlan.model_validate(plan)
+
+
+def test_custom_rep_ranges_are_authored_not_invented():
+    from api.services.custom_plans import dose_block_fields
+    assert dose_block_fields({"mode": "text", "prescription": "3x8-12", "rpe": 7})["reps"] == "8-12"
+    assert dose_block_fields({"mode": "reps", "sets": 3, "reps": 10}) == {"sets": 3, "reps": 10}

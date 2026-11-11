@@ -328,3 +328,25 @@ test("manual set suggestions keep distinct historical weights and never overwrit
     assert.deepEqual(actual.set_entries.map(row => row.load.value), [110, 125]);
   } finally { ui.cleanup(); }
 });
+
+test("private bench press earns an editable draft from confirmed strength performance, without a bank entry", async () => {
+  const past = { ...squatRecord, id: "custom:bench", name: "Bench Press", identity_kind: "personal",
+    progression_hold: false, allow_progression: true,
+    latest_values: { sets: 3, reps: 10, load: { value: 80, unit: "kg" }, effort: { method: "RPE", value: 6 } },
+    latest_performance: { prescribed: { display_name: "Bench Press" }, status: "modified",
+      actual: { sets: 3, reps: 10, load: { value: 80, unit: "kg" }, effort: { method: "RPE", value: 6 } } },
+  };
+  const ui = await mount({ respond: call => call.url === "/api/history/exercise-library" ? json({ exercises: [past] }) : undefined });
+  try {
+    await ui.click("Bench Press");
+    assert.match(ui.container.textContent!, /Suggested 82.5 kg/);
+    assert.equal(ui.container.querySelector<HTMLInputElement>('[data-measure="load"]')!.value, "82.5");
+    assert.equal(puts(ui.calls).length, 0);
+    await ui.type('[data-measure="sets"]', "3");
+    await ui.type('[data-measure="reps"]', "10");
+    await ui.type('[data-measure="load"]', "81");
+    assert.equal(puts(ui.calls).length, 0);
+    await ui.click("Add exercise");
+    assert.deepEqual((puts(ui.calls)[0].body!.actual as { load: object }).load, { value: 81, unit: "kg" });
+  } finally { await ui.cleanup(); }
+});

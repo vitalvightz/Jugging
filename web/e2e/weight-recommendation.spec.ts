@@ -34,7 +34,7 @@ for (const width of [320, 390, 1280]) for (const completed of [false, true]) tes
     if (/session-completions|sparring-logs|pending/.test(path)) body = { completions: [], logs: [], response_sets: [] };
     if (path.endsWith("/exercise-changes/additions") || path.endsWith("/exercise-changes/alternatives"))
       body = { scopes: ["occurrence"], alternatives: [{ catalogue_id: "back-squat", exercise_key: "back-squat",
-        name: "Back Squat", dose_required: true, dose_mode: "reps", suggested_dose: { sets: 3, reps: 8, rpe: 7 } }] };
+        name: "Back Squat", progression_hold: false, dose_required: true, dose_mode: "reps", suggested_dose: { sets: 3, reps: 8, rpe: 7 } }] };
     if (path === "/api/history/exercise-library") body = { exercises: [] };
     if (path === "/api/today/exercise-logs") body = { logs: completed ? [{ id: "today", plan_id: id, block_id: "squat", exercise_key: "back-squat",
       status: "as_prescribed", prescribed: block, actual: { sets: 3, reps: 8, load: { value: 110, unit: "kg" } } }] : [], recent_loads: [],
@@ -98,26 +98,24 @@ for (const width of [320, 390, 1280]) for (const completed of [false, true]) tes
   await page.getByRole("button", { name: "Add exercise", exact: true }).click();
   const picker = page.getByRole("dialog", { name: "Add exercise" });
   await expect(picker).toContainText("Suggested");
-  // Candidate dose has no server progression authority: recall, never an earned raise.
-  await expect(picker).not.toContainText("122.5 kg");
-  await expect(picker).toContainText("Same as last");
+  // Cleared candidates use the same earned recommendation as Today.
+  await expect(picker).toContainText("122.5 kg");
   await expect(picker).toContainText("120 kg");
   expect(await picker.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
   await picker.getByRole("button", { name: /Back Squat/ }).click();
   await expect(picker.getByRole("spinbutton", { name: "Weight", exact: true })).toBeVisible();
-  await expect(picker.getByRole("spinbutton", { name: "Weight", exact: true })).toHaveValue("120");
+  await expect(picker.getByRole("spinbutton", { name: "Weight", exact: true })).toHaveValue("122.5");
   if (process.env.WEIGHT_QA_DIR) await picker.screenshot({ path: `${process.env.WEIGHT_QA_DIR}/weight-picker-prefilled-${width}.png` });
   await picker.getByRole("spinbutton", { name: "Weight", exact: true }).fill("");
   await expect(picker.getByRole("spinbutton", { name: "Weight", exact: true })).toHaveValue("");
-  await expect(picker).toContainText("Same as last");
+  await expect(picker).toContainText("Last 120 kg");
   if (process.env.WEIGHT_QA_DIR) await picker.screenshot({ path: `${process.env.WEIGHT_QA_DIR}/weight-picker-${width}.png` });
   await page.keyboard.press("Escape");
   await row.getByRole("button", { name: "Change Back Squat", exact: true }).click();
   await page.getByRole("button", { name: "Swap", exact: true }).click();
   const swap = page.getByRole("dialog", { name: "Swap Back Squat" });
   await expect(swap).toContainText("Suggested");
-  await expect(swap).not.toContainText("122.5 kg");
-  await expect(swap).toContainText("Same as last");
+  await expect(swap).toContainText("122.5 kg");
   await expect(swap).toContainText("120 kg");
   expect(errors).toEqual([]);
 });

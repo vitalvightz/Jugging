@@ -259,3 +259,30 @@ test("generated bodyweight blocks progress by reps inside authority, never by ex
     assert.equal(weightRecommendation({ ...block, progression_hold: undefined }, { recentPerformances: [history], allowProgression: true }).tryReps, null);
   }
 });
+
+test("equivalent generated, custom and unplanned completed work shares earned progression", () => {
+  const target = { ...block, sets: 3, reps: 10, load: load(80), effort: { method: "RPE" as const, value: 7 } };
+  const actual = { sets: 3, reps: 10, load: load(80), effort: { method: "RPE" as const, value: 6 } };
+  for (const source of [undefined, "athlete"] as const) {
+    const today = { ...target, prescription_source: source };
+    for (const prescribed of [today, {}]) {
+      const history = { ...previous(actual), prescribed };
+      const result = weightRecommendation(today, { allowProgression: true, recentPerformances: [history] });
+      assert.deepEqual(result.suggested, load(82.5));
+      assert.deepEqual(today.load, load(80));
+      assert.deepEqual(history.prescribed, prescribed);
+    }
+  }
+});
+
+test("unplanned evidence needs complete counts and genuine effort; matching a target is Right", () => {
+  const target = { ...block, sets: 3, reps: 10, load: load(80), effort: { method: "RPE" as const, value: 7 } };
+  for (const actual of [{ load: load(80) }, { sets: 3, reps: 10, load: load(80) },
+    { sets: 3, reps: 10, load: load(80), effort: { method: "RPE" as const, value: 7 } },
+    { sets: 2, reps: 10, load: load(80), effort: { method: "RPE" as const, value: 6 } }]) {
+    assert.deepEqual(weightRecommendation(target, { allowProgression: true, recentPerformances: [
+      { ...previous(actual), prescribed: {} }] }).suggested, load(80));
+  }
+  assert.equal(weightRecommendation({ ...target, progression_hold: true }, { allowProgression: true,
+    recentPerformances: [{ ...previous({ sets: 3, reps: 10, load: load(80), feel: "easy" }), prescribed: {} }] }).tryReps, null);
+});

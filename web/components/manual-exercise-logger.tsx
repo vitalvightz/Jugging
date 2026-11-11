@@ -15,7 +15,9 @@ import { trainingTitle } from "@/lib/training-disciplines";
 import sheet from "./log-training.module.css";
 import styles from "./manual-exercise-logger.module.css";
 import { invalidatePastExercises } from "@/lib/exercise-library";
+import type { StructuredBlock } from "@/lib/types";
 import { personalWeightRecommendation } from "@/lib/weight-recommendation";
+import { useWeightContext } from "./exercise-log";
 import { WeightRecommendation } from "./weight-recommendation";
 import { SetRows } from "./set-rows";
 import { useSheetExit } from "@/lib/use-sheet-exit";
@@ -148,11 +150,20 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
     requestAnimationFrame(() => dialog.current?.querySelector<HTMLElement>("[data-measure], [data-format]")?.focus());
   }
 
+  const weightContext = useWeightContext();
   function suggestion(past: PersonalExercise | undefined) {
+    const target = past?.latest_performance?.prescribed;
+    const current = past && picked && (picked.historyId === past.id || ("personal_exercise_id" in picked.choice && past.id === `custom:${picked.choice.personal_exercise_id}`)) ? editor.draft.values : undefined;
+    const rows = past?.latest_values.set_entries;
+    const reportedReps = past?.latest_values.reps ?? (rows?.length && rows.every(row => row.reps != null)
+      ? Math.min(...rows.map(row => row.reps!)) : null);
     return personalWeightRecommendation({ display_name: past?.name ?? picked?.name ?? "",
-      block_type: "strength", sets: past?.latest_values.sets ?? past?.latest_values.set_entries?.length, reps: past?.latest_values.reps ?? 1,
-      load: { unit: past?.latest_values.load?.unit ?? past?.latest_values.set_entries?.find(row => row.load)?.load?.unit ?? loadUnit },
-    }, past);
+      block_type: "strength", sets: Number(current?.sets) || (past?.latest_values.sets ?? rows?.length),
+      reps: Number(current?.reps) || (target?.reps as StructuredBlock["reps"]) || reportedReps,
+      rep_range: target?.rep_range as number[] | undefined,
+      effort: target?.effort as StructuredBlock["effort"],
+      load: past?.bodyweight_progression && !(past.latest_values.load?.value || past.latest_values.set_entries?.some(row => row.load && row.load.value > 0)) ? null : { unit: past?.latest_values.load?.unit ?? past?.latest_values.set_entries?.find(row => row.load)?.load?.unit ?? loadUnit },
+    }, past, weightContext ?? {});
   }
   const pastPicked = picked && recorded.find(row =>
     row.id === picked.historyId || ("exercise_key" in picked.choice && row.id === `key:${picked.choice.exercise_key}`)
@@ -160,8 +171,9 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
   const recommendation = suggestion(pastPicked || undefined);
   function suggestedDraft(chosen: MeasurementFormat, past?: PersonalExercise) {
     const draft = blankDraft(chosen, loadUnit);
-    if (chosen !== "strength") return draft;
+    if (chosen !== "strength" && chosen !== "bodyweight") return draft;
     const value = suggestion(past);
+    if (value.tryReps) draft.values.reps = String(value.tryReps);
     if (value.suggested) {
       draft.values.load = String(value.suggested.value);
       draft.units.load = value.suggested.unit as "kg" | "lb";
@@ -411,7 +423,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
             <span>Tap “Edit sets individually” to record different reps or loads for each set.</span>
             <button type="button" onClick={dismissSetsHint} aria-label="Dismiss individual sets tip">×</button>
           </div> : null}
-          {format === "strength" ? <WeightRecommendation value={recommendation} /> : null}
+          {format === "strength" || format === "bodyweight" ? <WeightRecommendation value={recommendation} /> : null}
           {format ? <>
             {editor.draft.setRows && (format === "strength" || format === "bodyweight") ? <SetRows
               rows={editor.draft.setRows} unit={editor.draft.units.load ?? "kg"} onUnitChange={() => cycleUnit("load")}

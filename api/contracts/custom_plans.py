@@ -91,6 +91,7 @@ class CustomExerciseInput(DraftModel):
 class ManualExerciseInput(DraftModel):
     id: UUID
     origin: Literal["manual"]
+    exercise_type: Literal["strength", "bodyweight", "power", "other"] | None = None
     name: Name
     equipment: str | None = Field(None, max_length=120)
     notes: str | None = Field(None, max_length=2000)

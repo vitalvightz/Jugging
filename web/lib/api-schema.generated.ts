@@ -708,6 +708,8 @@ export type ExerciseAlternative = {
   equipment: string[] | null;
   media: ExerciseMedia | null;
   prescription: string | null;
+  progression_hold: boolean | null;
+  bodyweight_progression: boolean | null;
   dose_required: boolean;
   dose_mode: "distance" | "duration" | "intervals" | "reps" | "text";
   suggested_dose: Record<string, unknown> | null;
@@ -1374,6 +1376,7 @@ export type LoadPrescription = {
 export type ManualExercise = {
   id: string;
   origin: "manual";
+  exercise_type: "bodyweight" | "other" | "power" | "strength" | null;
   name: string;
   equipment: string | null;
   notes: string | null;
@@ -1402,6 +1405,7 @@ export type ManualExerciseEntry = {
 export type ManualExerciseInput = {
   id: string;
   origin: "manual";
+  exercise_type?: "bodyweight" | "other" | "power" | "strength" | null;
   name: string;
   equipment?: string | null;
   notes?: string | null;
@@ -1750,6 +1754,10 @@ export type PersonalExercise = {
   best_loads: RecordedExerciseLoad[];
   latest_source: "manual" | "plan";
   log_format: "bodyweight" | "distance" | "intervals" | "isometric" | "strength" | null;
+  latest_performance: ExerciseLogRecord | null;
+  progression_hold: boolean | null;
+  bodyweight_progression: boolean | null;
+  allow_progression: boolean;
 };
 
 export type PlanActivationRequest = {
@@ -2345,6 +2353,7 @@ export type SessionBlock = {
   rep_range: number[] | null;
   progression_hold: boolean | null;
   bodyweight_progression: boolean | null;
+  exercise_type: "bodyweight" | "other" | "power" | "strength" | null;
   prescription_source: "athlete" | null;
   prescription_text: string | null;
   athlete_dose: Record<string, unknown> | null;

@@ -24,21 +24,23 @@ export function exerciseResult(exercise: PersonalExercise): { label: string; val
   return { label: exercise.latest_confirmed_as_prescribed ? "Latest confirmed" : "Latest recorded", value: parts.join(" · ") || empty };
 }
 
-// One read of the athlete's movement index serves every editor opened soon after.
-const PAST_TTL_MS = 5 * 60_000;
-let past: { token: string; at: number; request: Promise<ReadonlyMap<string, PersonalExercise>> } | null = null;
+// Share concurrent reads; a newly opened editor refreshes current restrictions.
 
-/** The athlete's own exercises by canonical key, for prefilling a new prescription. Never fails: no history is an empty map. */
+let past: { token: string; request: Promise<ReadonlyMap<string, PersonalExercise>> } | null = null;
+
+/** Canonical keys and exact private names; an unavailable history stays empty. */
 export function pastExercisesByKey(token: string, read: (token: string) => Promise<{ exercises: PersonalExercise[] }>): Promise<ReadonlyMap<string, PersonalExercise>> {
-  if (past && past.token === token && Date.now() - past.at < PAST_TTL_MS) return past.request;
+  if (past && past.token === token) return past.request;
   const request = read(token)
-    .then(response => new Map(response.exercises.filter(item => item.identity_kind === "canonical")
-      .map(item => [item.id.slice("key:".length), item] as const)))
+    .then(response => new Map(response.exercises.toSorted((a, b) => a.latest_day.localeCompare(b.latest_day)).filter(item => item.identity_kind === "canonical" || item.identity_kind === "personal"
+      || item.latest_performance?.prescribed.prescription_source === "athlete")
+      .map(item => [item.identity_kind === "canonical" ? item.id.slice("key:".length)
+        : `custom-name:${item.name.trim().toLowerCase().replace(/\s+/g, " ")}`, item] as const)))
     .catch(() => {
       if (past?.request === request) past = null;
       return new Map<string, PersonalExercise>();
-    });
-  past = { token, at: Date.now(), request };
+    }).finally(() => { if (past?.request === request) past = null; });
+  past = { token, request };
   return request;
 }
 

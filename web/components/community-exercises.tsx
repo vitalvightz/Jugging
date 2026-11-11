@@ -195,7 +195,7 @@ export function MyCommunitySubmissions({ token }: { token: string }) {
   }, [token, open, offset, refresh]);
   function reload() { setOffset(0); setRefresh(value => value + 1); }
   const exercise = selected ? {
-    id: selected.id, origin: 'manual' as const, name: selected.name,
+    id: selected.id, origin: 'manual' as const, exercise_type: null, name: selected.name,
     equipment: selected.equipment, notes: selected.notes, media_id: selected.media_id,
     community_id: selected.id, community_revision_id: null, dose: blankDose(), incomplete: true, coaching_cues: null, stop_rules: null,
   } : null;

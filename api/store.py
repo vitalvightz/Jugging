@@ -5909,8 +5909,8 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
     def list_exercise_index_page(self, athlete_id: str, *, as_of: str, after_id: str | None,
                                  limit: int = 500) -> list[dict[str, Any]]:
         query = (self.client.table("exercise_logs")
-            .select("id,athlete_id,exercise_key,status,training_day,prescribed,actual")
-            .eq("athlete_id", athlete_id).neq("status", "skipped").lte("created_at", as_of))
+            .select("id,athlete_id,plan_id,session_id,block_id,exercise_key,status,reason,training_day,prescribed,actual")
+            .eq("athlete_id", athlete_id).lte("created_at", as_of))
         if after_id:
             query = query.gt("id", after_id)
         return _readiness_history_rows(query.order("id").limit(limit).execute())

@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from api.contracts.manual_exercises import MeasurementFormat
 from api.contracts.session_details import SessionDetailBlock
-from api.models import ExerciseLogActual
+from api.models import ExerciseLogActual, ExerciseLogRecord
 
 
 class RecordedExerciseLoad(BaseModel):
@@ -29,6 +29,11 @@ class PersonalExercise(BaseModel):
     latest_source: Literal["plan", "manual"] = "plan"
     # The measurement layout to offer when this movement is logged again.
     log_format: MeasurementFormat | None = None
+    # Raw reported evidence and a current bank verdict, not reconstructed targets.
+    latest_performance: ExerciseLogRecord | None = None
+    progression_hold: bool | None = None
+    bodyweight_progression: bool | None = None
+    allow_progression: bool = False
 
 
 class ExerciseLibraryResponse(BaseModel):

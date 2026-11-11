@@ -6,7 +6,7 @@ import { blankDraft, draftFromEntry, optionChoice, optionFormat, readDraft, sear
 const exercise = (id: string, name: string, latest_day = "2026-10-01", overrides: Partial<PersonalExercise> = {}): PersonalExercise => ({
   id, name, identity_kind: id.startsWith("custom:") ? "personal" : id.startsWith("log:") ? "legacy" : "canonical",
   latest_day, latest_values: { sets: null, reps: null, rounds: null, load: null, duration: null, work: null, rest: null, distance: null, effort: null, feel: null, set_entries: null },
-  latest_confirmed_as_prescribed: false, best_loads: [], latest_source: "manual", log_format: "strength", ...overrides,
+  latest_performance: null, progression_hold: null, bodyweight_progression: null, allow_progression: true, latest_confirmed_as_prescribed: false, best_loads: [], latest_source: "manual", log_format: "strength", ...overrides,
 });
 const entry = (name: string, exercise_key: string, log_format: LibraryEntry["log_format"] = "strength") =>
   ({ catalogue_id: `cat-${exercise_key}`, name, category: "training", exercise_key, log_format }) as LibraryEntry;

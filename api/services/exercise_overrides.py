@@ -203,8 +203,13 @@ def _athlete_block(entry: Mapping[str, Any], *, replaced: Mapping[str, Any] | No
     block.pop("rep_range", None)
     block.pop("progression_hold", None)
     block.pop("bodyweight_progression", None)
-    if override_progression_hold(block, replaced=replaced, siblings=siblings):
-        block["progression_hold"] = True
+    from api.rep_range import bank_uses_bodyweight
+    hold = override_progression_hold(block, replaced=replaced, siblings=siblings)
+    block["prescription_source"] = "athlete"
+    if hold is not None:
+        block["progression_hold"] = hold
+    if hold is False and not block.get("load") and (bank_uses_bodyweight(block) or block.get("exercise_type") == "bodyweight"):
+        block["bodyweight_progression"] = True
     return block
 
 

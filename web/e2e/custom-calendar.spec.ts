@@ -10,7 +10,7 @@ function demo(): CustomPlan {
     sessions: [
       ...["Monday", "Wednesday", "Thursday", "Saturday"].map(weekday => ({
         id: crypto.randomUUID(), name: "Lower Body", weekday: weekday as CustomSession["weekday"], session_type: "strength_power" as const,
-        exercises: [{ id: crypto.randomUUID(), origin: "manual" as const, name: "My squat", equipment: "Rack", notes: "Keep my dose",
+        exercises: [{ id: crypto.randomUUID(), origin: "manual" as const, exercise_type: null, name: "My squat", equipment: "Rack", notes: "Keep my dose",
           media_id: null, community_id: null, community_revision_id: null, incomplete: false,
           coaching_cues: null, stop_rules: null,
           dose: { ...blankDose(), sets: 3, reps: 5, load_or_intensity: "80 kg" } }],
