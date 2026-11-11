@@ -11,7 +11,7 @@ export function timerSetDrafts(state: TimerState, itemId = currentItem(state)?.i
   const count = Math.min(50, Math.max(item.sets?.max ?? 1, current, state.completed[index] ?? 0));
   const previous = state.setDrafts?.[item.id] ?? [];
   const defaults = setDraftsForFields(item.setFields, {}, count);
-  return Array.from({ length: Math.max(count, previous.length) }, (_, at) => previous[at] ?? defaults[at]);
+  return Array.from({ length: Math.max(count, previous.length) }, (_, at) => previous[at] ?? { ...defaults[at], load: item.suggestedLoads?.[at] ?? defaults[at].load });
 }
 
 /** Set done starts rest immediately. Reporting measurements never blocks work. */

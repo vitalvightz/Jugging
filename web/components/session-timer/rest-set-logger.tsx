@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { OnceHint, useSeenOnce } from "@/components/once-hint";
+import { WeightRecommendation } from "../weight-recommendation";
 import { SetRows } from "@/components/set-rows";
 import { readSets } from "@/lib/set-entries";
 import { leaveRemainingUnreported, leaveSetUnreported, confirmAllSetLogs, confirmSetLog, timerSetDrafts, pendingSetLogs } from "@/lib/session-timer/sets";
@@ -8,6 +10,9 @@ import type { SessionTimerController } from "./use-session-timer";
 
 /** A contextual non-modal sheet: typing and confirming never pause or restart the clock. */
 export function RestSetLogger({ timer, target }: { timer: SessionTimerController; target: { itemId: string; set: number } }) {
+  const [logHint, dismissLogHint] = useSeenOnce("discovery-timer-set-entry-seen");
+  const [rpeHint, dismissRpeHint] = useSeenOnce("discovery-timer-rpe-seen");
+  const [rpeOpen, setRpeOpen] = useState(false);
   const { state } = timer;
   const item = state.items.find(entry => entry.id === target.itemId);
   const rows = timerSetDrafts(state, target.itemId);
@@ -21,16 +26,13 @@ export function RestSetLogger({ timer, target }: { timer: SessionTimerController
   const read = readSets([row], unit);
   const prescribed = (key: "reps" | "load") => item.setFields?.find(field => field.key === key)?.hint;
   const transition = state.phase !== "rest";
+  const canGuide = ["rest", "ready", "done"].includes(state.phase);
   const timingNote = state.phase === "rest" ? "Rest continues" : state.phase === "ready" ? "Next exercise is ready" : "Session complete";
   const targetText = [weighed && prescribed("load") ? `${prescribed("load")} ${unit}` : null, prescribed("reps")].filter(Boolean).join(" × ");
-  if (confirmed || unreported) return <div className="st-log-confirmed" role="status">
-    <span>{unreported ? `${transition ? `${item.title} · ` : ""}Set ${target.set} · measurements unreported` : <><span aria-hidden="true">✓</span> {transition ? `${item.title} · ` : ""}Set {target.set} logged <span className="st-log-result">· {weighed && row.load ? `${row.load} ${unit} × ` : ""}{row.reps || "–"}{row.rpe ? ` · RPE ${row.rpe}` : ""}</span></>}</span>
-    <button type="button" className="st-link" aria-label={`Edit set ${target.set}`} onClick={() => timer.update(s => ({ ...s, unreportedSetLogs: { ...s.unreportedSetLogs, [item.id]: (s.unreportedSetLogs?.[item.id] ?? []).filter(set => set !== target.set) }, confirmedSetLogs: { ...s.confirmedSetLogs, [item.id]: (s.confirmedSetLogs?.[item.id] ?? []).filter(set => set !== target.set) } }))}>Edit</button>
-  </div>;
-  return <section className="st-rest-sheet" aria-label="Log completed set">
-    <div className="st-rest-sheet-head"><h3>{transition ? `${item.title} · set ${target.set}` : "Log completed set"}</h3><span>{targetText ? `Target: ${targetText}` : `Set ${target.set}`}</span></div>
-    <div className="st-rest-fields" data-count={weighed ? 3 : 2}>
-      {([...(weighed ? ["load" as const] : []), "reps" as const, "rpe" as const]).map(field => <label key={field}>
+  const recommendation = item.weightRecommendation
+    ? <WeightRecommendation subtle value={{ ...item.weightRecommendation, ...item.weightRecommendation.sets[target.set - 1] }} />
+    : null;
+  const renderField = (field: "load" | "reps" | "rpe") => <label key={field}>
         <span>{field === "load" ? unit : field === "rpe" ? "RPE" : "Reps"}</span>
         <input type="text" inputMode={field === "reps" ? "numeric" : "decimal"} autoComplete="off" enterKeyHint="done" maxLength={8}
           aria-label={`${field === "load" ? `Load ${unit}` : field === "rpe" ? "RPE" : "Reps"}, set ${target.set}`}
@@ -38,15 +40,40 @@ export function RestSetLogger({ timer, target }: { timer: SessionTimerController
           value={row[field] ?? ""} placeholder={field === "reps" ? prescribed("reps") ?? "–" : "–"}
           onFocus={event => event.target.select()} onChange={event => {
             const value = event.target.value;
+            if (field === "rpe" && value.trim()) dismissRpeHint();
             timer.update(s => ({ ...s, setDrafts: { ...s.setDrafts, [item.id]: rows.map((entry, at) => at === target.set - 1 ? { ...entry, [field]: value } : entry) },
               confirmedSetLogs: { ...s.confirmedSetLogs, [item.id]: (s.confirmedSetLogs?.[item.id] ?? []).filter(set => set !== target.set) } }));
           }} />
-      </label>)}
+      </label>;
+  if (confirmed || unreported) return <div className="st-log-confirmed" role="status">
+    <span>{unreported ? `${transition ? `${item.title} · ` : ""}Set ${target.set} · measurements unreported` : <><span aria-hidden="true">✓</span> {transition ? `${item.title} · ` : ""}Set {target.set} logged <span className="st-log-result">· {weighed && row.load ? `${row.load} ${unit} × ` : ""}{row.reps || "–"}{row.rpe ? ` · RPE ${row.rpe}` : ""}</span></>}</span>
+    <button type="button" className="st-link" aria-label={`Edit set ${target.set}`} onClick={() => timer.update(s => ({ ...s, unreportedSetLogs: { ...s.unreportedSetLogs, [item.id]: (s.unreportedSetLogs?.[item.id] ?? []).filter(set => set !== target.set) }, confirmedSetLogs: { ...s.confirmedSetLogs, [item.id]: (s.confirmedSetLogs?.[item.id] ?? []).filter(set => set !== target.set) } }))}>Edit</button>
+  </div>;
+  return <section className="st-rest-sheet" aria-label="Log completed set">
+    <div className="st-rest-sheet-head"><h3>{transition ? `${item.title} · set ${target.set}` : "Log completed set"}</h3><span>{targetText ? `Target: ${targetText}` : `Set ${target.set}`}</span></div>
+    {recommendation}
+    <div className="st-rest-fields" data-count={weighed ? 2 : 1}>
+      {([...(weighed ? ["load" as const] : []), "reps" as const]).map(field => renderField(field))}
     </div>
+    <details className="st-rest-effort" key={`${item.id}:${target.set}`}
+      onToggle={event => {
+        setRpeOpen(event.currentTarget.open);
+        if (event.currentTarget.open) dismissLogHint();
+      }}
+      open={read.invalid.length && Boolean(row.rpe) ? true : undefined}>
+      <summary>{row.rpe ? `RPE ${row.rpe} · optional` : "Add RPE (optional)"}</summary>
+      <div className="st-rest-fields" data-count="1">{renderField("rpe")}</div>
+    </details>
     {read.invalid.length ? <p className="st-log-error" role="alert">Check the values. RPE is 1–10 in whole or half steps.</p> : null}
     <button type="button" className="st-primary st-confirm-set" disabled={read.invalid.length > 0}
-      onClick={() => { timer.update(s => confirmSetLog(s, target.itemId, target.set)); }}>✓ Confirm set</button>
-    <p className="st-rest-help">Edit values if different · {timingNote}</p>
+      onClick={() => { dismissLogHint(); timer.update(s => confirmSetLog(s, target.itemId, target.set)); }}>✓ Confirm set</button>
+    <div className="st-rest-guidance">
+      {rpeOpen && rpeHint && canGuide ? (
+        <OnceHint className="st-discovery-hint" label="RPE is how hard this set felt. 10 is your max." onDismiss={dismissRpeHint} />
+      ) : !rpeOpen && logHint && state.phase === "rest" ? (
+        <OnceHint className="st-discovery-hint" label={weighed ? "Check weight and reps, then tap Confirm set." : "Check your reps, then tap Confirm set."} onDismiss={dismissLogHint} />
+      ) : <p className="st-rest-help">Edit values if different · {timingNote}</p>}
+    </div>
   </section>;
 }
 

@@ -384,3 +384,41 @@ for (const width of [320, 390, 1280]) {
     expect(errors).toEqual([]);
   });
 }
+
+test("custom Back Squat Add/Edit shares Suggested and Last without replacing athlete edits", async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await setup(page, baseURL!);
+  const squat = { ...entries[0], name: "Back Squat", exercise_key: "back-squat", log_format: "strength" };
+  await page.route("**/api/training/library?**", route => route.fulfill({ json: {
+    entries: [squat], total: 1, catalogue_total: 1, next_offset: null, facets: {},
+  } }));
+  await page.route("**/api/history/exercise-library", route => route.fulfill({ json: { exercises: [{
+    id: "key:back-squat", name: "Back Squat", identity_kind: "canonical", latest_day: "2026-10-01",
+    latest_values: { sets: 3, reps: 8, load: { value: 120, unit: "kg" } },
+    latest_confirmed_as_prescribed: true, latest_source: "plan", best_loads: [], log_format: "strength",
+  }] } }));
+  await page.route("**/api/custom-plans/source-suggestion?**", route => route.fulfill({ json: {
+    format_dose: { mode: "reps", sets: 3, reps: 8 }, dose: null,
+  } }));
+  await page.goto("/create");
+  await page.getByRole("link", { name: /^Build Your Own/ }).click();
+  await page.getByRole("button", { name: /^Monday,/ }).click();
+  await page.getByRole("button", { name: "Add session on Monday", exact: true }).click();
+  const session = page.getByRole("dialog", { name: "New session", exact: true });
+  await session.getByRole("button", { name: "Strength / power", exact: true }).click();
+  await session.getByLabel("Session name", { exact: true }).fill("Strength");
+  await session.getByRole("button", { name: "Add session", exact: true }).click();
+  const add = page.getByRole("dialog", { name: "Add to Strength", exact: true });
+  await add.getByLabel("Search exercises", { exact: true }).fill("Back Squat");
+  await add.getByRole("button", { name: "Add Back Squat", exact: true }).click();
+  const row = add.getByRole("group", { name: "Back Squat", exact: true });
+  await expect(row).toContainText("Suggested");
+  await expect(row).toContainText("Last");
+  await expect(row.getByLabel("Weight", { exact: true })).toHaveValue("120");
+  await row.getByLabel("Weight", { exact: true }).fill("110");
+  await row.getByRole("button", { name: "More options for Back Squat", exact: true }).click();
+  const edit = page.getByRole("dialog").last();
+  await expect(edit.getByLabel("Weight", { exact: true })).toHaveValue("110");
+  await expect(edit).toContainText("Last");
+  await expect(edit).toContainText("120 kg");
+});

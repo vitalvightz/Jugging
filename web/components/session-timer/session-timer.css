@@ -1446,6 +1446,7 @@ html[data-theme="light"] .today-tool-button[data-accent="true"] .today-tool-icon
 .st-rest-sheet-head h3 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -.02em; }
 .st-rest-sheet-head > span { color: var(--st-ink-soft); font-size: 12px; }
 .st-rest-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.st-rest-fields[data-count="1"] { grid-template-columns: minmax(0, 1fr); }
 .st-rest-fields[data-count="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .st-rest-fields label { display: grid; min-width: 0; gap: 2px; padding: 8px; border-radius: 14px; background: var(--st-surface-strong); text-align: center; }
 .st-rest-fields label > span { color: var(--st-ink-soft); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
@@ -1509,3 +1510,20 @@ html[data-theme="light"] .today-tool-button[data-accent="true"] .today-tool-icon
 }
 
 .st-root[data-set-log-context="complete"] .st-links { grid-column: 1 / -1; justify-content: center; }
+
+
+.st-rest-effort { margin-top: 4px; }
+.st-rest-effort summary { min-height: 44px; display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--st-ink-soft); font-size: 13px; }
+.st-rest-effort summary::before { content: "+"; }
+.st-rest-effort[open] summary::before { content: "−"; }
+.st-rest-effort summary:focus-visible { outline: 2px solid var(--st-accent); outline-offset: 2px; border-radius: 8px; }
+.st-rest-effort .st-rest-fields { margin-bottom: 8px; }
+
+/* Keep the confirmation button still when a one-time hint is retired. */
+.st-rest-guidance { min-height: 56px; padding-top: 6px; display: flex; align-items: center; justify-content: center; }
+.st-rest-guidance .st-rest-help { margin: 0; }
+.st-discovery-hint { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 50px; padding: 6px 10px; border: 1px solid var(--st-line); border-radius: 10px; background: var(--st-surface); color: var(--st-ink-soft); font: inherit; font-size: 12px; line-height: 18px; text-align: left; cursor: pointer; animation: st-discovery-in 160ms ease-out; }
+.st-discovery-hint > span { flex: none; font-size: 18px; }
+.st-discovery-hint:focus-visible { outline: 2px solid var(--st-ink); outline-offset: 2px; }
+@keyframes st-discovery-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .st-discovery-hint { animation: none; } }

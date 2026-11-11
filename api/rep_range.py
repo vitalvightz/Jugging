@@ -13,8 +13,8 @@ planner assignment, nothing prohibits progression, and the exercise bank
 classifies the movement as ordinary strength work. ``True`` means it must not
 progress (taper, the final fortnight, an injury, a capacity-restricting weight
 cut, a capped or protected dose, or a jumping / ballistic / power movement).
-Absent means unknown, and the log treats unknown exactly like a hold: nothing
-is suggested until the exercise is classified.
+Absent means the server has no verdict (an exercise it could not match or the
+bank does not know); the log only withholds suggestions on ``True``.
 """
 from __future__ import annotations
 
@@ -145,25 +145,22 @@ def progression_context(
 
 def override_progression_hold(
     block: Mapping[str, Any], *, replaced: Mapping[str, Any] | None, siblings: list[Any]
-) -> bool:
+) -> bool | None:
     """The verdict for a block the athlete swapped in, edited or added.
 
-    Cleared (False) only when the context it sits in was cleared and the bank
-    classifies the new movement as ordinary strength work. A swap or edit
-    inherits the replaced block's context, so an existing hold always survives.
-    An added exercise has no block of its own to inherit from: it takes the
-    session's, and needs a cleared planner block beside it. Anything unknown
-    stays held.
+    Held (True) when the block it replaces was held, when the session an
+    exercise is added to is held (planner blocks beside it are held and none
+    is cleared), or when the bank classes the new movement as jumping,
+    ballistic or power work. Otherwise None: no verdict, exactly as for any
+    exercise the server has not classified.
     """
+    if bank_allows_progression(block) is False:
+        return True
     if replaced is not None:
-        context_cleared = replaced.get("progression_hold") is False
-    else:
-        context_cleared = any(
-            isinstance(sibling, Mapping) and not sibling.get("athlete_change")
-            and sibling.get("progression_hold") is False
-            for sibling in siblings
-        )
-    return not (context_cleared and bank_allows_progression(block) is True)
+        return True if replaced.get("progression_hold") is True else None
+    verdicts = [sibling.get("progression_hold") for sibling in siblings
+                if isinstance(sibling, Mapping) and not sibling.get("athlete_change")]
+    return True if True in verdicts and False not in verdicts else None
 
 
 def apply_progression_context(block: dict[str, Any], context: Mapping[str, Any]) -> bool:

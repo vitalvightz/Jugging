@@ -65,7 +65,7 @@ export function ExercisePrescriptionEditor({ initial, action, busy, coaching, pa
       onChange={e => update(field, e.target.value === "" ? null : Number(e.target.value))} /></label>;
   }
   // What is set inside each collapsed group, so nothing hides behind a fold.
-  const effortSummary = [dose.load_or_intensity?.trim(), dose.rpe != null ? `RPE ${dose.rpe}` : null,
+  const effortSummary = [dose.mode !== "reps" ? dose.load_or_intensity?.trim() : null, dose.rpe != null ? `RPE ${dose.rpe}` : null,
     dose.mode === "reps" && dose.tempo?.trim() ? `Tempo ${dose.tempo.trim()}` : null].filter(Boolean).join(" · ");
   const coachingSummary = [lines(cueText).length ? `${lines(cueText).length} cue${lines(cueText).length === 1 ? "" : "s"}` : null,
     lines(easierText).length ? "Easier" : null, progressText.trim() ? "Progress" : null,
@@ -106,6 +106,9 @@ export function ExercisePrescriptionEditor({ initial, action, busy, coaching, pa
         </label>}
       <TimeField label="Rest" rest value={dose.rest_seconds} onChange={v => update("rest_seconds", v)} />
     </div>
+    {dose.mode === "reps" ? <LoadField className={styles.doseField}
+      value={dose.load_or_intensity} weighed={weighedFormat(dose.mode, past)}
+      last={pastLoad(past)} onChange={text => update("load_or_intensity", text)} /> : null}
     {/* Per side changes how the reps read, so it sits with them, not behind a fold. */}
     {dose.mode === "reps" ? <label className={styles.toggleRow}>
       <span><strong>Per side</strong><small>Reps are done on each side</small></span>
@@ -113,10 +116,10 @@ export function ExercisePrescriptionEditor({ initial, action, busy, coaching, pa
         checked={dose.per_side ?? false} onChange={e => update("per_side", e.target.checked)} />
     </label> : null}
     <details className={styles.advanced}>
-      <summary><span>Load &amp; effort</span>{effortSummary ? <small>{effortSummary}</small> : null}</summary>
+      <summary><span>More options</span>{effortSummary ? <small>{effortSummary}</small> : null}</summary>
       <div className={styles.groupBody}>
-        <LoadField className={styles.doseField} value={dose.load_or_intensity} weighed={weighedFormat(dose.mode, past)}
-          last={pastLoad(past)} onChange={text => update("load_or_intensity", text)} />
+        {dose.mode !== "reps" ? <LoadField className={styles.doseField} value={dose.load_or_intensity} weighed={weighedFormat(dose.mode, past)}
+          last={pastLoad(past)} onChange={text => update("load_or_intensity", text)} /> : null}
         <div className={styles.pairGrid}>
           {number("rpe", "RPE (optional)", 10, true)}
           {dose.mode === "reps" ? <label className={`${styles.doseField} ${styles.textField}`}><span>Tempo</span>

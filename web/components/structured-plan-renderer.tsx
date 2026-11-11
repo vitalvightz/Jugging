@@ -94,7 +94,8 @@ import { WhyTooltip } from "@/components/why-tooltip";
 import { ExerciseDemo, ExerciseMediaProvider, useExerciseMedia } from "@/components/exercise-demo";
 import { RehabExerciseGuide, RehabExerciseLimits, RehabPrescription } from "@/components/rehab-prescription";
 import { PrivateExerciseMediaProvider, PrescribedPrivateVideo, PrescribedPrivateVideoThumbnail } from "@/components/private-exercise-video";
-import { ExerciseLogBadge, ExerciseLogPanel, ExerciseLogTick, useExerciseLoggingActive } from "@/components/exercise-log";
+import { weightRecommendation } from "@/lib/weight-recommendation";
+import { ExerciseProgressionPreview, ExerciseLogBadge, ExerciseLogPanel, ExerciseLogTick, useWeightContext, useExerciseLoggingActive } from "@/components/exercise-log";
 import { ExerciseActions, ExerciseSessionScope, SessionChangesFoot } from "@/components/exercise-customisation";
 import { demoThumbnailUrl } from "@/lib/exercise-demo";
 import { SafetyNote } from "@/components/safety-note";
@@ -834,7 +835,16 @@ export function ExerciseRow({
   const tagLabel = blockType && (!compact || isRehabBlock(block)) ? blockTagLabel(block, rehabLabelPolicy) : null;
   const resolvedMedia = useExerciseMedia(block.display_name, block.exercise_key);
   const media = block.prescription_source === "athlete" && !block.exercise_key ? null : resolvedMedia;
-  const summary = exerciseRowSummary(block, prescription, compact);
+  const weightContext = useWeightContext();
+  const guidance = weightContext && !weightContext.hideWeightGuidance && !weightContext.logs[block.block_id || ""]
+    ? weightRecommendation(block, weightContext) : null;
+  const rawSummary = exerciseRowSummary(block, prescription, compact);
+  // A standalone numeric load is already led by the guidance beneath the dose.
+  // Keep authored instructions and ranges intact.
+  const suggestedText = guidance?.suggested ? `${guidance.suggested.value} ${guidance.suggested.unit}` : null;
+  const summary = rawSummary && suggestedText
+    ? rawSummary.split(" · ").filter(part => part.trim() !== suggestedText).join(" · ")
+    : rawSummary;
   // Stop criteria live in the opened exercise. Active range/contact/clinical
   // restrictions still belong on the plan, independent of the stop disclosure.
   const rehabLimits = compact && isRehabBlock(block)
@@ -899,6 +909,7 @@ export function ExerciseRow({
             {media || block.private_media_id || block.community_revision_id ? <span className="sr-only"> Has demo video.</span> : null}
           </button>
           {!compact ? metadata : null}
+          {!open ? <ExerciseProgressionPreview block={block} /> : null}
           {/* What was logged for it today; open, the log panel below says so. */}
           {rowCollapsed ? <ExerciseLogBadge block={block} /> : null}
           {/* Stop criteria are safety instructions: never hidden behind the tap.
@@ -964,7 +975,8 @@ export function ExerciseRow({
         <div id={bodyId} className="ex-row-body">
           {block.block_type === "rehab" && block.drill_snapshot ? (
             <RehabExerciseGuide block={block} demo={<RehabDemo block={block} media={media} title={title} />}>
-              <ExerciseLogPanel block={block} />
+              <ExerciseProgressionPreview block={block} />
+          <ExerciseLogPanel block={block} />
             </RehabExerciseGuide>
           ) : <>
           {block.private_media_id || block.community_revision_id ? <PrescribedPrivateVideo
@@ -1001,6 +1013,7 @@ export function ExerciseRow({
             hideLeadCue={Boolean(media) && leadCuePinned}
           />
           {/* Renders only where a started session provides logging (Today). */}
+          <ExerciseProgressionPreview block={block} />
           <ExerciseLogPanel block={block} />
           </>}
         </div>
@@ -1050,12 +1063,15 @@ function ExerciseDetail({
   const easier = execution.regressions.map(compactCoachLine);
   const swap = execution.substitutions[0] ?? null;
   const sessionRunning = useExerciseLoggingActive();
+  const logging = useWeightContext();
+  const hasSavedResult = Boolean(logging?.logs[block.block_id || ""]);
   // Banked injury rehab has an authoritative prescription to guide, led by the
   // plan's shared demo when one exists. Legacy prehab/training blocks retain
   // their ordinary exercise adjustments/logging.
   if (block.block_type === "rehab" && block.drill_snapshot) {
     return <RehabExerciseGuide block={block} demo={<RehabDemo block={block} media={media} title={title} />}>
-      <ExerciseLogPanel block={block} />
+      <ExerciseProgressionPreview block={block} />
+          <ExerciseLogPanel block={block} />
     </RehabExerciseGuide>;
   }
   // Safety instructions are never behind a tap, logging included: one plain line.
@@ -1073,9 +1089,10 @@ function ExerciseDetail({
   if (sessionRunning && block.block_type !== "rehab") {
     return (
       <div className="injury-sheet-body ex-detail ex-detail-logging">
-        {tagLabel || summary ? (
-          <p className="ex-detail-summary">{[tagLabel, summary].filter(Boolean).join(" · ")}</p>
+        {tagLabel ? (
+          <p className="ex-detail-summary">{tagLabel}</p>
         ) : null}
+        {hasSavedResult ? <ExerciseLogPanel block={block} /> : null}
         {stopLine}
         {steps.length > 0 ? (
           <div className="sp-block-aside ex-detail-steps">
@@ -1083,12 +1100,18 @@ function ExerciseDetail({
             <ol>{steps.map(step => <li key={step}>{step}</li>)}</ol>
           </div>
         ) : null}
-        <div className="ex-detail-prescription">
+        {hasSavedResult ? <details className="ex-detail-section">
+          <summary>Planned</summary>
           <BlockCard block={block} openWeekIntent={openWeekIntent}
             sourceCountdown={sourceCountdown} embedded hideCues hideStopRule hideAdjustments
             hideInstructions={Boolean(media || block.private_media_id || block.community_revision_id)} />
-        </div>
-        <ExerciseLogPanel block={block} />
+        </details> : <div className="ex-detail-prescription">
+          <BlockCard block={block} openWeekIntent={openWeekIntent}
+            sourceCountdown={sourceCountdown} embedded hideCues hideStopRule hideAdjustments
+            hideInstructions={Boolean(media || block.private_media_id || block.community_revision_id)} />
+        </div>}
+        <ExerciseProgressionPreview block={block} />
+        {!hasSavedResult ? <ExerciseLogPanel block={block} /> : null}
       </div>
     );
   }
@@ -1159,7 +1182,8 @@ function ExerciseDetail({
           sourceCountdown={sourceCountdown} embedded hideCues hideStopRule hideAdjustments hideInstructions />
       </details>
       {/* Renders only where a started session provides logging (Today). */}
-      <ExerciseLogPanel block={block} />
+      <ExerciseProgressionPreview block={block} />
+          <ExerciseLogPanel block={block} />
     </div>
   );
 }

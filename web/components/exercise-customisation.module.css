@@ -297,8 +297,9 @@
   min-width: 0;
   display: grid;
   gap: 4px;
-  min-height: 60px;
-  padding: 11px 4px 11px 14px;
+  min-height: 44px;
+  align-content: center;
+  padding: 8px 4px 4px 14px;
   border: 0;
   background: transparent;
   color: inherit;
@@ -433,8 +434,8 @@
 
 .prescriptionEditor {
   display: grid;
-  gap: 12px;
-  padding: 12px 14px 14px;
+  gap: 10px;
+  padding: 4px 14px 14px;
 }
 .formatField select {
   min-height: 40px;

@@ -244,49 +244,55 @@ def test_bank_fixture_names_exist():
 
 
 @pytest.mark.parametrize(("original_hold", "new_block", "expected"), [
-    (False, _GOBLET, False),    # cleared context, ordinary lift
+    (False, _GOBLET, None),     # nothing held: no verdict, as for any unclassified block
     (True, _GOBLET, True),      # an existing hold survives the swap
-    (None, _GOBLET, True),      # unknown context is not cleared
+    (None, _GOBLET, None),
     (False, _HOPS, True),       # ballistic by the bank
-    (False, _UNKNOWN, True),    # unclassified until the bank knows it
-], ids=["cleared", "held_original", "unknown_original", "ballistic_swap", "unclassified_swap"])
+    (True, _UNKNOWN, True),     # a hold survives even onto an exercise the bank does not know
+    (False, _UNKNOWN, None),    # unknown stays unknown
+], ids=["cleared", "held_original", "unknown_original", "ballistic_swap", "held_unclassified", "unclassified_swap"])
 def test_a_swap_keeps_holds_and_checks_the_bank(original_hold, new_block, expected):
     original = {**_SQUAT, "rep_range": [8, 12]}
     if original_hold is not None:
         original["progression_hold"] = original_hold
     swapped = _changed("swap", new_block, original=original)["blocks"][0]
     assert swapped["display_name"] == new_block["display_name"]
-    assert swapped["progression_hold"] is expected
+    assert swapped.get("progression_hold") is expected
     assert "rep_range" not in swapped  # the athlete's own choice of dose is fixed
 
 
 def test_a_stored_change_cannot_carry_its_own_verdict_or_range():
     """An edit is saved as a copy of the block as it was that day; neither field is trusted on read."""
     stale = {**_SQUAT, "reps": 10, "rep_range": [8, 12], "progression_hold": False}
-    held_today = {**_SQUAT, "progression_hold": True}
-    edited = _changed("edit", stale, original=held_today)["blocks"][0]
+    edited = _changed("edit", stale, original={**_SQUAT, "progression_hold": True})["blocks"][0]
     assert edited["reps"] == 10 and edited["progression_hold"] is True and "rep_range" not in edited
+    # And a stale hold saved on a taper day does not follow the edit into a cleared week.
+    freed = _changed("edit", {**stale, "progression_hold": True}, original={**_SQUAT, "progression_hold": False})["blocks"][0]
+    assert "progression_hold" not in freed and "rep_range" not in freed
 
 
-def test_an_added_exercise_takes_the_sessions_context_and_the_banks_class():
+def test_an_added_exercise_takes_the_sessions_hold_and_the_banks_class():
     cleared = {**_SQUAT, "progression_hold": False}
     held = {**_SQUAT, "progression_hold": True}
 
-    def added(new_block, original):
-        session = {"session_id": "s1", "session_type": "strength_power", "title": "Strength", "blocks": [copy.deepcopy(original)]}
+    def added(new_block, *originals):
+        session = {"session_id": "s1", "session_type": "strength_power", "title": "Strength", "blocks": copy.deepcopy(list(originals))}
         plan = {"weeks": [{"days": [{"date": "2026-11-12", "sessions": [session]}]}]}
         entry = {"id": "ovr2", "action": "add", "scope": "occurrence", "date": "2026-11-12", "session_id": "s1", "block": new_block}
         return apply_exercise_overrides({"exercise_overrides": [entry]}, plan)["weeks"][0]["days"][0]["sessions"][0]["blocks"][-1]
 
-    assert added(_GOBLET, cleared)["progression_hold"] is False
-    assert added(_GOBLET, held)["progression_hold"] is True          # taper, cut, injury: the session is held
-    assert added(_GOBLET, _SQUAT)["progression_hold"] is True        # no cleared planner block beside it
-    assert added(_HOPS, cleared)["progression_hold"] is True
-    assert added(_UNKNOWN, cleared)["progression_hold"] is True
+    assert added(_GOBLET, held).get("progression_hold") is True       # taper, cut, injury: the session is held
+    assert added(_UNKNOWN, held).get("progression_hold") is True
+    assert added(_HOPS, cleared).get("progression_hold") is True      # ballistic by the bank
+    assert "progression_hold" not in added(_GOBLET, cleared)
+    assert "progression_hold" not in added(_GOBLET, _SQUAT)
+    assert "progression_hold" not in added(_UNKNOWN, cleared)
+    # One held jump beside a cleared lift does not hold the whole session.
+    assert "progression_hold" not in added(_GOBLET, cleared, {**_HOPS, "block_id": "h", "progression_hold": True})
     # A claim on the added block itself counts for nothing.
     assert added({**_GOBLET, "progression_hold": False, "rep_range": [1, 30]}, held)["progression_hold"] is True
 
 
-def test_another_athlete_change_is_not_evidence_the_session_is_cleared():
-    sibling = {**_GOBLET, "block_id": "x", "progression_hold": False, "athlete_change": {"action": "add"}}
-    assert override_progression_hold(_GOBLET, replaced=None, siblings=[sibling]) is True
+def test_another_athlete_change_is_not_evidence_about_the_session():
+    sibling = {**_GOBLET, "block_id": "x", "progression_hold": True, "athlete_change": {"action": "add"}}
+    assert override_progression_hold(_GOBLET, replaced=None, siblings=[sibling]) is None

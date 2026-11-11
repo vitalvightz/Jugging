@@ -102,7 +102,7 @@ test("individual-set guidance waits for input, yields to unit guidance and retir
     const hint = () => ui.container.querySelector('[aria-label="Dismiss individual sets tip"]');
     assert.equal(hint(), null);
     await ui.type('[data-measure="sets"]', "3");
-    assert.ok(hint());
+    assert.equal(hint(), null, "prefilled weight shows the unit hint first");
     await ui.type('[data-measure="load"]', "80");
     assert.equal(hint(), null, "only the unit tip shows while it has priority");
     await ui.click("Dismiss weight unit tip");
@@ -140,9 +140,10 @@ test("a recent exercise becomes a compact saved row and the logger is ready for 
   const ui = await mount();
   try {
     await ui.click("Back Squat");
-    assert.match(ui.container.textContent!, /Last time · .* · 3 × 5 · 75 kg/);
-    // Previous values are a labelled reference, never pre-filled.
-    assert.equal(ui.container.querySelector<HTMLInputElement>('[data-measure="load"]')!.value, "");
+    assert.match(ui.container.textContent!, /Suggested 75 kg · Same as last/);
+    assert.doesNotMatch(ui.container.textContent!, /Last time/);
+    // Historical weight is an editable draft, not a recorded measurement.
+    assert.equal(ui.container.querySelector<HTMLInputElement>('[data-measure="load"]')!.value, "75");
     await ui.type('[data-measure="sets"]', "3");
     await ui.type('[data-measure="reps"]', "5");
     await ui.type('[data-measure="load"]', "80");
@@ -215,16 +216,17 @@ test("closing with an unfinished exercise asks first", async () => {
   } finally { ui.cleanup(); }
 });
 
-test("repeating reuses names from the earlier session but no performed values", async () => {
+test("repeating suggests recorded weights without saving until Add confirms them", async () => {
   const reference = { ...session, id: "old-session", training_day: "2026-10-12", exercise_count: 1 };
   const ui = await mount({ reference });
   try {
     await ui.click(/Reuse exercises from/);
     await ui.click("Log Back Squat again");
-    assert.match(ui.container.textContent!, /Last time · .* · 3 × 5 · 75 kg/);
+    assert.match(ui.container.textContent!, /Suggested 75 kg · Same as last/);
+    assert.doesNotMatch(ui.container.textContent!, /Last time/);
     assert.equal(ui.container.querySelector<HTMLInputElement>('[data-measure="sets"]')!.value, "");
     await ui.submit();
-    assert.deepEqual(puts(ui.calls)[0].body!.actual, {});
+    assert.deepEqual(puts(ui.calls)[0].body!.actual, { load: { value: 75, unit: "kg" } });
   } finally { ui.cleanup(); }
 });
 
@@ -288,4 +290,41 @@ test("session details list manual exercises with only recorded values", async ()
     await act(async () => [...container.querySelectorAll("button")].find(item => item.textContent === "Edit exercises")!.click());
     assert.equal(edits[0].id, session.id);
   } finally { act(() => root.unmount()); container.remove(); globalThis.fetch = fetch; }
+});
+
+test("Back Squat suggestion is editable, unconfirmed and updated only after Add", async () => {
+  const ui = await mount();
+  try {
+    await ui.click("Back Squat");
+    assert.match(ui.container.textContent!, /Suggested 75 kg · Same as last/);
+    assert.equal(puts(ui.calls).length, 0);
+    await ui.type('[data-measure="load"]', "80");
+    assert.equal(puts(ui.calls).length, 0);
+    await ui.submit();
+    assert.deepEqual((puts(ui.calls)[0].body!.actual as { load: unknown }).load, { value: 80, unit: "kg" });
+    await ui.click("Back Squat");
+    assert.match(ui.container.textContent!, /Suggested 80 kg · Same as last/);
+    assert.equal(ui.container.querySelector<HTMLInputElement>('[data-measure="load"]')!.value, "80");
+    await ui.type('[data-measure="load"]', "");
+    await ui.submit();
+    assert.deepEqual(puts(ui.calls)[1].body!.actual, {});
+  } finally { ui.cleanup(); }
+});
+
+test("manual set suggestions keep distinct historical weights and never overwrite an edited measurement", async () => {
+  const ui = await mount({ respond: call => call.url.startsWith("/api/history/exercise-library") ? json({ exercises: [{
+    ...squatRecord, latest_values: { ...blank, sets: 2, set_entries: [
+      { reps: 8, load: { value: 115, unit: "kg" } }, { reps: 8, load: { value: 125, unit: "kg" } },
+    ] },
+  }] }) : undefined });
+  try {
+    await ui.click("Back Squat");
+    const inputs = [...ui.container.querySelectorAll<HTMLInputElement>('input[aria-label^="Load kg, set"]')];
+    assert.deepEqual(inputs.map(input => input.value), ["115", "125"]);
+    assert.equal(puts(ui.calls).length, 0);
+    await ui.type('[aria-label="Load kg, set 1"]', "110");
+    await ui.submit();
+    const actual = puts(ui.calls)[0].body!.actual as { set_entries: { load: { value: number } }[] };
+    assert.deepEqual(actual.set_entries.map(row => row.load.value), [110, 125]);
+  } finally { ui.cleanup(); }
 });

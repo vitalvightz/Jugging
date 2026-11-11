@@ -173,3 +173,29 @@ test("free timer transitions are measured automatically in beta; planned timer t
     globalThis.fetch = original;
   }
 });
+
+test("late history refreshes timer suggestions without replacing recorded drafts or targets", async () => {
+  window.localStorage.clear();
+  let controller: SessionTimerController;
+  const item = { kind: "sets" as const, id: "squat", title: "Squat", detail: null, blockType: "strength",
+    sets: { min: 2, max: 2 }, holdSec: null, restSec: { min: 60, max: 60 } };
+  function Probe({ loads }: { loads?: string[] }) {
+    controller = useSessionTimer({ items: [{ ...item, suggestedLoads: loads }], storageKey: "history-test", audible: false });
+    return null;
+  }
+  const root = createRoot(document.createElement("div"));
+  try {
+    await act(async () => root.render(<Probe />));
+    await act(async () => controller.update(state => ({ ...state,
+      setDrafts: { squat: [{ reps: "8", load: "110" }] }, confirmedSetLogs: { squat: [1] } })));
+    await act(async () => root.render(<Probe loads={["115", "125"]} />));
+    const current = controller!.state.items[0];
+    assert.ok(current.kind === "sets");
+    assert.deepEqual(current.suggestedLoads, ["115", "125"]);
+    assert.equal(controller!.state.setDrafts?.squat[0].load, "110");
+    assert.deepEqual(controller!.state.confirmedSetLogs?.squat, [1]);
+  } finally {
+    await act(async () => root.unmount());
+    window.localStorage.clear();
+  }
+});

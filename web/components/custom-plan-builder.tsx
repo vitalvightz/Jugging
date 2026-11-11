@@ -1,4 +1,6 @@
 "use client";
+import { ExerciseLogProvider } from "./exercise-log";
+import { personalPerformance } from "@/lib/weight-recommendation";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -165,7 +167,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   const latest = useRef(draft);
   useEffect(() => { latest.current = draft; });
   // Read only once an exercise is open, for last time's weight.
-  const past = usePastExercises(editing ? accessToken : null);
+  const past = usePastExercises(adding || editing ? accessToken : null);
   useEffect(() => {
     if (!planId) void trackProductEvent(accessToken, "plan_editor_opened", "plans");
   }, [accessToken, planId]);
@@ -483,6 +485,8 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
         {s.session_type !== "rest" ? <PrivateExerciseMediaProvider token={accessToken}>
           <ExerciseMediaProvider media={Object.fromEntries(s.exercises.flatMap(e => e.origin === "catalogue" && e.snapshot.media && e.snapshot.exercise_key
             ? [[`exercise:${e.snapshot.exercise_key}`, e.snapshot.media]] : []))}>
+            <ExerciseLogProvider logging={{ logs: {}, canWrite: false, painReasonAllowed: false, save: async () => {},
+              recentPerformances: [...(past?.values() ?? [])].map(entry => personalPerformance(entry)) }}>
             <ol className={`sp-blocks ex-rows ${styles.exercises}`}>
               {s.exercises.map((e) => (
                 <li key={e.id}>
@@ -496,7 +500,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
                     } />
                 </li>
               ))}
-            </ol></ExerciseMediaProvider></PrivateExerciseMediaProvider> : <p className="muted">{REST_DAY_REMINDER}</p>}
+            </ol></ExerciseLogProvider></ExerciseMediaProvider></PrivateExerciseMediaProvider> : <p className="muted">{REST_DAY_REMINDER}</p>}
         {!s.exercises.length && s.session_type !== "rest" ? <p className="muted">{s.session_type === "recovery" ? REST_DAY_REMINDER : ["sparring", "skill"].includes(s.session_type ?? "mixed") ? "Coach-led day — Add editable rounds if useful." : "Workout needs exercises."}</p> : null}
         {s.session_type === "recovery" && s.exercises.length ? <p className="muted">Optional recovery work. No completion required.</p> : null}
         {s.session_type !== "rest" ? (
@@ -854,6 +858,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
                     {open ? <div className={styles.addedBody}>
                       <CustomDoseEditor essential dose={exercise.dose}
                         movement={exercise.origin === "catalogue" ? exercise.snapshot : null}
+                        past={exercise.origin === "catalogue" && exercise.snapshot.exercise_key ? past?.get(exercise.snapshot.exercise_key) : null}
                         onChange={dose => setDose(adding.sessionId, exercise.id, dose)} />
                       <div className={styles.addedFoot}>
                         <small>{exercise.origin === "manual" ? "Your exercise"

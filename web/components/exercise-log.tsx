@@ -8,20 +8,16 @@ import {
   EXERCISE_LOG_STATUS_LABELS,
   amendedLog,
   asksForFirstLoad,
-  backoffLoadFor,
   buildLogEntry,
   buildSetLogEntry,
   setDraftsForFields,
   draftFromLog,
   hasLoggableNumbers,
   isLoggableBlock,
-  lastLoadFor,
   lastPerformanceFor,
   exerciseIdentity,
   needsFirstLoad,
-  nextStepFor,
   nextStepLabel,
-  performanceSummary,
   repeatRepsFor,
   logFieldsForBlock,
   logSummary,
@@ -34,6 +30,8 @@ import {
 import { cleanText } from "@/lib/structured-plan";
 import { draftsFromActual, type SetDraft } from "@/lib/set-entries";
 import { SetRows, SetResults } from "./set-rows";
+import { weightRecommendation } from "@/lib/weight-recommendation";
+import { WeightRecommendation } from "./weight-recommendation";
 import type {
   ExerciseLogReason,
   ExerciseLogRecord,
@@ -48,6 +46,10 @@ import type {
  * no provider and the rows render exactly as before.
  */
 export type ExerciseLogging = {
+  canWrite?: boolean;
+  /** Review surfaces prioritise completed measurements, including unreported sets. */
+  hideWeightGuidance?: boolean;
+  lowerLoads?: boolean;
   /** Today's saved logs, keyed by block id. */
   logs: Readonly<Record<string, ExerciseLogRecord>>;
   /** Saves (or corrects) one block's log. Rejects with a message to show. */
@@ -59,7 +61,7 @@ export type ExerciseLogging = {
   ) => Promise<void>;
   /** Pain is health data: the reason is only offered with health consent. */
   painReasonAllowed: boolean;
-  /** Last weights per exercise, carried into a "done" so it never needs typing. */
+  /** Last measured weights, offered as unconfirmed drafts. */
   recentLoads?: readonly ExerciseRecentLoad[];
   recentPerformances?: readonly ExerciseLogRecord[];
   /** Whether a raise may be suggested today (see `progressionOpen`). */
@@ -83,26 +85,18 @@ export function ExerciseLogProvider({
 /** True while the owning surface (Today) has the session running and provides
  * logging; false in a preview or anywhere without a provider. */
 export function useExerciseLoggingActive(): boolean {
-  return useContext(ExerciseLogContext) !== null;
+  const logging = useContext(ExerciseLogContext);
+  return logging !== null && logging.canWrite !== false;
 }
 
 function useBlockLogging(block: StructuredBlock) {
   const logging = useContext(ExerciseLogContext);
   const blockId = cleanText(block.block_id);
   const fields = useMemo(() => logFieldsForBlock(block), [block]);
-  if (!logging || !blockId || !isLoggableBlock(block)) {
+  if (!logging || logging.canWrite === false || !blockId || !isLoggableBlock(block)) {
     return null;
   }
   return { logging, blockId, fields, log: logging.logs[blockId] ?? null };
-}
-
-/** Last time's weight as a draft-able log, or null when there is none. */
-function withLastLoadRecord(
-  block: StructuredBlock,
-  recentLoads: readonly ExerciseRecentLoad[] | undefined,
-): ExerciseLogRecord | null {
-  const load = lastLoadFor(block, recentLoads);
-  return load ? ({ actual: { load } } as ExerciseLogRecord) : null;
 }
 
 // Exercises the athlete chose not to give a first weight for (bodyweight work,
@@ -165,7 +159,7 @@ export function ExerciseLogTick({
     try {
       await logging.save({
         block_id: blockId,
-        ...withLastLoad(block, { status: "as_prescribed" }, logging.recentLoads, logging.recentPerformances),
+        ...withLastLoad(block, { status: "as_prescribed", ...(log ? { actual: log.actual } : {}) }, logging.recentLoads, logging.recentPerformances),
       });
       // Saved as written. Open the row where there is one thing left to confirm:
       // a first weight, or reps above the prescription that were reached last time.
@@ -192,6 +186,18 @@ export function ExerciseLogTick({
   );
 }
 
+export function useWeightContext() {
+  return useContext(ExerciseLogContext);
+}
+
+/** Visible on the workout row before starting; suggestions never change the plan. */
+export function ExerciseProgressionPreview({ block }: { block: StructuredBlock }) {
+  const logging = useContext(ExerciseLogContext);
+  if (!logging || logging.hideWeightGuidance || logging.logs[cleanText(block.block_id) || ""]) return null;
+  const recommendation = weightRecommendation(block, logging);
+  return <WeightRecommendation value={recommendation} />;
+}
+
 /** The numbers behind a saved log on a collapsed row: "80 kg", "Changed · 3 sets". */
 export function ExerciseLogBadge({ block }: { block: StructuredBlock }) {
   const state = useBlockLogging(block);
@@ -200,12 +206,14 @@ export function ExerciseLogBadge({ block }: { block: StructuredBlock }) {
   }
   const summary = logSummary(state.fields, state.log);
   // The tick already says "done"; a line is only worth it when there is more.
-  if (state.log.status === "as_prescribed" && summary === EXERCISE_LOG_STATUS_LABELS.as_prescribed) {
+  if (state.log.status === "as_prescribed" && summary === EXERCISE_LOG_STATUS_LABELS.as_prescribed
+    && !asksForFirstLoad(block, state.log, state.logging.recentLoads)) {
     return null;
   }
   return (
     <span className="ex-row-log" data-status={state.log.status}>
       {summary}
+      {asksForFirstLoad(block, state.log, state.logging.recentLoads) ? " · Weight missing — open to add or skip" : ""}
     </span>
   );
 }
@@ -270,11 +278,15 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
     return null;
   }
   const { logging, blockId, fields, log } = state;
+  const recommendation = weightRecommendation(block, logging);
+  const suggested = recommendation.suggested;
   const previous = lastPerformanceFor(block, logging.recentPerformances);
-  const nextStep = nextStepFor(block, previous, logging.allowProgression === true);
-  // Easing off is offered at any readiness; it is never held back by a restriction.
-  const backoff = nextStep ? null : backoffLoadFor(block, previous);
-  const suggested = nextStep?.kind === "load" ? nextStep.load : backoff;
+  // The shared recommendation, as a target the athlete can set up and confirm.
+  const nextStep: NextStep | null = recommendation.tryReps
+    ? { kind: "reps", reps: recommendation.tryReps }
+    : suggested && recommendation.last && suggested.unit === recommendation.last.unit && suggested.value > recommendation.last.value
+      ? { kind: "load", load: suggested }
+      : null;
   const loadField = fields.find(field => field.key === "load");
   // Reps reached last time are never assumed: "done" records the prescription,
   // and this is offered for the athlete to confirm they matched it again.
@@ -299,9 +311,8 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
     setSetUnit(log?.actual?.set_entries?.find(row => row.load)?.load?.unit ?? null);
     // A fresh entry starts from last time's weight, so only a change is typed.
     setDraft({
-      ...(log ? draftFromLog(fields, log) : draftFromLog(fields, suggested
-        ? { actual: { load: suggested } } as ExerciseLogRecord
-        : previous?.status === "skipped" || previous?.reason === "pain" ? null : withLastLoadRecord(block, logging.recentLoads))),
+      ...(log ? draftFromLog(fields, log) : draftFromLog(fields,
+        suggested ? { actual: { load: suggested } } as ExerciseLogRecord : null)),
       // Nothing is recorded yet: the athlete saves it after doing the work.
       ...(target?.kind === "reps" ? { reps: String(target.reps) } : {}),
     });
@@ -354,7 +365,11 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
       setConfirming(typed.outliers);
       return;
     }
-    void save(amendedLog(log, { load: typed.actual.load }));
+    const actual = log.actual.set_entries?.length
+      ? { ...log.actual, set_entries: log.actual.set_entries.map(row =>
+          row.load == null ? { ...row, load: typed.actual.load } : row) }
+      : { ...log.actual, load: typed.actual.load };
+    void save({ status: log.status, reason: log.reason, notes: log.notes, actual });
   }
 
   const alert = error ? (
@@ -434,7 +449,8 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
   if (log && !choosing) {
     const values = log.status === "skipped" || log.actual?.set_entries?.length ? [] : loggedValues(fields, log);
     return (
-      <div className="ex-log" data-mode="saved">
+      <div className="ex-log" data-mode="saved" role="group" aria-label="Today's actual">
+        <p className="kicker">Today&apos;s actual</p>
         {/* The whole line reopens the log, so it keeps the row's full width. */}
         <button
           type="button"
@@ -470,7 +486,7 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
           <div className="ex-log-first-load">
             <label className="ex-log-field" htmlFor={`${fieldId}-first-load`}>
               <span className="ex-log-field-label">
-                What weight did you use?
+                {log.actual.set_entries?.length ? "Weight used for sets with missing weights" : "What weight did you use?"}
                 <span className="ex-log-field-unit"> {loadField.unit}</span>
               </span>
               <input
@@ -563,10 +579,6 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
 
   return (
     <div className="ex-log" data-mode="idle">
-      {previous ? <p className="muted ex-log-previous">
-        Last: {performanceSummary(previous)}
-        {backoff ? <span className="ex-log-suggestion"> · Ease to {backoff.value} {backoff.unit}</span> : null}
-      </p> : null}
       {/* Sets the numbers up with the target; it is saved only once the athlete has done it. */}
       {nextStep ? (
         <button type="button" className="ex-log-suggest" disabled={saving} onClick={() => openEditor(nextStep)}>

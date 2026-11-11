@@ -201,7 +201,9 @@ def _athlete_block(entry: Mapping[str, Any], *, replaced: Mapping[str, Any] | No
 
     block = deepcopy(dict(entry["block"]))
     block.pop("rep_range", None)
-    block["progression_hold"] = override_progression_hold(block, replaced=replaced, siblings=siblings)
+    block.pop("progression_hold", None)
+    if override_progression_hold(block, replaced=replaced, siblings=siblings):
+        block["progression_hold"] = True
     return block
 
 

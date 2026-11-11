@@ -2,12 +2,15 @@
 
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useWeightContext } from "./exercise-log";
+import { WeightRecommendation } from "./weight-recommendation";
+import { weightRecommendation } from "@/lib/weight-recommendation";
 
 import { useSeenOnce } from "@/components/once-hint";
 import { ExerciseDemo } from "@/components/exercise-demo";
 import { ExercisePrescriptionEditor } from "@/components/exercise-prescription-editor";
 import { usePastExercises } from "@/components/load-field";
-import { withPastDose } from "@/lib/load-entry";
+import { parseLoad, withPastDose } from "@/lib/load-entry";
 import { doseFromBlock, finishedDose, type DoseDraft } from "@/lib/exercise-dose";
 import { useToast } from "@/components/toast-provider";
 import { AutoHeight } from "@/components/today/auto-height";
@@ -461,6 +464,29 @@ function ExerciseOptionsSheet({
   const scopeLabelId = useId();
   // What the athlete did last time fills a prescription the library leaves open.
   const past = usePastExercises(scope?.customisation.token);
+  const weightContext = useWeightContext();
+  function optionRecommendation(option: ExerciseAlternative) {
+    const raw = { ...option.suggested_dose, mode: option.dose_mode ?? "text" } as DoseDraft;
+    const dose = withPastDose(raw, past?.get(option.exercise_key));
+    const previousLoad = past?.get(option.exercise_key)?.latest_values.load;
+    const recommendation = weightRecommendation({
+      exercise_key: option.exercise_key, display_name: option.name,
+      block_type: dose.mode === "reps" ? "strength" : dose.mode,
+      sets: dose.sets, reps: dose.reps, load: parseLoad(raw.load_or_intensity),
+      effort: dose.rpe ? { method: "RPE", value: dose.rpe } : undefined,
+    }, { ...weightContext,
+      lowerLoads: weightContext?.lowerLoads || Boolean(raw.load_or_intensity && !parseLoad(raw.load_or_intensity)),
+      recentLoads: [
+      ...(weightContext?.recentLoads ?? []),
+      ...(previousLoad ? [{ exercise_key: option.exercise_key, display_name: option.name,
+        load: previousLoad, training_day: "" }] : []),
+    ] });
+    return { recommendation, dose: { ...dose,
+      load_or_intensity: recommendation.suggested
+        ? `${recommendation.suggested.value} ${recommendation.suggested.unit}`
+        : parseLoad(dose.load_or_intensity) ? "" : dose.load_or_intensity } };
+  }
+
 
   useEffect(() => {
     const timer = window.setTimeout(() => setTerm(search.trim()), 250);
@@ -579,7 +605,9 @@ function ExerciseOptionsSheet({
           ) : null}
           {data && data.alternatives.length > 0 ? (
             <ul className={styles.options} data-refreshing={refreshing}>
-              {data.alternatives.map((option) => (
+              {data.alternatives.map((option) => {
+                const { recommendation, dose } = optionRecommendation(option);
+                return (
                 <li key={option.catalogue_id} className={styles.option} data-pending={pending === option.catalogue_id}>
                   <div className={styles.optionRow}>
                     <button
@@ -605,6 +633,7 @@ function ExerciseOptionsSheet({
                           ) : null}
                         </span>
                       ) : null}
+                      <WeightRecommendation value={recommendation} />
                     </button>
                     {option.media?.video_id ? (
                       <button
@@ -631,7 +660,7 @@ function ExerciseOptionsSheet({
                   <Collapse show={dosing === option.catalogue_id}>
                     {dosing === option.catalogue_id ? (
                       <ExercisePrescriptionEditor
-                        initial={withPastDose({ ...option.suggested_dose, mode: option.dose_mode ?? "text" } as DoseDraft, past?.get(option.exercise_key))}
+                        initial={dose}
                         past={past?.get(option.exercise_key)}
                         busy={pending === option.catalogue_id}
                         action={mode === "swap" ? "Swap" : "Add"}
@@ -640,7 +669,7 @@ function ExerciseOptionsSheet({
                     ) : null}
                   </Collapse>
                 </li>
-              ))}
+              ); })}
             </ul>
           ) : null}
           {applyError ? <p className={styles.error} role="alert">{applyError}</p> : null}

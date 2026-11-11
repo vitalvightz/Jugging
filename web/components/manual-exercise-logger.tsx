@@ -14,11 +14,14 @@ import type { TrainingHistorySession } from "@/lib/training-history";
 import { trainingTitle } from "@/lib/training-disciplines";
 import sheet from "./log-training.module.css";
 import styles from "./manual-exercise-logger.module.css";
+import { invalidatePastExercises } from "@/lib/exercise-library";
+import { personalWeightRecommendation } from "@/lib/weight-recommendation";
+import { WeightRecommendation } from "./weight-recommendation";
 import { SetRows } from "./set-rows";
 import { useSheetExit } from "@/lib/use-sheet-exit";
 import { useSeenOnce } from "./once-hint";
 
-type Picked = { name: string; choice: ExerciseChoice; format: MeasurementFormat | null; reference: string | null };
+type Picked = { historyId?: string; name: string; choice: ExerciseChoice; format: MeasurementFormat | null; reference: string | null };
 /**
  * `original` is the saved entry being edited, to tell real changes from none.
  * `revision` is the saved revision this edit is based on (0 for a new entry);
@@ -145,13 +148,39 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
     requestAnimationFrame(() => dialog.current?.querySelector<HTMLElement>("[data-measure], [data-format]")?.focus());
   }
 
+  function suggestion(past: PersonalExercise | undefined) {
+    return personalWeightRecommendation({ display_name: past?.name ?? picked?.name ?? "",
+      block_type: "strength", sets: past?.latest_values.sets ?? past?.latest_values.set_entries?.length, reps: past?.latest_values.reps ?? 1,
+      load: { unit: past?.latest_values.load?.unit ?? past?.latest_values.set_entries?.find(row => row.load)?.load?.unit ?? loadUnit },
+    }, past);
+  }
+  const pastPicked = picked && recorded.find(row =>
+    row.id === picked.historyId || ("exercise_key" in picked.choice && row.id === `key:${picked.choice.exercise_key}`)
+    || ("personal_exercise_id" in picked.choice && row.id === `custom:${picked.choice.personal_exercise_id}`));
+  const recommendation = suggestion(pastPicked || undefined);
+  function suggestedDraft(chosen: MeasurementFormat, past?: PersonalExercise) {
+    const draft = blankDraft(chosen, loadUnit);
+    if (chosen !== "strength") return draft;
+    const value = suggestion(past);
+    if (value.suggested) {
+      draft.values.load = String(value.suggested.value);
+      draft.units.load = value.suggested.unit as "kg" | "lb";
+    }
+    if (past?.latest_values.set_entries?.length) {
+      draft.setRows = value.sets.map(row => ({ reps: "", load: row.suggested ? String(row.suggested.value) : "" }));
+    }
+    return draft;
+  }
+
   function pick(option: ExerciseOption) {
     const last = option.kind === "recorded" ? summarise(option.exercise.latest_values, option.exercise.log_format) : "";
     const chosen = optionFormat(option);
     setEditor(current => ({ ...current, picked: {
+      historyId: option.kind === "recorded" ? option.exercise.id
+        : option.kind === "catalogue" ? `key:${option.entry.exercise_key}` : undefined,
       name: optionName(option), choice: optionChoice(option), format: chosen,
       reference: option.kind === "recorded" && last ? `Last time · ${formatAppDate(option.exercise.latest_day)} · ${last}` : null,
-    }, draft: blankDraft(chosen ?? "strength", loadUnit), formatMenu: false, original: null }));
+    }, draft: suggestedDraft(chosen ?? "strength", option.kind === "recorded" ? option.exercise : recorded.find(row => option.kind === "catalogue" && row.id === `key:${option.entry.exercise_key}`)), formatMenu: false, original: null }));
     setQuery(""); setErrors({}); setError(null);
     focusFirstField();
   }
@@ -160,7 +189,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
     const last = summarise(entry.actual, entry.format);
     setEditor(current => ({ ...current, picked: { name: entry.name, choice: choiceOf(entry), format: entry.format,
       reference: `Last time · ${formatAppDate(entry.training_day)} · ${last || "no measurements"}` },
-    draft: blankDraft(entry.format, entry.actual.load?.unit === "lb" ? "lb" : loadUnit), formatMenu: false, original: null }));
+    draft: suggestedDraft(entry.format, recorded.find(row => row.id === entry.exercise_id)), formatMenu: false, original: null }));
     setErrors({}); setError(null);
     focusFirstField();
   }
@@ -212,6 +241,9 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
       const list = entries ?? [];
       const next = list.some(item => item.entry_id === saved.entry_id) ? list.map(item => item.entry_id === saved.entry_id ? saved : item) : [...list, saved];
       setEntries(next);
+      invalidatePastExercises(token);
+      setRecorded(current => current.map(row => row.id === saved.exercise_id
+        ? { ...row, latest_values: saved.actual, latest_day: saved.training_day, latest_source: "manual" } : row));
       setReuse(current => current?.filter(item => item.exercise_id !== saved.exercise_id) ?? null);
       setStatus(`${saved.name} ${editor.editing ? "updated" : "added"}.`);
       return next;
@@ -371,7 +403,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
             {FORMATS.map(item => <button key={item.id} type="button" data-format aria-pressed={format === item.id} disabled={busy}
               onClick={() => { setEditor(current => ({ ...current, formatMenu: false, picked: current.picked && { ...current.picked, format: item.id } })); setError(null); focusFirstField(); }}>{item.label}</button>)}
           </div> : null}
-          {picked.reference ? <p className={styles.reference}>{picked.reference}</p> : null}
+          {picked.reference && !(format === "strength" && (recommendation.last || recommendation.suggested)) ? <p className={styles.reference}>{picked.reference}</p> : null}
           {unitHint && hasLoadEntry && (format === "strength" || format === "bodyweight") ? <div className={styles.discoveryHint} role="note">
             <span>Tap the load unit to switch between kg and lb.</span>
             <button type="button" onClick={dismissUnitHint} aria-label="Dismiss weight unit tip">×</button>
@@ -379,6 +411,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
             <span>Tap “Edit sets individually” to record different reps or loads for each set.</span>
             <button type="button" onClick={dismissSetsHint} aria-label="Dismiss individual sets tip">×</button>
           </div> : null}
+          {format === "strength" ? <WeightRecommendation value={recommendation} /> : null}
           {format ? <>
             {editor.draft.setRows && (format === "strength" || format === "bodyweight") ? <SetRows
               rows={editor.draft.setRows} unit={editor.draft.units.load ?? "kg"} onUnitChange={() => cycleUnit("load")}

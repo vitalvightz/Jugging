@@ -145,11 +145,14 @@ for (const width of [390, 1280]) {
     await expect(sheet.getByRole("button", { name: /Back Squat.*Yours/ })).toBeVisible();
     await shoot(page, "03-search", width);
     await sheet.getByRole("button", { name: /Back Squat.*Yours/ }).click();
-    await expect(sheet.getByText(/Last time · .* · 3 × 5 · 75 kg/)).toBeVisible();
+    await expect(sheet.getByText("Suggested 75 kg · Same as last")).toBeVisible();
     await expect(sheet.getByLabel("Sets", { exact: true })).toBeFocused();
-    await expect(sheet.getByLabel("Load", { exact: true })).toHaveValue("");
+    await expect(sheet.getByLabel("Load", { exact: true })).toHaveValue("75");
+    await expect(sheet).toContainText("Suggested");
+    await expect(sheet).toContainText("Same as last");
+    expect(puts).toHaveLength(0);
     await sheet.getByLabel("Sets", { exact: true }).fill("3");
-    await expect(sheet.getByRole("button", { name: "Dismiss individual sets tip" })).toBeVisible();
+    await expect(sheet.getByRole("button", { name: "Dismiss weight unit tip" })).toBeVisible();
     await sheet.getByLabel("Reps", { exact: true }).fill("5");
     await sheet.getByLabel("Load", { exact: true }).fill("80");
     await expect(sheet.getByRole("button", { name: "Dismiss individual sets tip" })).toHaveCount(0);
@@ -246,7 +249,7 @@ for (const width of [390, 1280]) {
     await squat.click();
     const record = page.getByRole("dialog", { name: "Back Squat" });
     await expect(record).toContainText("Saved results from your plans and the training you logged");
-    await expect(record.getByRole("region", { name: /Recorded: Back Squat/ }).filter({ hasText: "90 kg" })).toHaveCount(1);
+    await expect(record.getByRole("region", { name: "Exercise performance record", exact: true })).toContainText("90 kg");
     await shoot(page, "14-exercise-progress", width);
     expect((await new AxeBuilder({ page }).include("dialog").analyze()).violations).toEqual([]);
     expect(errors).toEqual([]);
@@ -298,3 +301,40 @@ for (const width of [390, 1280]) {
     expect(errors).toEqual([]);
   });
 }
+
+for (const width of [390, 1280]) test(`historical Back Squat → editable manual suggestion → confirmation → next exposure (${width}px)`, async ({ page, baseURL }) => {
+  await page.setViewportSize({ width, height: 900 });
+  const { puts } = await setup(page, baseURL!);
+  async function openEntry() {
+    await page.goto("/plan");
+    await page.getByRole("button", { name: "Log session", exact: true }).click();
+    const form = page.getByRole("form", { name: "Log session", exact: true });
+    await form.getByRole("group", { name: "Activity", exact: true }).getByRole("button", { name: "Strength", exact: true }).click();
+    await form.getByRole("group", { name: "Duration", exact: true }).getByRole("button", { name: "60", exact: true }).click();
+    await form.getByRole("group", { name: "Effort", exact: true }).getByRole("button", { name: "Hard", exact: true }).click();
+    await form.getByRole("button", { name: "Save Session" }).click();
+    await page.getByRole("button", { name: /Add exercises/ }).click();
+    const sheet = page.getByRole("dialog", { name: "Add exercises", exact: true });
+    await sheet.getByRole("button", { name: "Back Squat", exact: true }).click();
+    return sheet;
+  }
+  let entry = await openEntry();
+  await expect(entry).toContainText("Suggested");
+  await expect(entry).toContainText("Same as last");
+  await expect(entry.getByLabel("Load", { exact: true })).toHaveValue("75");
+  expect(puts).toHaveLength(0);
+  await entry.getByLabel("Sets", { exact: true }).fill("3");
+  await entry.getByLabel("Reps", { exact: true }).fill("8");
+  await entry.getByLabel("Load", { exact: true }).fill("80");
+  expect(puts).toHaveLength(0);
+  await entry.getByRole("button", { name: "Add exercise", exact: true }).click();
+  await expect(entry.getByRole("list", { name: "Exercises in this session" })).toContainText("80 kg");
+  expect((puts[0].actual as { load: { value: number } }).load.value).toBe(80);
+  await entry.getByRole("button", { name: "Done", exact: true }).click();
+  entry = await openEntry();
+  await expect(entry.getByLabel("Load", { exact: true })).toHaveValue("80");
+  await expect(entry).toContainText("Same as last");
+  await entry.getByLabel("Load", { exact: true }).fill("");
+  await entry.getByRole("button", { name: "Add exercise", exact: true }).click();
+  expect(puts[1].actual).toEqual({});
+});

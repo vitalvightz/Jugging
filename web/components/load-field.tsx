@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { PersonalExercise } from "@/lib/api-schema.generated";
 import { getExerciseLibrary } from "@/lib/api";
-import { pastExercisesByKey } from "@/lib/exercise-library";
+import { EXERCISE_HISTORY_UPDATED, pastExercisesByKey } from "@/lib/exercise-library";
 import { formatLoad, parseLoad, startsAsWeight, type LoadUnit } from "@/lib/load-entry";
 import styles from "./load-field.module.css";
 
@@ -13,8 +13,16 @@ export function usePastExercises(token: string | null | undefined): ReadonlyMap<
   useEffect(() => {
     if (!token) return;
     let live = true;
-    void pastExercisesByKey(token, getExerciseLibrary).then(map => { if (live) setLoaded({ token, map }); });
-    return () => { live = false; };
+    let revision = 0;
+    const refresh = () => {
+      const current = ++revision;
+      void pastExercisesByKey(token, getExerciseLibrary).then(map => {
+        if (live && revision === current) setLoaded({ token, map });
+      });
+    };
+    refresh();
+    window.addEventListener(EXERCISE_HISTORY_UPDATED, refresh);
+    return () => { live = false; window.removeEventListener(EXERCISE_HISTORY_UPDATED, refresh); };
   }, [token]);
   return token && loaded?.token === token ? loaded.map : null;
 }
@@ -88,7 +96,7 @@ export function LoadField({ value, onChange, weighed, last, className }: {
         {asWeight ? (
           <>
             <input aria-label="Weight" type="number" inputMode="decimal" min={0} max={1000} step="any"
-              placeholder={last ? String(last.value) : "0"} value={amount}
+              placeholder={last ? String(last.value) : "Enter weight"} value={amount}
               onChange={e => changeAmount(e.target.value)} />
             <select aria-label="Weight unit" value={unit} onChange={e => {
               const next = e.target.value as LoadUnit;

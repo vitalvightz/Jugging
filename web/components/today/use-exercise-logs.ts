@@ -2,20 +2,24 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { usePastExercises } from "@/components/load-field";
+import { withManualWeightHistory } from "@/lib/weight-recommendation";
 import type { ExerciseLogging } from "@/components/exercise-log";
 import { listTodayExerciseLogs, submitExerciseLog, submitExerciseLogs } from "@/lib/api";
 import type { ExerciseLogRecord, ExerciseRecentLoad } from "@/lib/types";
 
 /**
  * Today's exercise logs for the active plan, and the save that writes one.
- * Returns null while logging is closed (no started session today), so the
- * exercise rows render without any log controls.
+ * Fetches history before Start; canWrite keeps measurement controls closed
+ * until the session starts.
  */
 export function useTodayExerciseLogs({
   token,
   planId,
   trainingDay,
   enabled,
+  canWrite = true,
+  lowerLoads = false,
   painReasonAllowed,
   allowProgression = false,
   onError,
@@ -26,6 +30,8 @@ export function useTodayExerciseLogs({
   trainingDay: string;
   /** The server only accepts a log for a session started or completed today. */
   enabled: boolean;
+  canWrite?: boolean;
+  lowerLoads?: boolean;
   painReasonAllowed: boolean;
   allowProgression?: boolean;
   /** Reports a failed one-tap save from a collapsed row. */
@@ -42,6 +48,7 @@ export function useTodayExerciseLogs({
     logs: {},
   });
   const active = enabled && Boolean(token) && Boolean(planId);
+  const personalHistory = usePastExercises(active ? token : null);
 
   useEffect(() => {
     if (!active) {
@@ -103,10 +110,15 @@ export function useTodayExerciseLogs({
 
   const logs = loaded.scope === scope ? loaded.logs : EMPTY_LOGS;
   const recentLoads = loaded.scope === scope ? loaded.recentLoads : undefined;
-  const recentPerformances = loaded.scope === scope ? loaded.recentPerformances : undefined;
+  const rawPerformances = loaded.scope === scope ? loaded.recentPerformances : undefined;
+  // Wait for the authoritative plan history so an older manual load cannot
+  // briefly outrank a newer pain/skip record while requests race.
+  const recentPerformances = useMemo(() => rawPerformances === undefined ? undefined
+    : withManualWeightHistory(rawPerformances, personalHistory, trainingDay),
+    [rawPerformances, personalHistory, trainingDay]);
   return useMemo(
-    () => (active ? { logs, save, saveMany, recentLoads, recentPerformances, allowProgression, painReasonAllowed, onError } : null),
-    [active, logs, save, saveMany, recentLoads, recentPerformances, allowProgression, painReasonAllowed, onError],
+    () => (active ? { lowerLoads, canWrite, logs, save, saveMany, recentLoads, recentPerformances, allowProgression, painReasonAllowed, onError } : null),
+    [lowerLoads, canWrite, active, logs, save, saveMany, recentLoads, recentPerformances, allowProgression, painReasonAllowed, onError],
   );
 }
 

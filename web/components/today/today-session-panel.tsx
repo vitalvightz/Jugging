@@ -1,4 +1,6 @@
 "use client";
+import { weightContextForToday } from "@/lib/weight-recommendation";
+import { withHistoricalTimerLoads } from "@/lib/session-timer/history";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
@@ -660,18 +662,10 @@ export function TodaySessionPanel({
     token,
     planId: activePlanId,
     trainingDay: state.today.training_day,
-    enabled:
-      resolvedDecision.sessionIsToday &&
-      (status === "started" || status === "done" || status === "modified"),
+    enabled: resolvedDecision.sessionIsToday,
+    canWrite: status === "started" || status === "done" || status === "modified",
     painReasonAllowed,
-    allowProgression: progressionOpen({
-      decisionTier: state.today.decision_tier,
-      openInjuries: state.open_injuries.length,
-      phase: state.active_plan.phase,
-      safetyHold: state.live_prescription?.safety_hold,
-      fightDate: state.active_plan.fight_date,
-      trainingDay: state.today.training_day,
-    }),
+    ...weightContextForToday(state),
     onError: reportExerciseLogError,
   });
   // Center the structured blocks on whatever the backend command view targets:
@@ -807,7 +801,9 @@ export function TodaySessionPanel({
         countdown: timerCountdown,
       })
     : [], [hasResolvedDaySessions, current.sessions, session.session_id, timerSourceText, timerCountdown]);
-  const timerItems = plannedTimerItems;
+  const timerItems = withHistoricalTimerLoads(plannedTimerItems,
+    current.sessions.flatMap(session => session.blocks ?? []),
+    exerciseLogging?.recentLoads, exerciseLogging?.recentPerformances, exerciseLogging ?? {});
   // The day's Fight Visualisation, offered as a voice-guided run. Only when the
   // session being logged is one of this day's, the same rule as the timer.
   const guidedVisualisation = useMemo(() =>
@@ -1871,7 +1867,7 @@ export function TodaySessionPanel({
                 headline={headline}
                 rehabLabelPolicy={rehabLabelPolicy}
                 exerciseMedia={exerciseMedia}
-                exerciseLogging={exerciseLogging}
+                exerciseLogging={exerciseLogging ? { ...exerciseLogging, hideWeightGuidance: true } : null}
                 accessToken={token}
                 exerciseCustomisation={exerciseCustomisation}
               />
