@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { weightContextForToday, type WeightContext } from "@/lib/weight-recommendation";
+import { ExerciseLogProvider } from "./exercise-log";
+import { useTodayExerciseLogs } from "./today/use-exercise-logs";
 import { useRouter } from "next/navigation";
 
 import {
@@ -1606,6 +1609,7 @@ export function resolvePlanActiveState(params: {
 }
 
 type PlanOperationalState = {
+  weightContext?: Pick<WeightContext, "allowProgression" | "lowerLoads">;
   planId: string;
   activePlanId: string | null | undefined;
   nextSessionFocusDate?: Date;
@@ -1974,6 +1978,7 @@ export function PlanViewer({
         // (undated plans) leaves the calendar "Today" highlight untouched.
         const parsed = iso ? new Date(`${iso}T12:00:00`) : null;
         setPlanOperationalState({
+          weightContext: state && isThisActivePlan ? weightContextForToday(state) : undefined,
           planId: plan.plan_id,
           activePlanId: resolvePlanActiveState({
             todayResolved: todayResult.status === "fulfilled",
@@ -2271,6 +2276,15 @@ export function PlanViewer({
   // Swap / add / remove for the plan's owner, once their completion rows are
   // known: a started or logged workout keeps its prescription.
   const planId = plan.plan_id;
+  const weightHistory = useTodayExerciseLogs({
+    token: accessToken ?? "", planId,
+    trainingDay: planCompletions?.current_training_day ?? plan.schedule_context?.current_training_day ?? "",
+    enabled: viewerRole === "athlete" && plan.athlete_id === viewerProfileId,
+    canWrite: false, painReasonAllowed: false,
+    // Plan browsing has no current readiness decision. Never assume it is safe to increase.
+    allowProgression: false,
+    ...currentOperationalState?.weightContext,
+  });
   const exerciseCustomisation = useMemo<ExerciseCustomisation | null>(() => {
     const trainingDay = planCompletions?.current_training_day || plan.schedule_context?.current_training_day;
     if (!accessToken || !planCompletions || !trainingDay || plan.status === "archived") return null;
@@ -2983,6 +2997,7 @@ export function PlanViewer({
                 </div>
               ) : null}
               {useSavedStructuredPlan && plan.outputs.structured_plan ? (
+                <ExerciseLogProvider logging={weightHistory}>
                 <ExerciseCustomisationProvider value={exerciseCustomisation}>
                 <StructuredPlanRenderer
                   plan={plan.outputs.structured_plan}
@@ -3002,6 +3017,7 @@ export function PlanViewer({
                   customPlanId={viewerRole === "athlete" && plan.athlete_id === viewerProfileId && !archivedPreview ? plan.custom_plan_id : null}
                 />
                 </ExerciseCustomisationProvider>
+                </ExerciseLogProvider>
               ) : holdPlanForEnhancedCard ? (
                 <EnhancedCardLockInCard accessToken={accessToken} />
               ) : (
@@ -3023,6 +3039,7 @@ export function PlanViewer({
                       hasSavedCard={hasStructuredAthletePlan}
                     />
                   ) : null}
+                  <ExerciseLogProvider logging={weightHistory}>
                   <TextStructuredPlanRenderer
                     text={athletePlanText}
                     fightDate={plan.fight_date}
@@ -3034,6 +3051,7 @@ export function PlanViewer({
                     rehabLabelPolicy={rehabLabelPolicy}
                     exerciseMedia={plan.outputs.exercise_media}
                   />
+                  </ExerciseLogProvider>
                 </>
               )}
               {!holdPlanForEnhancedCard && canSubmitPlanFeedback && accessToken ? (

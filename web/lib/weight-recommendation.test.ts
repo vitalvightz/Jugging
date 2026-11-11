@@ -87,3 +87,18 @@ test("today's restrictions override reductions from previous struggle for summar
     assert.ok(prescribed.sets.every(row => row.suggested?.value === 60));
   }
 });
+
+test("confirmed manual history can seed the next planned exposure without granting progression", async () => {
+  const { withManualWeightHistory } = await import("./weight-recommendation");
+  const manual = { id: "key:squat", name: "Back Squat", latest_day: "2026-10-04", latest_source: "manual",
+    latest_confirmed_as_prescribed: false, latest_values: { sets: 3, set_entries: [115, 120, 125].map(value =>
+      ({ reps: 8, load: load(value) })) } } as import("./api-schema.generated").PersonalExercise;
+  const history = withManualWeightHistory([], new Map([["squat", manual]]), "2026-10-05");
+  const result = weightRecommendation(block, { recentPerformances: history, allowProgression: true });
+  assert.deepEqual(result.last, load(125));
+  assert.deepEqual(result.sets.map(row => row.suggested?.value), [115, 120, 125]);
+  assert.equal(result.tryReps, null);
+  const older = withManualWeightHistory([{ ...history[0], training_day: "2026-10-06", status: "skipped" }],
+    new Map([["squat", manual]]), "2026-10-07");
+  assert.equal(weightRecommendation(block, { recentPerformances: older }).suggested, null);
+});

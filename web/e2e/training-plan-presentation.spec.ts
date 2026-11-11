@@ -122,3 +122,38 @@ for (const width of [320, 375, 390, 430, 1280]) {
     expect(errors).toEqual([]);
   });
 }
+
+for (const width of [390, 1280]) test(`Plan Detail uses historical Back Squat recommendations without enabling logs (${width}px)`, async ({ page, baseURL }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await setup(page, baseURL!);
+  const historicalPlan = structuredClone(plan);
+  for (const week of historicalPlan.outputs.structured_plan!.weeks ?? [])
+    for (const day of week.days ?? []) for (const session of day.sessions ?? [])
+      for (const block of session.blocks ?? []) if (block.display_name === "Back Squat") { block.load = null; block.exercise_key = "back-squat"; }
+  await page.route("**/api/plans/**", route => route.fulfill({ json:
+    new URL(route.request().url()).pathname.endsWith("/completions")
+      ? { completions, current_training_day: "2026-10-28" } : historicalPlan }));
+  await page.route("**/api/today", route => route.fulfill({ status: 404, json: { detail: "No current readiness" } }));
+  await page.route("**/api/today/exercise-logs?**", route => route.fulfill({ json: {
+    logs: [], recent_loads: [], recent_performances: [],
+  } }));
+  await page.route("**/api/history/exercise-library", route => route.fulfill({ json: { exercises: [{
+    id: "key:back-squat", name: "Back Squat", identity_kind: "canonical", latest_day: "2026-10-20",
+    latest_source: "manual", latest_confirmed_as_prescribed: false, best_loads: [], log_format: "strength",
+    latest_values: { sets: 3, reps: 8, load: { value: 120, unit: "kg" } },
+  }] } }));
+  await page.goto("/plans/premium-plan");
+  const today = page.locator('.cm-days [data-day-index="2"]');
+  const row = today.locator(".ex-row").filter({ hasText: "Back Squat" });
+  await expect(row).toContainText("Suggested");
+  await expect(row).toContainText("Last");
+  await expect(row).toContainText("120 kg");
+  await expect(row.locator(".ex-log-tick")).toHaveCount(0);
+  await row.getByRole("button", { name: "Back Squat", exact: true }).click();
+  const detail = page.getByRole("dialog", { name: "Back Squat", exact: true });
+  await expect(detail).toContainText("Suggested");
+  await expect(detail).toContainText("Last");
+  await expect(detail).toContainText("120 kg");
+  await expect(detail.getByRole("button", { name: "Done", exact: true })).toHaveCount(0);
+  if (process.env.PLAN_SCREENSHOTS) await detail.screenshot({ path: `${process.env.PLAN_SCREENSHOTS}/plan-weight-${width}.png` });
+});

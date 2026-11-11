@@ -185,7 +185,7 @@ export function useWeightContext() {
 /** Visible on the workout row before starting; suggestions never change the plan. */
 export function ExerciseProgressionPreview({ block }: { block: StructuredBlock }) {
   const logging = useContext(ExerciseLogContext);
-  if (!logging || block.prescription_source === "athlete") return null;
+  if (!logging) return null;
   const recommendation = weightRecommendation(block, logging);
   return <WeightRecommendation value={recommendation} dose={block.sets && block.reps ? `${block.sets} sets × ${block.reps} reps` : undefined} />;
 }

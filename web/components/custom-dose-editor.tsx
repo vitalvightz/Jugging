@@ -1,4 +1,7 @@
 "use client";
+import { WeightRecommendation } from "./weight-recommendation";
+import { personalWeightRecommendation } from "@/lib/weight-recommendation";
+import { parseLoad } from "@/lib/load-entry";
 import { useState } from "react";
 import type { CustomDose } from "@/lib/api-schema.generated";
 import styles from "./custom-plan-builder.module.css";
@@ -60,6 +63,17 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
   /** Only the fields that complete the dose, for quick entry while adding exercises. */
   essential?: boolean;
 }) {
+  const recommendation = personalWeightRecommendation({
+    display_name: past?.name ?? "Exercise", block_type: "strength",
+    // Eligibility for the weight field does not fill any unfinished rep/set inputs.
+    sets: dose.sets, reps: dose.mode === "reps" ? dose.reps ?? 1 : dose.reps,
+    load: parseLoad(dose.load_or_intensity),
+  }, past);
+  const weightPreview = <><WeightRecommendation value={recommendation} />
+    {!dose.load_or_intensity && recommendation.suggested ? <button type="button" className="ghost-button"
+      onClick={() => onChange({ ...dose, load_or_intensity: `${recommendation.suggested!.value} ${recommendation.suggested!.unit}` })}>
+      Use suggested weight
+    </button> : null}</>;
   function number(
     field: "sets" | "reps" | "rest_seconds" | "rounds" | "rpe" | "distance",
     label: string,
@@ -93,7 +107,7 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
     const box = (field: "sets" | "reps" | "rest_seconds" | "rounds" | "distance", label: string, min: number, max: number, step = 1) =>
       <input aria-label={label} type="number" inputMode="decimal" min={min} max={max} step={step} value={dose[field] ?? ""}
         onChange={(event) => onChange({ ...dose, [field]: event.target.value === "" ? null : Number(event.target.value) })} />;
-    return <div className={styles.inlineDose}>
+    return <>{weightPreview}<div className={styles.inlineDose}>
       {dose.mode === "reps" ? <>{box("sets", "Sets", 1, 100)}<span aria-hidden="true">×</span>{box("reps", "Reps", 1, 1000)}<span>{dose.per_side ? "reps / side" : "reps"}</span></>
         : dose.mode === "intervals" ? <>{box("rounds", "Rounds", 1, 100)}<span aria-hidden="true">×</span>
           <DurationField inline value={dose.work_seconds} label="Work duration" onChange={(value) => onChange({ ...dose, work_seconds: value })} />
@@ -107,10 +121,14 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
           </select></>
         : <input className={styles.inlineText} aria-label="Prescription" maxLength={500} placeholder="Prescription"
           value={dose.prescription ?? ""} onChange={(e) => onChange({ ...dose, prescription: e.target.value })} />}
-    </div>;
+    </div>
+    {dose.mode === "reps" ? <LoadField value={dose.load_or_intensity} weighed={weighedFormat(dose.mode, movement, past)}
+      last={pastLoad(past)} onChange={text => onChange({ ...dose, load_or_intensity: text })} /> : null}
+    </>;
   }
   return (
     <div className={styles.dose}>
+      <div style={{ gridColumn: "1 / -1" }}>{weightPreview}</div>
       <label>
         <span>Format</span>
         <select
