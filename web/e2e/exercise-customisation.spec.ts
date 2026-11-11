@@ -562,3 +562,50 @@ for (const width of [390, 1280]) for (const reportFinal of [true, false]) {
     else expect(squat.actual.load).toBeNull();
   });
 }
+
+for (const width of [320, 390]) test(`Plan preserves written weights without calling them suggestions (${width}px)`, async ({ page, baseURL }) => {
+  test.skip(!api, "Run with the seeded API");
+  test.setTimeout(120_000);
+  await page.request.post(`${api}/__e2e/reset?progression=true&strength_only=true`);
+  const headers = { Authorization: "Bearer athlete-token" };
+  const initial = await (await page.request.get(`${api}/api/today`, { headers })).json();
+  const planId = initial.active_plan.id;
+  await page.setViewportSize({ width, height: 844 });
+  const writes = await setup(page, baseURL!);
+  await page.request.post(`${api}/api/today/checkin`, { headers,
+    data: { plan_id: planId, sleep: "good", body: "normal", pain: "none", phase: "GPP" } });
+  await page.goto("/today");
+  await page.getByRole("button", { name: "Start session", exact: true }).click();
+  await page.getByRole("button", { name: "Close timer", exact: true }).click();
+  await page.getByRole("button", { name: "Mark Back Squat done as written", exact: true }).click();
+  await page.getByLabel(/What weight did you use\?/).fill("125");
+  await page.getByRole("button", { name: "Save weight", exact: true }).click();
+  await page.getByRole("button", { name: "Right", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Right", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.request.post(`${api}/__e2e/next_exposure`);
+  await page.addInitScript(() => localStorage.setItem("unlxck.plan-view", "list"));
+  await page.goto(`/plans/${planId}`);
+  await expect(page.getByRole("button", { name: "Change Back Squat", exact: true }).first()).toBeVisible();
+  for (const weight of [100, 1]) {
+    await page.getByRole("button", { name: "Change Back Squat", exact: true }).first().click();
+    await page.getByRole("dialog", { name: "Back Squat", exact: true }).getByRole("button", { name: "Edit", exact: true }).click();
+    const edit = page.getByRole("dialog", { name: "Edit Back Squat", exact: true });
+    await edit.getByLabel("Weight", { exact: true }).fill(String(weight));
+    await edit.getByRole("button", { name: "Save changes", exact: true }).click();
+    await expect(edit).toHaveCount(0);
+    await page.reload();
+    const row = page.locator(".ex-row").filter({ has: page.getByRole("button", { name: "Change Back Squat", exact: true }) }).first();
+    await expect(row).toContainText(`${weight} kg`);
+    await expect(row).toContainText("Last 125 kg");
+    await expect(row).not.toContainText("Suggested");
+    await row.getByRole("button", { name: "Change Back Squat", exact: true }).click();
+    await page.getByRole("dialog", { name: "Back Squat", exact: true }).getByRole("button", { name: "Edit", exact: true }).click();
+    await expect(edit.getByLabel("Weight", { exact: true })).toHaveValue(String(weight));
+    await edit.getByRole("button", { name: "Close", exact: true }).click();
+    const logs = await (await page.request.get(`${api}/api/today/exercise-logs?plan_id=${planId}`, { headers })).json();
+    expect(logs.logs).toEqual([]);
+    expect(logs.recent_performances[0].actual.load).toEqual({ value: 125, unit: "kg" });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  expect(writes.filter(write => write.path.endsWith("/exercise-changes"))).toHaveLength(2);
+});

@@ -699,3 +699,24 @@ test("Done keeps varied and partial historical drafts available without saving i
     view.unmount();
   }
 });
+
+test("written prescriptions remain prescriptions, never suggestions or Try actions", async () => {
+  const previous = record(deadlift, { actual: { sets: 4, reps: 8, load: { value: 125, unit: "kg" }, feel: "right" } });
+  for (const progression_hold of [false, true]) for (const value of [1, 100, 125, 130]) {
+    const authored = { ...deadlift, progression_hold, prescription_source: "athlete" as const,
+      load: { method: "absolute" as const, value, unit: "kg" } };
+    const collapsed = mount(authored, { open: false, recentPerformances: [previous], allowProgression: true });
+    assert.ok(collapsed.text().includes(`${value} kg`));
+    assert.match(collapsed.text(), /Last 125 kg/);
+    assert.doesNotMatch(collapsed.text(), /Suggested/);
+    assert.equal(collapsed.saved.length, 0);
+    collapsed.unmount();
+    const open = mount(authored, { recentPerformances: [previous], allowProgression: true });
+    assert.equal(open.container.querySelector(".ex-log-suggest"), null);
+    await open.click("Log numbers");
+    assert.equal(open.container.querySelector<HTMLInputElement>('input[id$="-load"]')!.value, String(value));
+    assert.equal(open.saved.length, 0);
+    open.unmount();
+  }
+  assert.equal(previous.actual.load!.value, 125);
+});

@@ -145,11 +145,11 @@ for (const width of [390, 1280]) {
     await expect(sheet.getByRole("button", { name: /Back Squat.*Yours/ })).toBeVisible();
     await shoot(page, "03-search", width);
     await sheet.getByRole("button", { name: /Back Squat.*Yours/ }).click();
-    await expect(sheet.getByText("Suggested 75 kg · Same as last")).toBeVisible();
+    await expect(sheet.getByText("Last 75 kg")).toBeVisible();
     await expect(sheet.getByLabel("Sets", { exact: true })).toBeFocused();
     await expect(sheet.getByLabel("Load", { exact: true })).toHaveValue("75");
-    await expect(sheet).toContainText("Suggested");
-    await expect(sheet).toContainText("Same as last");
+    await expect(sheet).not.toContainText("Suggested");
+    await expect(sheet).toContainText("Last 75 kg");
     expect(puts).toHaveLength(0);
     await sheet.getByLabel("Sets", { exact: true }).fill("3");
     await expect(sheet.getByRole("button", { name: "Dismiss weight unit tip" })).toBeVisible();
@@ -319,8 +319,8 @@ for (const width of [390, 1280]) test(`historical Back Squat → editable manual
     return sheet;
   }
   let entry = await openEntry();
-  await expect(entry).toContainText("Suggested");
-  await expect(entry).toContainText("Same as last");
+  await expect(entry).not.toContainText("Suggested");
+  await expect(entry).toContainText("Last 75 kg");
   await expect(entry.getByLabel("Load", { exact: true })).toHaveValue("75");
   expect(puts).toHaveLength(0);
   await entry.getByLabel("Sets", { exact: true }).fill("3");
@@ -333,7 +333,7 @@ for (const width of [390, 1280]) test(`historical Back Squat → editable manual
   await entry.getByRole("button", { name: "Done", exact: true }).click();
   entry = await openEntry();
   await expect(entry.getByLabel("Load", { exact: true })).toHaveValue("80");
-  await expect(entry).toContainText("Same as last");
+  await expect(entry).toContainText("Last 80 kg");
   await entry.getByLabel("Load", { exact: true }).fill("");
   await entry.getByRole("button", { name: "Add exercise", exact: true }).click();
   expect(puts[1].actual).toEqual({});

@@ -308,3 +308,19 @@ test("reusing a protected movement as strength does not earn generic progression
     assert.deepEqual(weightRecommendation(block, { allowProgression: true, recentPerformances: [history] }).suggested, load(120));
   }
 });
+
+test("only engine changes are marked as calculated, never authored or recalled loads", () => {
+  const history = previous({ sets: 3, reps: 8, load: load(125), feel: "right" });
+  for (const value of [1, 100, 125, 130]) {
+    const result = weightRecommendation({ ...block, load: load(value) }, { allowProgression: true, recentPerformances: [history] });
+    assert.deepEqual(result.suggested, load(value));
+    assert.equal(result.calculated, false);
+    assert.ok(result.sets.every(row => !row.calculated));
+  }
+  const earned = weightRecommendation(block, { allowProgression: true,
+    recentPerformances: [previous({ load: load(120), feel: "easy" })] });
+  assert.equal(earned.calculated, true);
+  assert.ok(earned.sets.every(row => row.calculated));
+  const backoff = weightRecommendation(block, { recentPerformances: [previous({ load: load(120), feel: "hard" })] });
+  assert.equal(backoff.calculated, true);
+});
