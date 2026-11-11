@@ -4,8 +4,8 @@ import { isolateFromNetwork } from "./support";
 import { buildTimerItems } from "../lib/session-timer/plan";
 import { createTimerState, startItem } from "../lib/session-timer/engine";
 
-test("historical Back Squat → preview → planned timer → confirmed sets → review → next exposure", async ({ page, baseURL }) => {
-  await page.setViewportSize({ width: 390, height: 900 });
+for (const width of [320, 390, 1280]) test(`historical Back Squat → preview → planned timer → confirmed sets → review → next exposure (${width}px)`, async ({ page, baseURL }) => {
+  await page.setViewportSize({ width, height: width < 400 ? 844 : 900 });
   await isolateFromNetwork(page, baseURL!);
   let now = Date.parse("2026-10-05T12:00:00Z");
   await page.clock.setFixedTime(new Date(now));
@@ -80,13 +80,24 @@ test("historical Back Squat → preview → planned timer → confirmed sets →
     await expect(timer.locator(".st-rest-effort")).not.toHaveAttribute("open");
     await expect(timer.getByLabel(`RPE, set ${index + 1}`, { exact: true })).not.toBeVisible();
     if (index === 0) {
+      await expect(timer.locator(".st-discovery-hint")).toHaveText(/Check weight and reps/);
+      await expect(timer.locator(".st-hint")).toHaveCount(0);
       await expect(timer.locator(".st-clock-digits")).toBeVisible();
       expect(await timer.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
-      if (process.env.WEIGHT_QA_DIR) await timer.screenshot({ path: `${process.env.WEIGHT_QA_DIR}/between-sets-390.png` });
+      if (process.env.WEIGHT_QA_DIR) await timer.screenshot({ path: `${process.env.WEIGHT_QA_DIR}/between-sets-${width}.png` });
       await timer.locator(".st-rest-effort summary").click();
+      await expect(timer.locator(".st-discovery-hint")).toHaveText(/RPE is how hard this set felt/);
+      if (process.env.WEIGHT_QA_DIR) await timer.screenshot({ path: `${process.env.WEIGHT_QA_DIR}/rpe-help-${width}.png`, animations: "disabled" });
+      const before = await timer.getByRole("button", {name: /Confirm set/}).boundingBox();
       await timer.getByLabel("RPE, set 1", { exact: true }).fill("7.5");
+      await expect(timer.locator(".st-discovery-hint")).toHaveCount(0);
+      const after = await timer.getByRole("button", {name: /Confirm set/}).boundingBox();
+      expect(Math.abs(after!.y - before!.y)).toBeLessThan(2);
     }
-    if (index === 1) await field.fill("110");
+    if (index === 1) {
+      await expect(timer.locator(".st-discovery-hint")).toHaveCount(0);
+      await field.fill("110");
+    }
     expect(batches).toHaveLength(0);
     await timer.getByRole("button", { name: /Confirm set/ }).click();
     if (index < 2) {
@@ -101,6 +112,10 @@ test("historical Back Squat → preview → planned timer → confirmed sets →
   expect((batches[0].entries[0].actual.set_entries[0] as { rpe?: number }).rpe).toBe(7.5);
   const review = page.locator(".today-review-root");
   await expect(review).toContainText("110–125 kg");
+  await expect(review.locator(".today-review-discovery")).toHaveText(/Your results guide next time/);
+  await expect(review.locator(".today-review-hint")).toHaveCount(0);
+  await expect(review.getByText("How hard was the whole session?", {exact: true})).toBeVisible();
+  if (process.env.WEIGHT_QA_DIR) await review.screenshot({ path: `${process.env.WEIGHT_QA_DIR}/review-help-${width}.png`, animations: "disabled" });
   await review.getByRole("button", { name: "Back Squat", exact: true }).click();
   const detail = page.getByRole("dialog", { name: "Back Squat", exact: true });
   await expect(detail.getByRole("group", { name: "Today's actual" })).toContainText("115");
@@ -111,6 +126,7 @@ test("historical Back Squat → preview → planned timer → confirmed sets →
   await review.getByRole("button", { name: "Save session", exact: true }).click();
   await expect(review).toHaveCount(0);
   expect(sessionSaved).toBe(true);
+  expect(await page.evaluate(() => localStorage.getItem("discovery-session-review-seen"))).toBe("1");
   view.today.completion_status = "started";
   view.today.training_day = "2026-10-06";
   view.today.next_session.calendar_date = "2026-10-06";
