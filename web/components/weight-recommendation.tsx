@@ -3,7 +3,7 @@ import styles from "./weight-recommendation.module.css";
 
 /** Compact guidance only; never a record of completed measurements. */
 export function WeightRecommendation({ value, subtle = false }: { value: Recommendation; subtle?: boolean }) {
-  if (!value.last && !value.suggested) return null;
+  if (!value.last && !value.suggested && !value.tryReps) return null;
   const format = (load: NonNullable<Recommendation["last"]>) => `${load.value} ${load.unit}`;
   const same = value.last && value.suggested
     && value.last.value === value.suggested.value && value.last.unit === value.suggested.unit;

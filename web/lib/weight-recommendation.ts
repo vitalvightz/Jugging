@@ -44,10 +44,13 @@ export function weightRecommendation(block: StructuredBlock, context: WeightCont
   const performanceAt = (load: ExerciseLogMeasure | null) => previous && load
     ? { ...previous, actual: { ...previous.actual, load } } : previous;
   const measuredWork = Boolean(measured || (entries?.length && entries.every(row => valid(row.load))));
-  const canProgress = context.allowProgression === true && !lower && measuredWork;
+  const canProgress = context.allowProgression === true && !lower && (measuredWork || block.load?.method === "bodyweight");
   const next = nextStepFor(block, performanceAt(last), canProgress);
   const reduced = backoffLoadFor(block, performanceAt(last));
-  const suggested = prescribed ?? (blocked || lower ? null : reduced ?? (next?.kind === "load" ? next.load : last));
+  // A varied or partially measured workout has no reliable straight-set draft.
+  const individualLoads = Boolean(entries?.length && (entries.length < (Number(block.sets) || 1) || !entries.every(row => valid(row.load))
+    || new Set(entries.map(row => row.load?.value)).size > 1));
+  const suggested = prescribed ?? (blocked || lower || individualLoads ? null : reduced ?? (next?.kind === "load" ? next.load : last));
   const sets = Array.from({ length: Math.min(50, Math.max(1, Number(block.sets) || 1)) }, (_, at) => {
     const row = entries?.find((row, index) => (row.set_number ?? index + 1) === at + 1);
     const lastSet = valid(row?.load) ?? measured ?? (entries?.length ? null : valid(fallback));

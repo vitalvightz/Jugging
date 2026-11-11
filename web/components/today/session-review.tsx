@@ -13,7 +13,6 @@ import {
   deriveSessionOutcome,
   logFieldsForBlock,
   plannedSessionRpe,
-  withLastLoad,
   type SessionOutcome,
 } from "@/lib/exercise-log";
 import { cleanText } from "@/lib/structured-plan";
@@ -108,7 +107,7 @@ export function SessionReview({
       await logging.saveMany(
         outcome.unlogged.map((block) => ({
           block_id: cleanText(block.block_id) ?? "",
-          ...withLastLoad(block, { status: "as_prescribed" as const }, logging.recentLoads, logging.recentPerformances),
+          status: "as_prescribed" as const,
         })),
         { keepExisting: true },
       );

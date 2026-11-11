@@ -4,9 +4,9 @@ A log never edits the plan. It records the block as prescribed (a frozen copy)
 beside what was done, keyed on the block's server-owned ``block_id``.
 
 Logging is only open for a session the athlete has started or completed today.
-That is deliberate: every gate on training itself (rest day, safety hold,
-severe injury, check-in, stale prescription) is enforced once, on the session
-start, and a log can never record work the athlete was not cleared to begin.
+Starting establishes the session occurrence, not medical clearance. Readiness,
+injury and check-in guidance remains advisory under the existing start policy;
+this service records reported training without granting permission to train.
 
 Optional work (the camp Fight Visualisation) never gets a completion row of its
 own when the day starts: it sits outside the day unit. Its blocks can still be

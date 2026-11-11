@@ -473,6 +473,10 @@ function ExerciseOptionsSheet({
       exercise_key: option.exercise_key, display_name: option.name,
       block_type: dose.mode === "reps" ? "strength" : dose.mode,
       sets: dose.sets, reps: dose.reps, load: parseLoad(raw.load_or_intensity),
+      progression_hold: (mode === "swap"
+        ? scope?.session.blocks?.find(block => block.block_id === blockId)?.progression_hold === true
+        : scope?.session.blocks?.some(block => block.progression_hold === true)
+          && !scope?.session.blocks?.some(block => block.progression_hold === false)) || undefined,
       effort: dose.rpe ? { method: "RPE", value: dose.rpe } : undefined,
     }, { ...weightContext,
       lowerLoads: weightContext?.lowerLoads || Boolean(raw.load_or_intensity && !parseLoad(raw.load_or_intensity)),

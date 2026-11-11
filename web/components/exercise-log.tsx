@@ -21,7 +21,6 @@ import {
   logFieldsForBlock,
   logSummary,
   loggedValues,
-  withLastLoad,
   type ExerciseFeel,
   type LogDraft,
   type NextStep,
@@ -158,7 +157,7 @@ export function ExerciseLogTick({
     try {
       await logging.save({
         block_id: blockId,
-        ...withLastLoad(block, { status: "as_prescribed", ...(log ? { actual: log.actual } : {}) }, logging.recentLoads, logging.recentPerformances),
+        status: "as_prescribed", ...(log ? { actual: log.actual } : {}),
       });
       // Saved as written. Open the row only for the optional first weight.
       if (needsFirstLoad(block, logging.recentLoads) && !firstLoadDeclined(block)) onOpen();
@@ -299,7 +298,13 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
 
   /** Opens the numbers, optionally set up with a suggested target to confirm once it is done. */
   function openEditor(target?: NextStep) {
-    setSetRows(log?.actual?.set_entries?.length ? draftsFromActual(log.actual) : null);
+    const individualHistory = !log && supportsSets && previous?.actual.set_entries?.length
+      && !suggested && recommendation.sets.some(row => row.suggested);
+    setSetRows(log?.actual?.set_entries?.length ? draftsFromActual(log.actual)
+      : individualHistory ? setDraftsForFields(fields).map((row, at) => ({ ...row,
+        load: recommendation.sets[at]?.suggested ? String(recommendation.sets[at].suggested!.value) : "", rpe: "",
+        ...(target?.kind === "reps" ? { reps: String(target.reps) } : {}),
+      })) : null);
     setSetUnit(log?.actual?.set_entries?.find(row => row.load)?.load?.unit ?? null);
     // A fresh entry starts from last time's weight, so only a change is typed.
     setDraft({
@@ -530,7 +535,9 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
         ) : null}
         {/* Optional: read beside the reps done, it shapes next time's suggestion. */}
         {log.status !== "skipped" && fields.some(field => field.key === "reps" || field.key === "load") ? (
-          <div className="ex-log-reasons" role="group" aria-label="How did it feel? (optional)">
+          <>
+          <p className="ex-log-suggest-hint">Compared with the plan</p>
+          <div className="ex-log-reasons" role="group" aria-label="Compared with the plan, how did it feel? (optional)">
             {FEELS.map((feel) => (
               <button
                 key={feel}
@@ -544,6 +551,7 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
               </button>
             ))}
           </div>
+          </>
         ) : null}
         {/* A skip saves in one tap; why is a second, optional tap. */}
         {log.status === "skipped" ? (
@@ -574,7 +582,7 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
           type="button"
           className="ex-log-choice ex-log-choice-primary"
           disabled={saving}
-          onClick={() => void save(withLastLoad(block, { status: "as_prescribed" }, logging.recentLoads, logging.recentPerformances))}
+          onClick={() => void save({ status: "as_prescribed" })}
         >
           Done
         </button>

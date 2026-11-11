@@ -125,7 +125,7 @@ function mount(
     const field = Array.from(container.querySelectorAll("label")).find((node) =>
       node.textContent?.startsWith(label),
     );
-    const input = field?.querySelector("input");
+    const input = field?.querySelector("input") ?? container.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`);
     assert.ok(input, `input "${label}" not found`);
     await act(async () => {
       const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
@@ -525,7 +525,7 @@ test("the tick opens the row for the first weight, and only when there is none t
 test("how it felt is an optional tap on a saved lift and keeps the rest of the log", async () => {
   const saved = record(deadlift, { actual: { load: { value: 80, unit: "kg" }, sets: null } });
   const view = mount(deadlift, { logs: { "blk-deadlift": saved } });
-  const group = view.container.querySelector('[aria-label="How did it feel? (optional)"]');
+  const group = view.container.querySelector('[aria-label="Compared with the plan, how did it feel? (optional)"]');
   assert.deepEqual(Array.from(group!.querySelectorAll("button")).map((node) => node.textContent), ["Easy", "Right", "Hard"]);
   await view.click("Easy");
   assert.deepEqual(view.saved[0], {
@@ -539,10 +539,10 @@ test("how it felt is an optional tap on a saved lift and keeps the rest of the l
   view.unmount();
   // Not offered on a skip or on work with no reps or weight.
   const skipped = mount(deadlift, { logs: { "blk-deadlift": record(deadlift, { status: "skipped" }) } });
-  assert.equal(skipped.container.querySelector('[aria-label="How did it feel? (optional)"]'), null);
+  assert.equal(skipped.container.querySelector('[aria-label="Compared with the plan, how did it feel? (optional)"]'), null);
   skipped.unmount();
   const hold = mount(plank, { logs: { "blk-plank": record(plank) } });
-  assert.equal(hold.container.querySelector('[aria-label="How did it feel? (optional)"]'), null);
+  assert.equal(hold.container.querySelector('[aria-label="Compared with the plan, how did it feel? (optional)"]'), null);
   hold.unmount();
 });
 
@@ -591,14 +591,14 @@ test("done records only the prescription after previously achieved extra reps", 
   view.unmount();
 });
 
-test("a held block is never offered a next step; one with no verdict is left as it was", () => {
+test("a held block is never offered a next step; one with no verdict cannot earn an increase", () => {
   const previous = record(deadlift, { actual: { load: { value: 80, unit: "kg" }, feel: "easy" } });
   const recentLoads = [{ exercise_key: null, display_name: "Trap Bar Deadlift", load: { value: 80, unit: "kg" }, training_day: "2026-10-05" }];
   const held = mount({ ...deadlift, progression_hold: true }, { recentPerformances: [previous], recentLoads, allowProgression: true });
   assert.equal(held.container.querySelector(".ex-log-suggest"), null);
   held.unmount();
   const unknown = mount({ ...deadlift, progression_hold: undefined }, { recentPerformances: [previous], recentLoads, allowProgression: true });
-  assert.match(unknown.container.querySelector(".ex-log-suggest")?.textContent ?? "", /Try 82\.5 kg/);
+  assert.equal(unknown.container.querySelector(".ex-log-suggest"), null);
   unknown.unmount();
 });
 
@@ -657,4 +657,27 @@ test("collapsed prescription and guidance show a numeric weight only once", () =
   assert.equal(view.text().split("95 kg").length - 1, 1);
   assert.doesNotMatch(view.text(), /Editable|4 sets × 8 reps/);
   view.unmount();
+});
+
+test("varied historical loads open as unconfirmed individual drafts, preserving today's edits", async () => {
+  const block = { ...deadlift, sets: 3 };
+  const previous = record(block, { actual: { sets: 3, set_entries: [100, 110, 120].map(value =>
+    ({ reps: 8, load: { value, unit: "kg" } })) } });
+  const view = mount(block, { recentPerformances: [previous] });
+  await view.click("Log numbers");
+  const loads = () => Array.from(view.container.querySelectorAll<HTMLInputElement>('input[aria-label^="Load kg, set"]')).map(node => node.value);
+  assert.deepEqual(loads(), ["100", "110", "120"]);
+  assert.equal(view.saved.length, 0);
+  await view.type("Load kg, set 1", "105");
+  assert.deepEqual(loads(), ["105", "110", "120"]);
+  await view.click("Save");
+  assert.deepEqual(view.saved[0].actual?.set_entries?.map(row => row.load?.value), [105, 110, 120]);
+  view.unmount();
+  const saved = record(block, { actual: { sets: 3, set_entries: [80, 90, 100].map(value =>
+    ({ reps: 8, load: { value, unit: "kg" } })) } });
+  const edited = mount(block, { logs: { [block.block_id!]: saved }, recentPerformances: [previous] });
+  await edited.press(edited.container.querySelector<HTMLButtonElement>(".ex-log-edit")!);
+  await edited.click("Log numbers");
+  assert.deepEqual(Array.from(edited.container.querySelectorAll<HTMLInputElement>('input[aria-label^="Load kg, set"]')).map(node => node.value), ["80", "90", "100"]);
+  edited.unmount();
 });

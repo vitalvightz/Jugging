@@ -47,7 +47,7 @@ test("historical weight flows through rendered timer confirmation, Session Revie
   const { createTimerState, endSession } = await import("@/lib/session-timer/engine");
   const { timerExerciseLogs } = await import("@/lib/session-timer/logs");
   const block = { block_id: "squat", exercise_key: "back-squat", block_type: "strength",
-    display_name: "Back Squat", sets: 1, reps: 8, rep_range: [8, 12], effort: { method: "RPE", value: 7 } };
+    progression_hold: false, display_name: "Back Squat", sets: 1, reps: 8, rep_range: [8, 12], effort: { method: "RPE", value: 7 } };
   const previous = { plan_id: "older", exercise_key: "back-squat", prescribed: block,
     status: "as_prescribed", actual: { load: { value: 115, unit: "kg" }, reps: 8, feel: "easy" } } as unknown as import("@/lib/types").ExerciseLogRecord;
   const items = withHistoricalTimerLoads(buildTimerItems([{ blocks: [block] }]), [block], [], [previous], { allowProgression: true });

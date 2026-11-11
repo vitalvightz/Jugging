@@ -19,3 +19,7 @@ test("missing suggestions never appear as a completed weight or an invented sugg
   assert.equal(text(null, null), "");
   assert.equal(text(load(95, "lb"), load(95)), "Suggested 95 kg · Last 95 lb");
 });
+
+test("rep-only guidance renders without a load", () => {
+  assert.equal(text(null, null, 9), "Try 9 reps");
+});

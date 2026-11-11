@@ -19,7 +19,6 @@ import {
   feelOf,
   backoffLoadFor,
   plannedSessionRpe,
-  withLastLoad,
   draftFromLog,
   hasLoggableNumbers,
   isLoggableBlock,
@@ -136,7 +135,7 @@ test("only what departs from the prescription is recorded, and it marks the log 
 test("the weight used and the RPE felt add to a log without making it a change", () => {
   const entry = buildLogEntry(logFieldsForBlock(deadlift), { load: "92,5", effort: "7" });
   assert.equal(entry.status, "as_prescribed");
-  assert.deepEqual(entry.actual, { load: { value: 92.5, unit: "kg" } });
+  assert.deepEqual(entry.actual, { load: { value: 92.5, unit: "kg" }, effort: { method: "RPE", value: 7 } });
   // A different RPE from the one prescribed is a change.
   assert.equal(buildLogEntry(logFieldsForBlock(deadlift), { effort: "9" }).status, "modified");
 });
@@ -255,14 +254,6 @@ test("last weight is available as a suggestion but never added by completion", (
     { exercise_key: null, display_name: "trap bar deadlift", load: { value: 100, unit: "kg" }, training_day: "2026-10-01" },
   ];
   assert.deepEqual(lastLoadFor(deadlift, recent), { value: 100, unit: "kg" });
-  assert.deepEqual(withLastLoad(deadlift, { status: "as_prescribed" }, recent), {
-    status: "as_prescribed",
-
-  });
-  // A weight already given, a skip, a held plank, or a prescribed load is left alone.
-  const given = { status: "modified" as const, actual: { load: { value: 90, unit: "kg" } } };
-  assert.equal(withLastLoad(deadlift, given, recent), given);
-  assert.deepEqual(withLastLoad(deadlift, { status: "skipped" }, recent), { status: "skipped" });
   assert.equal(lastLoadFor(plank, [{ ...recent[0], display_name: "Front Plank" }]), null);
   assert.equal(lastLoadFor({ ...deadlift, load: { value: 80, unit: "kg" } }, recent), null);
   // A different unit is never mixed in.
@@ -345,14 +336,31 @@ test("inside a rep range reps come first, and a one-tap done counts as the botto
   assert.deepEqual(nextStepFor(squat, log(squat, { prescribed: squat, actual: { reps: 6, feel: "easy" } }), true), { kind: "reps", reps: 7 });
 });
 
-test("how it felt is the athlete's answer first, then the RPE against the plan", () => {
+test("feedback is interpreted consistently with recorded RPE against the plan", () => {
   const felt = (patch: Partial<ExerciseLogRecord>) => feelOf(log(deadlift, { prescribed: deadlift, ...patch }));
-  assert.equal(felt({ actual: { feel: "hard", effort: { method: "RPE", value: 5 } } }), "hard");
-  assert.equal(felt({ actual: { effort: { method: "RPE", value: 7 } } }), "easy");
+  assert.equal(felt({ actual: { feel: "hard", effort: { method: "RPE", value: 5 } } }), "right");
+  assert.equal(felt({ actual: { effort: { method: "RPE", value: 7 } } }), "right");
   assert.equal(felt({ actual: { effort: { method: "RPE", value: 8 } } }), "right");
   assert.equal(felt({ actual: { effort: { method: "RPE", value: 9 } } }), "hard");
   assert.equal(felt({ reason: "felt_strong", status: "modified", actual: { reps: 10 } }), "easy");
   assert.equal(felt({}), null);
+});
+
+test("matching planned RPE without feedback holds progression for summary and per-set effort", () => {
+  for (const effort of [
+    { effort: { method: "RPE", value: 7 } },
+    { sets: 4, set_entries: Array.from({ length: 4 }, () => ({ reps: 8, rpe: 7, load: { value: 100, unit: "kg" } })) },
+  ] satisfies ExerciseLogRecord["actual"][]) {
+    const completed = log(deadlift, { actual: { reps: 8, load: { value: 100, unit: "kg" }, ...effort } });
+    assert.equal(feelOf(completed), "right");
+    assert.equal(nextStepFor(deadlift, completed, true), null);
+    assert.equal(backoffLoadFor(deadlift, completed), null);
+    const unplanned = { ...deadlift, effort: undefined };
+    const withoutTarget = { ...completed, prescribed: unplanned };
+    assert.equal(feelOf(withoutTarget), "easy");
+    assert.equal(nextStepFor(unplanned, withoutTarget, true)?.kind, "load");
+  }
+  assert.equal(feelOf(log(deadlift, { actual: { effort: { method: "RPE", value: 6 } } })), "easy");
 });
 
 test("a green day never outranks taper, the final fortnight, an injury or a hold", () => {
@@ -426,13 +434,6 @@ test("a struggled weight suggests easing off, never a raise", () => {
   // A stated reason outranks the numbers: missing kit or a strong day is not the weight being too much.
   assert.equal(backoffLoadFor(deadlift, struggled({ reason: "equipment", status: "modified", actual: { sets: 2 } })), null);
   assert.equal(backoffLoadFor(deadlift, struggled({ reason: "felt_strong", status: "modified", actual: { effort: { method: "RPE", value: 9 } } })), null);
-  // Completion never records an unconfirmed suggestion.
-  const recent = [{ exercise_key: null, display_name: deadlift.display_name!, load: { value: 80, unit: "kg" }, training_day: "2026-10-01" }];
-  assert.deepEqual(withLastLoad(deadlift, { status: "as_prescribed" }, recent, [struggled({ reason: "fatigue", status: "modified" })]),
-    { status: "as_prescribed" });
-  assert.deepEqual(withLastLoad(deadlift, { status: "as_prescribed" }, recent, [struggled({})]),
-    { status: "as_prescribed" });
-  // Pain and skips are handled by not carrying the weight over at all.
   for (const patch of [{ reason: "pain" as const }, { status: "skipped" as const }]) {
     assert.equal(backoffLoadFor(deadlift, struggled({ ...patch, actual: { sets: 2 } })), null);
   }
@@ -444,12 +445,7 @@ test("a struggled weight suggests easing off, never a raise", () => {
   assert.equal(backoffLoadFor(deadlift, null), null);
 });
 
-test("last painful or skipped occurrence cannot resurrect an older load", () => {
-  const recent = [{ exercise_key: null, display_name: deadlift.display_name!, load: { value: 80, unit: "kg" }, training_day: "2026-10-01" }];
-  for (const patch of [{ reason: "pain" as const }, { status: "skipped" as const }]) {
-    assert.deepEqual(withLastLoad(deadlift, { status: "as_prescribed" }, recent, [log(deadlift, patch)]), { status: "as_prescribed" });
-  }
-});
+
 
 
 test("history displays recorded measurement units without relabelling them", () => {
@@ -515,9 +511,9 @@ test("the server's hold stops every suggestion, and only strength work progresse
   const squat: StructuredBlock = { ...deadlift, sets: 3, reps: 8, rep_range: [8, 12] };
   const done = log(squat, { prescribed: squat, actual: { load: { value: 60, unit: "kg" }, feel: "easy" } });
   assert.equal(nextStepFor({ ...squat, progression_hold: true }, done, true), null);
-  // No verdict is not a hold: an exercise the server has not classified is left as it was.
-  assert.equal(nextStepFor({ ...squat, progression_hold: undefined }, done, true)?.kind, "reps");
-  assert.equal(nextStepFor({ ...squat, progression_hold: null }, done, true)?.kind, "reps");
+  // Unknown authority never earns an automatic increase.
+  assert.equal(nextStepFor({ ...squat, progression_hold: undefined }, done, true), null);
+  assert.equal(nextStepFor({ ...squat, progression_hold: null }, done, true), null);
   for (const block_type of ["plyometric_power", "speed", "conditioning", "strength_speed"]) {
     assert.equal(nextStepFor({ ...squat, block_type }, { ...done, prescribed: { ...squat, block_type } }, true), null);
   }
@@ -558,4 +554,35 @@ test("per-set progression needs every prescribed set, valid effort and known wei
   }
   assert.equal(nextStepFor(block, { ...previous, actual: { ...previous.actual,
     set_entries: previous.actual.set_entries!.map(row => ({ ...row, rpe: undefined })) } }, true), null);
+});
+
+test("completed planned-hard work holds while excessive effort backs off despite conflicting feedback", () => {
+  const block = { ...deadlift, effort: { method: "RPE", value: 9 } };
+  const completed = log(block, { prescribed: block, actual: { load: { value: 100, unit: "kg" },
+    effort: { method: "RPE", value: 9 }, feel: "hard" } });
+  assert.equal(feelOf(completed), "right");
+  assert.equal(backoffLoadFor(block, completed), null);
+  const maxTarget = { ...block, effort: { method: "RPE", value: 10 } };
+  assert.equal(backoffLoadFor(maxTarget, { ...completed, prescribed: maxTarget,
+    actual: { ...completed.actual, effort: { method: "RPE", value: 10 } } }), null);
+  assert.equal(feelOf({ ...completed, actual: { ...completed.actual, feel: "easy" } }), "right");
+  for (const feel of ["easy", "right", "hard"] as const) {
+    const excessive = log(deadlift, { actual: { load: { value: 100, unit: "kg" },
+      effort: { method: "RPE", value: 9 }, feel } });
+    assert.equal(feelOf(excessive), "hard");
+    assert.equal(nextStepFor(deadlift, excessive, true), null);
+    assert.deepEqual(backoffLoadFor(deadlift, excessive), { value: 95, unit: "kg" });
+  }
+  assert.deepEqual(buildLogEntry(logFieldsForBlock(block), { effort: "9" }).actual.effort, { method: "RPE", value: 9 });
+  assert.equal(buildLogEntry(logFieldsForBlock(block), { effort: "" }).actual.effort, undefined);
+});
+
+test("only confirmed missed sets trigger a reduction; sparse measurements do not prove missed work", () => {
+  const actual = { load: { value: 100, unit: "kg" }, set_entries: [
+    { set_number: 2, reps: 8, load: { value: 100, unit: "kg" } },
+  ] };
+  for (const sets of [undefined, deadlift.sets]) {
+    assert.equal(backoffLoadFor(deadlift, log(deadlift, { actual: { ...actual, sets } })), null);
+  }
+  assert.deepEqual(backoffLoadFor(deadlift, log(deadlift, { actual: { ...actual, sets: 2 } })), { value: 90, unit: "kg" });
 });
