@@ -6,10 +6,12 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { lockOverlayScroll } from "@/lib/overlay-scroll-lock";
 
+import { OnceHint, useSeenOnce } from "@/components/once-hint";
 import type { ExerciseLogging } from "@/components/exercise-log";
 import { EffortSlider, FaceScale } from "@/components/rating-controls";
 import {
   deriveSessionOutcome,
+  logFieldsForBlock,
   plannedSessionRpe,
   withLastLoad,
   type SessionOutcome,
@@ -64,6 +66,7 @@ export function SessionReview({
   onClose: () => void;
   onSave: (status: SessionOutcome["status"], details: SessionReviewDetails) => Promise<boolean>;
 }) {
+  const [reviewHint, dismissReviewHint] = useSeenOnce("discovery-session-review-seen");
   const fieldId = useId();
   const dialogRef = useRef<HTMLDivElement | null>(null);
   // Starts at the planned effort: a session that went to plan is a tap to confirm.
@@ -81,6 +84,8 @@ export function SessionReview({
 
   const logs = logging?.logs ?? {};
   const outcome = deriveSessionOutcome(sessions, logs);
+  const canRateLifts = sessions.some(session => session.blocks?.some(block =>
+    logFieldsForBlock(block).some(field => field.key === "reps" || field.key === "load")));
   const needsReviewFields = completionRequiresReviewFields(outcome.status);
   const reason = reasonEdit ?? outcome.reason;
   const unloggedCount = outcome.unlogged.length;
@@ -145,12 +150,13 @@ export function SessionReview({
           return;
         }
       }
-      await onSave(outcome.status, {
+      const saved = await onSave(outcome.status, {
         sessionRpe: needsReviewFields ? sessionRpe : null,
         painAfter: needsReviewFields ? painAfter : null,
         modificationReason: outcome.status === "done" ? "" : reason.trim().slice(0, 2000),
         notes: notes.trim(),
       });
+      if (saved) dismissReviewHint();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not save. Try again.");
     } finally {
@@ -190,7 +196,12 @@ export function SessionReview({
           </button>
         </header>
 
-        <p className="today-review-hint">{hint}</p>
+        {reviewHint && logging && outcome.total > 0 ? (
+          <OnceHint className="today-review-discovery" onDismiss={dismissReviewHint}
+            label={canRateLifts
+              ? "Tap an exercise to edit or rate it. Your results guide next time."
+              : "Tap an exercise to check or change your results."} />
+        ) : <p className="today-review-hint">{hint}</p>}
         {extraAction || (unloggedCount > 0 && logging?.saveMany) ? (
           <div className="today-review-chips">
             {extraAction}
@@ -214,7 +225,7 @@ export function SessionReview({
           {needsReviewFields ? (
             <div className="today-completion-fields">
               <div className="field">
-                <span>Session effort</span>
+                <span>How hard was the whole session?</span>
                 {plannedRpe !== null ? (
                   <p className="today-review-planned">
                     Set to the effort your plan asked for. Move it if it felt different.

@@ -38,6 +38,7 @@ test("review locks the entire save, including the batch write, and releases afte
 });
 
 test("historical weight flows through rendered timer confirmation, Session Review and next workout", async () => {
+  window.localStorage.removeItem("discovery-session-review-seen");
   const { ExerciseLogProvider } = await import("../exercise-log");
   const { ExerciseRow } = await import("../structured-plan-renderer");
   const { RestSetLogger } = await import("../session-timer/rest-set-logger");
@@ -85,11 +86,14 @@ test("historical weight flows through rendered timer confirmation, Session Revie
         onSave={async () => { completed = true; return true; }} />
     </ExerciseLogProvider>));
     assert.match(document.querySelector(".today-review-root")?.textContent ?? "", /115 kg/);
+    assert.match(document.querySelector(".today-review-discovery")?.textContent ?? "", /Your results guide next time/);
+    assert.equal(document.querySelector(".today-review-hint"), null, "the new guidance replaces the existing line");
     const save = Array.from(document.querySelectorAll<HTMLButtonElement>(".today-review-root button"))
       .find(button => /Save session/.test(button.textContent ?? ""))!;
     assert.ok(save);
     await act(async () => save.click());
     assert.equal(completed, true);
+    assert.equal(window.localStorage.getItem("discovery-session-review-seen"), "1");
     await act(async () => root.render(<ExerciseLogProvider logging={{ canWrite: false, logs: {}, recentLoads: [],
       recentPerformances: [saved], painReasonAllowed: false, allowProgression: true, save: async () => {} }}>
       <ExerciseRow block={block} open={false} onToggle={() => {}} />
@@ -100,5 +104,6 @@ test("historical weight flows through rendered timer confirmation, Session Revie
   } finally {
     await act(async () => { root.unmount(); loggerRoot.unmount(); });
     node.remove();
+    window.localStorage.removeItem("discovery-session-review-seen");
   }
 });

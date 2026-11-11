@@ -142,3 +142,7 @@
     animation: none;
   }
 }
+
+.today-review-discovery { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; margin: 0; padding: 10px 12px; border: 1px solid var(--border-default); border-left: 2px solid var(--brand-red); border-radius: 10px; background: var(--bg-panel); color: var(--text-secondary); font: inherit; font-size: 13px; line-height: 1.5; text-align: left; cursor: pointer; }
+.today-review-discovery > span { flex: none; font-size: 20px; }
+.today-review-discovery:focus-visible { outline: 2px solid var(--brand-red); outline-offset: 2px; }

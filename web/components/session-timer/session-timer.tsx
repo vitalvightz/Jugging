@@ -1225,13 +1225,13 @@ export function SessionTimer({
             <Icon name="settings" />
           </button>
         </div>
-        {sheet === null && item?.kind === "interval" && settingsHint ? (
+        {sheet === null && !restLogTarget && item?.kind === "interval" && settingsHint ? (
           <OnceHint className="st-hint st-hint-settings" onDismiss={dismissSettingsHint}
             label="Tap ⚙ to change timer settings" />
-        ) : sheet === null && canAdjust && adjustHint && item?.kind !== "interval" ? (
+        ) : sheet === null && !restLogTarget && canAdjust && adjustHint && item?.kind !== "interval" ? (
           <OnceHint className="st-hint" onDismiss={dismissAdjustHint}
             label={item?.kind === "sets" ? `Tap to edit ${countNoun(item)}s & rest` : "Tap to edit rounds & timing"} />
-        ) : sheet === null && minimizeHint && state.phase !== "ready" && state.phase !== "done" ? (
+        ) : sheet === null && !restLogTarget && minimizeHint && state.phase !== "ready" && state.phase !== "done" ? (
           <OnceHint className="st-hint st-hint-minimize" onDismiss={dismissMinimizeHint}
             label="Tap ↓ to leave and return later" />
         ) : null}
