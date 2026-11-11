@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import fixtures from "./fixtures/rehab-today.json";
 import { isolateFromNetwork } from "./support";
 
-for (const width of [390, 1280]) test(`weight recommendation stays consistent in preview and detail at ${width}px`, async ({ page, baseURL }) => {
+for (const width of [390, 1280]) for (const completed of [false, true]) test(`weight recommendation stays consistent in preview and detail at ${width}px (logged: ${completed})`, async ({ page, baseURL }) => {
   await page.setViewportSize({ width, height: 844 });
   await isolateFromNetwork(page, baseURL!);
   await page.clock.setFixedTime(new Date("2026-10-05T12:00:00Z"));
@@ -15,7 +15,7 @@ for (const width of [390, 1280]) test(`weight recommendation stays consistent in
   Object.assign(view, { open_injuries: [], risk_watch: [],
     live_prescription: { revision: "a".repeat(64), frozen: false, safety_hold: false, changes: [], session } });
   Object.assign(view.today, { training_day: "2026-10-05", recommendation_state: "train_as_planned",
-    decision_tier: "green", warnings: [], completion_status: "not_started", session_scope: "today",
+    decision_tier: "green", warnings: [], completion_status: completed ? "started" : "not_started", session_scope: "today",
     session_label: "Today's session", next_session: { ...session, calendar_date: "2026-10-05", session_relation: "today", effective_load: "low" } });
   const id = view.active_plan.id;
   const key = `sb-${new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://stub.supabase.co").hostname.split(".")[0]}-auth-token`;
@@ -36,7 +36,8 @@ for (const width of [390, 1280]) test(`weight recommendation stays consistent in
       body = { scopes: ["occurrence"], alternatives: [{ catalogue_id: "back-squat", exercise_key: "back-squat",
         name: "Back Squat", dose_required: true, dose_mode: "reps", suggested_dose: { sets: 3, reps: 8, rpe: 7 } }] };
     if (path === "/api/history/exercise-library") body = { exercises: [] };
-    if (path === "/api/today/exercise-logs") body = { logs: [], recent_loads: [],
+    if (path === "/api/today/exercise-logs") body = { logs: completed ? [{ id: "today", plan_id: id, block_id: "squat", exercise_key: "back-squat",
+      status: "as_prescribed", prescribed: block, actual: { sets: 3, reps: 8, load: { value: 110, unit: "kg" } } }] : [], recent_loads: [],
       recent_performances: [{ id: "old", plan_id: "older-plan", exercise_key: "back-squat", status: "as_prescribed",
         prescribed: block, actual: { sets: 3, reps: 8, load: { value: 120, unit: "kg" }, feel: "easy" } }] };
     await route.fulfill({ json: body });
@@ -53,7 +54,7 @@ for (const width of [390, 1280]) test(`weight recommendation stays consistent in
   await expect(row.locator("input")).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await row.getByText("Suggested", { exact: true }).scrollIntoViewIfNeeded();
-  if (process.env.WEIGHT_QA_DIR) await row.screenshot({ path: `${process.env.WEIGHT_QA_DIR}/weight-preview-${width}.png` });
+  if (process.env.WEIGHT_QA_DIR) await row.screenshot({ path: `${process.env.WEIGHT_QA_DIR}/weight-preview-${width}${completed ? "-completed" : ""}.png` });
   await row.getByRole("button", { name: "Back Squat", exact: true }).click();
   const detail = page.getByRole("dialog").filter({ hasText: "Back Squat" });
   await expect(detail).toContainText("Suggested");
@@ -62,7 +63,14 @@ for (const width of [390, 1280]) test(`weight recommendation stays consistent in
   await expect(detail).toContainText("120 kg");
   await expect(detail.locator('input[aria-label*="Load"]')).toHaveCount(0);
   await detail.getByText("Suggested", { exact: true }).scrollIntoViewIfNeeded();
-  if (process.env.WEIGHT_QA_DIR) await detail.screenshot({ path: `${process.env.WEIGHT_QA_DIR}/weight-detail-${width}.png` });
+  if (process.env.WEIGHT_QA_DIR) await detail.screenshot({ path: `${process.env.WEIGHT_QA_DIR}/weight-detail-${width}${completed ? "-completed" : ""}.png` });
+  if (completed) {
+    const actual = detail.getByRole("group", { name: "Today's actual", exact: true });
+    await expect(actual).toContainText("110 kg");
+    await expect(actual).not.toContainText("122.5 kg");
+    expect(errors).toEqual([]);
+    return;
+  }
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Add exercise", exact: true }).click();
   const picker = page.getByRole("dialog", { name: "Add exercise" });

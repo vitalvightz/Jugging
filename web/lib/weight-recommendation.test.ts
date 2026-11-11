@@ -63,3 +63,27 @@ test("older evidence may be carried forward but never proves an unmeasured easy 
   assert.deepEqual(result.last, load(120));
   assert.deepEqual(result.suggested, load(120));
 });
+
+test("today's restrictions override reductions from previous struggle for summary and every set", () => {
+  const hard = previous({ sets: 3, set_entries: [100, 110, 120].map(value =>
+    ({ reps: 8, load: load(value), rpe: 9 })) });
+  for (const restricted of [
+    { block, context: { lowerLoads: true } },
+    { block: { ...block, progression_hold: true }, context: {} },
+    { block: { ...block, effort: { method: "RPE", value: 5 } }, context: {} },
+  ]) {
+    const context = { ...restricted.context, allowProgression: true, recentPerformances: [hard] };
+    const result = weightRecommendation(restricted.block, context);
+    assert.deepEqual(result.last, load(120));
+    assert.equal(result.suggested, null);
+    assert.equal(result.tryReps, null);
+    assert.ok(result.sets.every(row => row.suggested === null));
+    const timer = withHistoricalTimerLoads(buildTimerItems([{ blocks: [restricted.block] }]),
+      [restricted.block], [], [hard], context);
+    assert.ok(timer[0].kind === "sets");
+    assert.deepEqual(timer[0].suggestedLoads, [null, null, null]);
+    const prescribed = weightRecommendation({ ...restricted.block, load: load(60) }, context);
+    assert.deepEqual(prescribed.suggested, load(60));
+    assert.ok(prescribed.sets.every(row => row.suggested?.value === 60));
+  }
+});

@@ -569,3 +569,18 @@ test("review weight confirmation fills only missing set weights and reaches next
   assert.deepEqual(items[0].suggestedLoads, ["102.5", "112.5", null, null]);
   view.unmount();
 });
+
+test("completed details retain previous Suggested and Last separately from today's actual", () => {
+  const today = record(deadlift, { actual: { sets: 4, reps: 8, load: { value: 75, unit: "kg" } } });
+  const historical = record(deadlift, { plan_id: "older-plan",
+    actual: { sets: 4, reps: 8, load: { value: 80, unit: "kg" }, feel: "easy" } });
+  const view = mount(deadlift, { logs: { "blk-deadlift": today },
+    recentPerformances: [historical], allowProgression: true });
+  assert.match(view.text(), /Suggested82.5 kgLast80 kg/);
+  const actual = view.container.querySelector('[aria-label="Today\'s actual"]')!;
+  assert.match(actual.textContent ?? "", /75 kg/);
+  assert.doesNotMatch(actual.textContent ?? "", /82.5 kg|Last80 kg/);
+  assert.equal(view.saved.length, 0);
+  assert.equal(today.actual.load?.value, 75);
+  view.unmount();
+});

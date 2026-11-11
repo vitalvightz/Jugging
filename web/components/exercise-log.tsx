@@ -185,7 +185,7 @@ export function useWeightContext() {
 /** Visible on the workout row before starting; suggestions never change the plan. */
 export function ExerciseProgressionPreview({ block }: { block: StructuredBlock }) {
   const logging = useContext(ExerciseLogContext);
-  if (!logging || block.prescription_source === "athlete" || logging.logs[block.block_id ?? ""]) return null;
+  if (!logging || block.prescription_source === "athlete") return null;
   const recommendation = weightRecommendation(block, logging);
   return <WeightRecommendation value={recommendation} dose={block.sets && block.reps ? `${block.sets} sets × ${block.reps} reps` : undefined} />;
 }
@@ -426,7 +426,8 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
   if (log && !choosing) {
     const values = log.status === "skipped" || log.actual?.set_entries?.length ? [] : loggedValues(fields, log);
     return (
-      <div className="ex-log" data-mode="saved">
+      <div className="ex-log" data-mode="saved" role="group" aria-label="Today's actual">
+        <p className="kicker">Today&apos;s actual</p>
         {/* The whole line reopens the log, so it keeps the row's full width. */}
         <button
           type="button"

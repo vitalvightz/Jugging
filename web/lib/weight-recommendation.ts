@@ -37,15 +37,15 @@ export function weightRecommendation(block: StructuredBlock, context: WeightCont
   const canProgress = context.allowProgression === true && !lower && measuredWork;
   const next = nextStepFor(block, performanceAt(last), canProgress);
   const reduced = backoffLoadFor(block, performanceAt(last));
-  const suggested = prescribed ?? (blocked ? null : reduced ?? (lower ? null : next?.kind === "load" ? next.load : last));
+  const suggested = prescribed ?? (blocked || lower ? null : reduced ?? (next?.kind === "load" ? next.load : last));
   const sets = Array.from({ length: Math.min(50, Math.max(1, Number(block.sets) || 1)) }, (_, at) => {
     const row = entries?.find((row, index) => (row.set_number ?? index + 1) === at + 1);
     const lastSet = valid(row?.load) ?? measured ?? (entries?.length ? null : valid(fallback));
     const setPerformance = performanceAt(lastSet);
     const setNext = nextStepFor(block, setPerformance, canProgress);
     const setReduction = backoffLoadFor(block, setPerformance);
-    return { last: lastSet, suggested: prescribed ?? (blocked || !lastSet ? null :
-      setReduction ?? (lower ? null : setNext?.kind === "load" ? setNext.load : lastSet)) };
+    return { last: lastSet, suggested: prescribed ?? (blocked || lower || !lastSet ? null :
+      setReduction ?? (setNext?.kind === "load" ? setNext.load : lastSet)) };
   });
   return { last, suggested, tryReps: !prescribed && !lower && next?.kind === "reps" ? next.reps : null, sets };
 }
