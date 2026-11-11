@@ -412,7 +412,7 @@ test("custom Back Squat Add/Edit shares Suggested and Last without replacing ath
   await add.getByLabel("Search exercises", { exact: true }).fill("Back Squat");
   await add.getByRole("button", { name: "Add Back Squat", exact: true }).click();
   const row = add.getByRole("group", { name: "Back Squat", exact: true });
-  await expect(row).toContainText("Suggested");
+  await expect(row).not.toContainText("Suggested");
   await expect(row).toContainText("Last");
   await expect(row.getByLabel("Weight", { exact: true })).toHaveValue("120");
   await row.getByLabel("Weight", { exact: true }).fill("110");

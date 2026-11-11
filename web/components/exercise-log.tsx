@@ -280,7 +280,7 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
   // The shared recommendation, as a target the athlete can set up and confirm.
   const nextStep: NextStep | null = recommendation.tryReps
     ? { kind: "reps", reps: recommendation.tryReps }
-    : suggested && recommendation.last && suggested.unit === recommendation.last.unit && suggested.value > recommendation.last.value
+    : recommendation.calculated && suggested && recommendation.last && suggested.unit === recommendation.last.unit && suggested.value > recommendation.last.value
       ? { kind: "load", load: suggested }
       : null;
   const loadField = fields.find(field => field.key === "load");

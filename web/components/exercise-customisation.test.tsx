@@ -47,7 +47,8 @@ test("held swap and add previews suppress remembered weight suggestions", async 
         const dialog = document.querySelector('[role="dialog"]');
         assert.ok(dialog);
         assert.match(dialog.textContent ?? "", /Cossack Squat/);
-        assert.equal((dialog.textContent ?? "").includes("Suggested 20 kg"), !held);
+        assert.equal((dialog.textContent ?? "").includes("Suggested 20 kg"), false);
+        assert.match(dialog.textContent ?? "", /Last 20 kg/);
         await click("Close");
         await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)); });
       }

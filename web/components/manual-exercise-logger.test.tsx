@@ -140,7 +140,7 @@ test("a recent exercise becomes a compact saved row and the logger is ready for 
   const ui = await mount();
   try {
     await ui.click("Back Squat");
-    assert.match(ui.container.textContent!, /Suggested 75 kg · Same as last/);
+    assert.match(ui.container.textContent!, /Last 75 kg/);
     assert.doesNotMatch(ui.container.textContent!, /Last time/);
     // Historical weight is an editable draft, not a recorded measurement.
     assert.equal(ui.container.querySelector<HTMLInputElement>('[data-measure="load"]')!.value, "75");
@@ -222,7 +222,7 @@ test("repeating suggests recorded weights without saving until Add confirms them
   try {
     await ui.click(/Reuse exercises from/);
     await ui.click("Log Back Squat again");
-    assert.match(ui.container.textContent!, /Suggested 75 kg · Same as last/);
+    assert.match(ui.container.textContent!, /Last 75 kg/);
     assert.doesNotMatch(ui.container.textContent!, /Last time/);
     assert.equal(ui.container.querySelector<HTMLInputElement>('[data-measure="sets"]')!.value, "");
     await ui.submit();
@@ -296,14 +296,14 @@ test("Back Squat suggestion is editable, unconfirmed and updated only after Add"
   const ui = await mount();
   try {
     await ui.click("Back Squat");
-    assert.match(ui.container.textContent!, /Suggested 75 kg · Same as last/);
+    assert.match(ui.container.textContent!, /Last 75 kg/);
     assert.equal(puts(ui.calls).length, 0);
     await ui.type('[data-measure="load"]', "80");
     assert.equal(puts(ui.calls).length, 0);
     await ui.submit();
     assert.deepEqual((puts(ui.calls)[0].body!.actual as { load: unknown }).load, { value: 80, unit: "kg" });
     await ui.click("Back Squat");
-    assert.match(ui.container.textContent!, /Suggested 80 kg · Same as last/);
+    assert.match(ui.container.textContent!, /Last 80 kg/);
     assert.equal(ui.container.querySelector<HTMLInputElement>('[data-measure="load"]')!.value, "80");
     await ui.type('[data-measure="load"]', "");
     await ui.submit();

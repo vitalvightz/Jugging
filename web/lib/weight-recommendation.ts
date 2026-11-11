@@ -10,9 +10,12 @@ export type WeightContext = {
 export type WeightRecommendation = {
   last: ExerciseLogMeasure | null;
   lastDay?: string | null;
+  /** Editable load draft: prescription, history or calculated change. */
   suggested: ExerciseLogMeasure | null;
+  /** True only for an engine-calculated load change, never a prescription or recalled draft. */
+  calculated?: boolean;
   tryReps: number | null;
-  sets: { last: ExerciseLogMeasure | null; suggested: ExerciseLogMeasure | null }[];
+  sets: { last: ExerciseLogMeasure | null; suggested: ExerciseLogMeasure | null; calculated?: boolean }[];
 };
 
 /** One adapter around the existing progression engine. Suggestions are never actuals. */
@@ -66,9 +69,10 @@ export function weightRecommendation(block: StructuredBlock, context: WeightCont
     const setNext = nextStepFor(block, setPerformance, canProgress);
     const setReduction = backoffLoadFor(block, setPerformance);
     return { last: lastSet, suggested: blocked || lower || !lastSet ? prescribed :
-      setReduction ?? (setNext?.kind === "load" ? setNext.load : prescribed ?? lastSet) };
+      setReduction ?? (setNext?.kind === "load" ? setNext.load : prescribed ?? lastSet),
+      calculated: !blocked && !lower && Boolean(lastSet && (setReduction || setNext?.kind === "load")) };
   });
-  return { last, lastDay, suggested, tryReps: !blocked && !lower && next?.kind === "reps" ? next.reps : null, sets };
+  return { last, lastDay, suggested, calculated: !blocked && !lower && !individualLoads && Boolean(reduced || next?.kind === "load"), tryReps: !blocked && !lower && next?.kind === "reps" ? next.reps : null, sets };
 }
 
 /** Route confirmed library evidence and current clearance through the same engine. */

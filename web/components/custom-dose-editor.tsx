@@ -65,19 +65,20 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
   essential?: boolean;
 }) {
   const context = useWeightContext();
+  const load = parseLoad(dose.load_or_intensity);
   const exerciseType = movement && "exercise_type" in movement ? movement.exercise_type : null;
   const recommendation = personalWeightRecommendation({
     display_name: past?.name ?? "Exercise", block_type: "strength",
     progression_hold: exerciseType === "power" || exerciseType === "other" ? true : undefined,
     // Eligibility for the weight field does not fill any unfinished rep/set inputs.
     sets: dose.sets, reps: dose.reps,
-    load: parseLoad(dose.load_or_intensity),
+    load,
     effort: dose.rpe ? { method: "RPE", value: dose.rpe } : null,
-  }, past, context ?? {});
+  }, past, { ...context, lowerLoads: context?.lowerLoads || Boolean(dose.load_or_intensity && !load) });
   const weightPreview = <><WeightRecommendation value={recommendation} />
-    {recommendation.suggested && dose.load_or_intensity !== `${recommendation.suggested.value} ${recommendation.suggested.unit}` ? <button type="button" className="ghost-button"
+    {recommendation.suggested && (load?.value !== recommendation.suggested.value || load?.unit !== recommendation.suggested.unit) ? <button type="button" className="ghost-button"
       onClick={() => onChange({ ...dose, load_or_intensity: `${recommendation.suggested!.value} ${recommendation.suggested!.unit}` })}>
-      Use suggested weight
+      {recommendation.calculated ? "Use suggested weight" : "Use last weight"}
     </button> : null}</>;
   function number(
     field: "sets" | "reps" | "rest_seconds" | "rounds" | "rpe" | "distance",
