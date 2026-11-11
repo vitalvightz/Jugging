@@ -44,7 +44,7 @@ def build_app():
     )
 
     @app.post("/__e2e/reset")
-    def reset(technical: str = "", rir: bool = False, strength_only: bool = False):  # Each browser case starts from the generated plan alone.
+    def reset(technical: str = "", rir: bool = False, strength_only: bool = False, progression: bool = False):  # Each browser case starts from the generated plan alone.
         store.session_completions.clear()
         store.exercise_logs.clear()
         store.today_checkins.clear()
@@ -58,6 +58,28 @@ def build_app():
                     for block in session.get("blocks", []):
                         if block.get("exercise_key") == "back-squat":
                             block["effort"] = {"method": "RIR", "value": 3}
+        if progression:
+            # A lift the plan names no weight for, with the planner context the
+            # real reconcile reads to clear it and expose its 8-12 rep range.
+            from datetime import date
+            from api.services.today_service import resolve_training_day
+            from tests.test_exercise_customisation import OPEN_PLAN_ID
+
+            row = store.plans[OPEN_PLAN_ID]
+            for day in row["structured_plan"]["weeks"][0]["days"]:
+                for session in day.get("sessions", []):
+                    for block in session.get("blocks", []):
+                        if block.get("exercise_key") == "back-squat":
+                            block.pop("load", None)
+                            block.update(sets=3, reps=8)
+            row["planning_brief"]["weekly_role_map"] = {"weeks": [{"phase": "GPP", "session_roles": [{
+                "role_key": "primary_strength_day", "category": "strength", "athlete_facing_label": "Strength",
+                "scheduled_day_hint": date.fromisoformat(resolve_training_day(None)).strftime("%A"),
+                "selected_exercise_assignments": [{
+                    "name": "Back Squat", "exercise_key": "back-squat", "slot_group": "strength_slots",
+                    "base_prescription": "3x8-12 @ RPE 6-7, keep reps crisp.",
+                }],
+            }]}]}
         if strength_only:
             for plan in store.plans.values():
                 for week in plan.get("structured_plan", {}).get("weeks", []):
@@ -78,6 +100,17 @@ def build_app():
                 **day["sessions"][0], "session_type": "skill", "title": "Technical-only combat", "blocks": [],
             }]
             row["planning_brief"]["open_plan_spec"]["weekly_template"]["coach_owned_days"] = {"technical_skill_days": [weekday]}
+        return {"ok": True}
+
+    @app.post("/__e2e/next_exposure")
+    def next_exposure():
+        """Make today the next exposure: what was logged today happened a week ago."""
+        from datetime import date, timedelta
+
+        for log in store.exercise_logs:
+            log["training_day"] = (date.fromisoformat(str(log["training_day"])[:10]) - timedelta(days=7)).isoformat()
+        store.session_completions.clear()
+        store.today_checkins.clear()
         return {"ok": True}
 
     return app

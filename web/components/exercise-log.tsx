@@ -14,14 +14,17 @@ import {
   draftFromLog,
   hasLoggableNumbers,
   isLoggableBlock,
+  lastPerformanceFor,
   exerciseIdentity,
   needsFirstLoad,
+  nextStepLabel,
   logFieldsForBlock,
   logSummary,
   loggedValues,
   withLastLoad,
   type ExerciseFeel,
   type LogDraft,
+  type NextStep,
 } from "@/lib/exercise-log";
 import { cleanText } from "@/lib/structured-plan";
 import { draftsFromActual, type SetDraft } from "@/lib/set-entries";
@@ -157,7 +160,7 @@ export function ExerciseLogTick({
         block_id: blockId,
         ...withLastLoad(block, { status: "as_prescribed", ...(log ? { actual: log.actual } : {}) }, logging.recentLoads, logging.recentPerformances),
       });
-      // No weight on record for this lift: open the row, where it is asked once.
+      // Saved as written. Open the row only for the optional first weight.
       if (needsFirstLoad(block, logging.recentLoads) && !firstLoadDeclined(block)) onOpen();
     } catch (caught) {
       logging.onError?.(errorMessage(caught));
@@ -274,6 +277,13 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
   const { logging, blockId, fields, log } = state;
   const recommendation = weightRecommendation(block, logging);
   const suggested = recommendation.suggested;
+  const previous = lastPerformanceFor(block, logging.recentPerformances);
+  // The shared recommendation, as a target the athlete can set up and confirm.
+  const nextStep: NextStep | null = recommendation.tryReps
+    ? { kind: "reps", reps: recommendation.tryReps }
+    : suggested && recommendation.last && suggested.unit === recommendation.last.unit && suggested.value > recommendation.last.value
+      ? { kind: "load", load: suggested }
+      : null;
   const loadField = fields.find(field => field.key === "load");
   const askFirstLoad = !firstLoadSkipped && asksForFirstLoad(block, log, logging.recentLoads) && !firstLoadDeclined(block);
   const loadUnit = setUnit ?? fields.find(field => field.key === "load")?.apiUnit ?? "kg";
@@ -287,14 +297,17 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
     setConfirming(null);
   }
 
-  function openEditor() {
+  /** Opens the numbers, optionally set up with a suggested target to confirm once it is done. */
+  function openEditor(target?: NextStep) {
     setSetRows(log?.actual?.set_entries?.length ? draftsFromActual(log.actual) : null);
     setSetUnit(log?.actual?.set_entries?.find(row => row.load)?.load?.unit ?? null);
     // A fresh entry starts from last time's weight, so only a change is typed.
-    setDraft(
-      log ? draftFromLog(fields, log) : draftFromLog(fields,
-        suggested ? { actual: { load: suggested } } as ExerciseLogRecord : null),
-    );
+    setDraft({
+      ...(log ? draftFromLog(fields, log) : draftFromLog(fields,
+        suggested ? { actual: { load: suggested } } as ExerciseLogRecord : null)),
+      // Nothing is recorded yet: the athlete saves it after doing the work.
+      ...(target?.kind === "reps" ? { reps: String(target.reps) } : {}),
+    });
     setReason(log?.reason ?? null);
     setError(null);
     setConfirming(null);
@@ -549,6 +562,13 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
 
   return (
     <div className="ex-log" data-mode="idle">
+      {/* Sets the numbers up with the target; it is saved only once the athlete has done it. */}
+      {nextStep ? (
+        <button type="button" className="ex-log-suggest" disabled={saving} onClick={() => openEditor(nextStep)}>
+          {nextStepLabel(nextStep)}
+          <span className="ex-log-suggest-hint">Confirm when done</span>
+        </button>
+      ) : null}
       <div className="ex-log-choices">
         <button
           type="button"
@@ -559,7 +579,7 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
           Done
         </button>
         {hasLoggableNumbers(fields) ? (
-          <button type="button" className="ex-log-choice" disabled={saving} onClick={openEditor}>
+          <button type="button" className="ex-log-choice" disabled={saving} onClick={() => openEditor()}>
             Log numbers
           </button>
         ) : null}

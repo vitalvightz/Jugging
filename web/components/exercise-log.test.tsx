@@ -17,6 +17,8 @@ const deadlift: StructuredBlock = {
   sets: 4,
   reps: 8,
   effort: { method: "RPE", value: 7 },
+  // The server has cleared this lift to progress (see api/rep_range.py).
+  progression_hold: false,
 };
 
 const plank: StructuredBlock = {
@@ -421,6 +423,7 @@ test("last performance is visible collapsed and the suggested load remains edita
   await view.click("Log numbers");
   const load = view.container.querySelector<HTMLInputElement>('.ex-log-field input[id$="-load"]');
   assert.equal(load?.value, "82.5");
+  assert.equal(view.saved.length, 0);
   await view.type("Load", "80");
   await view.click("Save");
   assert.deepEqual(view.saved[0].actual?.load, { value: 80, unit: "kg" });
@@ -477,6 +480,25 @@ test("the first-weight question can be skipped and does not come back for that e
   assert.equal(collapsed.toggled(), 0);
   collapsed.unmount();
   window.localStorage.clear();
+});
+
+test("Done does not ask for a known weight or record it without confirmation", async () => {
+  window.localStorage.clear();
+  const view = mount(deadlift, {
+    recentLoads: [
+      { exercise_key: null, display_name: "Trap Bar Deadlift", load: { value: 80, unit: "kg" }, training_day: "2026-10-01" },
+    ],
+  });
+  await view.click("Done");
+  assert.deepEqual(view.saved, [{ block_id: "blk-deadlift", status: "as_prescribed" }]);
+  assert.doesNotMatch(view.text(), /What weight did you use\?/);
+  await view.press(view.container.querySelector<HTMLButtonElement>(".ex-log-edit")!);
+  await view.click("Log numbers");
+  assert.equal(view.saved.length, 1);
+  await view.type("Load", "75");
+  await view.click("Save");
+  assert.deepEqual(view.saved[1].actual?.load, { value: 75, unit: "kg" });
+  view.unmount();
 });
 
 test("the tick opens the row for the first weight, and only when there is none to carry", async () => {
@@ -536,15 +558,48 @@ test("an easy session below the top of the rep range suggests a rep, not more we
   held.unmount();
 });
 
-test("recommendations appear on the collapsed workout before Start without logging controls", () => {
-  const block = { ...deadlift, rep_range: [8, 12] };
-  const view = mount(block, { open: false, canWrite: false, allowProgression: true,
-    recentPerformances: [record(block, { plan_id: "older-plan", actual: { reps: 8,
-      load: { value: 115, unit: "kg" }, feel: "easy" } })] });
-  assert.match(view.text(), /115 kg · Try 9 reps/);
-  assert.equal(view.container.querySelector(".ex-log-tick"), null);
-  assert.equal(view.saved.length, 0);
+test("tapping a suggestion sets the numbers up; nothing is recorded until the athlete saves", async () => {
+  const squat: StructuredBlock = { ...deadlift, sets: 3, reps: 8, rep_range: [8, 12] };
+  const previous = record(squat, { actual: { load: { value: 60, unit: "kg" }, reps: 9, feel: "easy" } });
+  const recentLoads = [{ exercise_key: null, display_name: "Trap Bar Deadlift", load: { value: 60, unit: "kg" }, training_day: "2026-10-05" }];
+  const view = mount(squat, { recentPerformances: [previous], recentLoads, allowProgression: true });
+  await view.press(view.container.querySelector<HTMLButtonElement>(".ex-log-suggest")!);
+  assert.deepEqual(view.saved, []);
+  assert.equal(view.container.querySelector<HTMLInputElement>('.ex-log-field input[id$="-reps"]')?.value, "10");
+  assert.equal(view.container.querySelector<HTMLInputElement>('.ex-log-field input[id$="-load"]')?.value, "60");
+  // Backing out records nothing.
+  await view.click("Cancel");
+  assert.deepEqual(view.saved, []);
+  await view.press(view.container.querySelector<HTMLButtonElement>(".ex-log-suggest")!);
+  await view.type("Reps", "11");
+  await view.type("Load", "62.5");
+  assert.deepEqual(view.saved, []);
+  await view.click("Save");
+  // Inside the permitted range it is the workout done, with no "why?" asked.
+  assert.deepEqual(view.saved, [{ block_id: "blk-deadlift", status: "as_prescribed", reason: null,
+    actual: { reps: 11, load: { value: 62.5, unit: "kg" } } }]);
   view.unmount();
+});
+
+test("done records only the prescription after previously achieved extra reps", async () => {
+  const squat: StructuredBlock = { ...deadlift, sets: 3, reps: 8, rep_range: [8, 12] };
+  const previous = record(squat, { actual: { reps: 9 } });
+  const view = mount(squat, { open: false, recentPerformances: [previous] });
+  await view.press(view.container.querySelector<HTMLButtonElement>(".ex-log-tick")!);
+  assert.deepEqual(view.saved, [{ block_id: "blk-deadlift", status: "as_prescribed" }]);
+  assert.equal(view.toggled(), 0);
+  view.unmount();
+});
+
+test("a held block is never offered a next step; one with no verdict is left as it was", () => {
+  const previous = record(deadlift, { actual: { load: { value: 80, unit: "kg" }, feel: "easy" } });
+  const recentLoads = [{ exercise_key: null, display_name: "Trap Bar Deadlift", load: { value: 80, unit: "kg" }, training_day: "2026-10-05" }];
+  const held = mount({ ...deadlift, progression_hold: true }, { recentPerformances: [previous], recentLoads, allowProgression: true });
+  assert.equal(held.container.querySelector(".ex-log-suggest"), null);
+  held.unmount();
+  const unknown = mount({ ...deadlift, progression_hold: undefined }, { recentPerformances: [previous], recentLoads, allowProgression: true });
+  assert.match(unknown.container.querySelector(".ex-log-suggest")?.textContent ?? "", /Try 82\.5 kg/);
+  unknown.unmount();
 });
 
 test("review weight confirmation fills only missing set weights and reaches next exposure", async () => {

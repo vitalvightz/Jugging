@@ -31,6 +31,9 @@ export type LogField = {
   /** The prescribed value, or the prescribed range ("8-12" is [8, 12]). Null
    * when the plan gives no number for this field (the weight on the bar). */
   prescribed: [number, number] | null;
+  /** Reps only: the server's permitted range above the prescribed number. A
+   * count inside it is recorded as done, not as a change to the workout. */
+  permitted?: [number, number];
   /** The prescription as written, shown as the input's placeholder. */
   hint: string | null;
   /** Entered and shown as a clock ("24:35"); the value is seconds. */
@@ -133,7 +136,9 @@ export function logFieldsForBlock(block: StructuredBlock): LogField[] {
     fields.push({ key: "sets", label: "Sets", unit: null, apiUnit: null, prescribed: single(sets), hint: String(sets) });
   }
   if (reps) {
-    fields.push({ key: "reps", label: "Reps", unit: null, apiUnit: null, prescribed: reps.range, hint: reps.hint });
+    const permitted = progressionRepRange(block);
+    fields.push({ key: "reps", label: "Reps", unit: null, apiUnit: null, prescribed: reps.range, hint: reps.hint,
+      ...(permitted && permitted.join() !== reps.range.join() ? { permitted } : {}) });
   }
   const timed = [
     measured("duration", "Duration", block.duration, timeUnit),
@@ -299,6 +304,11 @@ export function buildLogEntry(fields: LogField[], draft: LogDraft): LogEntryResu
       }
       continue;
     }
+    // Reps progressed inside the permitted range are the workout, done.
+    if (field.permitted && value >= field.permitted[0] && value <= field.permitted[1]) {
+      withValue(actual, field, value);
+      continue;
+    }
     modified = true;
     withValue(actual, field, value);
     if (value > high * OUTLIER_RATIO || value < low / OUTLIER_RATIO) {
@@ -384,7 +394,8 @@ export function loggedValues(fields: LogField[], log: ExerciseLogRecord): Logged
     if (value === null) {
       continue;
     }
-    const departs = Boolean(field.prescribed) && (value < field.prescribed![0] || value > field.prescribed![1]);
+    const within = field.permitted ?? field.prescribed;
+    const departs = Boolean(within) && (value < within![0] || value > within![1]);
     const number = formatNumber(value);
     values.push({
       key: field.key,
@@ -697,6 +708,25 @@ export function progressionOpen(context: {
 }
 
 /**
+ * The rep range both prescriptions share, when today's asks for the same work
+ * as the one logged: same sets, same permitted reps, and no lower effort
+ * target. Null when today's dose was changed, which is the plan's call.
+ */
+function sameWorkload(block: StructuredBlock, before: StructuredBlock): [number, number] | null {
+  const today = progressionRepRange(block);
+  const planned = progressionRepRange(before);
+  if (!today || !planned || block.sets !== before.sets) return null;
+  // A log saved before ranges existed froze only the working number.
+  const legacy = before.rep_range == null && planned[0] === planned[1]
+    && planned[0] === today[0] && planned[0] <= today[1];
+  if (!legacy && today.join() !== planned.join()) return null;
+  const rpeToday = plannedRpe(block);
+  const rpeBefore = plannedRpe(before);
+  if (rpeToday !== null && rpeBefore !== null && rpeToday < rpeBefore) return null;
+  return legacy ? today : planned;
+}
+
+/**
  * What to try next, read off what was actually done last time rather than off
  * the wording of a progression rule. Only ever a suggestion.
  *
@@ -708,25 +738,17 @@ export function progressionOpen(context: {
  */
 export function nextStepFor(block: StructuredBlock, log: ExerciseLogRecord | null, allowed: boolean): NextStep | null {
   if (!allowed || !log || log.status === "skipped" || (log.reason != null && log.reason !== "felt_strong")) return null;
-  // The server's hold (taper, final fortnight, injury, weight cut, capped dose) and the plan's own wording.
+  // The server's hold (taper, final fortnight, injury, weight cut, capped dose,
+  // jumping or ballistic work) and the plan's own instruction to stay put. An
+  // exercise the server has no verdict on is left as it was.
   if (block.progression_hold === true || HOLD_RULE.test(cleanText(block.progression_rule) ?? "")) return null;
   // Strength work only: jumps, sprints and holds progress on quality, not reps or weight.
   if (!FIRST_LOAD_BLOCK_TYPES.has(cleanText(block.block_type)?.toLowerCase() ?? "")) return null;
-  const before = log.prescribed as StructuredBlock;
-  const today = progressionRepRange(block);
-  const planned = progressionRepRange(before);
-  if (!today || !planned) return null;
-  const legacy = before.rep_range == null && planned[0] === planned[1]
-    && planned[0] === today[0] && planned[0] <= today[1];
-  if (!legacy && today.join() !== planned.join()) return null;
-  const comparable = legacy ? today : planned;
-  if (!finitePositiveNumber(block.sets) || block.sets !== before.sets) return null;
-  const rpeToday = plannedRpe(block);
-  const rpeBefore = plannedRpe(before);
-  if (rpeToday !== null && rpeBefore !== null && rpeToday < rpeBefore) return null;
+  const comparable = sameWorkload(block, log.prescribed as StructuredBlock);
+  if (!comparable || !finitePositiveNumber(block.sets)) return null;
   if ((log.actual.sets ?? block.sets) < block.sets) return null;
   const reps = repsReached(log, comparable);
-  if (reps === null || reps < planned[0] || feelOf(log) !== "easy") return null;
+  if (reps === null || reps < comparable[0] || feelOf(log) !== "easy") return null;
   if (reps < comparable[1]) return { kind: "reps", reps: reps + 1 };
 
   const field = logFieldsForBlock(block).find((item) => item.key === "load");
@@ -774,7 +796,7 @@ export function needsFirstLoad(block: StructuredBlock, recentLoads: readonly Exe
   return Boolean(field) && !field!.prescribed && lastLoadFor(block, recentLoads) === null;
 }
 
-/** Missing weights stay reviewable even when a historical suggestion exists. */
+/** Ask for a first weight only while this exercise has none on record. */
 export function asksForFirstLoad(
   block: StructuredBlock,
   log: ExerciseLogRecord | null,
@@ -783,13 +805,14 @@ export function asksForFirstLoad(
   if (!log || log.status === "skipped" || log.actual?.load || (log.actual?.set_entries?.length && log.actual.set_entries.every(row => row.load != null))) return false;
   return recentLoads !== undefined && block.prescription_source !== "athlete"
     && FIRST_LOAD_BLOCK_TYPES.has(cleanText(block.block_type)?.toLowerCase() ?? "")
-    && logFieldsForBlock(block).some(field => field.key === "load");
+    && logFieldsForBlock(block).some(field => field.key === "load")
+    && lastLoadFor(block, recentLoads) === null;
 }
 
 /** A saved log resent with one thing added or changed; everything else as stored. */
 export function amendedLog(
   log: ExerciseLogRecord,
-  patch: Pick<ExerciseLogActual, "load" | "feel">,
+  patch: Pick<ExerciseLogActual, "load" | "feel" | "reps">,
 ): Omit<ExerciseLogRequest, "plan_id" | "block_id"> {
   const actual = Object.fromEntries(
     Object.entries({ ...log.actual, ...patch }).filter(([, value]) => value !== null && value !== undefined),

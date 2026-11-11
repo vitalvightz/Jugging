@@ -36,6 +36,8 @@ const deadlift: StructuredBlock = {
   sets: 4,
   reps: 8,
   effort: { method: "RPE", value: 7 },
+  // The server has cleared this lift to progress (see api/rep_range.py).
+  progression_hold: false,
   rest: { value: 120, unit: "seconds" },
 };
 
@@ -374,6 +376,9 @@ test("the first weight is asked once for weighted strength work with none on rec
   // Not before the history has loaded, not with a weight on record, not before the exercise is logged.
   assert.equal(needsFirstLoad(deadlift, undefined), false);
   assert.equal(needsFirstLoad(deadlift, recent), false);
+  assert.equal(asksForFirstLoad(deadlift, done, recent), false);
+  assert.equal(asksForFirstLoad(deadlift, done, undefined), false);
+  assert.equal(asksForFirstLoad(deadlift, done, [{ ...recent[0], display_name: "Back Squat" }]), true);
   assert.equal(asksForFirstLoad(deadlift, null, []), false);
   // A skip, a weight already given, or sets logged one by one are left alone.
   assert.equal(asksForFirstLoad(deadlift, log(deadlift, { status: "skipped" }), []), false);
@@ -510,10 +515,32 @@ test("the server's hold stops every suggestion, and only strength work progresse
   const squat: StructuredBlock = { ...deadlift, sets: 3, reps: 8, rep_range: [8, 12] };
   const done = log(squat, { prescribed: squat, actual: { load: { value: 60, unit: "kg" }, feel: "easy" } });
   assert.equal(nextStepFor({ ...squat, progression_hold: true }, done, true), null);
+  // No verdict is not a hold: an exercise the server has not classified is left as it was.
+  assert.equal(nextStepFor({ ...squat, progression_hold: undefined }, done, true)?.kind, "reps");
+  assert.equal(nextStepFor({ ...squat, progression_hold: null }, done, true)?.kind, "reps");
   for (const block_type of ["plyometric_power", "speed", "conditioning", "strength_speed"]) {
     assert.equal(nextStepFor({ ...squat, block_type }, { ...done, prescribed: { ...squat, block_type } }, true), null);
   }
 });
+
+test("reps inside the permitted range are the workout done, not a change", () => {
+  const squat: StructuredBlock = { ...deadlift, sets: 3, reps: 8, rep_range: [8, 12] };
+  const fields = logFieldsForBlock(squat);
+  assert.deepEqual(fields.find((field) => field.key === "reps")?.permitted, [8, 12]);
+  const nine = buildLogEntry(fields, { reps: "9" });
+  assert.equal(nine.status, "as_prescribed");
+  assert.equal(nine.actual.reps, 9);
+  // Outside the range, either way, is still a change.
+  assert.equal(buildLogEntry(fields, { reps: "13" }).status, "modified");
+  assert.equal(buildLogEntry(fields, { reps: "7" }).status, "modified");
+  // Without a permitted range nothing changes: 9 against a fixed 8 is a change.
+  assert.equal(buildLogEntry(logFieldsForBlock(deadlift), { reps: "9" }).status, "modified");
+  assert.equal(logFieldsForBlock(deadlift).find((field) => field.key === "reps")?.permitted, undefined);
+  // And it reads back without "not 8".
+  const saved = log(squat, { actual: { reps: 9 } });
+  assert.equal(loggedValues(fields, saved).find((value) => value.key === "reps")?.insteadOf, null);
+});
+
 
 test("per-set progression needs every prescribed set, valid effort and known weights", () => {
   const block = { ...deadlift, sets: 3, reps: 8, rep_range: [8, 12] };

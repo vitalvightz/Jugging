@@ -150,3 +150,174 @@ def test_jumps_and_ballistic_lifts_are_held_even_when_labelled_strength(healthy)
     squats = [block for week, block in _strength_blocks(out)
               if block.get("exercise_key") == "back-squat" and week["phase_label"] in {"GPP", "SPP"}]
     assert squats and all(block.get("rep_range") for block in squats)
+
+
+# --- Fail-closed classification, older plans, and athlete changes -----------------
+
+from api.rep_range import bank_allows_progression, override_progression_hold  # noqa: E402
+from api.services.exercise_overrides import apply_exercise_overrides  # noqa: E402
+
+
+@pytest.mark.parametrize(("exercise", "expected"), [
+    ({"exercise_key": "back-squat"}, True),
+    ({"name": "Back Squat"}, True),
+    ({"display_name": "Feet-Elevated Push-Up"}, True),
+    # Jumps, ballistic lifts and speed-intent power work, by tag or by method.
+    ({"exercise_key": "single-leg-forward-hops"}, False),
+    ({"name": "Barbell Thruster"}, False),
+    ({"name": "High Pull"}, False),
+    ({"name": "Heavy RDL → Broad Jump"}, False),
+    ({"name": "Sled Push"}, False),
+    # Not in the strength bank: unclassified, never assumed safe.
+    ({"exercise_key": "my-own-invention", "display_name": "My Own Invention"}, None),
+    ({}, None),
+])
+def test_the_exercise_bank_classifies_what_may_progress(exercise, expected):
+    assert bank_allows_progression(exercise) is expected
+
+
+def test_cleared_blocks_say_so_and_everything_else_is_held_or_unknown(healthy):
+    plan, brief = healthy
+    out = reconcile_exercise_keys(plan, brief)
+    for week, block in _strength_blocks(out):
+        if block.get("rep_range"):
+            assert block["progression_hold"] is False
+        if week["phase_label"] == "TAPER":
+            assert block["progression_hold"] is True
+    assert any(block.get("progression_hold") is False for _, block in _strength_blocks(out))
+
+
+def test_an_older_brief_without_mechanical_tags_still_holds_jumps(healthy):
+    plan, brief = healthy
+    old = copy.deepcopy(brief)
+    for week in old["weekly_role_map"]["weeks"]:
+        for role in week["session_roles"]:
+            for assignment in role.get("selected_exercise_assignments") or []:
+                assignment.pop("mechanical_risk_tags", None)
+    out = reconcile_exercise_keys(plan, old)
+    hops = [b for _, b in _strength_blocks(out) if b.get("exercise_key") == "single-leg-forward-hops"]
+    assert hops and all(b.get("progression_hold") is True and "rep_range" not in b for b in hops)
+
+
+def test_a_block_the_planner_cannot_classify_is_left_unknown_not_cleared(healthy):
+    plan, brief = healthy
+    unknown = copy.deepcopy(brief)
+    for week in unknown["weekly_role_map"]["weeks"]:
+        for role in week["session_roles"]:
+            for assignment in role.get("selected_exercise_assignments") or []:
+                if assignment.get("name") == "Back Squat":
+                    assignment["name"] = "Mystery Squat Variation"
+                    assignment["exercise_key"] = "mystery-squat-variation"
+    renamed = copy.deepcopy(plan)
+    for _, block in _strength_blocks(renamed):
+        if block.get("display_name") == "Back Squat":
+            block["display_name"] = "Mystery Squat Variation"
+    out = reconcile_exercise_keys(renamed, unknown)
+    mystery = [b for w, b in _strength_blocks(out)
+               if b.get("exercise_key") == "mystery-squat-variation" and w["phase_label"] in {"GPP", "SPP"}]
+    assert mystery and all("progression_hold" not in b and "rep_range" not in b for b in mystery)
+
+
+_SQUAT = {"block_id": "b1", "block_type": "strength", "display_name": "Back Squat", "exercise_key": "back-squat",
+          "sets": 3, "reps": 8}
+_GOBLET = {"block_type": "strength", "display_name": "Goblet Squat", "exercise_key": "goblet-squat", "sets": 3, "reps": 8}
+_HOPS = {"block_type": "strength", "display_name": "Single-Leg Forward Hops",
+         "exercise_key": "single-leg-forward-hops", "sets": 3, "reps": 4}
+_UNKNOWN = {"block_type": "strength", "display_name": "My Own Invention", "sets": 3, "reps": 8}
+
+
+def _changed(action: str, new_block: dict | None, *, original: dict, extra: list[dict] | None = None) -> dict:
+    """The session after one athlete change, through the real override reader."""
+    session = {"session_id": "s1", "session_type": "strength_power", "title": "Strength",
+               "blocks": [copy.deepcopy(original), *copy.deepcopy(extra or [])]}
+    plan = {"weeks": [{"days": [{"date": "2026-11-12", "sessions": [session]}]}]}
+    entry = {"id": "ovr1", "action": action, "scope": "occurrence", "date": "2026-11-12", "session_id": "s1",
+             "block_id": original["block_id"], "original": original}
+    if new_block is not None:
+        entry["block"] = new_block
+    out = apply_exercise_overrides({"exercise_overrides": [entry]}, plan)
+    return out["weeks"][0]["days"][0]["sessions"][0]
+
+
+def test_bank_fixture_names_exist():
+    assert bank_allows_progression(_GOBLET) is True and bank_allows_progression(_HOPS) is False
+
+
+@pytest.mark.parametrize(("original_hold", "new_block", "expected"), [
+    (False, _GOBLET, None),     # nothing held: no verdict, as for any unclassified block
+    (True, _GOBLET, True),      # an existing hold survives the swap
+    (None, _GOBLET, None),
+    (False, _HOPS, True),       # ballistic by the bank
+    (True, _UNKNOWN, True),     # a hold survives even onto an exercise the bank does not know
+    (False, _UNKNOWN, None),    # unknown stays unknown
+], ids=["cleared", "held_original", "unknown_original", "ballistic_swap", "held_unclassified", "unclassified_swap"])
+def test_a_swap_keeps_holds_and_checks_the_bank(original_hold, new_block, expected):
+    original = {**_SQUAT, "rep_range": [8, 12]}
+    if original_hold is not None:
+        original["progression_hold"] = original_hold
+    swapped = _changed("swap", new_block, original=original)["blocks"][0]
+    assert swapped["display_name"] == new_block["display_name"]
+    assert swapped.get("progression_hold") is expected
+    assert "rep_range" not in swapped  # the athlete's own choice of dose is fixed
+
+
+def test_a_stored_change_cannot_carry_its_own_verdict_or_range():
+    """An edit is saved as a copy of the block as it was that day; neither field is trusted on read."""
+    stale = {**_SQUAT, "reps": 10, "rep_range": [8, 12], "progression_hold": False}
+    edited = _changed("edit", stale, original={**_SQUAT, "progression_hold": True})["blocks"][0]
+    assert edited["reps"] == 10 and edited["progression_hold"] is True and "rep_range" not in edited
+    # And a stale hold saved on a taper day does not follow the edit into a cleared week.
+    freed = _changed("edit", {**stale, "progression_hold": True}, original={**_SQUAT, "progression_hold": False})["blocks"][0]
+    assert "progression_hold" not in freed and "rep_range" not in freed
+
+
+def test_an_added_exercise_takes_the_sessions_hold_and_the_banks_class():
+    cleared = {**_SQUAT, "progression_hold": False}
+    held = {**_SQUAT, "progression_hold": True}
+
+    def added(new_block, *originals):
+        session = {"session_id": "s1", "session_type": "strength_power", "title": "Strength", "blocks": copy.deepcopy(list(originals))}
+        plan = {"weeks": [{"days": [{"date": "2026-11-12", "sessions": [session]}]}]}
+        entry = {"id": "ovr2", "action": "add", "scope": "occurrence", "date": "2026-11-12", "session_id": "s1", "block": new_block}
+        return apply_exercise_overrides({"exercise_overrides": [entry]}, plan)["weeks"][0]["days"][0]["sessions"][0]["blocks"][-1]
+
+    assert added(_GOBLET, held).get("progression_hold") is True       # taper, cut, injury: the session is held
+    assert added(_UNKNOWN, held).get("progression_hold") is True
+    assert added(_HOPS, cleared).get("progression_hold") is True      # ballistic by the bank
+    assert "progression_hold" not in added(_GOBLET, cleared)
+    assert "progression_hold" not in added(_GOBLET, _SQUAT)
+    assert "progression_hold" not in added(_UNKNOWN, cleared)
+    # One held jump beside a cleared lift does not hold the whole session.
+    assert "progression_hold" not in added(_GOBLET, cleared, {**_HOPS, "block_id": "h", "progression_hold": True})
+    # A claim on the added block itself counts for nothing.
+    assert added({**_GOBLET, "progression_hold": False, "rep_range": [1, 30]}, held)["progression_hold"] is True
+
+
+def test_another_athlete_change_is_not_evidence_about_the_session():
+    sibling = {**_GOBLET, "block_id": "x", "progression_hold": True, "athlete_change": {"action": "add"}}
+    assert override_progression_hold(_GOBLET, replaced=None, siblings=[sibling]) is None
+
+
+@pytest.mark.parametrize("effective", ["1x8 @ RPE 6", "3x4 @ RPE 6", "2x8 @ RPE 5"])
+def test_restricted_effective_doses_hold_swapped_and_added_exercises(effective):
+    from api.rep_range import progression_context
+
+    assignment = {"name": "Back Squat", "base_prescription": "3x8-12 @ RPE 6",
+                  "effective_prescription": effective}
+    context = progression_context(_SQUAT, {}, assignment, phase="GPP", d_day=50, athlete={})
+    assert context == {"progression_hold": True}
+    original = {**_SQUAT, **context}
+    assert _changed("swap", _GOBLET, original=original)["blocks"][0]["progression_hold"] is True
+    assert _changed("add", _GOBLET, original=original)["blocks"][-1]["progression_hold"] is True
+
+
+@pytest.mark.parametrize("development", [False, True])
+def test_authorised_working_doses_remain_cleared(development):
+    from api.rep_range import progression_context
+    from fightcamp.working_dose import working_dose
+
+    base = "3-4x8-12 @ RPE 6-7"
+    assignment = {"name": "Back Squat", "base_prescription": base,
+                  "effective_prescription": working_dose(base, development=development)}
+    assert progression_context(_SQUAT, {}, assignment, phase="GPP", d_day=50, athlete={}) == {
+        "progression_hold": False, "rep_range": [8, 12]}

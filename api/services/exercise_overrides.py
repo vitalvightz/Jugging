@@ -188,6 +188,25 @@ def _provenance(entry: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _athlete_block(entry: Mapping[str, Any], *, replaced: Mapping[str, Any] | None, siblings: list[Any]) -> dict[str, Any]:
+    """The athlete's block with its progression verdict decided here, on read.
+
+    ``rep_range`` and ``progression_hold`` are server-owned. A stored change
+    never carries them forward (an edit is saved as a copy of the block it
+    edited, on whatever day that was): the range is dropped, because the
+    athlete fixed this dose themselves, and the hold is re-derived from the
+    block being replaced or the session being added to.
+    """
+    from api.rep_range import override_progression_hold
+
+    block = deepcopy(dict(entry["block"]))
+    block.pop("rep_range", None)
+    block.pop("progression_hold", None)
+    if override_progression_hold(block, replaced=replaced, siblings=siblings):
+        block["progression_hold"] = True
+    return block
+
+
 def _apply_entry(session: dict[str, Any], entry: Mapping[str, Any]) -> bool:
     blocks = list(session.get("blocks") or [])
     action = entry["action"]
@@ -195,7 +214,7 @@ def _apply_entry(session: dict[str, Any], entry: Mapping[str, Any]) -> bool:
         new_id = override_block_id(str(entry.get("id")))
         if any(isinstance(b, Mapping) and b.get("block_id") == new_id for b in blocks):
             return False
-        block = deepcopy(dict(entry["block"]))
+        block = _athlete_block(entry, replaced=None, siblings=blocks)
         block["block_id"] = new_id
         block["order_index"] = len(blocks) + 1
         block["athlete_change"] = _provenance(entry)
@@ -214,7 +233,7 @@ def _apply_entry(session: dict[str, Any], entry: Mapping[str, Any]) -> bool:
         session["athlete_removed"] = removed
         session["blocks"] = blocks[:index] + blocks[index + 1:]
         return True
-    block = deepcopy(dict(entry["block"]))
+    block = _athlete_block(entry, replaced=original, siblings=blocks)
     block["block_id"] = override_block_id(str(entry.get("id")))
     if original.get("order_index") is not None:
         block["order_index"] = original.get("order_index")
