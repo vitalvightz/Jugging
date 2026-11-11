@@ -510,10 +510,11 @@ def quarantine_duplicate_profiles():
         handle = outreach_handle(page["properties"])
         if handle:
             grouped.setdefault(handle, []).append(page)
+    # Historical or already-held duplicates must not replace their original
+    # record on the next poll. For uncontacted stages, keep the oldest row.
     priority = {
-        "Review Hold": 0, "Rejected": 0, "Screened Out": 0, "Inactive": 0,
+        "Rejected": 0, "Screened Out": 0, "Inactive": 0,
         "Activated": 1, "Accepted": 2, "Replied": 3, "Contacted": 4,
-        "Ready to Send": 5, "Needs Research": 6, "AI Queue": 7,
     }
     held = 0
     for handle, pages in grouped.items():
@@ -521,7 +522,7 @@ def quarantine_duplicate_profiles():
             continue
         def order(page):
             stage = (page["properties"]["Stage (AI Fills First)"].get("select") or {}).get("name")
-            return priority.get(stage, 8), page.get("created_time") or "", page["id"]
+            return priority.get(stage, 5), page.get("created_time") or "", page["id"]
         keep = min(pages, key=order)
         for page in pages:
             if page["id"] == keep["id"]:
