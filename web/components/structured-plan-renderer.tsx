@@ -94,7 +94,8 @@ import { WhyTooltip } from "@/components/why-tooltip";
 import { ExerciseDemo, ExerciseMediaProvider, useExerciseMedia } from "@/components/exercise-demo";
 import { RehabExerciseGuide, RehabExerciseLimits, RehabPrescription } from "@/components/rehab-prescription";
 import { PrivateExerciseMediaProvider, PrescribedPrivateVideo, PrescribedPrivateVideoThumbnail } from "@/components/private-exercise-video";
-import { ExerciseProgressionPreview, ExerciseLogBadge, ExerciseLogPanel, ExerciseLogTick, useExerciseLoggingActive } from "@/components/exercise-log";
+import { weightRecommendation } from "@/lib/weight-recommendation";
+import { ExerciseProgressionPreview, ExerciseLogBadge, ExerciseLogPanel, ExerciseLogTick, useWeightContext, useExerciseLoggingActive } from "@/components/exercise-log";
 import { ExerciseActions, ExerciseSessionScope, SessionChangesFoot } from "@/components/exercise-customisation";
 import { demoThumbnailUrl } from "@/lib/exercise-demo";
 import { SafetyNote } from "@/components/safety-note";
@@ -834,7 +835,16 @@ export function ExerciseRow({
   const tagLabel = blockType && (!compact || isRehabBlock(block)) ? blockTagLabel(block, rehabLabelPolicy) : null;
   const resolvedMedia = useExerciseMedia(block.display_name, block.exercise_key);
   const media = block.prescription_source === "athlete" && !block.exercise_key ? null : resolvedMedia;
-  const summary = exerciseRowSummary(block, prescription, compact);
+  const weightContext = useWeightContext();
+  const guidance = weightContext && !weightContext.hideWeightGuidance && !weightContext.logs[block.block_id || ""]
+    ? weightRecommendation(block, weightContext) : null;
+  const rawSummary = exerciseRowSummary(block, prescription, compact);
+  // A standalone numeric load is already led by the guidance beneath the dose.
+  // Keep authored instructions and ranges intact.
+  const suggestedText = guidance?.suggested ? `${guidance.suggested.value} ${guidance.suggested.unit}` : null;
+  const summary = rawSummary && suggestedText
+    ? rawSummary.split(" · ").filter(part => part.trim() !== suggestedText).join(" · ")
+    : rawSummary;
   // Stop criteria live in the opened exercise. Active range/contact/clinical
   // restrictions still belong on the plan, independent of the stop disclosure.
   const rehabLimits = compact && isRehabBlock(block)
@@ -1077,8 +1087,8 @@ function ExerciseDetail({
   if (sessionRunning && block.block_type !== "rehab") {
     return (
       <div className="injury-sheet-body ex-detail ex-detail-logging">
-        {tagLabel || summary ? (
-          <p className="ex-detail-summary">{[tagLabel, summary].filter(Boolean).join(" · ")}</p>
+        {tagLabel ? (
+          <p className="ex-detail-summary">{tagLabel}</p>
         ) : null}
         {stopLine}
         {steps.length > 0 ? (

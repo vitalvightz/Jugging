@@ -1867,7 +1867,7 @@ export function TodaySessionPanel({
                 headline={headline}
                 rehabLabelPolicy={rehabLabelPolicy}
                 exerciseMedia={exerciseMedia}
-                exerciseLogging={exerciseLogging}
+                exerciseLogging={exerciseLogging ? { ...exerciseLogging, hideWeightGuidance: true } : null}
                 accessToken={token}
                 exerciseCustomisation={exerciseCustomisation}
               />

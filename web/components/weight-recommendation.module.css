@@ -1,11 +1,5 @@
-.card { display: flex; flex-direction: column; gap: 12px; width: 100%; min-width: 0; padding: 12px 0; color: var(--text-primary, inherit); text-align: left; }
-.numbers { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; }
-.primary, .secondary { display: flex; flex-direction: column; gap: 4px; }
-.primary strong { font-size: 24px; font-weight: 650; line-height: 1.2; font-variant-numeric: tabular-nums; }
-.secondary { text-align: right; color: var(--text-secondary, #999); font-size: 18px; font-variant-numeric: tabular-nums; }
-.label, .dose, .reps { font-size: 12px; line-height: 1.5; font-weight: 400; }
-.label { color: var(--text-secondary, #999); }
-.reps { font-weight: 600; }
-.dose { color: var(--text-secondary, #999); }
-
-.primary, .primary .label, .reps { color: var(--progress-gold, #d6af6a); }
+.card { display: block; min-width: 0; padding: 4px 0; font-size: 12px; line-height: 1.5; text-align: left; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; color: var(--text-secondary, #999); }
+.primary { color: var(--progress-gold, #d6af6a); }
+.primary strong { font-size: inherit; font-weight: 600; }
+.secondary { color: var(--text-secondary, #999); }
+.card[data-subtle] .primary { color: inherit; }

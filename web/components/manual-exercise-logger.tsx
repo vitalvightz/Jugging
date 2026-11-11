@@ -403,7 +403,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
             {FORMATS.map(item => <button key={item.id} type="button" data-format aria-pressed={format === item.id} disabled={busy}
               onClick={() => { setEditor(current => ({ ...current, formatMenu: false, picked: current.picked && { ...current.picked, format: item.id } })); setError(null); focusFirstField(); }}>{item.label}</button>)}
           </div> : null}
-          {picked.reference ? <p className={styles.reference}>{picked.reference}</p> : null}
+          {picked.reference && !(format === "strength" && (recommendation.last || recommendation.suggested)) ? <p className={styles.reference}>{picked.reference}</p> : null}
           {format === "strength" ? <WeightRecommendation value={recommendation} /> : null}
           {unitHint && hasLoadEntry && (format === "strength" || format === "bodyweight") ? <div className={styles.discoveryHint} role="note">
             <span>Tap the load unit to switch between kg and lb.</span>

@@ -47,22 +47,28 @@ for (const width of [390, 1280]) for (const completed of [false, true]) test(`we
   await page.goto(`/today?plan=${id}`);
   await expect(page).toHaveTitle(/UNLXCK/i);
   const row = page.locator(".ex-row").filter({ hasText: "Back Squat" }).first();
-  await expect(row).toContainText("Suggested");
-  await expect(row).toContainText("122.5 kg");
-  await expect(row).toContainText("Last");
-  await expect(row).toContainText("120 kg");
+  if (completed) {
+    await expect(row).not.toContainText("Suggested");
+  } else {
+    await expect(row).toContainText("Suggested 122.5 kg · Last 120 kg");
+    await expect(row.getByText(/Suggested/)).toHaveCount(1);
+    await expect(row).not.toContainText("Editable");
+  }
   await expect(row.locator("input")).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await row.getByText("Suggested", { exact: true }).scrollIntoViewIfNeeded();
+  await row.scrollIntoViewIfNeeded();
   if (process.env.WEIGHT_QA_DIR) await row.screenshot({ path: `${process.env.WEIGHT_QA_DIR}/weight-preview-${width}${completed ? "-completed" : ""}.png` });
   await row.getByRole("button", { name: "Back Squat", exact: true }).click();
   const detail = page.getByRole("dialog").filter({ hasText: "Back Squat" });
-  await expect(detail).toContainText("Suggested");
-  await expect(detail).toContainText("122.5 kg");
-  await expect(detail).toContainText("Last");
-  await expect(detail).toContainText("120 kg");
+  if (completed) {
+    await expect(detail).not.toContainText("Suggested");
+  } else {
+    await expect(detail).toContainText("Suggested 122.5 kg · Last 120 kg");
+    await expect(detail.getByText(/Suggested/)).toHaveCount(1);
+    await expect(detail).not.toContainText("Editable");
+  }
   await expect(detail.locator('input[aria-label*="Load"]')).toHaveCount(0);
-  await detail.getByText("Suggested", { exact: true }).scrollIntoViewIfNeeded();
+  await detail.scrollIntoViewIfNeeded();
   if (process.env.WEIGHT_QA_DIR) await detail.screenshot({ path: `${process.env.WEIGHT_QA_DIR}/weight-detail-${width}${completed ? "-completed" : ""}.png` });
   if (completed) {
     const actual = detail.getByRole("group", { name: "Today's actual", exact: true });
@@ -78,6 +84,7 @@ for (const width of [390, 1280]) for (const completed of [false, true]) test(`we
   await expect(picker).toContainText("122.5 kg");
   await expect(picker).toContainText("Last");
   await expect(picker).toContainText("120 kg");
+  expect(await picker.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
   await picker.getByRole("button", { name: /Back Squat/ }).click();
   await picker.locator("summary").filter({ hasText: "Load & effort" }).click();
   await expect(picker.getByRole("spinbutton", { name: "Weight", exact: true })).toHaveValue("122.5");

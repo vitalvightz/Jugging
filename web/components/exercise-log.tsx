@@ -43,6 +43,8 @@ import type {
  */
 export type ExerciseLogging = {
   canWrite?: boolean;
+  /** Review surfaces prioritise completed measurements, including unreported sets. */
+  hideWeightGuidance?: boolean;
   lowerLoads?: boolean;
   /** Today's saved logs, keyed by block id. */
   logs: Readonly<Record<string, ExerciseLogRecord>>;
@@ -185,9 +187,9 @@ export function useWeightContext() {
 /** Visible on the workout row before starting; suggestions never change the plan. */
 export function ExerciseProgressionPreview({ block }: { block: StructuredBlock }) {
   const logging = useContext(ExerciseLogContext);
-  if (!logging) return null;
+  if (!logging || logging.hideWeightGuidance || logging.logs[cleanText(block.block_id) || ""]) return null;
   const recommendation = weightRecommendation(block, logging);
-  return <WeightRecommendation value={recommendation} dose={block.sets && block.reps ? `${block.sets} sets × ${block.reps} reps` : undefined} />;
+  return <WeightRecommendation value={recommendation} />;
 }
 
 /** The numbers behind a saved log on a collapsed row: "80 kg", "Changed · 3 sets". */

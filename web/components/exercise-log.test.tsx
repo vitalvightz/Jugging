@@ -58,6 +58,7 @@ function mount(
     recentLoads?: ExerciseRecentLoad[];
     allowProgression?: boolean;
     canWrite?: boolean;
+    hideWeightGuidance?: boolean;
     fail?: string;
     open?: boolean;
   } = {},
@@ -73,6 +74,7 @@ function mount(
     const logging: ExerciseLogging = {
       logs,
       canWrite: options.canWrite,
+      hideWeightGuidance: options.hideWeightGuidance,
       painReasonAllowed: options.painReasonAllowed ?? true,
       recentPerformances: options.recentPerformances,
       recentLoads: options.recentLoads,
@@ -389,7 +391,7 @@ test("a struggled weight is offered eased off, at any readiness, and stays edita
     actual: { load: { value: 100, unit: "kg" }, effort: { method: "RPE", value: 9 } },
   });
   const view = mount(deadlift, { recentPerformances: [previous], allowProgression: false });
-  assert.match(view.text(), /Suggested90 kgLast100 kg/);
+  assert.match(view.text(), /Suggested 90 kg · Last 100 kg/);
   await view.click("Log numbers");
   const load = view.container.querySelector<HTMLInputElement>('.ex-log-field input[id$="-load"]');
   assert.equal(load?.value, "90");
@@ -415,7 +417,7 @@ test("last performance is visible collapsed and the suggested load remains edita
   assert.equal(collapsed.text().includes("Last"), true);
   collapsed.unmount();
   const view = mount(block, { recentPerformances: [previous], allowProgression: true });
-  assert.match(view.text(), /Suggested82.5 kgLast80 kg.*4 sets × 8 reps/);
+  assert.match(view.text(), /Suggested 82.5 kg · Last 80 kg/);
   await view.click("Log numbers");
   const load = view.container.querySelector<HTMLInputElement>('.ex-log-field input[id$="-load"]');
   assert.equal(load?.value, "82.5");
@@ -539,7 +541,7 @@ test("recommendations appear on the collapsed workout before Start without loggi
   const view = mount(block, { open: false, canWrite: false, allowProgression: true,
     recentPerformances: [record(block, { plan_id: "older-plan", actual: { reps: 8,
       load: { value: 115, unit: "kg" }, feel: "easy" } })] });
-  assert.match(view.text(), /Suggested115 kgLast115 kgTry 9 reps/);
+  assert.match(view.text(), /115 kg · Try 9 reps/);
   assert.equal(view.container.querySelector(".ex-log-tick"), null);
   assert.equal(view.saved.length, 0);
   view.unmount();
@@ -570,17 +572,34 @@ test("review weight confirmation fills only missing set weights and reaches next
   view.unmount();
 });
 
-test("completed details retain previous Suggested and Last separately from today's actual", () => {
+test("completed details show actuals without pre-workout guidance", () => {
   const today = record(deadlift, { actual: { sets: 4, reps: 8, load: { value: 75, unit: "kg" } } });
   const historical = record(deadlift, { plan_id: "older-plan",
     actual: { sets: 4, reps: 8, load: { value: 80, unit: "kg" }, feel: "easy" } });
   const view = mount(deadlift, { logs: { "blk-deadlift": today },
     recentPerformances: [historical], allowProgression: true });
-  assert.match(view.text(), /Suggested82.5 kgLast80 kg/);
+  assert.doesNotMatch(view.text(), /Suggested|Last 80 kg/);
   const actual = view.container.querySelector('[aria-label="Today\'s actual"]')!;
   assert.match(actual.textContent ?? "", /75 kg/);
   assert.doesNotMatch(actual.textContent ?? "", /82.5 kg|Last80 kg/);
   assert.equal(view.saved.length, 0);
   assert.equal(today.actual.load?.value, 75);
+  view.unmount();
+});
+
+
+test("review suppresses guidance even for exercises with unreported measurements", () => {
+  const view = mount(deadlift, { open: false, hideWeightGuidance: true,
+    recentLoads: [{ exercise_key: null, display_name: deadlift.display_name, load: { value: 80, unit: "kg" } } as ExerciseRecentLoad] });
+  assert.doesNotMatch(view.text(), /Suggested|Same as last/);
+  assert.equal(view.saved.length, 0);
+  view.unmount();
+});
+
+test("collapsed prescription and guidance show a numeric weight only once", () => {
+  const view = mount({ ...deadlift, load: { value: 95, unit: "kg" },
+    prescription_text: "4 × 8 · 95 kg · rest 90s" }, { open: false, recentLoads: [] });
+  assert.equal(view.text().split("95 kg").length - 1, 1);
+  assert.doesNotMatch(view.text(), /Editable|4 sets × 8 reps/);
   view.unmount();
 });
