@@ -1,4 +1,5 @@
 "use client";
+import { weightContextForToday } from "@/lib/weight-recommendation";
 import { withHistoricalTimerLoads } from "@/lib/session-timer/history";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -664,17 +665,7 @@ export function TodaySessionPanel({
     enabled: resolvedDecision.sessionIsToday,
     canWrite: status === "started" || status === "done" || status === "modified",
     painReasonAllowed,
-    lowerLoads: state.live_prescription?.safety_hold === true
-      || state.today.decision_tier === "pull_back" || state.today.decision_tier === "stop"
-      || /taper|weight.?cut|fight.?week/i.test(state.active_plan.phase ?? ""),
-    allowProgression: progressionOpen({
-      decisionTier: state.today.decision_tier,
-      openInjuries: state.open_injuries.length,
-      phase: state.active_plan.phase,
-      safetyHold: state.live_prescription?.safety_hold,
-      fightDate: state.active_plan.fight_date,
-      trainingDay: state.today.training_day,
-    }),
+    ...weightContextForToday(state),
     onError: reportExerciseLogError,
   });
   // Center the structured blocks on whatever the backend command view targets:

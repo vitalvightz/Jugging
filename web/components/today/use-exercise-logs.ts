@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { usePastExercises } from "@/components/load-field";
+import { withManualWeightHistory } from "@/lib/weight-recommendation";
 import type { ExerciseLogging } from "@/components/exercise-log";
 import { listTodayExerciseLogs, submitExerciseLog, submitExerciseLogs } from "@/lib/api";
 import type { ExerciseLogRecord, ExerciseRecentLoad } from "@/lib/types";
@@ -46,6 +48,7 @@ export function useTodayExerciseLogs({
     logs: {},
   });
   const active = enabled && Boolean(token) && Boolean(planId);
+  const personalHistory = usePastExercises(active ? token : null);
 
   useEffect(() => {
     if (!active) {
@@ -107,7 +110,12 @@ export function useTodayExerciseLogs({
 
   const logs = loaded.scope === scope ? loaded.logs : EMPTY_LOGS;
   const recentLoads = loaded.scope === scope ? loaded.recentLoads : undefined;
-  const recentPerformances = loaded.scope === scope ? loaded.recentPerformances : undefined;
+  const rawPerformances = loaded.scope === scope ? loaded.recentPerformances : undefined;
+  // Wait for the authoritative plan history so an older manual load cannot
+  // briefly outrank a newer pain/skip record while requests race.
+  const recentPerformances = useMemo(() => rawPerformances === undefined ? undefined
+    : withManualWeightHistory(rawPerformances, personalHistory, trainingDay),
+    [rawPerformances, personalHistory, trainingDay]);
   return useMemo(
     () => (active ? { lowerLoads, canWrite, logs, save, saveMany, recentLoads, recentPerformances, allowProgression, painReasonAllowed, onError } : null),
     [lowerLoads, canWrite, active, logs, save, saveMany, recentLoads, recentPerformances, allowProgression, painReasonAllowed, onError],

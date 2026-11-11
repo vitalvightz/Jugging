@@ -8,7 +8,7 @@ export function withHistoricalTimerLoads(items: TimerItem[], blocks: StructuredB
   context: Pick<WeightContext, "allowProgression" | "lowerLoads"> = {}): TimerItem[] {
   return items.map(item => {
     const block = blocks.find(block => block.block_id === item.blockId);
-    if (item.kind !== "sets" || !item.setFields || !block || block.prescription_source === "athlete") return item;
+    if (item.kind !== "sets" || !item.setFields || !block) return item;
     const recommendation = weightRecommendation(block, { ...context, recentLoads, recentPerformances: history });
     return { ...item, weightRecommendation: recommendation,
       suggestedLoads: recommendation.sets.map(row => row.suggested ? String(row.suggested.value) : null) };

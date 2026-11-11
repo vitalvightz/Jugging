@@ -165,7 +165,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   const latest = useRef(draft);
   useEffect(() => { latest.current = draft; });
   // Read only once an exercise is open, for last time's weight.
-  const past = usePastExercises(editing ? accessToken : null);
+  const past = usePastExercises(adding || editing ? accessToken : null);
   useEffect(() => {
     if (!planId) void trackProductEvent(accessToken, "plan_editor_opened", "plans");
   }, [accessToken, planId]);
@@ -854,6 +854,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
                     {open ? <div className={styles.addedBody}>
                       <CustomDoseEditor essential dose={exercise.dose}
                         movement={exercise.origin === "catalogue" ? exercise.snapshot : null}
+                        past={exercise.origin === "catalogue" && exercise.snapshot.exercise_key ? past?.get(exercise.snapshot.exercise_key) : null}
                         onChange={dose => setDose(adding.sessionId, exercise.id, dose)} />
                       <div className={styles.addedFoot}>
                         <small>{exercise.origin === "manual" ? "Your exercise"

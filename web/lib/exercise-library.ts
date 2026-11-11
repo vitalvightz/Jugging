@@ -41,3 +41,11 @@ export function pastExercisesByKey(token: string, read: (token: string) => Promi
   past = { token, at: Date.now(), request };
   return request;
 }
+
+export const EXERCISE_HISTORY_UPDATED = "unlxck:exercise-history-updated";
+
+/** A confirmed manual result must be visible to the next prescription editor. */
+export function invalidatePastExercises(token: string): void {
+  if (past?.token === token) past = null;
+  if (typeof window !== "undefined") window.dispatchEvent(new window.Event(EXERCISE_HISTORY_UPDATED));
+}

@@ -1,4 +1,6 @@
 import type { CustomDose, CustomDoseSuggestion, PersonalExercise } from "./api-schema.generated";
+import { personalWeightRecommendation } from "./weight-recommendation";
+import { parseLoad } from "./load-entry";
 import { withPastDose } from "./load-entry";
 export const blankDose = (mode: CustomDose["mode"] = "reps"): CustomDose => ({
   mode,
@@ -70,7 +72,14 @@ export function libraryPrefill(
   const start = format ?? blankDose();
   // A verified format owns its mode; only use past values from the same kind of session.
   const compatiblePast = format && !filled(format) && withPastDose(blankDose(), past).mode !== format.mode ? null : past;
-  const dose = withPastDose(start, compatiblePast, Boolean(format));
+  const filledDose = withPastDose(start, compatiblePast, Boolean(format));
+  const recommendation = personalWeightRecommendation({
+    display_name: past?.name ?? "Exercise", block_type: "strength", sets: filledDose.sets, reps: filledDose.reps,
+    load: parseLoad(start.load_or_intensity),
+  }, compatiblePast);
+  const dose = { ...filledDose, load_or_intensity: recommendation.suggested
+    ? `${recommendation.suggested.value} ${recommendation.suggested.unit}`
+    : start.load_or_intensity || null };
   if (!filled(dose) && (dose.mode === "reps" || dose.mode === "text")) return null;
   const fromLibrary = Boolean(format && (filled(format) || (format.mode !== "reps" && format.mode !== "text")));
   const fromPast = JSON.stringify(dose) !== JSON.stringify(start);
