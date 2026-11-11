@@ -141,8 +141,8 @@ test("Today: first weight is asked once, persists, and progression is confirmed 
   // Done leaves the row collapsed; the athlete opens the existing logger.
   await expect(page.getByRole("button", { name: "Log numbers", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Back Squat", exact: true }).click();
-  // The optional weight question remains available inside the open row.
-  await expect(page.getByLabel(/What weight did you use\?/)).toBeVisible();
+  // A remembered weight suppresses the first-weight question, even when opened.
+  await expect(page.getByLabel(/What weight did you use\?/)).toHaveCount(0);
   await page.locator(".ex-log-edit").click();
   await page.getByRole("button", { name: "Log numbers", exact: true }).click();
   await page.getByLabel("Reps", { exact: true }).fill("9");

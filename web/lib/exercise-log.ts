@@ -796,7 +796,7 @@ export function needsFirstLoad(block: StructuredBlock, recentLoads: readonly Exe
   return Boolean(field) && !field!.prescribed && lastLoadFor(block, recentLoads) === null;
 }
 
-/** Missing weights stay reviewable even when a historical suggestion exists. */
+/** Ask for a first weight only while this exercise has none on record. */
 export function asksForFirstLoad(
   block: StructuredBlock,
   log: ExerciseLogRecord | null,
@@ -805,7 +805,8 @@ export function asksForFirstLoad(
   if (!log || log.status === "skipped" || log.actual?.load || (log.actual?.set_entries?.length && log.actual.set_entries.every(row => row.load != null))) return false;
   return recentLoads !== undefined && block.prescription_source !== "athlete"
     && FIRST_LOAD_BLOCK_TYPES.has(cleanText(block.block_type)?.toLowerCase() ?? "")
-    && logFieldsForBlock(block).some(field => field.key === "load");
+    && logFieldsForBlock(block).some(field => field.key === "load")
+    && lastLoadFor(block, recentLoads) === null;
 }
 
 /** A saved log resent with one thing added or changed; everything else as stored. */

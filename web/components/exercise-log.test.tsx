@@ -482,6 +482,25 @@ test("the first-weight question can be skipped and does not come back for that e
   window.localStorage.clear();
 });
 
+test("Done does not ask for a known weight or record it without confirmation", async () => {
+  window.localStorage.clear();
+  const view = mount(deadlift, {
+    recentLoads: [
+      { exercise_key: null, display_name: "Trap Bar Deadlift", load: { value: 80, unit: "kg" }, training_day: "2026-10-01" },
+    ],
+  });
+  await view.click("Done");
+  assert.deepEqual(view.saved, [{ block_id: "blk-deadlift", status: "as_prescribed" }]);
+  assert.doesNotMatch(view.text(), /What weight did you use\?/);
+  await view.press(view.container.querySelector<HTMLButtonElement>(".ex-log-edit")!);
+  await view.click("Log numbers");
+  assert.equal(view.saved.length, 1);
+  await view.type("Load", "75");
+  await view.click("Save");
+  assert.deepEqual(view.saved[1].actual?.load, { value: 75, unit: "kg" });
+  view.unmount();
+});
+
 test("the tick opens the row for the first weight, and only when there is none to carry", async () => {
   window.localStorage.clear();
   const view = mount(deadlift, { open: false, recentLoads: [] });

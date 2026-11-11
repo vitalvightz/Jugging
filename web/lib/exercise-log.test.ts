@@ -376,6 +376,9 @@ test("the first weight is asked once for weighted strength work with none on rec
   // Not before the history has loaded, not with a weight on record, not before the exercise is logged.
   assert.equal(needsFirstLoad(deadlift, undefined), false);
   assert.equal(needsFirstLoad(deadlift, recent), false);
+  assert.equal(asksForFirstLoad(deadlift, done, recent), false);
+  assert.equal(asksForFirstLoad(deadlift, done, undefined), false);
+  assert.equal(asksForFirstLoad(deadlift, done, [{ ...recent[0], display_name: "Back Squat" }]), true);
   assert.equal(asksForFirstLoad(deadlift, null, []), false);
   // A skip, a weight already given, or sets logged one by one are left alone.
   assert.equal(asksForFirstLoad(deadlift, log(deadlift, { status: "skipped" }), []), false);
