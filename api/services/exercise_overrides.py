@@ -191,7 +191,7 @@ def _provenance(entry: Mapping[str, Any]) -> dict[str, Any]:
 def _athlete_block(entry: Mapping[str, Any], *, replaced: Mapping[str, Any] | None, siblings: list[Any]) -> dict[str, Any]:
     """The athlete's block with its progression verdict decided here, on read.
 
-    ``rep_range`` and ``progression_hold`` are server-owned. A stored change
+    Progression metadata is server-owned. A stored change
     never carries them forward (an edit is saved as a copy of the block it
     edited, on whatever day that was): the range is dropped, because the
     athlete fixed this dose themselves, and the hold is re-derived from the
@@ -202,6 +202,7 @@ def _athlete_block(entry: Mapping[str, Any], *, replaced: Mapping[str, Any] | No
     block = deepcopy(dict(entry["block"]))
     block.pop("rep_range", None)
     block.pop("progression_hold", None)
+    block.pop("bodyweight_progression", None)
     if override_progression_hold(block, replaced=replaced, siblings=siblings):
         block["progression_hold"] = True
     return block

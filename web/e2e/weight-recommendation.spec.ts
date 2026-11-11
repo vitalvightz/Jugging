@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import fixtures from "./fixtures/rehab-today.json";
 import { isolateFromNetwork } from "./support";
 
-for (const width of [390, 1280]) for (const completed of [false, true]) test(`weight recommendation stays consistent in preview and detail at ${width}px (logged: ${completed})`, async ({ page, baseURL }) => {
+for (const width of [320, 390, 1280]) for (const completed of [false, true]) test(`weight recommendation stays consistent in preview and detail at ${width}px (logged: ${completed})`, async ({ page, baseURL }) => {
   await page.setViewportSize({ width, height: 844 });
   await isolateFromNetwork(page, baseURL!);
   await page.clock.setFixedTime(new Date("2026-10-05T12:00:00Z"));
@@ -39,7 +39,7 @@ for (const width of [390, 1280]) for (const completed of [false, true]) test(`we
     if (path === "/api/today/exercise-logs") body = { logs: completed ? [{ id: "today", plan_id: id, block_id: "squat", exercise_key: "back-squat",
       status: "as_prescribed", prescribed: block, actual: { sets: 3, reps: 8, load: { value: 110, unit: "kg" } } }] : [], recent_loads: [],
       recent_performances: [{ id: "old", plan_id: "older-plan", exercise_key: "back-squat", status: "as_prescribed",
-        prescribed: block, actual: { sets: 3, reps: 8, load: { value: 120, unit: "kg" }, feel: "easy" } }] };
+        training_day: "2026-09-29", prescribed: block, actual: { sets: 3, reps: 8, load: { value: 120, unit: "kg" }, feel: "easy" } }] };
     await route.fulfill({ json: body });
   });
   const errors: string[] = [];
@@ -53,6 +53,18 @@ for (const width of [390, 1280]) for (const completed of [false, true]) test(`we
     await expect(row).toContainText("Suggested 122.5 kg · Last 120 kg");
     await expect(row.getByText(/Suggested/)).toHaveCount(1);
     await expect(row).not.toContainText("Editable");
+    expect(await row.getByText("· 6d", { exact: true }).count()).toBe(1);
+    if (width < 1280) await expect(row.getByText("· 6d", { exact: true })).toBeHidden();
+    else await expect(row.getByText("· 6d", { exact: true })).toBeVisible();
+    expect(await row.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    expect(await row.getByText("· 6d", { exact: true }).evaluate(node => {
+      const card = node.parentElement!.parentElement!;
+      const withAge = card.clientHeight;
+      (node as HTMLElement).style.display = "none";
+      const withoutAge = card.clientHeight;
+      (node as HTMLElement).style.display = "";
+      return withAge === withoutAge;
+    })).toBe(true);
   }
   await expect(row.locator("input")).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

@@ -298,11 +298,11 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
 
   /** Opens the numbers, optionally set up with a suggested target to confirm once it is done. */
   function openEditor(target?: NextStep) {
-    const individualHistory = !log && supportsSets && previous?.actual.set_entries?.length
+    const individualHistory = !log?.actual.load && !log?.actual.set_entries?.length && supportsSets && previous?.actual.set_entries?.length
       && !suggested && recommendation.sets.some(row => row.suggested);
     setSetRows(log?.actual?.set_entries?.length ? draftsFromActual(log.actual)
-      : individualHistory ? setDraftsForFields(fields).map((row, at) => ({ ...row,
-        load: recommendation.sets[at]?.suggested ? String(recommendation.sets[at].suggested!.value) : "", rpe: "",
+      : individualHistory ? setDraftsForFields(fields, log ? draftFromLog(fields, log) : {}).map((row, at) => ({ ...row,
+        load: recommendation.sets[at]?.suggested ? String(recommendation.sets[at].suggested!.value) : "", rpe: log?.actual.effort ? String(log.actual.effort.value) : "",
         ...(target?.kind === "reps" ? { reps: String(target.reps) } : {}),
       })) : null);
     setSetUnit(log?.actual?.set_entries?.find(row => row.load)?.load?.unit ?? null);

@@ -67,9 +67,10 @@ def test_a_healthy_camp_exposes_ranges_without_changing_the_prescription(healthy
         low, high = block["rep_range"]
         assert low <= block["reps"] <= high and low < high
         assert week["phase_label"] in {"GPP", "SPP"}
-    # The prescription itself is untouched.
+    # Every authored prescription field stays unchanged, including absent loads.
     def strip(p):
-        return [{k: v for k, v in b.items() if k not in {"rep_range", "progression_hold"}} for _, b in _strength_blocks(p)]
+        return [{k: v for k, v in b.items() if k not in {"rep_range", "progression_hold", "bodyweight_progression"}}
+                for _, b in _strength_blocks(p)]
     assert strip(out) == strip(plan)
     assert len(before) == len(list(_strength_blocks(out)))
 
@@ -263,9 +264,10 @@ def test_a_swap_keeps_holds_and_checks_the_bank(original_hold, new_block, expect
 
 def test_a_stored_change_cannot_carry_its_own_verdict_or_range():
     """An edit is saved as a copy of the block as it was that day; neither field is trusted on read."""
-    stale = {**_SQUAT, "reps": 10, "rep_range": [8, 12], "progression_hold": False}
+    stale = {**_SQUAT, "reps": 10, "rep_range": [8, 12], "progression_hold": False, "bodyweight_progression": True}
     edited = _changed("edit", stale, original={**_SQUAT, "progression_hold": True})["blocks"][0]
     assert edited["reps"] == 10 and edited["progression_hold"] is True and "rep_range" not in edited
+    assert "bodyweight_progression" not in edited
     # And a stale hold saved on a taper day does not follow the edit into a cleared week.
     freed = _changed("edit", {**stale, "progression_hold": True}, original={**_SQUAT, "progression_hold": False})["blocks"][0]
     assert "progression_hold" not in freed and "rep_range" not in freed
@@ -328,3 +330,52 @@ def test_bank_holds_power_work_even_without_planner_metadata(name):
     from api.rep_range import progression_context
     assert progression_context({"display_name": name, "block_type": "strength"},
                                None, None, phase="GPP", d_day=40, athlete={}) == {"progression_hold": True}
+
+
+def test_generated_pushups_receive_bodyweight_classification_without_changing_dose(healthy):
+    plan, brief = healthy
+    resolved = reconcile_exercise_keys(plan, brief)
+    pushups = [b for _, b in _strength_blocks(resolved) if "Push-Up" in b.get("display_name", "")]
+    assert pushups
+    assert any(b.get("rep_range") and b.get("progression_hold") is False for b in pushups)
+    assert all(b.get("load") is None for b in pushups)
+    assert all(b.get("bodyweight_progression") is True for b in pushups if b.get("progression_hold") is False)
+
+
+def test_generated_pullup_uses_bodyweight_but_preserves_explicit_loads(healthy):
+    from api.rep_range import bank_uses_bodyweight
+    plan, original = healthy
+    pull_plan, brief = _camp({"equipment_access": ["bodyweight", "pullup_bar", "towel"],
+                              "key_goals": ["strength"], "weak_areas": ["grip"]})
+    rendered = reconcile_exercise_keys(pull_plan, brief)
+    assert safe_parse_structured_plan(rendered).ok
+    pulls = [b for _, b in _strength_blocks(rendered) if b.get("exercise_key") == "slow-lowered-pull-up"]
+    assert pulls and all(b.get("load") is None for b in pulls)
+    assert all(b.get("bodyweight_progression") is True for b in pulls if b.get("progression_hold") is False)
+    assert any(b.get("rep_range") and b.get("progression_hold") is False for b in pulls)
+    assert not bank_uses_bodyweight({"exercise_key": "weighted-pull-up", "display_name": "Feet-Elevated Push-Up"})
+    loaded = copy.deepcopy(plan)
+    for _, block in _strength_blocks(loaded):
+        if block.get("exercise_key") == "feet-elevated-push-up":
+            block["load"] = {"method": "absolute", "value": 10, "unit": "kg"}
+    loaded = reconcile_exercise_keys(loaded, original)
+    assert all(not b.get("bodyweight_progression") for _, b in _strength_blocks(loaded)
+               if b.get("exercise_key") == "feet-elevated-push-up")
+    assert all(b["load"]["value"] == 10 for _, b in _strength_blocks(loaded)
+               if b.get("exercise_key") == "feet-elevated-push-up")
+
+
+def test_generated_power_movements_keep_their_original_load_representation(healthy):
+    from api.rep_range import bank_allows_progression, bank_uses_bodyweight
+    plan, brief = healthy
+    resolved = {b["block_id"]: b for _, b in _strength_blocks(reconcile_exercise_keys(plan, brief))}
+    protected = [b for _, b in _strength_blocks(plan) if bank_allows_progression(b) is False]
+    hops = next(b for b in protected if b.get("exercise_key") == "single-leg-forward-hops")
+    assert hops.get("load") is None
+    assert resolved[hops["block_id"]].get("load") is None
+    for before in protected:
+        after = resolved[before["block_id"]]
+        assert not bank_uses_bodyweight(before)
+        assert ("load" in after) == ("load" in before)
+        assert after.get("load") == before.get("load")
+        assert after["progression_hold"] is True

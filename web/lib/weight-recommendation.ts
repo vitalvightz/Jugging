@@ -9,6 +9,7 @@ export type WeightContext = {
 };
 export type WeightRecommendation = {
   last: ExerciseLogMeasure | null;
+  lastDay?: string | null;
   suggested: ExerciseLogMeasure | null;
   tryReps: number | null;
   sets: { last: ExerciseLogMeasure | null; suggested: ExerciseLogMeasure | null }[];
@@ -24,6 +25,10 @@ export function weightRecommendation(block: StructuredBlock, context: WeightCont
   const fallback = lastLoadFor({ ...block, load: block.load ? { ...block.load, value: undefined } : undefined }, context.recentLoads);
   const measured = valid(previous?.actual.load);
   const last = measured ?? valid(entries?.findLast(row => valid(row.load))?.load) ?? valid(fallback);
+  const key = block.exercise_key?.trim();
+  const fallbackRecord = (key ? context.recentLoads?.find(row => row.exercise_key === key) : undefined)
+    ?? context.recentLoads?.find(row => !row.exercise_key && row.display_name.trim().toLowerCase() === block.display_name?.trim().toLowerCase());
+  const lastDay = measured || entries?.some(row => valid(row.load)) ? previous?.training_day : fallbackRecord?.training_day;
   const prescription = field?.prescribed?.[0];
   const prescribed = prescription && field?.apiUnit ? { value: prescription, unit: field.apiUnit } : null;
   const before = previous?.prescribed as StructuredBlock | undefined;
@@ -44,7 +49,7 @@ export function weightRecommendation(block: StructuredBlock, context: WeightCont
   const performanceAt = (load: ExerciseLogMeasure | null) => previous && load
     ? { ...previous, actual: { ...previous.actual, load } } : previous;
   const measuredWork = Boolean(measured || (entries?.length && entries.every(row => valid(row.load))));
-  const canProgress = context.allowProgression === true && !lower && (measuredWork || block.load?.method === "bodyweight");
+  const canProgress = context.allowProgression === true && !lower && (measuredWork || block.load?.method === "bodyweight" || (!block.load && block.bodyweight_progression === true));
   const next = nextStepFor(block, performanceAt(last), canProgress);
   const reduced = backoffLoadFor(block, performanceAt(last));
   // A varied or partially measured workout has no reliable straight-set draft.
@@ -60,7 +65,7 @@ export function weightRecommendation(block: StructuredBlock, context: WeightCont
     return { last: lastSet, suggested: prescribed ?? (blocked || lower || !lastSet ? null :
       setReduction ?? (setNext?.kind === "load" ? setNext.load : lastSet)) };
   });
-  return { last, suggested, tryReps: !prescribed && !lower && next?.kind === "reps" ? next.reps : null, sets };
+  return { last, lastDay, suggested, tryReps: !prescribed && !lower && next?.kind === "reps" ? next.reps : null, sets };
 }
 
 /** Library values are measured evidence, but lack a saved prescription/readiness:
@@ -111,4 +116,14 @@ export function weightContextForToday(state: import("./types").TodayCommandView)
       || state.today.decision_tier === "pull_back" || state.today.decision_tier === "stop"
       || /taper|weight.?cut|fight.?week/i.test(state.active_plan.phase ?? ""),
   };
+}
+
+/** Calendar-day age for display only; never an expiry or progression input. */
+export function compactWeightAge(day?: string | null, now = new Date()): string | null {
+  if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(now.getTime())) return null;
+  const at = Date.parse(`${day}T00:00:00Z`);
+  if (!Number.isFinite(at) || new Date(at).toISOString().slice(0, 10) !== day) return null;
+  const days = Math.floor((Date.parse(now.toISOString().slice(0, 10)) - at) / 86_400_000);
+  if (days < 0) return null;
+  return days < 7 ? `${days}d` : days < 30 ? `${Math.floor(days / 7)}w` : `${Math.floor(days / 30)}mo`;
 }

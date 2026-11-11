@@ -1,0 +1,93 @@
+{
+  "source": "Seed 3 healthy 70-day camps via build_deterministic_structured_plan + reconcile_exercise_keys: default equipment; and bodyweight/pullup_bar/towel equipment with strength goal and grip focus.",
+  "blocks": [
+    {
+      "block_type": "strength",
+      "display_name": "Single-Leg Forward Hops",
+      "exercise_key": "single-leg-forward-hops",
+      "sets": 3,
+      "reps": 4,
+      "progression_hold": true
+    },
+    {
+      "block_type": "strength",
+      "display_name": "Feet-Elevated Push-Up",
+      "exercise_key": "feet-elevated-push-up",
+      "sets": 2,
+      "reps": 6,
+      "effort": {
+        "method": "RPE",
+        "value": 6,
+        "scale": "1-10"
+      },
+      "rep_range": [
+        6,
+        10
+      ],
+      "progression_hold": false,
+      "bodyweight_progression": true
+    },
+    {
+      "block_type": "strength",
+      "display_name": "High Pull",
+      "exercise_key": "high-pull",
+      "sets": 4,
+      "reps": 2,
+      "progression_hold": true
+    },
+    {
+      "block_type": "strength",
+      "display_name": "Slow-Lowered Pull-Up",
+      "exercise_key": "slow-lowered-pull-up",
+      "sets": 2,
+      "reps": 6,
+      "effort": {
+        "method": "RPE",
+        "value": 6,
+        "scale": "1-10"
+      },
+      "rep_range": [
+        6,
+        10
+      ],
+      "progression_hold": false,
+      "bodyweight_progression": true
+    },
+    {
+      "block_type": "strength",
+      "display_name": "Towel Pull-Up",
+      "exercise_key": "towel-pull-up",
+      "sets": 2,
+      "reps": 6,
+      "effort": {
+        "method": "RPE",
+        "value": 6,
+        "scale": "1-10"
+      },
+      "rep_range": [
+        6,
+        10
+      ],
+      "progression_hold": false,
+      "bodyweight_progression": true
+    },
+    {
+      "block_type": "strength",
+      "display_name": "Tempo Chin-Up (5-0-1)",
+      "exercise_key": "tempo-chin-up-5-0-1",
+      "sets": 2,
+      "reps": 6,
+      "effort": {
+        "method": "RPE",
+        "value": 6,
+        "scale": "1-10"
+      },
+      "rep_range": [
+        6,
+        10
+      ],
+      "progression_hold": false,
+      "bodyweight_progression": true
+    }
+  ]
+}

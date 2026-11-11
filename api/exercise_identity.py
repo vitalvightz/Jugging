@@ -287,7 +287,7 @@ def reconcile_exercise_keys(structured_plan: Any, planning_brief: Any) -> Any:
 
 
 def reconcile_progression_context(structured_plan: Any, planning_brief: Any) -> Any:
-    """Only the progression context (rep_range / progression_hold), on read.
+    """Only server-owned progression context, on read; authored doses stay unchanged.
 
     Identity is left exactly as stored; a block's stored key wins over a
     re-derived one, so an old card never changes which movement it is.

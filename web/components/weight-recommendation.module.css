@@ -1,5 +1,8 @@
-.card { display: block; min-width: 0; padding: 4px 0; font-size: 12px; line-height: 1.5; text-align: left; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; color: var(--text-secondary, #999); }
+.card { container-type: inline-size; display: block; min-width: 0; padding: 4px 0; font-size: 12px; line-height: 1.5; text-align: left; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; color: var(--text-secondary, #999); }
 .primary { color: var(--progress-gold, #d6af6a); }
 .primary strong { font-size: inherit; font-weight: 600; }
 .secondary { color: var(--text-secondary, #999); }
 .card[data-subtle] .primary { color: inherit; }
+
+.age { color: var(--text-muted, #777); white-space: nowrap; }
+@container (max-width: 260px) { .age { display: none; } }

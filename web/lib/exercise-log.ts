@@ -145,7 +145,8 @@ export function logFieldsForBlock(block: StructuredBlock): LogField[] {
     measured("work", "Work", block.work, timeUnit),
     measured("distance", "Distance", block.distance, distanceUnit),
   ].filter((field): field is LogField => field !== null);
-  const loadMethod = cleanText(block.load?.method)?.toLowerCase() ?? "";
+  const loadMethod = !block.load && block.bodyweight_progression === true
+    ? "bodyweight" : cleanText(block.load?.method)?.toLowerCase() ?? "";
   // Sets of a sprint or a hold are not weighed; sets of reps (or bare sets) are.
   const weighed = Boolean(reps) || (sets !== null && timed.length === 0);
   if (weighed && !UNWEIGHED_LOAD_METHODS.has(loadMethod)) {

@@ -4,7 +4,7 @@ The planner resolves a bank range ("2-3x6-10") to one working number ("2x6")
 before the plan is written, and that number stays the prescription. This only
 recovers the range the prescription was chosen from, so the Today log can
 suggest one more rep inside it. Nothing is widened, no dose changes, and no
-model call is made: both fields are re-derived from the planning brief on
+model call is made: progression fields are re-derived from the planning brief on
 every read.
 
 ``progression_hold`` is the server's verdict on whether the exposure may
@@ -15,6 +15,7 @@ progress (taper, the final fortnight, an injury, a capacity-restricting weight
 cut, a capped or protected dose, or a jumping / ballistic / power movement).
 Absent means the server has no verdict (an exercise it could not match or the
 bank does not know); automatic increases require explicit clearance.
+``bodyweight_progression`` carries bank eligibility separately from authored load.
 """
 from __future__ import annotations
 
@@ -69,10 +70,11 @@ _PROGRESSIVE_METHODS = frozenset({"strength", "strength_conditioning", "rehab"})
 
 
 @lru_cache(maxsize=1)
-def _bank_classes() -> dict[str, bool | None]:
-    """exercise key -> may progress by reps/load; None when the bank disagrees with itself."""
+def _bank_classes() -> tuple[dict[str, bool | None], frozenset[str]]:
+    """Progression verdicts and unweighted movement keys from one bank read."""
     rows = json.loads((DATA_DIR / "exercise_bank.json").read_text(encoding="utf-8"))
     classes: dict[str, bool | None] = {}
+    bodyweight: set[str] = set()
     for row in rows:
         if not isinstance(row, Mapping):
             continue
@@ -85,7 +87,11 @@ def _bank_classes() -> dict[str, bool | None]:
             and not _REACTIVE_TAGS.intersection(row.get("tags") or ())
         )
         classes[key] = progressive if classes.get(key, progressive) == progressive else None
-    return classes
+        equipment = row.get("equipment")
+        if equipment == "bodyweight" or (equipment in ("pullup_bar", "towel")
+                and ("pull-up" in key or "chin-up" in key) and not key.startswith("weighted-")):
+            bodyweight.add(key)
+    return classes, frozenset(bodyweight)
 
 
 def bank_allows_progression(exercise: Mapping[str, Any]) -> bool | None:
@@ -94,13 +100,23 @@ def bank_allows_progression(exercise: Mapping[str, Any]) -> bool | None:
     True: ordinary strength work. False: jumping, ballistic or power work.
     None: not in the strength bank, so unclassified.
     """
-    classes = _bank_classes()
+    classes, _ = _bank_classes()
     for key in (normalize_exercise_key(exercise.get("exercise_key")),
                 normalize_exercise_key(exercise.get("name")),
                 normalize_exercise_key(exercise.get("display_name"))):
         if key and key in classes:
             return classes[key]
     return None
+
+
+def bank_uses_bodyweight(exercise: Mapping[str, Any]) -> bool:
+    """Eligible unweighted strength movements; explicit authored loads always win."""
+    classes, keys = _bank_classes()
+    for field in ("exercise_key", "name", "display_name"):
+        key = normalize_exercise_key(exercise.get(field))
+        if key in classes:
+            return classes[key] is True and key in keys
+    return False
 
 
 def progression_context(
@@ -138,6 +154,9 @@ def progression_context(
         from fightcamp.working_dose import working_dose
         if str(effective).strip() not in {working_dose(str(base or "")), working_dose(str(base or ""), development=True)}:
             return {"progression_hold": True}
+    # Movement eligibility is metadata, never a rewrite of the authored load.
+    if not block.get("load") and bank_uses_bodyweight(block):
+        cleared["bodyweight_progression"] = True
     span = authored_rep_range(base)
     reps = _block_reps(block)
     if span is None or reps is None or not span[0] <= reps <= span[1]:
@@ -168,7 +187,7 @@ def override_progression_hold(
 def apply_progression_context(block: dict[str, Any], context: Mapping[str, Any]) -> bool:
     """Set exactly the server-owned fields ``context`` names. True when changed."""
     changed = False
-    for key in ("rep_range", "progression_hold"):
+    for key in ("rep_range", "progression_hold", "bodyweight_progression"):
         value = context.get(key)
         if value is None:
             if key in block:
