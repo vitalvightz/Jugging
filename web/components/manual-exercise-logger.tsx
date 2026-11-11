@@ -404,7 +404,6 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
               onClick={() => { setEditor(current => ({ ...current, formatMenu: false, picked: current.picked && { ...current.picked, format: item.id } })); setError(null); focusFirstField(); }}>{item.label}</button>)}
           </div> : null}
           {picked.reference && !(format === "strength" && (recommendation.last || recommendation.suggested)) ? <p className={styles.reference}>{picked.reference}</p> : null}
-          {format === "strength" ? <WeightRecommendation value={recommendation} /> : null}
           {unitHint && hasLoadEntry && (format === "strength" || format === "bodyweight") ? <div className={styles.discoveryHint} role="note">
             <span>Tap the load unit to switch between kg and lb.</span>
             <button type="button" onClick={dismissUnitHint} aria-label="Dismiss weight unit tip">×</button>
@@ -412,6 +411,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
             <span>Tap “Edit sets individually” to record different reps or loads for each set.</span>
             <button type="button" onClick={dismissSetsHint} aria-label="Dismiss individual sets tip">×</button>
           </div> : null}
+          {format === "strength" ? <WeightRecommendation value={recommendation} /> : null}
           {format ? <>
             {editor.draft.setRows && (format === "strength" || format === "bodyweight") ? <SetRows
               rows={editor.draft.setRows} unit={editor.draft.units.load ?? "kg"} onUnitChange={() => cycleUnit("load")}
