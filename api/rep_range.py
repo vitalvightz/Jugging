@@ -14,7 +14,7 @@ classifies the movement as ordinary strength work. ``True`` means it must not
 progress (taper, the final fortnight, an injury, a capacity-restricting weight
 cut, a capped or protected dose, or a jumping / ballistic / power movement).
 Absent means the server has no verdict (an exercise it could not match or the
-bank does not know); the log only withholds suggestions on ``True``.
+bank does not know); automatic increases require explicit clearance.
 """
 from __future__ import annotations
 
@@ -117,6 +117,8 @@ def progression_context(
     ``{}`` (unknown) when the block could not be matched to its planner
     assignment or the bank does not know the movement.
     """
+    if bank_allows_progression(block) is False:
+        return {"progression_hold": True}
     if role is None or assignment is None or block.get("prescription_source") == "athlete":
         return {}
     if progression_prohibited(dict(role), dict(assignment), phase, d_day, dict(athlete)):

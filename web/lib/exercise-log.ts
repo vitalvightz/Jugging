@@ -299,7 +299,7 @@ export function buildLogEntry(fields: LogField[], draft: LogDraft): LogEntryResu
     const [low, high] = field.prescribed;
     if (value >= low && value <= high) {
       // Inside a prescribed range, the exact count is still worth keeping.
-      if (low !== high) {
+      if (low !== high || field.key === "effort") {
         withValue(actual, field, value);
       }
       continue;
@@ -512,18 +512,6 @@ export function lastLoadFor(
   return { value: match.load.value, unit: match.load.unit };
 }
 
-/** Completion never converts a historical suggestion into a measurement. */
-export function withLastLoad<T extends Omit<ExerciseLogRequest, "plan_id" | "block_id">>(
-  block: StructuredBlock,
-  request: T,
-  recentLoads: readonly ExerciseRecentLoad[] | undefined,
-  history?: readonly ExerciseLogRecord[],
-): T {
-  // History is a draft suggestion, never evidence of work performed.
-  void block; void recentLoads; void history;
-  return request;
-}
-
 /**
  * The effort the session was planned at: the middle RPE of the exercises the
  * session owes, rounded onto the 1-9 session effort scale. Null when the plan
@@ -632,12 +620,13 @@ function rpeCeiling(before: StructuredBlock): number {
 }
 
 /**
- * How the logged work felt. The athlete's own answer comes first; otherwise a
+ * How the logged work compared with the plan. Recorded excessive RPE prevents
+ * an Easy tap earning an increase; matching target RPE prevents Hard alone
+ * causing a reduction. Otherwise the answer is used, or a
  * reported RPE is read against the plan's, and "felt strong" counts as easy.
  * Null when nothing was said: a bare "done" is never taken as easy.
  */
 export function feelOf(log: ExerciseLogRecord): ExerciseFeel | null {
-  if (log.actual.feel) return log.actual.feel;
   const rows = log.actual.set_entries;
   const measuredRpe = rows?.length && rows.every(row => typeof row.rpe === "number" && row.rpe >= 1 && row.rpe <= 10)
     ? Math.max(...rows.map(row => row.rpe!)) : null;
@@ -645,10 +634,14 @@ export function feelOf(log: ExerciseLogRecord): ExerciseFeel | null {
   if (effort && typeof effort.value === "number" && effort.value >= 1 && effort.value <= 10 && (effort.method ?? "RPE") === "RPE") {
     const before = log.prescribed as StructuredBlock;
     const planned = plannedRpe(before);
-    if (effort.value >= rpeCeiling(before)) return "hard";
+    if (effort.value >= rpeCeiling(before) && (planned === null || effort.value > planned)) return "hard";
+    // Recorded effort prevents an Easy/Hard tap contradicting the target.
+    if (log.actual.feel === "hard") return planned !== null && effort.value <= planned ? "right" : "hard";
+    if (log.actual.feel === "right") return "right";
+    if (log.actual.feel === "easy") return planned !== null && effort.value >= planned ? "right" : "easy";
     return effort.value <= 7 && (planned === null || effort.value <= planned) ? "easy" : "right";
   }
-  return log.reason === "felt_strong" ? "easy" : null;
+  return log.actual.feel ?? (log.reason === "felt_strong" ? "easy" : null);
 }
 
 /**
@@ -740,8 +733,8 @@ export function nextStepFor(block: StructuredBlock, log: ExerciseLogRecord | nul
   if (!allowed || !log || log.status === "skipped" || (log.reason != null && log.reason !== "felt_strong")) return null;
   // The server's hold (taper, final fortnight, injury, weight cut, capped dose,
   // jumping or ballistic work) and the plan's own instruction to stay put. An
-  // exercise the server has no verdict on is left as it was.
-  if (block.progression_hold === true || HOLD_RULE.test(cleanText(block.progression_rule) ?? "")) return null;
+  // exercise without positive server clearance cannot earn an increase.
+  if (block.progression_hold !== false || HOLD_RULE.test(cleanText(block.progression_rule) ?? "")) return null;
   // Strength work only: jumps, sprints and holds progress on quality, not reps or weight.
   if (!FIRST_LOAD_BLOCK_TYPES.has(cleanText(block.block_type)?.toLowerCase() ?? "")) return null;
   const comparable = sameWorkload(block, log.prescribed as StructuredBlock);
@@ -855,11 +848,7 @@ export function backoffLoadFor(block: StructuredBlock, log: ExerciseLogRecord | 
   const missedDose =
     (plannedSets !== null && typeof doneSets === "number" && doneSets < plannedSets) ||
     (plannedReps !== undefined && typeof doneReps === "number" && doneReps < plannedReps[0]);
-  const recordedRpe = rows?.length && rows.every(row => typeof row.rpe === "number" && row.rpe >= 1 && row.rpe <= 10)
-    ? Math.max(...rows.map(row => row.rpe!)) : null;
-  const effort = log.actual.effort ?? (recordedRpe === null ? null : { method: "RPE", value: recordedRpe });
-  const overreached = effort?.method === "RPE" && typeof effort.value === "number" && effort.value >= rpeCeiling(before);
-  if (log.reason !== "fatigue" && !missedDose && !overreached && log.actual.feel !== "hard") return null;
+  if (log.reason !== "fatigue" && !missedDose && feelOf(log) !== "hard") return null;
 
   const step = plateStep(load);
   const eased = Math.round((load.value * (log.reason === "fatigue" || missedDose ? BACKOFF_RATIO : HARD_COMPLETE_BACKOFF_RATIO)) / step) * step;

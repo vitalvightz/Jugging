@@ -69,6 +69,8 @@ async function startSession(page: Page, planId: string) {
   await page.getByRole("button", { name: "Close timer", exact: true }).click();
 }
 
+test.describe.configure({ mode: "serial" });
+
 test.afterEach(async ({ page }) => {
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
@@ -152,5 +154,48 @@ test("Today: first weight is asked once, persists, and progression is confirmed 
   expect(saved.actual.reps).toBe(9);
   expect(saved.status).toBe("as_prescribed");
   await shot(page, "5-additional-reps-saved-in-logger");
+  expect(errors).toEqual([]);
+});
+
+test("Today timer preserves varied confirmed loads through review and the next exposure", async ({ page, baseURL }) => {
+  test.skip(!api, "Requires the real API in-memory harness");
+  test.setTimeout(120_000);
+  expect((await page.request.post(`${api}/__e2e/reset?progression=true&strength_only=true`)).ok()).toBe(true);
+  const planId = (await (await page.request.get(`${api}/api/today`, { headers })).json()).active_plan.id;
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await setup(page, baseURL!);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.clock.install();
+  expect((await page.request.post(`${api}/api/today/checkin`, { headers,
+    data: { plan_id: planId, sleep: "good", body: "normal", pain: "none", phase: "GPP" } })).ok()).toBe(true);
+  await page.goto("/today");
+  await page.getByRole("button", { name: "Start session", exact: true }).click();
+  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await page.clock.fastForward(10_000);
+  for (let set = 1; set <= 3; set++) {
+    await page.getByRole("button", { name: `Set ${set} done`, exact: true }).click();
+    await page.getByLabel(`Load kg, set ${set}`, { exact: true }).fill(String(90 + set * 10));
+    await page.getByLabel(`Reps, set ${set}`, { exact: true }).fill("8");
+    await page.getByRole("button", { name: "✓ Confirm set", exact: true }).click();
+    await page.clock.fastForward(180_000);
+  }
+  const review = page.getByRole("dialog").filter({ hasText: "Session review" });
+  await expect(review).toBeVisible();
+  expect((await todayLog(page, planId)).squat.actual.set_entries.map((row: { load: { value: number } }) => row.load.value)).toEqual([100, 110, 120]);
+  await shot(page, "6-varied-timer-results-review");
+  await review.getByRole("radio", { name: "None", exact: true }).click();
+  await review.getByRole("button", { name: "Save session", exact: true }).click();
+  await page.clock.fastForward(1_000);
+  await expect(review).toHaveCount(0);
+  expect((await page.request.post(`${api}/__e2e/next_exposure`)).ok()).toBe(true);
+  await startSession(page, planId);
+  await page.getByRole("button", { name: "Back Squat", exact: true }).click();
+  await page.getByRole("button", { name: "Log numbers", exact: true }).click();
+  for (let set = 1; set <= 3; set++) {
+    await expect(page.getByLabel(`Load kg, set ${set}`, { exact: true })).toHaveValue(String(90 + set * 10));
+  }
+  expect((await todayLog(page, planId)).squat).toBeUndefined();
+  await shot(page, "7-varied-history-unconfirmed-drafts");
   expect(errors).toEqual([]);
 });

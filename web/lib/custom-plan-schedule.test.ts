@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { customSchedulePrefill, prepareCustomSession, customScheduleIssues, savedRoundsFormat, customPlanError } from "./custom-plan-schedule";
 import { openBlockWeekIntent } from "./open-block";
-import { withLastLoad } from "./exercise-log";
 import type { MeResponse } from "./types";
 
 const onboarding = {
@@ -55,14 +54,7 @@ test("custom week overlay does not prescribe automatic progression or deload", (
   assert.match(openBlockWeekIntent(4)!.summary, /half/); // existing AI presentation
 });
 
-test("as-prescribed logging never replaces an athlete's dose with a remembered load", () => {
-  const request = { status: "as_prescribed" as const };
-  const result = withLastLoad(
-    { prescription_source: "athlete", display_name: "My squat", sets: 3, reps: 5 },
-    request, [{ exercise_key: null, display_name: "My squat", training_day: "2026-10-05", load: { value: 100, unit: "kg" } }],
-  );
-  assert.deepEqual(result, request);
-});
+
 
 const emptySession = (type: CustomSession["session_type"], weekday: CustomSession["weekday"] = "Friday"): CustomSession => ({
   id: crypto.randomUUID(), name: "Training", session_type: type, weekday, exercises: [],

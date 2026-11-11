@@ -6,7 +6,7 @@ import { buildTimerItems } from "./session-timer/plan";
 import type { ExerciseLogRecord, StructuredBlock } from "./types";
 
 const block: StructuredBlock = { block_id: "squat", exercise_key: "squat", block_type: "strength",
-  display_name: "Back Squat", sets: 3, reps: 8, effort: { method: "RPE", value: 7 } };
+  progression_hold: false, display_name: "Back Squat", sets: 3, reps: 8, effort: { method: "RPE", value: 7 } };
 const load = (value: number) => ({ value, unit: "kg" });
 const previous = (actual: ExerciseLogRecord["actual"]) => ({
   exercise_key: "squat", status: "as_prescribed", prescribed: block, actual,
@@ -45,13 +45,13 @@ test("per-set progression and reductions use the same engine without flattening 
     ({ reps: 8, load: load(value), rpe: 6 })) });
   const earned = weightRecommendation(block, { allowProgression: true, recentPerformances: [history] });
   assert.deepEqual(earned.last, load(120));
-  assert.deepEqual(earned.suggested, load(122.5));
+  assert.equal(earned.suggested, null);
   assert.deepEqual(earned.sets.map(row => row.suggested?.value), [102.5, 112.5, 122.5]);
   const hard = { ...history, actual: { ...history.actual,
     set_entries: history.actual.set_entries!.map(row => ({ ...row, rpe: 9 })) } };
   const reduced = weightRecommendation(block, { recentPerformances: [hard] });
   assert.deepEqual(reduced.last, load(120));
-  assert.ok(reduced.suggested!.value < 120);
+  assert.equal(reduced.suggested, null);
   assert.ok(reduced.sets.every(row => row.suggested!.value < row.last!.value));
   assert.deepEqual(history.actual.set_entries!.map(row => row.load?.value), [100, 110, 120]);
 });
@@ -165,13 +165,13 @@ test("Hard feedback alone reduces complete work five percent, with missed work s
   const context = { recentPerformances: [history], allowProgression: true };
   const result = weightRecommendation(block, context);
   assert.deepEqual(result.last, load(120));
-  assert.deepEqual(result.suggested, load(115));
+  assert.equal(result.suggested, null);
   assert.deepEqual(result.sets.map(row => row.suggested?.value), [95, 105, 115]);
   const timer = withHistoricalTimerLoads(buildTimerItems([{ blocks: [block] }]), [block], [], [history], context);
   assert.ok(timer[0].kind === "sets");
   assert.deepEqual(timer[0].suggestedLoads, ["95", "105", "115"]);
   for (const patch of [{ reason: "fatigue" as const }, { actual: { ...history.actual, sets: 2 } }]) {
-    assert.deepEqual(weightRecommendation(block, { recentPerformances: [{ ...history, ...patch }] }).suggested, load(107.5));
+    assert.deepEqual(weightRecommendation(block, { recentPerformances: [{ ...history, ...patch }] }).sets.map(row => row.suggested?.value), [90, 100, 107.5]);
   }
   for (const guarded of [
     { ...context, lowerLoads: true },
@@ -203,5 +203,17 @@ test("known mismatches block carry-forward even when the other dose component is
     assert.ok(timer[0].kind === "sets");
     assert.ok(!timer[0].suggestedLoads || timer[0].suggestedLoads.every(value => value === null));
     assert.deepEqual(weightRecommendation({ ...today, load: load(60) }, context).suggested, load(60));
+  }
+});
+
+test("bodyweight reps need no load evidence, while weighted raises and unknown authority still do", () => {
+  const bodyweight = { ...block, load: { method: "bodyweight" }, rep_range: [8, 12] };
+  const history = { ...previous({ feel: "easy", reps: 8 }), prescribed: bodyweight };
+  assert.equal(weightRecommendation(bodyweight, { allowProgression: true, recentPerformances: [history] }).tryReps, 9);
+  assert.equal(weightRecommendation(bodyweight, { allowProgression: true, recentPerformances: [
+    { ...history, actual: { feel: "easy", reps: 12 } }] }).suggested, null);
+  for (const guarded of [ { ...bodyweight, progression_hold: undefined }, { ...bodyweight, progression_hold: true },
+    { ...bodyweight, block_type: "plyometric_power" } ]) {
+    assert.equal(weightRecommendation(guarded, { allowProgression: true, recentPerformances: [history] }).tryReps, null);
   }
 });

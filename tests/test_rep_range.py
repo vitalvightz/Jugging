@@ -321,3 +321,10 @@ def test_authorised_working_doses_remain_cleared(development):
                   "effective_prescription": working_dose(base, development=development)}
     assert progression_context(_SQUAT, {}, assignment, phase="GPP", d_day=50, athlete={}) == {
         "progression_hold": False, "rep_range": [8, 12]}
+
+
+@pytest.mark.parametrize("name", ["Single-Leg Forward Hops", "High Pull", "Barbell Thruster"])
+def test_bank_holds_power_work_even_without_planner_metadata(name):
+    from api.rep_range import progression_context
+    assert progression_context({"display_name": name, "block_type": "strength"},
+                               None, None, phase="GPP", d_day=40, athlete={}) == {"progression_hold": True}

@@ -55,7 +55,7 @@ import {
   savedRoundFormat,
   type ContactTimerTarget,
 } from "@/lib/session-timer/contact";
-import { isLoggableBlock, progressionOpen, withLastLoad } from "@/lib/exercise-log";
+import { isLoggableBlock, progressionOpen } from "@/lib/exercise-log";
 import { timerExerciseLogs } from "@/lib/session-timer/logs";
 import { cleanText, getBlocks, isZeroLoadSupportSession } from "@/lib/structured-plan";
 import { dayTimerItems, timerSessionFor, type TimerItem } from "@/lib/session-timer/plan";
@@ -1270,9 +1270,6 @@ export function TodaySessionPanel({
               // metadata from before the live rehab prescription changed.
               const block = dayBlocksById.get(entry.block_id);
               return !block || isLoggableBlock(block);
-            }).map((entry) => {
-              const block = dayBlocksById.get(entry.block_id);
-              return block ? { ...entry, ...withLastLoad(block, entry, exerciseLogging.recentLoads, exerciseLogging.recentPerformances) } : entry;
             });
             if (entries.length > 0) {
               await exerciseLogging.saveMany(entries, { keepExisting: true });
