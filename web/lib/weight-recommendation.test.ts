@@ -158,3 +158,50 @@ test("missing prior prescription or performance preserves measured carry-forward
   assert.deepEqual(weightRecommendation(block, { recentLoads: [{ exercise_key: "squat", display_name: "Back Squat",
     load: load(120), training_day: "2026-01-01" }], allowProgression: true }).suggested, load(120));
 });
+
+test("Hard feedback alone reduces complete work five percent, with missed work still ten", () => {
+  const history = previous({ sets: 3, feel: "hard", set_entries: [100, 110, 120].map(value =>
+    ({ reps: 8, load: load(value) })) });
+  const context = { recentPerformances: [history], allowProgression: true };
+  const result = weightRecommendation(block, context);
+  assert.deepEqual(result.last, load(120));
+  assert.deepEqual(result.suggested, load(115));
+  assert.deepEqual(result.sets.map(row => row.suggested?.value), [95, 105, 115]);
+  const timer = withHistoricalTimerLoads(buildTimerItems([{ blocks: [block] }]), [block], [], [history], context);
+  assert.ok(timer[0].kind === "sets");
+  assert.deepEqual(timer[0].suggestedLoads, ["95", "105", "115"]);
+  for (const patch of [{ reason: "fatigue" as const }, { actual: { ...history.actual, sets: 2 } }]) {
+    assert.deepEqual(weightRecommendation(block, { recentPerformances: [{ ...history, ...patch }] }).suggested, load(107.5));
+  }
+  for (const guarded of [
+    { ...context, lowerLoads: true },
+    { ...context, recentPerformances: [{ ...history, reason: "pain" as const }] },
+    { ...context, recentPerformances: [{ ...history, status: "skipped" as const }] },
+  ]) {
+    const held = weightRecommendation(block, guarded);
+    assert.equal(held.suggested, null);
+    assert.ok(held.sets.every(row => row.suggested === null));
+    assert.deepEqual(weightRecommendation({ ...block, load: load(60) }, guarded).suggested, load(60));
+  }
+});
+
+test("known mismatches block carry-forward even when the other dose component is missing", () => {
+  for (const [today, before] of [
+    [{ ...block, sets: 4 }, { ...block, reps: undefined }],
+    [{ ...block, sets: 4, reps: undefined }, block],
+    [{ ...block, reps: 10 }, { ...block, sets: undefined }],
+    [{ ...block, sets: undefined, reps: 10 }, block],
+  ] as [StructuredBlock, StructuredBlock][]) {
+    const history = { ...previous({ load: load(120), feel: "easy" }), prescribed: before };
+    const context = { recentPerformances: [history], allowProgression: true };
+    const result = weightRecommendation(today, context);
+    assert.deepEqual(result.last, load(120));
+    assert.equal(result.suggested, null);
+    assert.equal(result.tryReps, null);
+    assert.ok(result.sets.every(row => row.suggested === null));
+    const timer = withHistoricalTimerLoads(buildTimerItems([{ blocks: [today] }]), [today], [], [history], context);
+    assert.ok(timer[0].kind === "sets");
+    assert.ok(!timer[0].suggestedLoads || timer[0].suggestedLoads.every(value => value === null));
+    assert.deepEqual(weightRecommendation({ ...today, load: load(60) }, context).suggested, load(60));
+  }
+});

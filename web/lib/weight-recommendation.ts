@@ -32,10 +32,10 @@ export function weightRecommendation(block: StructuredBlock, context: WeightCont
   const legacy = beforeReps != null && todayReps != null && before?.rep_range == null
     && beforeReps[0] === beforeReps[1] && beforeReps[0] === todayReps[0]
     && beforeReps[0] <= todayReps[1];
-  // Unknown prescriptions (including manual history) retain their carry-forward behaviour.
-  const incompatible = before != null && todayReps != null && beforeReps != null
-    && typeof block.sets === "number" && typeof before.sets === "number"
-    && (block.sets !== before.sets || (!legacy && todayReps.join() !== beforeReps.join()));
+  // Compare known components independently; absent manual prescriptions still carry forward.
+  const incompatible = (typeof block.sets === "number" && typeof before?.sets === "number"
+    && block.sets !== before.sets)
+    || (todayReps != null && beforeReps != null && !legacy && todayReps.join() !== beforeReps.join());
   const blocked = incompatible || previous?.status === "skipped" || previous?.reason === "pain";
   const beforeEffort = (previous?.prescribed as StructuredBlock | undefined)?.effort;
   const reducedEffort = block.effort?.method === "RPE" && beforeEffort?.method === "RPE"

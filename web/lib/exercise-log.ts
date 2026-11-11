@@ -804,7 +804,8 @@ const HARD_COMPLETE_BACKOFF_RATIO = 0.95;
 /**
  * A lighter weight to offer when last time's was too much: the athlete flagged
  * fatigue, fell short of the sets or reps, or reported an RPE at least two over
- * the plan's (9+ when the plan gave none). Only a suggestion, never applied on
+ * the plan's (9+ when the plan gave none), or explicitly marked the work hard.
+ * Only a suggestion, never applied on
  * its own, and only while today's dose matches the one that was struggled with.
  * Pain and skips are left out: those already stop the old weight carrying over.
  * A stated reason outranks what the numbers suggest, so short sets for want of
@@ -835,7 +836,7 @@ export function backoffLoadFor(block: StructuredBlock, log: ExerciseLogRecord | 
     ? Math.max(...rows.map(row => row.rpe!)) : null;
   const effort = log.actual.effort ?? (recordedRpe === null ? null : { method: "RPE", value: recordedRpe });
   const overreached = effort?.method === "RPE" && typeof effort.value === "number" && effort.value >= rpeCeiling(before);
-  if (log.reason !== "fatigue" && !missedDose && !overreached) return null;
+  if (log.reason !== "fatigue" && !missedDose && !overreached && log.actual.feel !== "hard") return null;
 
   const step = plateStep(load);
   const eased = Math.round((load.value * (log.reason === "fatigue" || missedDose ? BACKOFF_RATIO : HARD_COMPLETE_BACKOFF_RATIO)) / step) * step;
