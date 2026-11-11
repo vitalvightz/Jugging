@@ -83,7 +83,8 @@ def test_hidden_or_unsupported_progress_is_rejected_without_a_replacement(bad):
 @pytest.mark.parametrize("athlete,phase", [
     ({"fatigue": "high"}, "GPP"), ({"has_active_injury": True}, "GPP"),
     ({"injury_restrictions": ["no loaded squats"]}, "GPP"),
-    ({"weight_cut_risk": True}, "GPP"), ({"cut_severity_bucket": "high"}, "GPP"),
+    # A cut blocks by its graded severity, not merely by being active.
+    ({"weight_cut_risk": True, "cut_severity_bucket": "moderate"}, "GPP"), ({"cut_severity_bucket": "high"}, "GPP"),
     ({}, "TAPER"),
 ])
 def test_recovery_rejects_increases_but_preserves_authored_quality_and_easier(athlete, phase):
