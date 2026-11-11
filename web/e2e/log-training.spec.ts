@@ -163,18 +163,18 @@ for (const width of [390, 1280]) {
     await expect(prompt).toBeVisible();
     await expect(page.locator("html")).toHaveAttribute("data-push-seen-before-open", "unseen");
     expect(await page.evaluate(() => localStorage.getItem("unlxck:push-prompt:v1:00000000-0000-4000-8000-000000000001"))).toBe("seen");
-    await expect(prompt.getByRole("button", { name: "Enable notifications" })).toBeFocused();
+    await expect(prompt.getByRole("button", { name: "Enable reminders" })).toBeFocused();
     expect(await prompt.evaluate(node => getComputedStyle(node, "::backdrop").backdropFilter)).toBe("blur(12px)");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect((await new AxeBuilder({ page }).include("dialog[open]").analyze()).violations).toEqual([]);
     await page.screenshot({ path: test.info().outputPath(`push-prompt-${width}.png`), animations: "disabled" });
     await page.emulateMedia({ reducedMotion: "reduce" });
-    expect(await prompt.getByRole("button", { name: "Enable notifications" }).evaluate(node => getComputedStyle(node, "::after").animationName)).toBe("none");
+    expect(await prompt.getByRole("button", { name: "Enable reminders" }).evaluate(node => getComputedStyle(node, "::after").animationName)).toBe("none");
     if (width === 390) {
       await prompt.getByRole("button", { name: "Not now", exact: true }).click();
     } else {
       const saved = page.waitForRequest(request => request.url().endsWith("/api/push/subscriptions") && request.method() === "POST");
-      await prompt.getByRole("button", { name: "Enable notifications" }).click();
+      await prompt.getByRole("button", { name: "Enable reminders" }).click();
       expect((await saved).postDataJSON()).toMatchObject({ endpoint: "https://push.example.test/device" });
     }
     await expect(prompt).toHaveCount(0);

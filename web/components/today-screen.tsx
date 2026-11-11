@@ -11,6 +11,7 @@ import { hasProgrammeArrival, consumeProgrammeArrival, PROGRAMME_ARRIVAL_EVENT, 
 import styles from "./today-screen.module.css";
 
 import { useAppSession } from "@/components/auth-provider";
+import { EnableRemindersRow } from "@/components/today/enable-reminders-row";
 import { useConnectivity, useOnReconnect } from "@/components/connection-status-banner";
 import { hasHealthDataConsent } from "@/lib/compliance";
 import { ContextualFeedback } from "@/components/feedback/contextual-feedback";
@@ -541,6 +542,8 @@ export function TodayScreen() {
       {resolvedDecision.useSafeReplacement ? null : readinessForm}
       {sessionPanel}
       {resolvedDecision.useSafeReplacement ? readinessForm : null}
+      {token && me?.profile.role === "athlete"
+        ? <EnableRemindersRow key={`${me.profile.athlete_id}:${token}`} token={token} athleteId={me.profile.athlete_id} /> : null}
 
       <div id="today-training-log" className={styles.trainingLog} tabIndex={-1}>
         <TrainingHabitLog

@@ -349,7 +349,11 @@ function TrainingTimeReminder({ token }: { token: string }) {
           && Notification.permission !== "denied") {
           const registration = await navigator.serviceWorker.getRegistration();
           const existing = registration?.active ? await registration.pushManager.getSubscription() : null;
-          push = existing && Notification.permission === "granted" ? "subscribed"
+          // The server must still hold this endpoint (dead ones are pruned); if
+          // it does not, the same tap re-subscribes without a new permission ask.
+          const endpoints = settings.subscription_endpoints;
+          const reachable = existing && (!Array.isArray(endpoints) || endpoints.includes(existing.endpoint));
+          push = reachable && Notification.permission === "granted" ? "subscribed"
             : registration?.active ? { public_key: settings.public_key, registration } : "unavailable";
         }
         if (!cancelled) setOffer({ push });

@@ -4,12 +4,13 @@ import "./test-dom";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { DevicePushPrompt } from "./push-notification-prompt";
-import { offerPushNotifications } from "@/lib/push-prompt";
+import { INSTALL_PROMPT_EVENT, offerPushNotifications } from "@/lib/push-prompt";
 
-async function mount(options: { permission?: string; enabled?: boolean; subscribed?: boolean; paused?: boolean; failSave?: boolean; beforeOpen?: () => void } = {}) {
+async function mount(options: { permission?: string; enabled?: boolean; subscribed?: boolean; serverEndpoints?: string[]; paused?: boolean; failSave?: boolean; beforeOpen?: () => void } = {}) {
   window.localStorage.clear();
   const originalFetch = globalThis.fetch;
   let requests = 0;
+  const events: string[] = [];
   const notification = {
     permission: options.permission ?? "default",
     requestPermission: async () => { requests++; return "granted"; },
@@ -19,16 +20,21 @@ async function mount(options: { permission?: string; enabled?: boolean; subscrib
   Object.defineProperty(window, "PushManager", { configurable: true, value: function () {} });
   Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: {
     getRegistration: async () => ({ active: {}, pushManager: {
-      getSubscription: async () => options.subscribed ? { endpoint: "existing" } : null,
+      getSubscription: async () => options.subscribed ? { endpoint: "existing", unsubscribe: async () => true } : null,
       subscribe: async () => ({ toJSON: () => ({ endpoint: "https://push.test/device", keys: { auth: "auth", p256dh: "key" } }) }),
     } }),
   } });
   const prototype = window.HTMLDialogElement.prototype;
   prototype.showModal = function () { options.beforeOpen?.(); this.setAttribute("open", ""); };
   prototype.close = function () { this.removeAttribute("open"); };
-  globalThis.fetch = (async (input: unknown) => {
+  globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
+    if (String(input).endsWith("/api/analytics/events")) {
+      events.push(JSON.parse(String(init?.body)).event_name);
+      return new Response(JSON.stringify({ accepted: true }), { status: 202 });
+    }
     if (String(input).endsWith("/api/push/settings")) return new Response(JSON.stringify({
       enabled: options.enabled !== false, public_key: "AQAB", preferences: { push_enabled: !options.paused },
+      ...(options.serverEndpoints ? { subscription_endpoints: options.serverEndpoints } : {}),
     }));
     return new Response(null, { status: options.failSave ? 503 : 204 });
   }) as typeof fetch;
@@ -36,7 +42,7 @@ async function mount(options: { permission?: string; enabled?: boolean; subscrib
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => root.render(<DevicePushPrompt token="test-token" athleteId="athlete-1" />));
-  return { container, requests: () => requests, cleanup: async () => {
+  return { container, events, requests: () => requests, cleanup: async () => {
     await act(async () => root.unmount()); container.remove(); globalThis.fetch = originalFetch;
   } };
 }
@@ -63,8 +69,8 @@ test("waits behind an existing modal; dismissing prevents another offer", async 
   } finally { safety.remove(); await app.cleanup(); }
 });
 
-test("suppresses blocked, granted, subscribed, disabled and paused devices", async () => {
-  for (const options of [{ permission: "denied" }, { permission: "granted" }, { subscribed: true }, { enabled: false }, { paused: true }]) {
+test("suppresses blocked, subscribed, disabled and paused devices", async () => {
+  for (const options of [{ permission: "denied" }, { subscribed: true }, { permission: "granted", subscribed: true, serverEndpoints: ["existing"] }, { enabled: false }, { paused: true }]) {
     const app = await mount(options);
     try { await saved(); assert.equal(app.container.querySelector("dialog"), null); assert.equal(app.requests(), 0); }
     finally { await app.cleanup(); }
@@ -153,5 +159,72 @@ test("does not offer push permissions inside Instagram's browser", async () => {
     await app.cleanup();
     if (original) Object.defineProperty(navigator, "userAgent", original);
     else Reflect.deleteProperty(navigator, "userAgent");
+  }
+});
+
+test("takes the saved moment ahead of install guidance, and hands it on when there is nothing to offer", async () => {
+  let installOffers = 0;
+  const onInstall = () => { installOffers++; };
+  window.addEventListener(INSTALL_PROMPT_EVENT, onInstall);
+  try {
+    const app = await mount();
+    try {
+      await saved();
+      assert.ok(app.container.querySelector("dialog[open]"));
+      assert.equal(installOffers, 0, "install guidance must not pre-empt an available notification offer");
+    } finally { await app.cleanup(); }
+    const paused = await mount({ paused: true });
+    try {
+      await saved();
+      assert.equal(paused.container.querySelector("dialog"), null);
+      assert.equal(installOffers, 1, "a paused device passes the moment to install guidance");
+    } finally { await paused.cleanup(); }
+  } finally { window.removeEventListener(INSTALL_PROMPT_EVENT, onInstall); }
+});
+
+test("an iPhone browser tab is not asked: install guidance gets the moment first", async () => {
+  const original = Object.getOwnPropertyDescriptor(navigator, "userAgent");
+  Object.defineProperty(navigator, "userAgent", { configurable: true, value: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1" });
+  let installOffers = 0;
+  const onInstall = () => { installOffers++; };
+  window.addEventListener(INSTALL_PROMPT_EVENT, onInstall);
+  const app = await mount();
+  try {
+    await saved();
+    assert.equal(app.container.querySelector("dialog"), null);
+    assert.equal(app.requests(), 0);
+    assert.equal(installOffers, 1);
+  } finally {
+    window.removeEventListener(INSTALL_PROMPT_EVENT, onInstall);
+    await app.cleanup();
+    if (original) Object.defineProperty(navigator, "userAgent", original);
+    else Reflect.deleteProperty(navigator, "userAgent");
+  }
+});
+
+test("records shown, accepted and subscribed so activation drop-off is measurable", async () => {
+  const app = await mount();
+  try {
+    await saved();
+    assert.deepEqual(app.events, ["push_prompt_shown"]);
+    const enable = Array.from(app.container.querySelectorAll("button")).find(button => button.textContent === "Enable reminders")!;
+    await act(async () => { enable.click(); await new Promise(resolve => setTimeout(resolve, 50)); });
+    assert.deepEqual(app.events, ["push_prompt_shown", "push_prompt_accepted", "push_subscribed"]);
+    assert.equal(app.container.querySelector("dialog"), null);
+  } finally { await app.cleanup(); }
+});
+
+test("recovers a lost subscription on a granted device without asking for permission again", async () => {
+  // Granted with no browser subscription, then granted with one the server pruned.
+  for (const options of [{ permission: "granted" }, { permission: "granted", subscribed: true, serverEndpoints: [] }]) {
+    const app = await mount(options);
+    try {
+      await saved();
+      assert.ok(app.container.querySelector("dialog[open]"), "a granted device with nothing reaching it is offered reminders");
+      const enable = Array.from(app.container.querySelectorAll("button")).find(button => button.textContent === "Enable reminders")!;
+      await act(async () => { enable.click(); await new Promise(resolve => setTimeout(resolve, 50)); });
+      assert.equal(app.requests(), 0, "permission is never requested again");
+      assert.ok(app.events.includes("push_subscribed"));
+    } finally { await app.cleanup(); }
   }
 });
