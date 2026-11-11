@@ -167,6 +167,9 @@ export const humanize = (value: string) => ({
   page_viewed: "Viewed a page",
   checkin_started: "Started a check-in",
   sparring_log_started: "Started a sparring log",
+  push_prompt_shown: "Offered reminders",
+  push_prompt_accepted: "Tapped Enable reminders",
+  push_subscribed: "Reminders enabled on a device",
   operation_failed: "Action failed",
   frontend_error: "App error",
 }[value] ?? value.replaceAll("_", " "));

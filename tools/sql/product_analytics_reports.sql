@@ -277,3 +277,38 @@ select cohort,
 from scored
 group by grouping sets ((cohort), (cohort, fight), (cohort, fight, plan_source, starting_path))
 order by cohort, fight nulls first, plan_source nulls first, starting_path nulls first;
+
+-- 9. Reminder activation funnel: offered -> tapped Enable -> subscribed ->
+--    delivered. Each step counts athletes who also reached every step before
+--    it, so the first large drop is where activation fails. Offer and tap
+--    events exist only from the push-activation release onward; the last two
+--    columns come from stored records and cover all time.
+--    with_active_subscription / eligible is the headline activation rate;
+--    failed_no_subscription counts athletes a send was attempted for with no
+--    device to receive it.
+with admin_emails(email) as (select unnest('{}'::text[])),
+eligible as (
+ select p.id from public.profiles p
+ where p.role='athlete' and not p.analytics_excluded
+ and not exists(select 1 from public.product_analytics_excluded_emails x where x.email=lower(btrim(p.email)))
+ and not exists(select 1 from admin_emails a where a.email=lower(btrim(p.email)))
+), steps as (
+ select e.id,
+ exists(select 1 from public.product_events v where v.athlete_id=e.id and v.event_name='push_prompt_shown') shown,
+ exists(select 1 from public.product_events v where v.athlete_id=e.id and v.event_name='push_prompt_accepted') accepted,
+ exists(select 1 from public.product_events v where v.athlete_id=e.id and v.event_name='push_subscribed') subscribed,
+ exists(select 1 from public.push_subscriptions s where s.profile_id=e.id) has_subscription,
+ exists(select 1 from public.notification_deliveries d where d.profile_id=e.id and d.status in ('sent','partial')) delivered,
+ exists(select 1 from public.notification_deliveries d where d.profile_id=e.id and d.error_code='no_active_subscription') failed_no_subscription
+ from eligible e
+)
+select count(*) eligible,
+ count(*) filter (where shown) prompt_shown,
+ count(*) filter (where shown and accepted) accepted,
+ count(*) filter (where shown and accepted and subscribed) subscribed,
+ count(*) filter (where shown and accepted and subscribed and delivered) delivered,
+ count(*) filter (where has_subscription) with_active_subscription,
+ round(100.0*count(*) filter (where has_subscription)/nullif(count(*),0),1) active_subscription_pct,
+ count(*) filter (where delivered) ever_delivered,
+ count(*) filter (where failed_no_subscription) failed_no_subscription
+from steps;

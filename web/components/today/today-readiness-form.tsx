@@ -5,6 +5,7 @@ import { type FormEvent, useRef, useState } from "react";
 import { SafetyNote } from "@/components/safety-note";
 import { SegmentGroup } from "@/components/today/segment-group";
 import { useToast } from "@/components/toast-provider";
+import { offerPushNotifications } from "@/lib/push-prompt";
 import { submitTodayCheckin, trackProductEvent } from "@/lib/api";
 import { TODAY_RED_FLAG_SAFETY } from "@/lib/safety-copy";
 import { buildTodayCheckinPayload, getAthleteWarnings, getRecommendationCopy } from "@/lib/today";
@@ -119,6 +120,9 @@ export function TodayReadinessForm({
         tone: response.recommendation_state === "pull_back" ? "info" : "success",
         mergeKeys: XP_TOAST_KEYS.checkin,
       });
+      // A saved check-in is a value moment too: tracking-first athletes may
+      // never save a workout, and would otherwise never be offered reminders.
+      offerPushNotifications(token);
       const [responseWarning] = getAthleteWarnings(response.warnings);
       if (responseWarning) {
         showToast(responseWarning, { tone: "info" });

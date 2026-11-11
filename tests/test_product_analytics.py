@@ -766,7 +766,13 @@ def test_completed_training_proves_linked_plan_use_but_not_a_plan_or_history_vis
 
 @pytest.mark.parametrize(
     "event_name,feature",
-    [("checkin_started", "recovery"), ("sparring_log_started", "sparring")],
+    [
+        ("checkin_started", "recovery"),
+        ("sparring_log_started", "sparring"),
+        ("push_prompt_shown", "onboarding"),
+        ("push_prompt_accepted", "onboarding"),
+        ("push_subscribed", "onboarding"),
+    ],
 )
 def test_workflow_starts_are_controlled_and_never_activity(event_name, feature):
     c, s = api_client()

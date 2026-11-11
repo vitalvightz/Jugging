@@ -3,15 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useAppSession } from "@/components/auth-provider";
-import { getPushSettings } from "@/lib/api";
-import { isPushSupported, subscribeToPushNotifications } from "@/lib/push";
-import { installPromptClaimed, PUSH_PROMPT_EVENT } from "@/lib/push-prompt";
+import { trackProductEvent } from "@/lib/api";
+import { canAskForPush, preparePushOffer, subscribeToPushNotifications, type PreparedPush } from "@/lib/push";
+import { installPromptClaimed, offerInstallPrompt, PUSH_PROMPT_EVENT, pushPromptSeenKey } from "@/lib/push-prompt";
 import { lockOverlayScroll } from "@/lib/overlay-scroll-lock";
-import { isInstagramBrowser } from "@/lib/pwa";
 import styles from "./push-notification-prompt.module.css";
 import { useSheetExit } from "@/lib/use-sheet-exit";
 
-type Setup = { public_key: string; registration: ServiceWorkerRegistration };
+type Setup = PreparedPush;
 
 export function PushNotificationPrompt() {
   const { session, me } = useAppSession();
@@ -27,7 +26,7 @@ export function DevicePushPrompt({ token, athleteId }: { token: string; athleteI
   const working = useRef(false);
   const offered = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  const storageKey = `unlxck:push-prompt:v1:${athleteId}`;
+  const storageKey = pushPromptSeenKey(athleteId);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,17 +36,17 @@ export function DevicePushPrompt({ token, athleteId }: { token: string; athleteI
     try { offered.current = window.localStorage.getItem(storageKey) === "seen"; } catch { /* Device storage is optional. */ }
 
     async function onSaved(event: Event) {
-      if ((event as CustomEvent<{ token: string }>).detail?.token !== token || offered.current || checking || timer) return;
-      if (isInstagramBrowser(navigator.userAgent) || !isPushSupported() || Notification.permission !== "default") return;
+      if ((event as CustomEvent<{ token: string }>).detail?.token !== token || offered.current || !canAskForPush()) return;
+      // This device can be asked now, so notifications take the moment ahead
+      // of install guidance. An offer already on its way keeps it.
+      event.preventDefault();
+      if (checking || timer) return;
       checking = true;
       try {
-        const [settings, registration] = await Promise.all([
-          getPushSettings(token), navigator.serviceWorker.getRegistration(),
-        ]);
-        if (cancelled || !settings.enabled || !settings.public_key || !registration?.active) return;
-        if ((settings as typeof settings & { preferences?: { push_enabled?: boolean } }).preferences?.push_enabled === false) return;
-        const subscription = await registration.pushManager.getSubscription();
-        if (cancelled || offered.current || subscription) return;
+        const prepared = await preparePushOffer(token);
+        if (cancelled || offered.current) return;
+        // Nothing to offer after all (paused, already subscribed): hand the moment on.
+        if (!prepared) { offerInstallPrompt(); return; }
         // Let completion review, sparring safety reports and other modals finish.
         timer = setInterval(() => {
           if (offered.current || installPromptClaimed()) { clearInterval(timer); timer = undefined; return; }
@@ -55,7 +54,7 @@ export function DevicePushPrompt({ token, athleteId }: { token: string; athleteI
           clearInterval(timer);
           timer = undefined;
           if (cancelled || Notification.permission !== "default") return;
-          setSetup({ public_key: settings.public_key!, registration });
+          setSetup(prepared);
         }, 500);
       } catch { /* An optional prompt must never interrupt a saved workout. */ }
       finally { checking = false; }
@@ -83,13 +82,14 @@ export function DevicePushPrompt({ token, athleteId }: { token: string; athleteI
     if (node.open) {
       offered.current = true;
       try { window.localStorage.setItem(storageKey, "seen"); } catch { /* Keep the in-memory guard. */ }
+      void trackProductEvent(token, "push_prompt_shown", "onboarding");
     }
     return () => {
       node.close();
       release();
       if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
     };
-  }, [setup, storageKey]);
+  }, [setup, storageKey, token]);
 
   async function enable() {
     if (!setup || working.current) return;
@@ -119,10 +119,10 @@ export function DevicePushPrompt({ token, athleteId }: { token: string; athleteI
       <p id="push-prompt-description" className={styles.description}>Training reminders, check-in nudges and camp updates.</p>
       {error ? <p role="alert" className={styles.error}>{error}</p> : null}
       <button type="button" className={styles.enable} onClick={() => void enable()} disabled={busy}>
-        {busy ? "Enabling…" : "Enable notifications"}<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 12 12 4M4 4h8v8" stroke="currentColor" strokeWidth="1.5" /></svg>
+        {busy ? "Enabling…" : "Enable reminders"}<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 12 12 4M4 4h8v8" stroke="currentColor" strokeWidth="1.5" /></svg>
       </button>
       <button type="button" className={styles.later} disabled={busy} onClick={() => dismiss()}>Not now</button>
-      <p className={styles.footnote}>You control what comes through in Settings.</p>
+      <p className={styles.footnote}>Not now? Turn them on any time from Today or Settings.</p>
     </dialog>
   );
 }

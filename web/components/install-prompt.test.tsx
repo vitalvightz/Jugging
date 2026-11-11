@@ -90,7 +90,7 @@ test("Android uses the captured native prompt only from the Install click", asyn
   } finally { await app.cleanup(); }
 });
 
-test("iPhone Chrome gets Chrome steps behind open modals, and claims priority over notifications once per visit", async () => {
+test("iPhone Chrome gets Chrome steps behind open modals, and takes the moment a browser tab cannot use for notifications", async () => {
   const app = await mount({ userAgent: CHROME_IOS });
   const review = document.createElement("dialog"); review.setAttribute("open", ""); document.body.append(review);
   let pushOffers = 0;
@@ -103,7 +103,7 @@ test("iPhone Chrome gets Chrome steps behind open modals, and claims priority ov
     review.remove();
     await wait();
     const dialog = app.container.querySelector("dialog")!;
-    assert.equal(pushOffers, 0, "install takes the moment instead of notifications");
+    assert.equal(pushOffers, 1, "notifications were offered the moment first and left it unclaimed");
     assert.match(dialog.textContent!, /Chrome’s address bar/);
     assert.match(dialog.textContent!, /View More/);
     assert.doesNotMatch(dialog.textContent!, /Safari/);
@@ -113,7 +113,7 @@ test("iPhone Chrome gets Chrome steps behind open modals, and claims priority ov
     assert.equal(noDialog(app.container), true);
     offerPushNotifications("token");
     await wait();
-    assert.equal(pushOffers, 0, "notifications wait for a later visit");
+    assert.equal(pushOffers, 1, "notifications wait for a later visit");
     assert.equal(noDialog(app.container), true);
   } finally { review.remove(); window.removeEventListener(PUSH_PROMPT_EVENT, onPush); await app.cleanup(); }
 });

@@ -33,6 +33,10 @@ EVENT_FEATURES = {
     "feedback_prompt_shown": "feedback",
     "checkin_started": "recovery",
     "sparring_log_started": "sparring",
+    # Reminder activation: offer shown -> enable tapped -> subscription saved.
+    "push_prompt_shown": "onboarding",
+    "push_prompt_accepted": "onboarding",
+    "push_subscribed": "onboarding",
 }
 
 

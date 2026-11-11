@@ -1,6 +1,7 @@
 "use client";
 
-import { deletePushSubscription, getPushSettings, savePushSubscription } from "@/lib/api";
+import { deletePushSubscription, getPushSettings, savePushSubscription, trackProductEvent } from "@/lib/api";
+import { isInstagramBrowser, isIosDevice, isStandaloneDisplay, PWA_DISPLAY_MODE_QUERY } from "@/lib/pwa";
 
 /**
  * Web push opt-in flow for the PWA.
@@ -25,6 +26,38 @@ export function isPushSupported(): boolean {
     "PushManager" in window &&
     "Notification" in window
   );
+}
+
+/** iPhone and iPad deliver web push only to the installed app, so a browser
+ * tab there is never asked: install guidance comes first. */
+export function pushNeedsInstall(): boolean {
+  if (typeof window === "undefined" || !isIosDevice(navigator.userAgent ?? "", navigator.maxTouchPoints)) return false;
+  return !isStandaloneDisplay(
+    window.matchMedia?.(PWA_DISPLAY_MODE_QUERY).matches ?? false,
+    (navigator as Navigator & { standalone?: boolean }).standalone,
+  );
+}
+
+/** Synchronous: whether this device could be asked for notifications right now. */
+export function canAskForPush(): boolean {
+  return isPushSupported() && !pushNeedsInstall() && !isInstagramBrowser(navigator.userAgent ?? "")
+    && Notification.permission === "default";
+}
+
+export type PreparedPush = { public_key: string; registration: ServiceWorkerRegistration };
+
+/** Everything an "Enable reminders" button needs, resolved before the tap so
+ * the native permission request keeps its user activation. Null when there is
+ * nothing to offer: unsupported, already decided, paused, or subscribed. */
+export async function preparePushOffer(token: string): Promise<PreparedPush | null> {
+  if (!canAskForPush()) return null;
+  const [settings, registration] = await Promise.all([
+    getPushSettings(token), navigator.serviceWorker.getRegistration(),
+  ]);
+  if (!settings.enabled || !settings.public_key || !registration?.active) return null;
+  if ((settings as typeof settings & { preferences?: { push_enabled?: boolean } }).preferences?.push_enabled === false) return null;
+  if (await registration.pushManager.getSubscription()) return null;
+  return { public_key: settings.public_key, registration };
 }
 
 async function getReadyRegistration(): Promise<ServiceWorkerRegistration | null> {
@@ -110,8 +143,10 @@ function deviceTimezone(): string {
  */
 export async function subscribeToPushNotifications(
   token: string,
-  prepared?: { public_key: string; registration: ServiceWorkerRegistration },
+  prepared?: PreparedPush,
 ): Promise<void> {
+  // Activation funnel: every enable tap, then every saved subscription.
+  void trackProductEvent(token, "push_prompt_accepted", "onboarding");
   if (!isPushSupported()) {
     throw new Error(
       "Notifications aren't available in this browser. On iPhone, install UNLXCK to your home screen first.",
@@ -148,6 +183,7 @@ export async function subscribeToPushNotifications(
     keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
     timezone: deviceTimezone(),
   });
+  void trackProductEvent(token, "push_subscribed", "onboarding");
 }
 
 export async function unsubscribeFromPushNotifications(token: string): Promise<void> {

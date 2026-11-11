@@ -119,3 +119,33 @@ test("a new sparring log records a start; reopening a saved one does not", async
     assert.equal(events.length, 1);
   });
 });
+
+test("a saved check-in offers reminders; a failed one does not", async () => {
+  const { PUSH_PROMPT_EVENT } = await import("@/lib/push-prompt");
+  const original = globalThis.fetch;
+  let offers = 0;
+  let ok = false;
+  const onOffer = () => { offers++; };
+  window.addEventListener(PUSH_PROMPT_EVENT, onOffer);
+  globalThis.fetch = async (input) => String(input).endsWith("/api/today/checkin") && ok
+    ? new Response(JSON.stringify({ recommendation_state: "green", warnings: [] }))
+    : new Response("{}", { status: String(input).endsWith("/api/analytics/events") ? 202 : 500 });
+  const view = await mount(<TodayReadinessForm token="checkin-save" onRefresh={async () => {}} />);
+  const submit = async () => {
+    await act(async () => {
+      view.container.querySelector("form")!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+  };
+  try {
+    await submit();
+    assert.equal(offers, 0, "nothing was saved, so there is no value moment");
+    ok = true;
+    await submit();
+    assert.equal(offers, 1, "tracking-first athletes are offered reminders without saving a workout");
+  } finally {
+    window.removeEventListener(PUSH_PROMPT_EVENT, onOffer);
+    view.unmount();
+    globalThis.fetch = original;
+  }
+});

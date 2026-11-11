@@ -888,6 +888,16 @@ html[data-theme="light"] .today-segment.today-segment-chosen:hover:not(.today-se
   font-weight: 600;
   white-space: nowrap;
 }
+/* The same row outside the session card: enable reminders later, from Today. */
+.today-enable-reminders { margin: 0; }
+.today-enable-reminders .today-training-time-label { flex: 1 1 auto; }
+.today-enable-reminders .today-training-time-save {
+  width: auto;
+  padding-inline: 12px;
+  color: var(--text-primary);
+  font-weight: 600;
+  white-space: nowrap;
+}
 .today-training-time-dismiss {
   min-width: 36px;
   min-height: 44px;
