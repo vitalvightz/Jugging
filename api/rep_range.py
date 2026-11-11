@@ -109,12 +109,12 @@ def bank_allows_progression(exercise: Mapping[str, Any]) -> bool | None:
 
 
 def bank_uses_bodyweight(exercise: Mapping[str, Any]) -> bool:
-    """Known unweighted bank movements; explicit authored loads always win."""
+    """Eligible unweighted strength movements; explicit authored loads always win."""
     classes, keys = _bank_classes()
     for field in ("exercise_key", "name", "display_name"):
         key = normalize_exercise_key(exercise.get(field))
         if key in classes:
-            return key in keys
+            return classes[key] is True and key in keys
     return False
 
 

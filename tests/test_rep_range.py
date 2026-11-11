@@ -360,3 +360,19 @@ def test_generated_pullup_uses_bodyweight_but_preserves_explicit_loads(healthy):
     loaded = reconcile_exercise_keys(loaded, original)
     assert all(b["load"]["value"] == 10 for _, b in _strength_blocks(loaded)
                if b.get("exercise_key") == "feet-elevated-push-up")
+
+
+def test_generated_power_movements_keep_their_original_load_representation(healthy):
+    from api.rep_range import bank_allows_progression, bank_uses_bodyweight
+    plan, brief = healthy
+    resolved = {b["block_id"]: b for _, b in _strength_blocks(reconcile_exercise_keys(plan, brief))}
+    protected = [b for _, b in _strength_blocks(plan) if bank_allows_progression(b) is False]
+    hops = next(b for b in protected if b.get("exercise_key") == "single-leg-forward-hops")
+    assert hops.get("load") is None
+    assert resolved[hops["block_id"]].get("load") is None
+    for before in protected:
+        after = resolved[before["block_id"]]
+        assert not bank_uses_bodyweight(before)
+        assert ("load" in after) == ("load" in before)
+        assert after.get("load") == before.get("load")
+        assert after["progression_hold"] is True
