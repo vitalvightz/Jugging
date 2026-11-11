@@ -823,11 +823,16 @@ export function backoffLoadFor(block: StructuredBlock, log: ExerciseLogRecord | 
 
   const plannedSets = finitePositiveNumber(before.sets) ? before.sets : null;
   const doneSets = log.actual.sets;
-  const doneReps = log.actual.reps;
+  const rows = log.actual.set_entries;
+  const recordedReps = rows?.every(row => typeof row.reps === "number")
+    ? Math.min(...rows.map(row => row.reps!)) : null;
+  const doneReps = log.actual.reps ?? recordedReps;
   const missedDose =
     (plannedSets !== null && typeof doneSets === "number" && doneSets < plannedSets) ||
     (plannedReps !== undefined && typeof doneReps === "number" && doneReps < plannedReps[0]);
-  const effort = log.actual.effort;
+  const recordedRpe = rows?.length && rows.every(row => typeof row.rpe === "number" && row.rpe >= 1 && row.rpe <= 10)
+    ? Math.max(...rows.map(row => row.rpe!)) : null;
+  const effort = log.actual.effort ?? (recordedRpe === null ? null : { method: "RPE", value: recordedRpe });
   const overreached = effort?.method === "RPE" && typeof effort.value === "number" && effort.value >= rpeCeiling(before);
   if (log.reason !== "fatigue" && !missedDose && !overreached) return null;
 

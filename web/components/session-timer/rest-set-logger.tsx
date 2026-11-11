@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { WeightRecommendation } from "../weight-recommendation";
 import { SetRows } from "@/components/set-rows";
 import { readSets } from "@/lib/set-entries";
 import { leaveRemainingUnreported, leaveSetUnreported, confirmAllSetLogs, confirmSetLog, timerSetDrafts, pendingSetLogs } from "@/lib/session-timer/sets";
@@ -23,12 +24,16 @@ export function RestSetLogger({ timer, target }: { timer: SessionTimerController
   const transition = state.phase !== "rest";
   const timingNote = state.phase === "rest" ? "Rest continues" : state.phase === "ready" ? "Next exercise is ready" : "Session complete";
   const targetText = [weighed && prescribed("load") ? `${prescribed("load")} ${unit}` : null, prescribed("reps")].filter(Boolean).join(" × ");
-  if (confirmed || unreported) return <div className="st-log-confirmed" role="status">
+  const recommendation = item.weightRecommendation
+    ? <WeightRecommendation value={{ ...item.weightRecommendation, ...item.weightRecommendation.sets[target.set - 1] }} />
+    : null;
+  if (confirmed || unreported) return <>{recommendation}<div className="st-log-confirmed" role="status">
     <span>{unreported ? `${transition ? `${item.title} · ` : ""}Set ${target.set} · measurements unreported` : <><span aria-hidden="true">✓</span> {transition ? `${item.title} · ` : ""}Set {target.set} logged <span className="st-log-result">· {weighed && row.load ? `${row.load} ${unit} × ` : ""}{row.reps || "–"}{row.rpe ? ` · RPE ${row.rpe}` : ""}</span></>}</span>
     <button type="button" className="st-link" aria-label={`Edit set ${target.set}`} onClick={() => timer.update(s => ({ ...s, unreportedSetLogs: { ...s.unreportedSetLogs, [item.id]: (s.unreportedSetLogs?.[item.id] ?? []).filter(set => set !== target.set) }, confirmedSetLogs: { ...s.confirmedSetLogs, [item.id]: (s.confirmedSetLogs?.[item.id] ?? []).filter(set => set !== target.set) } }))}>Edit</button>
-  </div>;
+  </div></>;
   return <section className="st-rest-sheet" aria-label="Log completed set">
     <div className="st-rest-sheet-head"><h3>{transition ? `${item.title} · set ${target.set}` : "Log completed set"}</h3><span>{targetText ? `Target: ${targetText}` : `Set ${target.set}`}</span></div>
+    {recommendation}
     <div className="st-rest-fields" data-count={weighed ? 3 : 2}>
       {([...(weighed ? ["load" as const] : []), "reps" as const, "rpe" as const]).map(field => <label key={field}>
         <span>{field === "load" ? unit : field === "rpe" ? "RPE" : "Reps"}</span>

@@ -17,6 +17,7 @@ export function useTodayExerciseLogs({
   trainingDay,
   enabled,
   canWrite = true,
+  lowerLoads = false,
   painReasonAllowed,
   allowProgression = false,
   onError,
@@ -28,6 +29,7 @@ export function useTodayExerciseLogs({
   /** The server only accepts a log for a session started or completed today. */
   enabled: boolean;
   canWrite?: boolean;
+  lowerLoads?: boolean;
   painReasonAllowed: boolean;
   allowProgression?: boolean;
   /** Reports a failed one-tap save from a collapsed row. */
@@ -107,8 +109,8 @@ export function useTodayExerciseLogs({
   const recentLoads = loaded.scope === scope ? loaded.recentLoads : undefined;
   const recentPerformances = loaded.scope === scope ? loaded.recentPerformances : undefined;
   return useMemo(
-    () => (active ? { canWrite, logs, save, saveMany, recentLoads, recentPerformances, allowProgression, painReasonAllowed, onError } : null),
-    [canWrite, active, logs, save, saveMany, recentLoads, recentPerformances, allowProgression, painReasonAllowed, onError],
+    () => (active ? { lowerLoads, canWrite, logs, save, saveMany, recentLoads, recentPerformances, allowProgression, painReasonAllowed, onError } : null),
+    [lowerLoads, canWrite, active, logs, save, saveMany, recentLoads, recentPerformances, allowProgression, painReasonAllowed, onError],
   );
 }
 

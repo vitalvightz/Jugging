@@ -965,7 +965,8 @@ export function ExerciseRow({
         <div id={bodyId} className="ex-row-body">
           {block.block_type === "rehab" && block.drill_snapshot ? (
             <RehabExerciseGuide block={block} demo={<RehabDemo block={block} media={media} title={title} />}>
-              <ExerciseLogPanel block={block} />
+              <ExerciseProgressionPreview block={block} />
+          <ExerciseLogPanel block={block} />
             </RehabExerciseGuide>
           ) : <>
           {block.private_media_id || block.community_revision_id ? <PrescribedPrivateVideo
@@ -1002,6 +1003,7 @@ export function ExerciseRow({
             hideLeadCue={Boolean(media) && leadCuePinned}
           />
           {/* Renders only where a started session provides logging (Today). */}
+          <ExerciseProgressionPreview block={block} />
           <ExerciseLogPanel block={block} />
           </>}
         </div>
@@ -1056,7 +1058,8 @@ function ExerciseDetail({
   // their ordinary exercise adjustments/logging.
   if (block.block_type === "rehab" && block.drill_snapshot) {
     return <RehabExerciseGuide block={block} demo={<RehabDemo block={block} media={media} title={title} />}>
-      <ExerciseLogPanel block={block} />
+      <ExerciseProgressionPreview block={block} />
+          <ExerciseLogPanel block={block} />
     </RehabExerciseGuide>;
   }
   // Safety instructions are never behind a tap, logging included: one plain line.
@@ -1089,7 +1092,8 @@ function ExerciseDetail({
             sourceCountdown={sourceCountdown} embedded hideCues hideStopRule hideAdjustments
             hideInstructions={Boolean(media || block.private_media_id || block.community_revision_id)} />
         </div>
-        <ExerciseLogPanel block={block} />
+        <ExerciseProgressionPreview block={block} />
+          <ExerciseLogPanel block={block} />
       </div>
     );
   }
@@ -1160,7 +1164,8 @@ function ExerciseDetail({
           sourceCountdown={sourceCountdown} embedded hideCues hideStopRule hideAdjustments hideInstructions />
       </details>
       {/* Renders only where a started session provides logging (Today). */}
-      <ExerciseLogPanel block={block} />
+      <ExerciseProgressionPreview block={block} />
+          <ExerciseLogPanel block={block} />
     </div>
   );
 }
