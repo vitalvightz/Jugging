@@ -130,3 +130,13 @@ def test_malformed_snapshot_container_uses_history_fallback(snapshot):
     client, store = seed()
     store.session_completions[ATHLETE][0]["prescription_snapshot"] = snapshot
     assert titles(client.get(ENDPOINTS[0], headers=HEADERS), ENDPOINTS[0]) == ["Lower body strength"]
+
+
+def test_training_history_preserves_plan_session_identity_for_sparring_reports():
+    client, _ = seed({"plan_id": PLAN, "training_day": "2026-06-04",
+                      "session": {"session_id": "2026-06-04-strength", "title": "Hard sparring"}})
+    response = client.get("/api/training/history", headers=HEADERS)
+    assert response.status_code == 200
+    row = response.json()["sessions"][0]
+    assert row["session_id"] == "2026-06-04-strength"
+    assert row["title"] == "Hard sparring"

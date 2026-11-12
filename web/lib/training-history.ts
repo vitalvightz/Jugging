@@ -22,6 +22,7 @@ export type DistanceUnit = "km" | "miles";
 export const RUN_TYPES = ["easy", "tempo", "intervals", "sprints", "long", "race"] as const;
 export type RunType = (typeof RUN_TYPES)[number];
 export type TrainingHistorySession = {
+  session_id?: string | null;
   id: string;
   source: "unlxck" | "external";
   completion_origin?: "reported" | "day_credit" | null;

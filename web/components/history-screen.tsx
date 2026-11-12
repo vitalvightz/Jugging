@@ -334,11 +334,17 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
   );
 }
 
-/** Sparring the athlete logged by hand but never described: still sparring history. */
+/** Completed plan sparring remains history even without a separate rounds report. */
 export function unreportedSparringSessions(sessions: TrainingHistorySession[], logs: SparringLogRecord[]): TrainingHistorySession[] {
   const reported = new Set(logs.map(log => log.external_session_id).filter(Boolean));
-  return sessions.filter(row => row.source === "external" && row.activity === "sparring"
-    && row.status !== "skipped" && !reported.has(row.id));
+  return sessions.filter(row => {
+    if (row.status === "skipped" || row.completion_origin === "day_credit") return false;
+    if (row.source === "external") return row.activity === "sparring" && !reported.has(row.id);
+    // Match the completed session, never other work alongside contact that day.
+    const isSparring = row.activity === "sparring" || /^(?:hard |light |technical )?sparring(?:$|[\s(—–:-])/i.test(row.title.trim());
+    return isSparring && !logs.some(log => log.plan_id === row.plan_id
+      && log.session_id === row.session_id && log.training_day === row.training_day);
+  });
 }
 
 function SparringRows({ history, sessions, token, onSaved }: {
@@ -423,12 +429,12 @@ function SparringRows({ history, sessions, token, onSaved }: {
                 </div>
                 <div className="history-row-meta">
                   <span>{manual.title?.trim() || "Sparring"}</span>
-                  <span>Added by you</span>
+                  <span>{manual.source === "unlxck" ? "UNLXCK plan" : "Added by you"}</span>
                   {manual.duration_minutes ? <span>{manual.duration_minutes} min</span> : null}
                   {manual.effort ? <span>{manual.effort.charAt(0).toUpperCase() + manual.effort.slice(1)}</span> : null}
                 </div>
                 {manual.takeaway?.trim() ? <p className="history-row-takeaway">{manual.takeaway}</p> : null}
-                {token ? (
+                {token && manual.source === "external" ? (
                   <div className="history-session-actions">
                     <button className="history-session-delete" type="button" aria-haspopup="dialog"
                       aria-label={`Add sparring details for ${formatAppDate(manual.training_day)}`}

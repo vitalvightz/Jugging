@@ -4,7 +4,7 @@ import "./test-dom";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { AppSessionContext } from "./auth-provider";
-import { HistoryScreen } from "./history-screen";
+import { HistoryScreen, unreportedSparringSessions } from "./history-screen";
 import { athleteTrainingDayISO } from "@/lib/camp-map";
 import { clearSharedReads } from "@/lib/shared-reads";
 
@@ -256,5 +256,50 @@ test("a window that cannot be completed shows no totals rather than an undercoun
     assert.equal(summary.querySelector("dl"), null);
     assert.match(summary.textContent ?? "", /totals aren.t shown/);
     assert.ok([...summary.querySelectorAll("button")].some(button => button.textContent === "Retry"));
+  } finally { ui.cleanup(); }
+});
+
+
+test("completed plan sparring appears without a report and only its own report deduplicates it", () => {
+  const session = { id: "completion", source: "unlxck", plan_id: "plan", session_id: "contact",
+    title: "Hard sparring (coach-led)", training_day: "2026-11-10", status: "done", activity: null,
+    duration_minutes: null, effort: null } as const;
+  const rows = [session, { ...session, id: "modified", status: "modified" as const },
+    { ...session, id: "skipped", status: "skipped" as const },
+    { ...session, id: "credit", completion_origin: "day_credit" as const },
+    { ...session, id: "support", title: "Strength before hard sparring" },
+    { ...session, id: "restriction", title: "No hard sparring" }];
+  assert.deepEqual(unreportedSparringSessions(rows, []).map(row => row.id), ["completion", "modified"]);
+  const report = { plan_id: "plan", session_id: "contact", training_day: "2026-11-10" } as import("@/lib/types").SparringLogRecord;
+  assert.deepEqual(unreportedSparringSessions([session], [report]), []);
+  for (const change of [{ plan_id: "other" }, { session_id: "support" }, { training_day: "2026-11-09" }]) {
+    assert.equal(unreportedSparringSessions([session], [{ ...report, ...change }]).length, 1);
+  }
+  const manual = { ...session, id: "manual", source: "external" as const, activity: "sparring" as const };
+  assert.equal(unreportedSparringSessions([manual], []).length, 1);
+  assert.equal(unreportedSparringSessions([manual], [{ ...report, external_session_id: "manual" }]).length, 0);
+});
+
+test("Sparring tab includes completed UNLXCK sparring without a separate report", async () => {
+  const today = athleteTrainingDayISO(new Date(), undefined);
+  const totals = { days: 7, sessions: 0, rounds: 0, hard_rounds: 0, hard_days: 0,
+    heavy_head_contact_sessions: 0, rocked_count: 0 };
+  const ui = await renderSessions((async (input: unknown) => {
+    const body = String(input).includes("sparring-logs")
+      ? { logs: [], current_training_day: today, last_7_days: totals, last_28_days: { ...totals, days: 28 },
+        last_hard_day: null, last_rocked_day: null }
+      : { sessions: [{ id: "contact", session_id: "sparring", source: "unlxck", title: "Hard sparring",
+        status: "done", training_day: today, plan_id: "plan", completion_origin: "reported" }] };
+    return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch);
+  try {
+    const tab = [...ui.container.querySelectorAll("button")].find(button => button.textContent === "Sparring")!;
+    await act(async () => tab.click());
+    const records = ui.container.querySelector(".history-records")!;
+    assert.match(records.textContent ?? "", /Hard sparring/);
+    assert.match(records.textContent ?? "", /UNLXCK plan/);
+    assert.match(records.textContent ?? "", /No details/);
+    assert.doesNotMatch(records.textContent ?? "", /Added by you|Add details|No head contact/);
+    assert.equal(records.querySelectorAll(".history-list > li").length, 1);
   } finally { ui.cleanup(); }
 });
