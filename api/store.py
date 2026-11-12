@@ -168,6 +168,13 @@ ADMIN_ONLY_PLAN_COLUMNS = ("stage2_payload", "stage2_handoff_text", "stage2_retr
 ATHLETE_PLAN_SELECT = ",".join(
     column for column in REQUIRED_PLANS_COLUMNS if column not in ADMIN_ONLY_PLAN_COLUMNS
 )
+# The athlete plan row with the runtime brief (no candidate_pools): for readers
+# that need every athlete column but never stamp exercise identity from pools,
+# such as Home's calendar. ~0.5 MB instead of ~1.1 MB for a typical camp.
+ATHLETE_PLAN_RUNTIME_SELECT = ",".join(
+    "planning_brief:planning_brief_runtime" if column == "planning_brief" else column
+    for column in ATHLETE_PLAN_SELECT.split(",")
+)
 GENERATION_JOB_SELECT = "*"
 # Admin job-list endpoints never read stage1_result (the largest intermediate
 # blob, the full Stage 1 planner output). Listing many rows with select="*"
@@ -2194,6 +2201,12 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
             )
         except _STORE_CLIENT_ERRORS as exc:
             self._raise_operation_http_error(operation=operation, detail="failed to read plan", exc=exc)
+
+    def get_plan_runtime_for_athlete(self, plan_id: str, athlete_id: str) -> dict[str, Any] | None:
+        """``get_plan_for_athlete`` with the runtime brief (no candidate_pools)."""
+        return self._owned_plan_projection(
+            plan_id, athlete_id, columns=ATHLETE_PLAN_RUNTIME_SELECT, operation="get_plan_runtime_for_athlete"
+        )
 
     def get_plan_identity_for_athlete(self, plan_id: str, athlete_id: str) -> dict[str, Any] | None:
         """Owner-scoped existence check without fetching any planner content."""

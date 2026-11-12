@@ -903,6 +903,13 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         row = self._owned_plan_row(plan_id, athlete_id)
         return {"id": row["id"], "athlete_id": row["athlete_id"]} if row else None
 
+    def get_plan_runtime_for_athlete(self, plan_id: str, athlete_id: str) -> dict | None:
+        # Mirrors ATHLETE_PLAN_RUNTIME_SELECT: the athlete row, runtime brief.
+        row = self.get_plan_for_athlete(plan_id, athlete_id)
+        if not row:
+            return None
+        return {**row, **({"planning_brief": planning_brief_runtime(row["planning_brief"])} if "planning_brief" in row else {})}
+
     def get_training_plan_for_athlete(self, plan_id: str, athlete_id: str) -> dict | None:
         # Through the public read, so tests that count or fail plan reads see it.
         row = self.get_plan_for_athlete(plan_id, athlete_id)
