@@ -74,8 +74,32 @@ Reading the next report: `wait − queue − app` is the phone ↔ web host ↔ 
 network time. A large `queue` points at event-loop or worker saturation. A
 large `setup` points at connection reuse.
 
+## Today route payload request (not reproduced)
+
+The report showed a revisit to Today whose route changed at ~330ms after a
+~315ms route payload (`_rsc`) request. A production build driven by
+Playwright did not reproduce it:
+
+- Home → Today → Plans → History → Home → Today through the tab bar: every
+  tap changed the URL in 50–100ms with no route request.
+- Entering Today from Home's primary button: also served from the cache.
+- Jumping the clock 6 minutes, past `staleTimes` (300s), and tapping Today:
+  no request at all, so route-cache expiry is not the cause in Next 16.4.
+
+Two gaps in the recorder made the report ambiguous, and are now closed:
+
+- Next's full prefetches of tab routes carry no `next-router-prefetch`
+  header but do carry `_rsc`, so the report counted background prefetches as
+  route requests. Route requests now record `prefetch` from their headers.
+- A navigation recorded only the bare target path, so a tab tap on `/today`
+  and Home's `/today?preview=1` button looked the same. Each navigation now
+  records `via` (`nav` or `page`) and `href` with query keys.
+
+In the next report, check whether the Today revisit's route request has
+`prefetch: true`, starts before `routeChanged`, and which `via` and `href` the
+tap had.
+
 ## Not covered here
 
-- The occasional ~315ms blocking Today route payload (`_rsc`) request.
 - History's main request (327ms app / 578ms total).
 - Cold start (HTML first byte and the first API request).

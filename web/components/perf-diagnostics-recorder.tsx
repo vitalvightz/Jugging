@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   appendNavigation,
+  isRouterPrefetch,
   readPerfLog,
   resourcePhases,
   sanitizePath,
@@ -45,7 +46,7 @@ function hasContent(main: Element | null): boolean {
   return false;
 }
 
-type FetchRecord = { kind: "api" | "route"; path: string; start: number; ttfb: number | null; end: number | null; bytes: number | null; status: number | null; server: PerfRequest["server"]; requestId: string | null; phases: PerfRequest["phases"] };
+type FetchRecord = { kind: "api" | "route"; path: string; start: number; ttfb: number | null; end: number | null; bytes: number | null; status: number | null; server: PerfRequest["server"]; requestId: string | null; phases: PerfRequest["phases"]; prefetch: boolean };
 
 /** This request's resource timing entry: same URL, started with or just after the fetch call. */
 function phasesFor(href: string, start: number): PerfRequest["phases"] {
@@ -80,7 +81,8 @@ function installFetchRecorder(): () => void {
       ? url.pathname.startsWith("/api/") ? "api" : url.searchParams.has("_rsc") ? "route" : null
       : null;
     if (!url || !kind) return original(input, init);
-    const record: FetchRecord = { kind, path: sanitizePath(url.href, location.origin), start: performance.now(), ttfb: null, end: null, bytes: null, status: null, server: [], requestId: null, phases: null };
+    const record: FetchRecord = { kind, path: sanitizePath(url.href, location.origin), start: performance.now(), ttfb: null, end: null, bytes: null, status: null, server: [], requestId: null, phases: null,
+      prefetch: kind === "route" && (isRouterPrefetch(init?.headers) || (input instanceof Request && input.headers.has("next-router-prefetch"))) };
     const href = url.href;
     fetchLog.push(record);
     if (fetchLog.length > 400) fetchLog.splice(0, fetchLog.length - 400);
@@ -122,6 +124,7 @@ function requestsSince(tap: number, until: number): PerfRequest[] {
       server: record.server,
       requestId: record.requestId,
       phases: record.phases,
+      ...(record.kind === "route" ? { prefetch: record.prefetch } : {}),
     }));
 }
 
@@ -226,6 +229,7 @@ export function PerfRecorder() {
       if (tracking.current) finish({ ...tracking.current, interrupted: true }, false);
       tracking.current = {
         from: sanitizePath(location.pathname), to: sanitizePath(url.pathname), at: new Date().toISOString(),
+        via: link.closest("nav") ? "nav" : "page", href: sanitizePath(url.href, location.origin),
         routeChanged: null, firstFrame: null, firstContent: null, placeholdersGone: null, placeholdersAtStart: 0,
         blockedMs: 0, longestFrameMs: 0, requests: [], timedOut: false,
         tap, targetPath: url.pathname, lastFrame: tap, settledAt: null,

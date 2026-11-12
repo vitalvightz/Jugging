@@ -37,6 +37,8 @@ export type PerfRequest = {
    * `app` is the network and proxy hops between the phone and the API.
    */
   phases?: { setup: number; wait: number; download: number } | null;
+  /** Route payload requests only: Next marked it a background prefetch. */
+  prefetch?: boolean;
 };
 
 export type PerfNavigation = {
@@ -58,6 +60,10 @@ export type PerfNavigation = {
   timedOut: boolean;
   /** The next tap came before this screen settled. */
   interrupted?: boolean;
+  /** Where the tapped link was: the tab bar / side nav, or a link on the page. */
+  via?: "nav" | "page";
+  /** The tapped link with query keys (never values), e.g. `/today?preview=`. */
+  href?: string;
 };
 
 export type PerfReport = {
@@ -95,6 +101,16 @@ export function sanitizePath(raw: string, origin = "https://x.invalid"): string 
     .join("/");
   const keys = [...new Set([...url.searchParams.keys()].filter(key => key !== "_rsc"))].sort();
   return keys.length ? `${path}?${keys.map(key => `${key}=`).join("&")}` : path;
+}
+
+/** Whether a fetch's own headers mark it as a Next router prefetch. */
+export function isRouterPrefetch(headers: HeadersInit | undefined): boolean {
+  if (!headers) return false;
+  try {
+    return new Headers(headers).has("next-router-prefetch");
+  } catch {
+    return false;
+  }
 }
 
 const REQUEST_ID = /^[a-z0-9-]{1,36}$/i;

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   appendNavigation,
+  isRouterPrefetch,
   median,
   resourcePhases,
   sanitizePath,
@@ -55,4 +56,11 @@ test("resource timing splits a request into setup, wait and download", () => {
   // Detail withheld (requestStart 0) or no entry: nothing rather than a wrong split.
   assert.equal(resourcePhases({ startTime: 100, requestStart: 0, responseStart: 0, responseEnd: 900 }), null);
   assert.equal(resourcePhases(undefined), null);
+});
+
+test("router prefetches are told apart from navigation payload requests", () => {
+  assert.equal(isRouterPrefetch({ "Next-Router-Prefetch": "1", RSC: "1" }), true);
+  assert.equal(isRouterPrefetch(new Headers({ "next-router-prefetch": "1" })), true);
+  assert.equal(isRouterPrefetch([["rsc", "1"]]), false);
+  assert.equal(isRouterPrefetch(undefined), false);
 });
