@@ -115,3 +115,25 @@ def test_route_targets_serve_through_the_app_read_only(monkeypatch, capsys, targ
     assert report["refused_writes"] == {} and report["refused_http_requests"] == {}
     assert report["store_call_timeline_one_warm_request"]
     assert report["profile_top_cumulative_repo"]
+
+
+def test_route_targets_do_not_build_the_production_app_on_import(monkeypatch, capsys):
+    """With credentials set, importing api.app builds a second app and runs startup
+    validation (an RPC). The profiler must take only create_app from it."""
+    from api.auth import AuthenticatedUser
+
+    store = _store_with_intake_injury()
+    store.ensure_profile(AuthenticatedUser(user_id=ATHLETE, email="ari@example.com", full_name="Ari", metadata={}))
+    built = {"validate_runtime_schema": 0}
+    store.validate_runtime_schema = lambda: built.__setitem__("validate_runtime_schema", built["validate_runtime_schema"] + 1)
+    monkeypatch.setenv("SUPABASE_URL", "https://db.invalid")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-role-key-for-tests")
+    monkeypatch.delitem(sys.modules, "api.app", raising=False)  # import fresh, as on the server; restored after
+
+    report = _run(monkeypatch, capsys, store, "--target", "calendar")
+
+    assert report["status_codes"] == [200]
+    assert built["validate_runtime_schema"] == 0  # no production app was built on import
+    assert report["refused_http_requests"] == {}
+    import os
+    assert os.environ["SUPABASE_URL"] == "https://db.invalid"  # credentials restored after the import

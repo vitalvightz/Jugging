@@ -239,8 +239,19 @@ def profile_route(args, raw_store, store, http_refused, import_ms) -> dict:
     profiles.install()  # before the app is built, so every handler thread is covered
     from fastapi.testclient import TestClient
 
-    from api.app import create_app
     from api.auth import AuthenticatedUser
+
+    # Importing api.app builds the production app at module level: a second
+    # store and auth service, plus startup schema validation (an RPC the HTTP
+    # guard refuses). Hide the credentials for the import only, so that build
+    # takes its existing "missing configuration" path; the profiler's own store
+    # already exists, and only create_app is used.
+    credentials = {key: os.environ.pop(key) for key in ("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
+                   if key in os.environ}
+    try:
+        from api.app import create_app
+    finally:
+        os.environ.update(credentials)
 
     profile_row = raw_store.get_profile(args.athlete) or {}
     user = AuthenticatedUser(user_id=args.athlete, email=str(profile_row.get("email") or ""),
