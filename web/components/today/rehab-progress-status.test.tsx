@@ -314,3 +314,13 @@ test("the progression sheet shows the recent injury log, and nothing when empty"
   const empty = renderToStaticMarkup(<RehabProgressStatus decision={decision} />);
   assert.doesNotMatch(empty, /injury-recent-log/);
 });
+
+test("stage definitions stay in a disclosure and distinguish stages from training clearance", () => {
+  const html = renderToStaticMarkup(<RehabStageMeter decision={decision} />);
+  assert.match(html, /<details class="injury-stage-guide"><summary>What do the stages mean/);
+  assert.doesNotMatch(html, /<details class="injury-stage-guide" open/);
+  assert.match(html, /Restore<\/dt><dd>Comfortable movement/);
+  assert.match(html, /Stages are not clearance to train/);
+  assert.match(html, /Some stages are not available for every injury/);
+  assert.equal(renderToStaticMarkup(<RehabStageMeter decision={null} />), "");
+});

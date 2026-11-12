@@ -1,5 +1,6 @@
 "use client";
 
+import { useSeenOnce } from "@/components/once-hint";
 import { useId, useRef, useState } from "react";
 import { ApiError, submitInjuryEpisodeObservation } from "@/lib/api";
 import type { InjuryFlagRecord, TodayCommandView } from "@/lib/types";
@@ -31,6 +32,7 @@ export function EffectiveClinicianClearanceStatus({ clearance }: {
 export function InjuryClearance({ injury, token, onRefresh }: {
   injury: InjuryFlagRecord; token: string; onRefresh: () => Promise<void>;
 }) {
+  const [, dismissClearanceHint] = useSeenOnce("discovery-injury-clearance-seen");
   const [choosing, setChoosing] = useState(false);
   const [rehabLevel, setRehabLevel] = useState<"gentle_recovery" | "loading" | "sport_specific" | "not_cleared">("not_cleared");
   const [trainingLevel, setTrainingLevel] = useState("rehab");
@@ -67,7 +69,7 @@ export function InjuryClearance({ injury, token, onRefresh }: {
   return <div className="injury-clearance">
     <button type="button" className="injury-detail-link" aria-expanded={choosing} aria-haspopup="dialog"
       aria-label={clearance ? "Change clearance" : "Report clearance"} disabled={busy}
-      onClick={() => { setRehabLevel(clearance?.rehabilitation_permission?.level ?? "not_cleared"); setTrainingLevel(clearance?.scopes.includes("contact") ? "contact" : clearance?.scopes.includes("training") ? "training" : "rehab"); setError(""); setChoosing(true); }}>
+      onClick={() => { dismissClearanceHint(); setRehabLevel(clearance?.rehabilitation_permission?.level ?? "not_cleared"); setTrainingLevel(clearance?.scopes.includes("contact") ? "contact" : clearance?.scopes.includes("training") ? "training" : "rehab"); setError(""); setChoosing(true); }}>
       <span>Clearance</span>
       {/* Just the training level, on the same line; the rehab level and its
           self-reported source are in the "Clearance & restrictions" sheet. */}
@@ -81,6 +83,7 @@ export function InjuryClearance({ injury, token, onRefresh }: {
           <p className="muted">Record your clinician’s advice. Rehab follows the level you report, with injury restrictions and response holds. Stages without published rehab stay unavailable.</p>
           <fieldset className="injury-permission-options" disabled={busy || !injury.episode_id || surface}>
             <legend>Rehabilitation level</legend>
+            <p className="injury-entry-help">The rehab exercises your clinician allows.</p>
             {(["not_cleared", "gentle_recovery", "loading", "sport_specific"] as const).map(value => <label key={value} data-selected={rehabLevel === value}>
               <input type="radio" name={`${clearanceEditorId}-rehab`} value={value} checked={rehabLevel === value} onChange={() => setRehabLevel(value)} />
               <span>{labels[value]}</span>
@@ -89,6 +92,7 @@ export function InjuryClearance({ injury, token, onRefresh }: {
           </fieldset>
           <fieldset className="injury-permission-options" disabled={busy || !injury.episode_id || surface}>
             <legend>Training level</legend>
+            <p className="injury-entry-help">Whether your clinician allows training and contact.</p>
             {([['rehab', 'Rehab only'], ['training', 'Non-contact training'], ['contact', 'Contact training']] as const).map(([value, label]) => <label key={value} data-selected={trainingLevel === value}>
               <input type="radio" name={`${clearanceEditorId}-training`} value={value} checked={trainingLevel === value} onChange={() => setTrainingLevel(value)} />
               <span>{label}</span>
@@ -113,6 +117,13 @@ export function InjuryCareStatus({ injury, token, onRefresh, showClearance = tru
 }) {
   const schedule = injury.rehab_decision?.schedule;
   const outcome = injury.rehab_decision?.outcome;
+  // Explain only engine-reported medical gates; never infer one from severity.
+  const medicalReason = outcome !== "medical_review" ? null
+    : injury.rehab_decision?.reason_codes.includes("red_flag_medical_gate")
+      ? "A reported warning sign needs medical review."
+      : injury.rehab_decision?.reason_codes.includes("urgent_injury_type")
+        ? "The injury type you reported needs medical review before training."
+        : null;
   const trackingOnly = outcome === "unsupported_prescription" || (outcome === "missing_information" && injury.rehab_decision?.reason_codes.includes("missing_injury_identity"));
   const resolved = outcome === "no_rehab_indicated" && injury.rehab_decision?.reason_codes.includes("resolved_episode");
   const summary = injury.rehab_decision?.reason_codes.includes("missing_injury_identity")
@@ -146,11 +157,12 @@ export function InjuryCareStatus({ injury, token, onRefresh, showClearance = tru
   const showTrackingSchedule = trackingOnly && (schedule?.state === "held" || schedule?.state === "deferred");
   const showReason = Boolean(scheduleReason) && !resolved
     && (!trackingOnly || ((schedule?.state === "held" || schedule?.state === "deferred") && scheduleReason !== summary));
-  const hasGuidance = trackingOnly || resolved || showSummary || showScheduleRow || showTrackingSchedule || showReason;
+  const hasGuidance = Boolean(medicalReason) || trackingOnly || resolved || showSummary || showScheduleRow || showTrackingSchedule || showReason;
   return <div className="today-injury-care">
     {injury.rehab_decision ? <>
       {outcome === "prescribed_rehab" ? <RehabProgressStatus decision={injury.rehab_decision} statusLine={stageStatusLine} summaryVisible={summaryVisible} /> : null}
       {hasGuidance ? <div className="injury-rehab-status" role="note" aria-label="Guidance">
+        {medicalReason ? <p className="injury-safety-reason">{medicalReason}</p> : null}
         {trackingOnly ? <p className="muted">{outcome === "unsupported_prescription" ? "No rehab exercises available for this stage yet." : summary}</p>
           : resolved ? <p className="injury-rehab-label"><strong>Recovered</strong></p>
           : showSummary ? <p>{summary}</p> : null}

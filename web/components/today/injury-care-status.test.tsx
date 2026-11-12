@@ -478,3 +478,12 @@ test("a due decision without a rendered exercise target never promises access", 
   assert.doesNotMatch(html, /Rehab due today|injury-rehab-action|#today-session/);
   assert.match(html, /Rehab unavailable/);
 });
+
+test("medical-review explanations follow the engine gate rather than injury severity", () => {
+  const render = (outcome: string, reason_codes: string[]) => renderToStaticMarkup(<InjuryCareStatus injury={{ ...injury,
+    severity: "severe", rehab_decision: { outcome, reason_codes, summary: "Follow today’s guidance." },
+  }} token="token" onRefresh={async () => {}} />);
+  assert.match(render("medical_review", ["urgent_injury_type"]), /injury type you reported needs medical review/);
+  assert.doesNotMatch(render("prescribed_rehab", ["red_flag_medical_gate"]), /reported warning sign needs medical review/);
+  assert.doesNotMatch(render("medical_review", ["unknown_gate"]), /urgent_injury_type|reported warning sign|unknown_gate/);
+});
