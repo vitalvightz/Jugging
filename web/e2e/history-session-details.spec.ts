@@ -136,10 +136,7 @@ for (const width of [390, 1280]) {
       await expect(dialog).toContainText("Reduced load for comfort");
       await expect(dialog.getByRole("region", { name: "Session overview" })).toHaveCount(0);
       await expect(dialog.getByRole("button", { name: "Add Session", exact: true })).toHaveCount(0);
-      await expect(dialog.getByRole("button", { name: "Delete session", exact: true })).toBeHidden();
-      await dialog.getByText("···", { exact: true }).click();
       await expect(dialog.getByRole("button", { name: "Delete session", exact: true })).toBeVisible();
-      await dialog.getByText("···", { exact: true }).click();
       const toggle = dialog.getByRole("button", { name: "Back squat", exact: true });
       await expect(toggle).toHaveAttribute("aria-expanded", "false");
       await expect(dialog).toContainText("75–85 kg");

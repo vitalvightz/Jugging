@@ -23316,18 +23316,9 @@ a, button, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .history-date-clear { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: var(--text-muted); font: inherit; font-size: .8rem; cursor: pointer; }
 .history-date-clear span { font-size: 18px; }
 
-.history-actions-menu { flex: 0 1 auto; min-width: 0; }
-.history-actions-menu > summary { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border: 1px solid var(--border-default); border-radius: 10px; color: var(--text-secondary); font-size: .85rem; cursor: pointer; list-style: none; }
-.history-actions-menu > summary::-webkit-details-marker { display: none; }
-.history-actions-menu > summary:focus-visible { outline: 2px solid var(--brand-red); outline-offset: 2px; }
-.history-actions-items { display: grid; gap: 4px; padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: 10px; margin-top: 6px; }
-.history-actions-items > button, .history-actions-items > div { justify-self: start; }
 .history-detail-actions { padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle); gap: 4px 18px; }
 .history-detail-actions .history-session-delete { min-height: 44px; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: 13px; cursor: pointer; }
 .history-detail-actions .history-session-delete:hover { color: var(--text-primary); }
-.history-detail-actions .history-actions-menu { margin-left: auto; }
-.history-detail-actions .history-actions-menu > summary { min-width: 44px; justify-content: center; padding: 0; border: 0; border-radius: 0; font-size: 22px; }
-.history-detail-actions .history-actions-items { border-radius: 8px; padding: 0 12px; }
 
 /* Other journal tabs: whole labels wrap together rather than shrinking into columns. */
 .history-records { min-width: 0; gap: 12px; }
