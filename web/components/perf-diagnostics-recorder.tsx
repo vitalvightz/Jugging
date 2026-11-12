@@ -11,6 +11,7 @@ import {
   sanitizeRequestId,
   setPerfDiagnosticsEnabled,
   summarize,
+  withBlockedRoutes,
   writePerfLog,
   type PerfNavigation,
   type PerfReport,
@@ -176,7 +177,7 @@ export function PerfRecorder() {
   const finish = useCallback((entry: Tracking, timedOut: boolean) => {
     const { tap, targetPath: _target, lastFrame: _frame, settledAt: _settled, ...navigation } = entry;
     void _target; void _frame; void _settled;
-    const done: PerfNavigation = { ...navigation, timedOut, requests: requestsSince(tap, tap + WINDOW_MS) };
+    const done: PerfNavigation = withBlockedRoutes({ ...navigation, timedOut, requests: requestsSince(tap, tap + WINDOW_MS) });
     setLog(current => {
       const next = appendNavigation(current, done);
       writePerfLog(next);

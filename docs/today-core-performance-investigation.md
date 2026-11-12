@@ -95,9 +95,13 @@ Two gaps in the recorder made the report ambiguous, and are now closed:
   and Home's `/today?preview=1` button looked the same. Each navigation now
   records `via` (`nav` or `page`) and `href` with query keys.
 
-In the next report, check whether the Today revisit's route request has
-`prefetch: true`, starts before `routeChanged`, and which `via` and `href` the
-tap had.
+`prefetch: true` proves a background prefetch, but `false` does not prove the
+opposite, since some of Next's full prefetches carry no marker. Each route
+request therefore also records `blockedRoute`: true only when it started
+before the screen changed and its response arrived before the screen changed.
+That is strong timing evidence the navigation waited on it, though not proof
+of cause. In the next report, look for a Today revisit with
+`blockedRoute: true`, and note its `via` and `href`.
 
 ## Not covered here
 
