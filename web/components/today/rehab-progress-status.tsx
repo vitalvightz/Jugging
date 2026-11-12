@@ -257,8 +257,6 @@ export function RehabStageMeter({ decision }: { decision: InjuryFlagRecord["reha
         <div><dt>Dynamic</dt><dd>Faster, controlled movement.</dd></div>
         <div><dt>Return</dt><dd>Sport-specific rehab.</dd></div>
       </dl>
-      <p>Stages are not clearance to train. Only follow the rehab shown for you. Some stages are not available for every injury.</p>
-      <p>Open Progression checks to see what is needed next.</p>
     </details>
   </>;
 }
