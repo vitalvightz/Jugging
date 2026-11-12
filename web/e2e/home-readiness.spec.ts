@@ -33,7 +33,10 @@ for (const [width, height, theme] of [
     await page.route("**/api/**", async route => {
       const path = new URL(route.request().url()).pathname;
       if (path === "/api/today") { await todayReady; return route.fulfill({ json: today }); }
-      if (path === "/api/plans/camp-a") { calendarReads++; await calendarReady; return route.fulfill({ json: calendar }); }
+      if (path === "/api/plans/camp-a/calendar") {
+        calendarReads++; await calendarReady;
+        return route.fulfill({ json: { plan_id: "camp-a", structured_plan: calendar.outputs.structured_plan } });
+      }
       return route.fulfill({ json: path === "/api/me" ? {
         profile: { athlete_id: "athlete-1", full_name: "Alex", role: "athlete", access_status: "approved", starting_path: "plan_first", technical_style: ["boxing"], tactical_style: [],
           athlete_timezone: "UTC", athlete_locale: "en", appearance_mode: theme, nutrition_profile: {}, date_of_birth: "1995-01-01", meets_minimum_age: true, is_minor: false,

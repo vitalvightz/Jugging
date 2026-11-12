@@ -12,6 +12,7 @@ from api import server_timing
 from api.compliance import evaluate_profile_compliance
 from api.contracts.training_day import resolve_training_day_str
 from api.models import (
+    PlanCalendar,
     PlanCompletionsResponse,
     PlanDetail,
     PlanRenameRequest,
@@ -28,6 +29,7 @@ from api.plan_mappers import (
     _map_plan_detail,
     _map_plan_summary,
     _map_weekly_schedule,
+    plan_calendar_spine,
 )
 from api.rehab_labels import resolve_rehab_label_policy
 from api.services.exercise_media import attach_exercise_media
@@ -244,6 +246,31 @@ def build_plans_router(*, require_profile, require_plan_row, get_store) -> APIRo
                 is_minor=profile.role == "athlete" and profile.is_minor,
             ),
             store,
+        )
+
+    @router.get("/api/plans/{plan_id}/calendar", response_model=PlanCalendar)
+    def get_plan_calendar(
+        plan_id: str,
+        profile: ProfileRecord = Depends(require_profile),
+        store: AppStore = Depends(get_store),
+    ) -> PlanCalendar:
+        # Same read, mapping and guards as the plan detail above, so the dates
+        # and phases are exactly the ones the plan page shows. Only what never
+        # touches the calendar is skipped: plan source, rehab labels and media.
+        plan_row = _read_plan_for_viewer(plan_id, profile=profile, store=store)
+        training_day = resolve_training_day_str(
+            datetime.now(timezone.utc), athlete_timezone=profile.athlete_timezone
+        )
+        detail = apply_minor_plan_guard(
+            clarify_restricted_training_hold(
+                _map_plan_detail(plan_row, include_admin=False, current_training_day=training_day)
+            ),
+            is_minor=profile.role == "athlete" and profile.is_minor,
+        )
+        structured = detail.outputs.structured_plan
+        return PlanCalendar(
+            plan_id=detail.plan_id,
+            structured_plan=plan_calendar_spine(structured.model_dump(mode="json")) if structured else None,
         )
 
     @router.get("/api/plans/{plan_id}/completions", response_model=PlanCompletionsResponse)

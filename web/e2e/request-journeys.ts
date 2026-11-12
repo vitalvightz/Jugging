@@ -100,6 +100,7 @@ export async function mockAthlete(page: Page, baseURL: string, options: MockOpti
         return await fulfil(planFor(who, request.postDataJSON().plan_name));
       }
       if (p === `/api/plans/${who.planId}`) return await fulfil(planFor(who, name));
+      if (p === `/api/plans/${who.planId}/calendar`) return await fulfil({ plan_id: who.planId, structured_plan: planFor(who, name).outputs?.structured_plan ?? null });
       if (p === `/api/plans/${who.planId}/completions`) return await fulfil({ plan_id: who.planId, current_training_day: sourceView.today.training_day, completions: [] });
       if (p === "/api/custom-plans") return await fulfil([]);
       if (p === "/api/xp/progress") return await fulfil({ total_xp: 120, level: 2, recent_awards: [], streak: {} });

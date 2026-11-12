@@ -10,7 +10,7 @@ from fastapi.openapi.docs import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CADDYFILE_SOURCE = (REPO_ROOT / "Caddyfile").read_text(encoding="utf-8")
+CADDYFILE_SOURCE = (REPO_ROOT / "caddy" / "Caddyfile").read_text(encoding="utf-8")
 COMPOSE_SOURCE = (REPO_ROOT / "compose.yaml").read_text(encoding="utf-8")
 
 
@@ -113,3 +113,13 @@ def test_documentation_csp_allows_fastapi_default_assets():
     assert "'unsafe-inline'" in directives["style-src"]
     assert "https://fonts.gstatic.com" in directives["font-src"]
     assert directives["connect-src"] == {"'self'"}
+
+
+def test_caddy_config_is_mounted_as_a_directory_so_reloads_see_deployed_changes():
+    # The deploy replaces files with `git reset --hard` (new inodes) and then
+    # runs `caddy reload`. A single-file bind mount keeps the container on the
+    # old inode, so the reload silently re-read stale config.
+    compose = (REPO_ROOT / "compose.yaml").read_text(encoding="utf-8")
+    assert "- ./caddy:/etc/caddy:ro" in compose
+    assert "./Caddyfile:" not in compose
+    assert not (REPO_ROOT / "Caddyfile").exists()

@@ -676,6 +676,19 @@ def _profile_cache_ttl_seconds() -> float:
     return parsed
 
 
+_PROFILE_READ_WAIT_SECONDS = 30.0
+
+
+class _ProfileRead:
+    """One in-flight profile read that concurrent requests share."""
+
+    def __init__(self, generation: int) -> None:
+        self.generation = generation
+        self.done = threading.Event()
+        self.ok = False
+        self.row: Any = None
+
+
 class _ProfileRowCache:
     """Short-lived, per-process cache of profile rows keyed by athlete id.
 
@@ -691,6 +704,43 @@ class _ProfileRowCache:
         self.max_size = max_size
         self._rows: dict[str, tuple[dict[str, Any], float]] = {}
         self._lock = threading.Lock()
+        self._inflight: dict[str, _ProfileRead] = {}
+        # Bumped by every invalidation, so a read that overlapped a write is
+        # never handed to a request that started after the write.
+        self._generation = 0
+
+    def read_once(self, athlete_id: str, read: Callable[[], Any]) -> Any:
+        """Run ``read`` once for concurrent callers asking for the same profile.
+
+        App launch sends several authenticated requests at once; with a cold
+        cache each read the same row (six identical reads in one launch in
+        production). Callers arriving while a read is in flight wait for it
+        instead, so they get a row read at the moment they would have started
+        their own. If that read fails, or a write invalidated the profile while
+        it ran, each waiter reads for itself and handles its own outcome.
+        """
+        if self.ttl_seconds <= 0:  # reuse switched off entirely
+            return read()
+        with self._lock:
+            flight = self._inflight.get(athlete_id)
+            leader = flight is None
+            if leader:
+                flight = _ProfileRead(self._generation)
+                self._inflight[athlete_id] = flight
+        if not leader:
+            flight.done.wait(_PROFILE_READ_WAIT_SECONDS)
+            with self._lock:
+                shared = flight.done.is_set() and flight.ok and flight.generation == self._generation
+            return copy.deepcopy(flight.row) if shared else read()
+        try:
+            flight.row = read()
+            flight.ok = True
+            return flight.row
+        finally:
+            with self._lock:
+                if self._inflight.get(athlete_id) is flight:
+                    del self._inflight[athlete_id]
+            flight.done.set()
 
     def get(self, athlete_id: str) -> dict[str, Any] | None:
         if self.ttl_seconds <= 0:
@@ -720,6 +770,7 @@ class _ProfileRowCache:
 
     def invalidate(self, athlete_id: str | None = None) -> None:
         with self._lock:
+            self._generation += 1
             if athlete_id is None:
                 self._rows.clear()
             else:
@@ -1472,9 +1523,12 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
             if cached:
                 return cached
             self._log_profile_event(operation="ensure_start", user=user)
-            existing = self._run_with_transient_retry(
-                operation=f"ensure_profile:read athlete_id={user.user_id}",
-                fn=lambda: self._get_profile_by_id(user.user_id),
+            existing = self._profile_cache().read_once(
+                user.user_id,
+                lambda: self._run_with_transient_retry(
+                    operation=f"ensure_profile:read athlete_id={user.user_id}",
+                    fn=lambda: self._get_profile_by_id(user.user_id),
+                ),
             )
             if existing:
                 self._log_profile_event(

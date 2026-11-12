@@ -1643,6 +1643,13 @@ export type TodayCheckinHistoryRecord = {
   updated_at?: string;
 };
 
+/** A plan's dated week/day spine (dates, phases, countdown labels) for the
+ * fight countdown; never sessions or blocks. */
+export type PlanCalendar = {
+  plan_id: string;
+  structured_plan: StructuredPlan | null;
+};
+
 /** Live completion rows for one plan plus the server-authoritative current
  * training day (used to gate the retro-log window in the plan viewer). */
 export type PlanCompletionsResponse = {

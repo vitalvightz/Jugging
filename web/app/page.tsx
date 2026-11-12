@@ -22,7 +22,7 @@ import { WeighInShortcut } from "@/components/weigh-in-shortcut";
 import { inFinalWeeks } from "@/lib/weight-cut-status";
 import { TrainingSummaryCard } from "@/components/training-summary-card";
 import { useXp } from "@/components/xp-provider";
-import { getPlan, getToday, getTrainingHistory } from "@/lib/api";
+import { getPlanCalendar, getToday, getTrainingHistory } from "@/lib/api";
 import { describeLoadFailure } from "@/lib/connectivity";
 import { recallView, SHARED_READ_MAX_AGE_MS } from "@/lib/shared-reads";
 import { hasHealthDataConsent } from "@/lib/compliance";
@@ -309,7 +309,7 @@ export default function HomePage() {
   const [commandState, setCommandState] = useState<TodayCommandView | null>(null);
   const [commandError, setCommandError] = useState<string | null>(null);
   const [calendar, setCalendar] = useState<{ token: string; id: string; plan: StructuredPlan | null } | null>(null);
-  const calendarRequest = useRef<{ token: string; id: string; promise: ReturnType<typeof getPlan> } | null>(null);
+  const calendarRequest = useRef<{ token: string; id: string; promise: ReturnType<typeof getPlanCalendar> } | null>(null);
   // Revisiting Home used to show the whole-page skeleton until a fresh Today
   // read returned (~1 s server, more on a phone). Plan context, the countdown
   // and XP are presentation, so they show at once from the view this session
@@ -457,7 +457,8 @@ export default function HomePage() {
   // The calendar only feeds the fight countdown, which needs a fight date: an
   // open plan never reads it. That read is the full plan detail (the largest
   // backend response), and on app open it competed with Today and XP for the
-  // single API process while nothing on screen used it.
+  // single API process while nothing on screen used it. It now reads only the
+  // plan's dated spine (/calendar): the detail was ~1.7 MB for one athlete.
   const activePlanId = shownState?.active_plan?.id;
   const knownLatestPlan = me?.latest_plan;
   const activeFightDate = activePlanId
@@ -475,13 +476,13 @@ export default function HomePage() {
     let cancelled = false;
     let request = calendarRequest.current;
     if (!request || request.token !== token || request.id !== calendarPlanId) {
-      request = { token, id: calendarPlanId, promise: getPlan(token, calendarPlanId, { reuseForMs: SHARED_READ_MAX_AGE_MS }) };
+      request = { token, id: calendarPlanId, promise: getPlanCalendar(token, calendarPlanId, { reuseForMs: SHARED_READ_MAX_AGE_MS }) };
       calendarRequest.current = request;
     }
     request.promise
       .then((detail) => {
         if (!cancelled && calendarPlanId === activePlanId) {
-          setCalendar({ token, id: activePlanId, plan: detail.outputs?.structured_plan ?? null });
+          setCalendar({ token, id: activePlanId, plan: detail.structured_plan ?? null });
         }
       })
       .catch(() => {
