@@ -270,3 +270,103 @@ def test_a_sync_write_still_reads_the_flags_fresh_afterwards():
     # the view's open+resolved read both go back to the store, as before.
     assert store.reads["list_injury_flags"] == 4
     assert [injury["body_area"] for injury in view.open_injuries]
+
+
+# --- Readiness decision reads -------------------------------------------------
+# With a check-in today the view re-evaluates the readiness decision live, and
+# that made four reads one after another (head-impact sparring day, recent
+# check-ins, both training-history sources): ~4 sequential round trips inside
+# today_core in production. They now ride the second prefetch wave.
+
+READINESS_READS = ("latest_sparring_log_day", "list_today_checkins", "list_session_completions",
+                   "list_external_training_sessions")
+
+
+def _camp_store(*, checked_in: bool):
+    from test_today_read_amplification import _store_with_camp
+
+    store = _store_with_camp()
+    if checked_in:
+        store.upsert_today_checkin(ATHLETE, {"plan_id": PLAN, "training_day": "2026-06-03",
+                                             "sleep": "good", "body": "fresh", "pain": "none"})
+    store.reads.clear()
+    return store
+
+
+def _track_reads(store, names=READINESS_READS):
+    main_thread: list[str] = []
+    every: Counter = Counter()
+    for name in names:
+        original = getattr(FakeStore, name).__get__(store)
+
+        def tracked(*args, _name=name, _original=original, **kwargs):
+            every[_name] += 1
+            if threading.current_thread() is threading.main_thread():
+                main_thread.append(_name)
+            return _original(*args, **kwargs)
+
+        store.__dict__[name] = tracked
+    return main_thread, every
+
+
+def test_a_checked_in_build_reads_the_decision_inputs_together_once_with_an_identical_view(monkeypatch):
+    with monkeypatch.context() as patch:
+        patch.setattr(boundary, "_readiness_decision_reads", lambda athlete_id: [])
+        expected = _view(_camp_store(checked_in=True))
+
+    store = _camp_store(checked_in=True)
+    main_thread, every = _track_reads(store)
+    actual = _view(store)
+
+    assert actual.model_dump(mode="json") == expected.model_dump(mode="json")
+    assert actual.today.recommendation_state != "not_checked_in"  # the decision path really ran
+    assert main_thread == []  # none of them is a sequential round trip any more
+    assert every["latest_sparring_log_day"] == 1
+
+
+def test_without_a_check_in_or_open_injury_nothing_extra_is_read():
+    store = _camp_store(checked_in=False)
+    main_thread, every = _track_reads(store)
+    view = _view(store)
+
+    assert view.today.recommendation_state == "not_checked_in"
+    assert every["latest_sparring_log_day"] == 0
+    assert every["list_external_training_sessions"] == 0
+
+
+def test_a_failed_prefetched_decision_read_is_read_again_by_the_view():
+    expected = _view(_camp_store(checked_in=True))
+    store = _camp_store(checked_in=True)
+    calls = {"n": 0}
+    real = FakeStore.latest_sparring_log_day
+
+    def flaky(self, athlete_id, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:  # the prefetch wave's read
+            raise RuntimeError("sparring read down")
+        return real(self, athlete_id, **kwargs)
+
+    store.latest_sparring_log_day = flaky.__get__(store)
+    actual = _view(store)
+
+    assert calls["n"] == 2  # the failure was not kept; the view read for itself
+    assert actual.model_dump(mode="json") == expected.model_dump(mode="json")
+
+
+def test_a_decision_read_that_keeps_failing_still_fails_safe(monkeypatch):
+    def failing_store():
+        store = _camp_store(checked_in=True)
+        store.latest_sparring_log_day = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("sparring read down"))
+        return store
+
+    with monkeypatch.context() as patch:
+        patch.setattr(boundary, "_readiness_decision_reads", lambda athlete_id: [])
+        without_prefetch = _view(failing_store())
+    healthy = _view(_camp_store(checked_in=True))
+
+    actual = _view(failing_store())
+
+    # Exactly as without the prefetch: the missing head-impact history is
+    # recorded, never read as "no head impact".
+    assert actual.model_dump(mode="json") == without_prefetch.model_dump(mode="json")
+    assert actual.model_dump(mode="json") != healthy.model_dump(mode="json")

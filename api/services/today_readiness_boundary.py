@@ -157,11 +157,45 @@ def _prefetch_view_reads(
     # Second wave: each open injury's episode history and rehab exposures.
     flags = store.list_injury_flags(athlete_id, statuses=("open", "monitoring"), limit=500)
     episodes = [(str(f["id"]), str(f["episode_id"])) for f in flags if f.get("id") and f.get("episode_id")]
-    store.prefetch(
-        [(name, (athlete_id,), {"injury_id": injury, "injury_episode_id": episode})
-         for injury, episode in episodes
-         for name in ("list_injury_episode_events", "list_rehab_exposures")]
-    )
+    second: list[ReadCall] = [
+        (name, (athlete_id,), {"injury_id": injury, "injury_episode_id": episode})
+        for injury, episode in episodes
+        for name in ("list_injury_episode_events", "list_rehab_exposures")
+    ]
+    if _has_checkin_today(store, athlete_id=athlete_id, plan_id=plan_id, day=day):
+        second += _readiness_decision_reads(athlete_id)
+    store.prefetch(second)
+
+
+def _has_checkin_today(store: _BuildReadCache, *, athlete_id: str, plan_id: str, day: str) -> bool:
+    """Whether the view will re-evaluate the readiness decision (a check-in today).
+
+    Answered from the first wave's read. If that read failed, assume yes: a
+    needless concurrent read is cheaper than four sequential ones.
+    """
+    try:
+        return bool(store.get_today_checkin(athlete_id, plan_id or None, day))
+    except Exception:  # noqa: BLE001 - only decides what to prefetch
+        return True
+
+
+def _readiness_decision_reads(athlete_id: str) -> list[ReadCall]:
+    """The reads the view's readiness decision makes one after another.
+
+    With a check-in today the view re-evaluates the decision live
+    (``_readiness_context_and_status``):
+    the latest head-impact sparring day, recent check-ins and both training
+    history sources, each a sequential round trip. Keys match the view's calls
+    exactly, so they are answered from this wave instead. A medical hold
+    without a check-in also re-evaluates; those builds keep reading them in
+    sequence rather than prefetching on every open injury.
+    """
+    return [
+        ("latest_sparring_log_day", (athlete_id,), {"rocked": True}),
+        ("list_today_checkins", (athlete_id,), {"limit": 4}),
+        ("list_session_completions", (athlete_id,), {"limit": 200}),
+        ("list_external_training_sessions", (athlete_id,), {"limit": 200, "include_deleted": False}),
+    ]
 
 
 def build_today_command_view(
