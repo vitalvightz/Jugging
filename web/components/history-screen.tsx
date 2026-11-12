@@ -304,7 +304,7 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
           {selected.source === "external" ? <>
             <LogTraining onSparringFollowUp={followUpSparring} accessToken={token} entry={selected} historyMode onSaved={row => { onUpdate(row); setSelected(null); }} />
             {canRepeatTraining(selected) ? <LogTraining onSparringFollowUp={followUpSparring} accessToken={token} repeatEntry={selected} historyMode onSaved={row => { onUpdate(row); setSelected(null); }} /> : null}
-            <TakeawayEditor label="Notes" token={token} row={selected} onSaved={row => { onUpdate(row); setSelected(null); }} />
+            <TakeawayEditor token={token} row={selected} onSaved={row => { onUpdate(row); setSelected(null); }} />
             {selected.activity === "sparring" && sparringLogs ? <button type="button" className="history-session-delete" onClick={() => {
               const log = sparringLogs.get(selected.id);
               setSparringDraft(log ? sparringReportDraft(selected.id, selected.title, log) : manualSparringDraft(selected)); setSelected(null);

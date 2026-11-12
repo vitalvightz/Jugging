@@ -122,15 +122,15 @@ export function SessionTakeawayPrompt({ token, row, onSaved, onDismiss, sheet: a
 }
 
 /** Add or edit a saved manual session's takeaway from History. */
-export function TakeawayEditor({ token, row, onSaved, label }: {
-  token: string; row: TrainingHistorySession; onSaved: (row: TrainingHistorySession) => void; label?: string;
+export function TakeawayEditor({ token, row, onSaved }: {
+  token: string; row: TrainingHistorySession; onSaved: (row: TrainingHistorySession) => void;
 }) {
   const [open, setOpen] = useState(false);
   const has = Boolean(row.takeaway?.trim());
   return <>
     <button className="history-session-delete" type="button" aria-haspopup="dialog"
       aria-label={`${has ? "Edit" : "Add"} takeaway for ${trainingTitle(row)}`} onClick={() => setOpen(true)}>
-      {label ?? (has ? "Edit takeaway" : "Add takeaway")}
+      {has ? "Edit takeaway" : "Add takeaway"}
     </button>
     {open ? <TakeawaySheet token={token} row={row} onClose={() => setOpen(false)}
       onSaved={updated => { setOpen(false); onSaved(updated); }} /> : null}
