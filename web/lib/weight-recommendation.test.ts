@@ -107,7 +107,7 @@ test("confirmed manual history can seed the next planned exposure without granti
 test("known incompatible doses retain Last without suggesting or prefilling history", () => {
   const history = previous({ sets: 3, set_entries: [100, 110, 120].map(value =>
     ({ reps: 8, load: load(value), rpe: 9 })) });
-  for (const today of [{ ...block, sets: 4 }, { ...block, reps: 10 }, { ...block, reps: "6-8" }]) {
+  for (const today of [{ ...block, sets: 4 }, { ...block, reps: 10 }, { ...block, reps: "10-12" }]) {
     const context = { recentPerformances: [history], allowProgression: true };
     const result = weightRecommendation(today, context);
     assert.deepEqual(result.last, load(120));
@@ -121,6 +121,16 @@ test("known incompatible doses retain Last without suggesting or prefilling hist
     const prescribed = weightRecommendation({ ...today, load: load(60) }, context);
     assert.deepEqual(prescribed.suggested, load(60));
     assert.ok(prescribed.sets.every(row => row.suggested?.value === 60));
+  }
+});
+
+test("today asking for fewer sets or reps than last time keeps the evidence and earns progression", () => {
+  const history = previous({ sets: 3, reps: 8, load: load(100), feel: "easy" });
+  for (const today of [{ ...block, sets: 2 }, { ...block, reps: "5-6" }, { ...block, reps: 6 }]) {
+    const result = weightRecommendation(today, { recentPerformances: [history], allowProgression: true });
+    assert.deepEqual(result.last, load(100));
+    assert.deepEqual(result.suggested, load(102.5));
+    assert.equal(result.calculated, true);
   }
 });
 
@@ -278,11 +288,14 @@ test("equivalent generated, custom and unplanned completed work shares earned pr
 test("unplanned evidence needs complete counts and genuine effort; matching a target is Right", () => {
   const target = { ...block, sets: 3, reps: 10, load: load(80), effort: { method: "RPE" as const, value: 7 } };
   for (const actual of [{ load: load(80) }, { sets: 3, reps: 10, load: load(80) },
-    { sets: 3, reps: 10, load: load(80), effort: { method: "RPE" as const, value: 7 } },
+    { sets: 3, reps: 10, load: load(80), effort: { method: "RPE" as const, value: 8 } },
     { sets: 2, reps: 10, load: load(80), effort: { method: "RPE" as const, value: 6 } }]) {
     assert.deepEqual(weightRecommendation(target, { allowProgression: true, recentPerformances: [
       { ...previous(actual), prescribed: {} }] }).suggested, load(80));
   }
+  // Complete counts at exactly the target RPE are Right: appropriate effort earns the smallest step.
+  assert.deepEqual(weightRecommendation(target, { allowProgression: true, recentPerformances: [{ ...previous(
+    { sets: 3, reps: 10, load: load(80), effort: { method: "RPE", value: 7 } }), prescribed: {} }] }).suggested, load(82.5));
   assert.equal(weightRecommendation({ ...target, progression_hold: true }, { allowProgression: true,
     recentPerformances: [{ ...previous({ sets: 3, reps: 10, load: load(80), feel: "easy" }), prescribed: {} }] }).tryReps, null);
 });
@@ -310,7 +323,7 @@ test("reusing a protected movement as strength does not earn generic progression
 });
 
 test("only engine changes are marked as calculated, never authored or recalled loads", () => {
-  const history = previous({ sets: 3, reps: 8, load: load(125), feel: "right" });
+  const history = previous({ sets: 3, reps: 8, load: load(125), feel: "right", effort: { method: "RPE", value: 8 } });
   for (const value of [1, 100, 125, 130]) {
     const result = weightRecommendation({ ...block, load: load(value) }, { allowProgression: true, recentPerformances: [history] });
     assert.deepEqual(result.suggested, load(value));

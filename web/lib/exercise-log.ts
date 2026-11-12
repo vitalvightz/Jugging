@@ -626,11 +626,23 @@ function rpeCeiling(planned: number | null): number {
  * reported RPE is read against the plan's, and "felt strong" counts as easy.
  * Null when nothing was said: a bare "done" is never taken as easy.
  */
-export function feelOf(log: ExerciseLogRecord, currentTarget?: number | null): ExerciseFeel | null {
+function recordedEffort(log: ExerciseLogRecord) {
   const rows = log.actual.set_entries;
   const measuredRpe = rows?.length && rows.every(row => typeof row.rpe === "number" && row.rpe >= 1 && row.rpe <= 10)
     ? Math.max(...rows.map(row => row.rpe!)) : null;
-  const effort = log.actual.effort ?? (measuredRpe === null ? null : { method: "RPE", value: measuredRpe });
+  return log.actual.effort ?? (measuredRpe === null ? null : { method: "RPE", value: measuredRpe });
+}
+
+/** A recorded RPE above the one planned for that work (or today's, when it gave none). */
+function effortOverPlan(log: ExerciseLogRecord, block: StructuredBlock): boolean {
+  const effort = recordedEffort(log);
+  const planned = plannedRpe(log.prescribed as StructuredBlock) ?? plannedRpe(block);
+  return Boolean(effort && typeof effort.value === "number" && (effort.method ?? "RPE") === "RPE"
+    && planned !== null && effort.value > planned);
+}
+
+export function feelOf(log: ExerciseLogRecord, currentTarget?: number | null): ExerciseFeel | null {
+  const effort = recordedEffort(log);
   if (effort && typeof effort.value === "number" && effort.value >= 1 && effort.value <= 10 && (effort.method ?? "RPE") === "RPE") {
     const before = log.prescribed as StructuredBlock;
     const planned = plannedRpe(before) ?? currentTarget ?? null;
@@ -677,6 +689,9 @@ function repsReached(log: ExerciseLogRecord, planned: [number, number]): number 
   return typeof log.actual.reps === "number" ? log.actual.reps : planned[0];
 }
 
+// Phases that wind training down. Any other phase, or none (an open plan), may progress.
+const NO_PROGRESSION_PHASE = /taper|fight.?week|reintegration|weight.?cut/i;
+
 /**
  * Whether a raise may be offered at all today. Readiness is one condition among
  * several: a green day never outranks taper, the final fortnight, an open
@@ -691,7 +706,7 @@ export function progressionOpen(context: {
   trainingDay?: string | null;
 }): boolean {
   if (context.decisionTier !== "green" || context.openInjuries > 0 || context.safetyHold) return false;
-  if (!/^(GPP|SPP)$/i.test(context.phase ?? "")) return false;
+  if (NO_PROGRESSION_PHASE.test(context.phase ?? "")) return false;
   if (context.fightDate) {
     const days = (Date.parse(context.fightDate.slice(0, 10)) - Date.parse((context.trainingDay ?? "").slice(0, 10))) / 86_400_000;
     // An unreadable date is treated as close to the fight.
@@ -719,15 +734,27 @@ function sameWorkload(block: StructuredBlock, before: StructuredBlock, actual?: 
       ? Math.min(...rows.map(row => row.reps!)) : null);
     return reached != null && reached >= today[0] && reached <= today[1] ? today : null;
   }
-  if (!planned || block.sets !== before.sets) return null;
-  // A log saved before ranges existed froze only the working number.
-  const legacy = before.rep_range == null && planned[0] === planned[1]
-    && planned[0] === today[0] && planned[0] <= today[1];
-  if (!legacy && today.join() !== planned.join()) return null;
+  if (!planned || !finitePositiveNumber(block.sets) || !finitePositiveNumber(before.sets) || !compatibleDose(block, before)) return null;
   const rpeToday = plannedRpe(block);
   const rpeBefore = plannedRpe(before);
   if (rpeToday !== null && rpeBefore !== null && rpeToday < rpeBefore) return null;
-  return legacy ? today : planned;
+  return today;
+}
+
+/**
+ * Whether last time's work still speaks for today's: today asks for no more sets
+ * and no higher rep range than was done. Fewer sets or reps today do not erase
+ * the evidence; more of either is new work it cannot vouch for.
+ */
+export function compatibleDose(block: StructuredBlock, before: StructuredBlock): boolean {
+  if (typeof block.sets === "number" && typeof before.sets === "number" && block.sets > before.sets) return false;
+  const today = progressionRepRange(block);
+  const planned = progressionRepRange(before);
+  if (!today || !planned) return true;
+  // A log saved before ranges existed froze only the working number.
+  const legacy = before.rep_range == null && planned[0] === planned[1]
+    && planned[0] === today[0] && planned[0] <= today[1];
+  return legacy || (today[0] <= planned[0] && today[1] <= planned[1]);
 }
 
 /**
@@ -736,7 +763,8 @@ function sameWorkload(block: StructuredBlock, before: StructuredBlock, actual?: 
  *
  * Earned in order: every set and rep done, and it felt easy. Below the top of a
  * rep range that earns one more rep; at the top on every set it earns a small
- * raise in weight. "Right" holds the dose, "hard" is left to the ease-off.
+ * raise in weight. "Right" earns the same steps, the raise being the smallest
+ * plate step, unless recorded RPE ran over the plan's; "hard" is left to the ease-off.
  * Nothing is offered when today's dose differs from the one logged, when the
  * plan asks for less effort than last time, or when the plan says to hold.
  */
@@ -751,8 +779,12 @@ export function nextStepFor(block: StructuredBlock, log: ExerciseLogRecord | nul
   const comparable = sameWorkload(block, log.prescribed as StructuredBlock, log.actual);
   if (!comparable || !finitePositiveNumber(block.sets)) return null;
   if ((log.actual.sets ?? block.sets) < block.sets) return null;
-  const reps = repsReached(log, comparable);
-  if (reps === null || reps < comparable[0] || feelOf(log, plannedRpe(block)) !== "easy") return null;
+  // A blank rep count means last time's own prescription was done, not today's.
+  const reps = repsReached(log, progressionRepRange(log.prescribed as StructuredBlock) ?? comparable);
+  const feel = feelOf(log, plannedRpe(block));
+  // Right is appropriate effort, which earns the next step unless recorded RPE ran over the plan's.
+  const earned = feel === "easy" || (feel === "right" && !effortOverPlan(log, block));
+  if (reps === null || reps < comparable[0] || !earned) return null;
   if (reps < comparable[1]) return { kind: "reps", reps: reps + 1 };
 
   const field = logFieldsForBlock(block).find((item) => item.key === "load");
@@ -765,7 +797,8 @@ export function nextStepFor(block: StructuredBlock, log: ExerciseLogRecord | nul
   if (block.load?.method && !["absolute", "bodyweight"].includes(block.load.method)) return null;
   if (!field || !load || load.unit !== field.apiUnit || !finitePositiveNumber(load.value)) return null;
   const step = plateStep(load);
-  const raise = Math.max(1, Math.round((load.value * PROGRESSION_RATIO) / step)) * step;
+  // Easy earns the usual share; Right earns the smallest sensible step.
+  const raise = feel === "easy" ? Math.max(1, Math.round((load.value * PROGRESSION_RATIO) / step)) * step : step;
   return { kind: "load", load: { value: Math.round((load.value + raise) * 100) / 100, unit: load.unit } };
 }
 
@@ -849,6 +882,12 @@ export function backoffLoadFor(block: StructuredBlock, log: ExerciseLogRecord | 
   const before = log.prescribed as StructuredBlock;
   const plannedReps = prescribedReps(before.reps)?.range;
   if (!sameWorkload(block, before, log.actual)) return null;
+  // A lighter dose today already eases the work; a weight cut is not stacked on top of it.
+  const todayRange = progressionRepRange(block);
+  const beforeRange = progressionRepRange(before);
+  if ((typeof before.sets === "number" && block.sets !== before.sets)
+    || (todayRange && beforeRange && before.rep_range != null && todayRange.join() !== beforeRange.join())
+    || (todayRange && beforeRange && before.rep_range == null && todayRange[0] !== beforeRange[0])) return null;
 
   const plannedSets = finitePositiveNumber(before.sets) ? before.sets : null;
   const doneSets = log.actual.sets;
