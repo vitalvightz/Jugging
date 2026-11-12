@@ -958,3 +958,57 @@ test("Change sport is a quiet, optional per-session switch (390px)", async ({ pa
   await expect(page.getByRole("dialog").getByRole("button", { name: /^Change sport for this session/ })).toHaveText("Boxing · Change");
 });
 
+
+for (const width of [390, 1280]) {
+  test(`History adds a second session to a previous day (${width}px)`, async ({ page, baseURL }) => {
+    await page.setViewportSize({ width, height: 844 });
+    const submissions = await setup(page, baseURL!);
+    const errors: string[] = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.goto("/history");
+    await page.getByRole("button", { name: "Add Session", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Log session", exact: true });
+    await dialog.locator("summary").click();
+    await expect(dialog.getByLabel("Training date (optional)")).toHaveValue(prescribed.training_day);
+    await choose(dialog, page, "Activity", "Strength");
+    await choose(dialog, page, "Duration", "45");
+    await choose(dialog, page, "Effort", "Easy");
+    await dialog.getByRole("button", { name: "Save Session", exact: true }).click();
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0]).toMatchObject({ training_day: prescribed.training_day, activity: "strength" });
+    const history = page.locator(".history-list");
+    await expect(history.locator(".history-session-row")).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Add Session", exact: true })).toHaveCount(1);
+    await expect(history).toContainText("Strength & Power");
+    await expect(history).toContainText("45 min");
+    await page.reload();
+    await expect(history.locator(".history-session-row")).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Add Session", exact: true })).toHaveCount(1);
+    await expect(history.getByText("Sat 10 Oct 2026", { exact: false })).toHaveCount(2);
+    await expect(history).toContainText("Strength & Power");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+    await page.screenshot({ path: `/tmp/history-add-session-${width}.png`, fullPage: true });
+  });
+}
+
+
+test("History offers one add action per past day with multiple sessions", async ({ page, baseURL }) => {
+  await setup(page, baseURL!, false, false, [
+    prescribed,
+    { ...prescribed, id: "same-day-2", title: "Second session" },
+    { ...prescribed, id: "same-day-3", title: "Third session" },
+    { ...prescribed, id: "another-day", training_day: "2026-10-09" },
+  ]);
+  await page.goto("/history");
+  const actions = page.getByRole("button", { name: "Add Session", exact: true });
+  await expect(actions).toHaveCount(2);
+  for (const [index, day] of ["2026-10-10", "2026-10-09"].entries()) {
+    await actions.nth(index).click();
+    const dialog = page.getByRole("dialog", { name: "Log session", exact: true });
+    await dialog.locator("summary").click();
+    await expect(dialog.getByLabel("Training date (optional)")).toHaveValue(day);
+    await dialog.getByRole("button", { name: "Close training log" }).click();
+    await expect(dialog).toHaveCount(0);
+  }
+});
