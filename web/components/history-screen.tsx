@@ -310,9 +310,8 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
               setSparringDraft(log ? sparringReportDraft(selected.id, selected.title, log) : manualSparringDraft(selected)); setSelected(null);
             }}>Sparring details</button> : null}
           </> : selected.history_editable ? <PlanSessionEditor token={token} row={selected} onSaved={row => { onUpdate(row); setSelected(null); }} /> : null}
-          {selected.source === "external" || selected.history_editable ? <details className="history-actions-menu"><summary aria-label="More session actions">···</summary>
-          <div className="history-actions-items"><button className="history-session-delete" type="button" disabled={deleting !== null}
-            onClick={() => { void remove(selected).then(removed => { if (removed) setSelected(null); }); }}>Delete session</button></div></details> : null}
+          {selected.source === "external" || selected.history_editable ? <button className="history-session-delete" type="button" aria-label="Delete session" disabled={deleting !== null}
+            onClick={() => { void remove(selected).then(removed => { if (removed) setSelected(null); }); }}>Delete</button> : null}
         </div>}
         onEditRun={row => { setEditRun(row); setSelected(null); }}
         onEditExercises={selected.source === "external" ? row => { setExercisesFor({ row, reopenDetails: true }); setSelected(null); } : undefined} /> : null}
