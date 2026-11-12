@@ -656,10 +656,38 @@ def test_todays_list_carries_the_last_weight_per_exercise():
     assert resp.status_code == 200
     assert resp.json()["recent_loads"] == [
         {"exercise_key": "trap-bar-deadlift", "display_name": "Trap Bar Deadlift",
-         "load": {"value": 95.0, "unit": "kg"}, "training_day": "2020-01-08"},
+         "load": {"value": 95.0, "unit": "kg"}, "training_day": "2020-01-08", "set_loads": None},
         {"exercise_key": None, "display_name": "Goblet Squat",
-         "load": {"value": 24.0, "unit": "kg"}, "training_day": "2020-01-02"},
+         "load": {"value": 24.0, "unit": "kg"}, "training_day": "2020-01-02", "set_loads": None},
     ]
+
+
+def test_an_unmeasured_done_keeps_each_older_set_load_instead_of_one_flat_weight():
+    """100/110/120 kg, then Done with no weights: the recall keeps all three loads."""
+    client, store, _ = _build_client()
+    _seed_plan(store, blocks=[_squat()])
+    _start(client)
+    kg = lambda value: {"value": value, "unit": "kg"}  # noqa: E731
+    store.exercise_logs += [
+        _history_row("measured", training_day="2020-01-01", actual={"sets": 3, "set_entries": [
+            {"set_number": 1, "reps": 5, "load": kg(100)}, {"set_number": 2, "reps": 5, "load": kg(110)},
+            {"set_number": 3, "reps": 5, "load": kg(120)}]}),
+        _history_row("done", training_day="2020-01-08", status="as_prescribed", actual={}),
+        # A partly measured workout leaves its unmeasured set unknown.
+        _history_row("partial", training_day="2020-01-02", exercise_key="goblet-squat", actual={"set_entries": [
+            {"reps": 8, "load": kg(20)}, {"reps": 8}, {"reps": 8, "load": {"value": 0, "unit": "kg"}}]}),
+    ]
+
+    body = client.get(f"/api/today/exercise-logs?plan_id={PLAN_ID}", headers=ATHLETE).json()
+
+    loads = {row["exercise_key"]: row for row in body["recent_loads"]}
+    assert loads["trap-bar-deadlift"]["training_day"] == "2020-01-01"
+    assert loads["trap-bar-deadlift"]["load"] == kg(120.0)
+    assert loads["trap-bar-deadlift"]["set_loads"] == [kg(100.0), kg(110.0), kg(120.0)]
+    assert loads["goblet-squat"]["load"] == kg(20.0)
+    assert loads["goblet-squat"]["set_loads"] == [kg(20.0), None, None]
+    latest = next(row for row in body["recent_performances"] if row["exercise_key"] == "trap-bar-deadlift")
+    assert latest["id"] == "done" and not latest["actual"].get("set_entries")
 
 
 def test_a_batch_is_one_write_never_a_row_at_a_time(monkeypatch):

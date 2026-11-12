@@ -700,6 +700,21 @@ test("Done keeps varied and partial historical drafts available without saving i
   }
 });
 
+test("set history recalled past an unmeasured Done opens as individual drafts in the editor", async () => {
+  const block = { ...deadlift, sets: 3 };
+  const done = { ...record(block, { status: "as_prescribed", actual: {} }), training_day: "2026-11-10" };
+  for (const set_loads of [[100, 110, 120], [100, null, 120]]) {
+    const view = mount(block, { recentPerformances: [done], recentLoads: [{ exercise_key: block.exercise_key ?? null,
+      display_name: block.display_name ?? "", load: { value: 120, unit: "kg" }, training_day: "2026-11-01",
+      set_loads: set_loads.map(value => value === null ? null : { value, unit: "kg" }) }] });
+    await view.click("Log numbers");
+    assert.deepEqual(Array.from(view.container.querySelectorAll<HTMLInputElement>('input[aria-label^="Load kg, set"]')).map(node => node.value),
+      set_loads.map(value => value === null ? "" : String(value)));
+    assert.equal(view.saved.length, 0);
+    view.unmount();
+  }
+});
+
 test("written prescriptions remain prescriptions, never suggestions or Try actions", async () => {
   const previous = record(deadlift, { actual: { sets: 4, reps: 8, load: { value: 125, unit: "kg" }, feel: "right" } });
   for (const progression_hold of [false, true]) for (const value of [1, 100, 125, 130]) {

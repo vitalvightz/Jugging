@@ -1493,6 +1493,8 @@ export type ExerciseRecentLoad = {
   display_name: string;
   load: ExerciseLogMeasure;
   training_day: string;
+  /** Each set's own load when that workout was logged set by set; null where a set was unmeasured. */
+  set_loads?: (ExerciseLogMeasure | null)[] | null;
 };
 
 export type ExerciseHistoryResponse = { logs: ExerciseLogRecord[]; next_offset: number | null };

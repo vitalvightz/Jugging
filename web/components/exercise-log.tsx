@@ -14,7 +14,6 @@ import {
   draftFromLog,
   hasLoggableNumbers,
   isLoggableBlock,
-  lastPerformanceFor,
   exerciseIdentity,
   needsFirstLoad,
   nextStepLabel,
@@ -276,7 +275,6 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
   const { logging, blockId, fields, log } = state;
   const recommendation = weightRecommendation(block, logging);
   const suggested = recommendation.suggested;
-  const previous = lastPerformanceFor(block, logging.recentPerformances);
   // The shared recommendation, as a target the athlete can set up and confirm.
   const nextStep: NextStep | null = recommendation.tryReps
     ? { kind: "reps", reps: recommendation.tryReps }
@@ -298,7 +296,9 @@ export function ExerciseLogPanel({ block }: { block: StructuredBlock }) {
 
   /** Opens the numbers, optionally set up with a suggested target to confirm once it is done. */
   function openEditor(target?: NextStep) {
-    const individualHistory = !log?.actual.load && !log?.actual.set_entries?.length && supportsSets && previous?.actual.set_entries?.length
+    // The shared recommendation is the evidence: it holds per-set drafts from the latest set entries,
+    // or from older set history recalled past an unmeasured Done. One straight load leaves `suggested` set.
+    const individualHistory = !log?.actual.load && !log?.actual.set_entries?.length && supportsSets
       && !suggested && recommendation.sets.some(row => row.suggested);
     setSetRows(log?.actual?.set_entries?.length ? draftsFromActual(log.actual)
       : individualHistory ? setDraftsForFields(fields, log ? draftFromLog(fields, log) : {}).map((row, at) => ({ ...row,

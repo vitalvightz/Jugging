@@ -2721,6 +2721,9 @@ class ExerciseRecentLoad(BaseModel):
     display_name: str = ""
     load: ExerciseLogMeasure
     training_day: str
+    # Each set's own load when that workout was logged set by set, by set
+    # position; None where a set was unmeasured. Never one load for every set.
+    set_loads: list[ExerciseLogMeasure | None] | None = None
 
 
 class ExerciseHistoryResponse(BaseModel):

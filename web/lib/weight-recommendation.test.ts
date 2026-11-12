@@ -324,3 +324,47 @@ test("only engine changes are marked as calculated, never authored or recalled l
   const backoff = weightRecommendation(block, { recentPerformances: [previous({ load: load(120), feel: "hard" })] });
   assert.equal(backoff.calculated, true);
 });
+
+test("Done + Hard with no measured weight never reduces from an older recalled load", () => {
+  const recentLoads = [{ exercise_key: "squat", display_name: "Back Squat", load: load(100), training_day: "2026-11-01" }];
+  for (const actual of [{ feel: "hard" }, { sets: 3, reps: 8, feel: "hard" }, { sets: 2, reps: 5 }] as ExerciseLogRecord["actual"][]) {
+    for (const reason of [null, "fatigue"] as const) {
+      const done = { ...previous(actual), reason, training_day: "2026-11-10" };
+      const result = weightRecommendation(block, { allowProgression: true, recentLoads, recentPerformances: [done] });
+      // The older weight is still recalled as an editable draft, dated to when it was measured.
+      assert.deepEqual(result.last, load(100));
+      assert.equal(result.lastDay, "2026-11-01");
+      assert.deepEqual(result.suggested, load(100));
+      assert.equal(result.calculated, false);
+      assert.deepEqual(result.sets.map(row => [row.last?.value, row.suggested?.value, row.calculated]), Array(3).fill([100, 100, false]));
+    }
+  }
+  // The same Hard workout with its own confirmed weight still earns the reduction.
+  const measured = weightRecommendation(block, { recentLoads, recentPerformances: [previous({ load: load(100), feel: "hard" })] });
+  assert.deepEqual(measured.suggested, load(95));
+  assert.equal(measured.calculated, true);
+});
+
+test("an unmeasured Done recalls each older set's own load, or blank, never one load for every set", () => {
+  const recent = (set_loads: ({ value: number; unit: string } | null)[]) => [{ exercise_key: "squat", display_name: "Back Squat",
+    load: load(120), training_day: "2026-11-01", set_loads }];
+  const done = [{ ...previous({}), training_day: "2026-11-10" }];
+  const varied = weightRecommendation(block, { allowProgression: true, recentLoads: recent([load(100), load(110), load(120)]), recentPerformances: done });
+  assert.deepEqual(varied.sets.map(row => row.last?.value), [100, 110, 120]);
+  assert.deepEqual(varied.sets.map(row => row.suggested?.value), [100, 110, 120]);
+  assert.ok(varied.sets.every(row => row.calculated === false));
+  // Varied history has no single straight-set draft.
+  assert.equal(varied.suggested, null);
+  assert.equal(varied.calculated, false);
+  const timer = withHistoricalTimerLoads(buildTimerItems([{ blocks: [block] }]), [block], recent([load(100), load(110), load(120)]), done);
+  assert.ok(timer[0].kind === "sets");
+  assert.deepEqual(timer[0].suggestedLoads, ["100", "110", "120"]);
+  // Missing or unmeasured sets stay blank rather than borrowing another set's weight.
+  const partial = weightRecommendation(block, { recentLoads: recent([load(100), null]), recentPerformances: done });
+  assert.deepEqual(partial.sets.map(row => row.suggested), [load(100), null, null]);
+  assert.equal(partial.suggested, null);
+  // Straight-set history without per-set detail is still one honest load.
+  const straight = weightRecommendation(block, { recentLoads: [{ ...recent([])[0], set_loads: null }], recentPerformances: done });
+  assert.deepEqual(straight.sets.map(row => row.suggested?.value), [120, 120, 120]);
+  assert.deepEqual(straight.suggested, load(120));
+});
