@@ -5,8 +5,10 @@ Run inside the API container (it reads the same environment as the API):
     python tools/profile_today.py --athlete <uuid> --now 2026-11-12T19:04:00Z
 
 Prints timings, function names, store-call counts and JSON field sizes only,
-never athlete content. Every store method that is not a read raises inside this
-script (and is reported), so the profile cannot change production data. Works on
+never athlete content. It cannot change production data: every HTTP request
+other than GET/HEAD or a verified read-only RPC is refused before it is sent
+(whatever code path built it), and non-read store methods are refused too.
+Both are reported. Works on
 code from before #3260 as well, so the same instant and data can be compared
 across versions.
 """
@@ -28,6 +30,43 @@ READ_PREFIXES = ("get_", "list_", "count_", "fetch_", "is_", "has_")
 # Reads whose names do not start with a read prefix.
 READ_METHODS = {"latest_sparring_log_day", "xp_award_exists", "private_media_worker_healthy", "is_admin_email"}
 REPO_MARKERS = ("/api/", "/fightcamp/")
+
+
+# Read-only RPCs Today may call. Each was checked in the production catalogue:
+# STABLE functions cannot write, and pending_delayed_rehab is a single SELECT
+# (volatile only because it does not declare otherwise).
+READ_ONLY_RPCS = {
+    "pending_delayed_rehab",
+    "get_generation_job_status_v2",
+    "get_latest_generation_job_status_v2",
+    "get_visible_active_generation_job_status_v2",
+}
+
+
+def install_http_read_only_guard() -> Counter:
+    """Refuse, before it is sent, every HTTP request that could write.
+
+    Installed on ``httpx.Client.send`` so it covers every client in the
+    process, whatever code path built the request: only GET/HEAD, and POSTs to
+    the read-only RPCs above, leave the process. Returns refusals by request.
+    """
+    import httpx
+
+    refused: Counter = Counter()
+    original = httpx.Client.send
+
+    def guarded(self, request, *args, **kwargs):
+        method = request.method.upper()
+        path = request.url.path
+        rpc = path.rsplit("/rpc/", 1)[1] if "/rpc/" in path else None
+        if method in {"GET", "HEAD"} or (method == "POST" and rpc in READ_ONLY_RPCS):
+            return original(self, request, *args, **kwargs)
+        label = f"{method} {'rpc/' + rpc if rpc else path.rsplit('/', 1)[-1]}"
+        refused[label] += 1
+        raise RuntimeError(f"profile_today is read-only: refused {label}")
+
+    httpx.Client.send = guarded
+    return refused
 
 
 class ReadOnlyTimedStore:
@@ -116,6 +155,7 @@ def main() -> None:
     parser.add_argument("--label", default=os.getenv("PROFILE_LABEL", ""))
     args = parser.parse_args()
 
+    http_refused = install_http_read_only_guard()
     import_started = time.perf_counter()
     from api import server_timing
     from api.services.today_readiness_boundary import build_today_command_view
@@ -168,6 +208,7 @@ def main() -> None:
         },
         "store_calls_one_warm_build": store_calls,
         "refused_writes": dict(store.refused),
+        "refused_http_requests": dict(http_refused),
         "response_bytes": len(response_json),
         "cold_and_warm_responses_identical": cold_json == response_json,
         "response_fields": _sizes(payload)["fields"],

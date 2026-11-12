@@ -17,6 +17,9 @@ SECRET_NAME = "Sentinel Camp Name"
 
 
 def _run(monkeypatch, capsys, store) -> dict:
+    import httpx
+
+    monkeypatch.setattr(httpx.Client, "send", httpx.Client.send)  # the tool's guard is undone after
     monkeypatch.setattr(api.store.SupabaseAppStore, "from_env", classmethod(lambda cls: store))
     monkeypatch.setattr(sys, "argv", ["profile_today.py", "--athlete", ATHLETE,
                                       "--now", "2026-06-03T15:00:00Z", "--warm-runs", "1"])
@@ -44,3 +47,45 @@ def test_writes_are_refused_and_reported(monkeypatch, capsys):
 
     assert report["refused_writes"].get("adopt_or_create_intake_injury_flag")
     assert json.dumps(store.injury_flags, sort_keys=True, default=str) == flags_before
+
+
+def test_http_guard_refuses_writes_before_they_are_sent(monkeypatch):
+    import httpx
+
+    tool = runpy.run_path(str(TOOL))  # loads the module without running main()
+    sent: list[str] = []
+    transport = httpx.MockTransport(lambda request: (sent.append(f"{request.method} {request.url.path}"),
+                                                     httpx.Response(200, json=[]))[1])
+    monkeypatch.setattr(httpx.Client, "send", httpx.Client.send)  # restored after the test
+    refused = tool["install_http_read_only_guard"]()
+    client = httpx.Client(transport=transport, base_url="https://db.example")
+
+    client.get("/rest/v1/plans?id=eq.1")
+    client.post("/rest/v1/rpc/pending_delayed_rehab", json={})
+    for method, path in (("POST", "/rest/v1/today_checkins"), ("PATCH", "/rest/v1/plans"),
+                         ("DELETE", "/rest/v1/injury_flags"), ("POST", "/rest/v1/rpc/sync_intake_injury_flag")):
+        with pytest.raises(RuntimeError, match="read-only"):
+            client.request(method, path, json={})
+
+    assert sent == ["GET /rest/v1/plans", "POST /rest/v1/rpc/pending_delayed_rehab"]
+    assert refused == {"POST today_checkins": 1, "PATCH plans": 1, "DELETE injury_flags": 1,
+                       "POST rpc/sync_intake_injury_flag": 1}
+
+
+def test_a_real_store_write_is_refused_before_any_request_leaves(monkeypatch):
+    import httpx
+
+    monkeypatch.setenv("SUPABASE_URL", "https://db.invalid")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-role-key-for-tests")
+    monkeypatch.setattr(httpx.Client, "send", httpx.Client.send)
+    tool = runpy.run_path(str(TOOL))
+    refused = tool["install_http_read_only_guard"]()
+    store = api.store.SupabaseAppStore.from_env()
+
+    with pytest.raises(Exception):
+        store.upsert_today_checkin(ATHLETE, {"training_day": "2026-06-03", "readiness": "ready"})
+    with pytest.raises(Exception):
+        store.adopt_or_create_intake_injury_flag({"athlete_id": ATHLETE, "plan_id": "p", "source_key": "k"})
+
+    assert sum(refused.values()) >= 2
+    assert all(label.split()[0] in {"POST", "PATCH", "PUT", "DELETE"} for label in refused)
