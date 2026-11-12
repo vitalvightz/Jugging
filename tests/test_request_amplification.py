@@ -288,3 +288,96 @@ def test_fallback_read_after_a_failed_upsert_is_cached(monkeypatch):
     assert store.ensure_profile(USER)["id"] == "athlete-1"
     assert store.ensure_profile(USER)["id"] == "athlete-1"
     assert len(reads) == 2
+
+
+def _concurrent_ensure(store, callers: int):
+    import threading
+
+    results, errors = [None] * callers, []
+    start = threading.Barrier(callers)
+
+    def run(index):
+        start.wait()
+        try:
+            results[index] = store.ensure_profile(USER)
+        except Exception as exc:  # noqa: BLE001 - recorded for the assertion
+            errors.append(exc)
+
+    threads = [threading.Thread(target=run, args=(i,)) for i in range(callers)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(5)
+    return results, errors
+
+
+def _slow_profile_reads(store, *, fail_first=False, during_read=None):
+    import threading
+    import time
+
+    reads, lock = [], threading.Lock()
+
+    def read_profile(athlete_id):
+        with lock:
+            reads.append(athlete_id)
+            count = len(reads)
+        time.sleep(0.15)  # held open so the burst arrives while it is in flight
+        if during_read and count == 1:
+            during_read()
+        if fail_first and count == 1:
+            raise RuntimeError("profile read down")
+        return {"id": athlete_id, "role": "athlete", "full_name": f"read {count}"}
+
+    store._get_profile_by_id = read_profile
+    store._is_transient_store_error = lambda exc: False
+    return reads
+
+
+def test_a_cold_cache_launch_burst_shares_one_profile_read(monkeypatch):
+    store, _ = _supabase_store_with_profile_reads(monkeypatch)
+    reads = _slow_profile_reads(store)
+
+    results, errors = _concurrent_ensure(store, 6)
+
+    assert errors == []
+    assert reads == ["athlete-1"]
+    assert all(result["full_name"] == "read 1" for result in results)
+    # Every caller still owns its row.
+    results[0]["role"] = "admin"
+    assert results[1]["role"] == "athlete"
+
+
+def test_a_failed_shared_read_is_not_handed_to_waiters(monkeypatch):
+    from api.store import _STORE_CLIENT_ERRORS
+
+    store, _ = _supabase_store_with_profile_reads(monkeypatch)
+    reads = _slow_profile_reads(store, fail_first=True)
+    monkeypatch.setattr("api.store._STORE_CLIENT_ERRORS", (*_STORE_CLIENT_ERRORS, RuntimeError))
+
+    results, errors = _concurrent_ensure(store, 3)
+
+    # The leader's caller sees its failure; each waiter read for itself.
+    assert len(errors) == 1
+    assert len(reads) == 3
+    assert sorted(result["full_name"] for result in results if result) == ["read 2", "read 3"]
+
+
+def test_a_write_during_the_shared_read_makes_waiters_read_again(monkeypatch):
+    store, _ = _supabase_store_with_profile_reads(monkeypatch)
+    reads = _slow_profile_reads(store, during_read=lambda: store.invalidate_cached_profile("athlete-1"))
+
+    results, errors = _concurrent_ensure(store, 3)
+
+    assert errors == []
+    assert len(reads) >= 2  # waiters never reuse a read that overlapped a write
+    waiter_rows = [result for result in results if result["full_name"] != "read 1"]
+    assert len(waiter_rows) == 2
+
+
+def test_zero_ttl_also_switches_off_shared_reads(monkeypatch):
+    store, _ = _supabase_store_with_profile_reads(monkeypatch, ttl="0")
+    reads = _slow_profile_reads(store)
+
+    _concurrent_ensure(store, 3)
+
+    assert len(reads) == 3

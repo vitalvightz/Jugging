@@ -42,6 +42,7 @@ import type {
   MeResponse,
   NutritionWorkspaceState,
   NutritionWorkspaceUpdateRequest,
+  PlanCalendar,
   PlanCompletionsResponse,
   PlanDetail,
   PlanRequest,
@@ -917,6 +918,19 @@ export function getPlan(
   const path = `/api/plans/${encodeURIComponent(planId)}`;
   return sharedRead(token, path, shared =>
     withTransientRetries(() => readJson<PlanDetail>(path, { token, signal: shared }), { signal: shared }),
+    { signal, hold: true, reuseForMs, remember: true });
+}
+
+/** A plan's dated week/day spine for the fight countdown (a few KB, not the plan detail). */
+export function getPlanCalendar(
+  token: string,
+  planId: string,
+  options: { signal?: AbortSignal } & ReadReuse = {},
+): Promise<PlanCalendar> {
+  const { signal, reuseForMs } = options;
+  const path = `/api/plans/${encodeURIComponent(planId)}/calendar`;
+  return sharedRead(token, path, shared =>
+    withTransientRetries(() => readJson<PlanCalendar>(path, { token, signal: shared }), { signal: shared }),
     { signal, hold: true, reuseForMs, remember: true });
 }
 

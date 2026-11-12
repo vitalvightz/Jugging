@@ -5,7 +5,7 @@ import copy
 import json
 import logging
 from datetime import date, datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Mapping
 
 from fastapi import HTTPException, status
 
@@ -841,3 +841,27 @@ def _map_admin_athlete(row: dict[str, Any], latest_intake: dict[str, Any] | None
         first_usable_plan_at=row.get("first_usable_plan_at"),
         time_to_first_usable_plan_seconds=time_to_first_usable_plan_seconds(row),
     )
+
+
+# What Home's fight countdown reads (web/lib/fight-countdown.ts through
+# getWeeks/getDays/resolvedWeekPhase in web/lib/structured-plan.ts).
+_CALENDAR_WEEK_FIELDS = (
+    "week_id", "week_index", "start_date", "end_date", "phase_label", "countdown_start", "countdown_end",
+)
+_CALENDAR_DAY_FIELDS = ("date", "phase_label", "countdown_label")
+
+
+def plan_calendar_spine(structured_plan: Mapping[str, Any]) -> dict[str, Any]:
+    """The plan's weeks and days with only their calendar fields, in order."""
+    weeks = []
+    for week in structured_plan.get("weeks") or []:
+        if not isinstance(week, Mapping):
+            continue
+        spine = {key: week[key] for key in _CALENDAR_WEEK_FIELDS if key in week}
+        spine["days"] = [
+            {key: day[key] for key in _CALENDAR_DAY_FIELDS if key in day}
+            for day in (week.get("days") or [])
+            if isinstance(day, Mapping)
+        ]
+        weeks.append(spine)
+    return {"weeks": weeks}

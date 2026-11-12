@@ -1791,6 +1791,18 @@ export type PlanBulkPermanentDeleteResult = {
 };
 
 /**
+ * The dated week and day spine of a plan's structured card, nothing else.
+ *
+ * Home's fight countdown needs only these dates, phases and countdown labels;
+ * the full plan detail (sessions, blocks, media) was ~1.7 MB for one athlete.
+ * Built from exactly the structured plan the plan detail returns.
+ */
+export type PlanCalendar = {
+  plan_id: string;
+  structured_plan: Record<string, unknown> | null;
+};
+
+/**
  * Live completion rows for one plan. ``current_training_day`` is the
  * server-authoritative athlete-local day the viewer uses to derive missed
  * sessions and gate the retro-log window.
@@ -2752,6 +2764,7 @@ export type TrainingHistoryResponse = {
 };
 
 export type TrainingHistorySession = {
+  session_id: string | null;
   completion_origin: "day_credit" | "reported" | null;
   id: string;
   source: "external" | "unlxck";
