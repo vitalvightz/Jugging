@@ -31,11 +31,19 @@ change memoizes them:
   them. An explicit `path` or `bank` composes fresh.
 
 No safety decision changes: each cached value equals a fresh computation
-(pinned in `tests/test_today_core_cpu_caches.py`) and the full suite passes.
+(pinned in `tests/test_today_core_cpu_caches.py`). In the full suite, 565
+tests passed before the run was stopped; the failures it hit
+(`test_achilles_load_activation`, `test_api_types_generated`,
+`test_custom_open_plans`, `test_computed_support`) fail identically on the
+base commit.
 
-Measured locally on the same fixture: `today_core` ~870ms → ~210ms on the
-first build in a process, ~100ms once warm. Production times differ by
-hardware and injury count; check the next iPhone report.
+Measured locally on the same fixture, with production settings
+(`UNLXCK_DISABLE_SPACY=1`, as `compose.yaml` sets for the API):
+`today_core` ~111ms → ~21ms warm, ~169ms → ~50ms on the first build in a
+process. The spaCy cache only matters where spaCy is enabled (the generation
+worker, local runs); in the API the gains come from phrase scoring and policy
+loading. Production times differ by hardware and injury count; check the
+next iPhone report.
 
 The largest remaining core item is structured-plan projection
 (`resolve_effective_structured_plan`, ~40ms here). It shapes session
@@ -43,7 +51,7 @@ decisions, so it was left alone.
 
 ## Request overhead: where the 200–370ms can be
 
-The path is iPhone → Next.js `/api` rewrite (web host) → Caddy → uvicorn.
+The path is iPhone → Vercel (Next.js `/api` rewrite) → Hetzner Caddy → uvicorn.
 `app` starts at the first FastAPI middleware, so the gap includes both network
 hops, Caddy, and any wait before the event loop picks the request up.
 
