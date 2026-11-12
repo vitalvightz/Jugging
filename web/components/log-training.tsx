@@ -55,6 +55,8 @@ export function manualSparringDraft(row: TrainingHistorySession): SparringDraft 
 }
 
 type Props = { accessToken: string | null; entry?: TrainingHistorySession; repeatEntry?: TrainingHistorySession; recent?: boolean; history?: TrainingHistorySession[]; quickSession?: { activity: TrainingActivity; sport?: TrainingSport | null; session_type?: TrainingSessionType | null; duration_minutes: number; title: string; effort?: TrainingEffort | null }; onSaved?: (row: TrainingHistorySession) => void; onSparringReported?: () => void; variant?: "compact" | "tile" | "primary";
+  /** Preselect a date for a new session; editing keeps the original record date. */
+  initialTrainingDay?: string;
   /** With `entry`: open its edit sheet at once, with no trigger button, and report when it closes. */
   autoOpen?: boolean; onClosed?: () => void };
 
@@ -62,7 +64,7 @@ export function LogTraining(props: Props) {
   return props.accessToken ? <LogTrainingContent key={props.accessToken} {...props} accessToken={props.accessToken} /> : null;
 }
 
-function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, history, quickSession, onSaved, onSparringReported, variant = "compact", autoOpen = false, onClosed }: Props & { accessToken: string }) {
+function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, history, quickSession, onSaved, onSparringReported, variant = "compact", autoOpen = false, initialTrainingDay, onClosed }: Props & { accessToken: string }) {
   const [open, setOpen] = useState(false);
   // The sheet slides away before it unmounts, rather than vanishing in a frame.
   const [closing, setClosing] = useState(false);
@@ -224,7 +226,7 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
     setRunTime(!repeat && row?.duration_seconds ? formatRunTime(row.duration_seconds) : "");
     setRunType(row?.run_type ?? null);
     setEffort(repeat ? "" : row?.effort ?? "");
-    setTrainingDay("");
+    setTrainingDay(initialTrainingDay ?? "");
     requestId.current = null;
     setError(null);
     setSaved(null);
@@ -403,8 +405,8 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
       {repeatEntry || autoOpen ? null : entry ? <button className={styles.editButton} type="button" onClick={() => startEdit(entry)} aria-haspopup="dialog" aria-label={`Edit ${trainingTitle(entry)}`} title="Edit session">
         <svg className="ex-log-edit-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M4 20h4L18.5 9.5a2.12 2.12 0 0 0-3-3L5 17v3Z" /><path d="m14.5 7.5 3 3" /></svg>
       </button> :
-        <button className={variant === "primary" ? `cta ${styles.primary}` : variant === "tile" ? `${tileStyles.tile} ${tileStyles.log}` : styles.actionRow} type="button" onClick={() => startEdit()} aria-haspopup="dialog" aria-label="Log session">
-          {variant === "primary" ? <><span aria-hidden="true">+</span> Log session</> : variant === "tile" ? <TrainingActionContent kind="log" /> : <><span><strong>{recent && (repeatSource || quickSession) ? "Log another session" : "Log session"}</strong><span className="muted">{mySport ? `${sportLabel(mySport)}, strength, conditioning and more.` : "Sparring, boxing, running, strength and more."}</span></span><span aria-hidden="true">+</span></>}
+        <button className={variant === "primary" ? `cta ${styles.primary}` : variant === "tile" ? `${tileStyles.tile} ${tileStyles.log}` : styles.actionRow} type="button" onClick={() => startEdit()} aria-haspopup="dialog" aria-label={initialTrainingDay ? "Add Session" : "Log session"}>
+          {initialTrainingDay ? <strong>+ Add Session</strong> : variant === "primary" ? <><span aria-hidden="true">+</span> Log session</> : variant === "tile" ? <TrainingActionContent kind="log" /> : <><span><strong>{recent && (repeatSource || quickSession) ? "Log another session" : "Log session"}</strong><span className="muted">{mySport ? `${sportLabel(mySport)}, strength, conditioning and more.` : "Sparring, boxing, running, strength and more."}</span></span><span aria-hidden="true">+</span></>}
         </button>}
       {open ? (
         <dialog ref={dialog} className={styles.dialog} aria-label={editing ? "Edit session" : "Log session"} data-closing={closing || undefined} onCancel={event => { event.preventDefault(); if (!busy) closeSheet(); }}>

@@ -304,6 +304,8 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
             {row.source === "external" && row.activity === "sparring" && sparringLogs?.get(row.id) ? (
               <Chips chips={sessionSparringChips(sparringLogs.get(row.id)!)} />
             ) : null}
+            {token && today && row.training_day < today ? <div className="history-session-actions"><LogTraining accessToken={token}
+              initialTrainingDay={row.training_day} onSaved={onUpdate} /></div> : null}
             {row.source === "external" ? <div className="history-session-actions">
               {row.activity === "sparring" && sparringLogs && token ? (() => {
                 const log = sparringLogs.get(row.id);
