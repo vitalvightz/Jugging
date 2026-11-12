@@ -23,16 +23,14 @@ export type ExerciseHistoryCache = Map<string, Promise<ExercisePerformancesRespo
 
 function ExerciseCard({ exercise, onSelect }: { exercise: PersonalExercise; onSelect: () => void }) {
   const result = exerciseResult(exercise);
-  const recommendation = personalWeightRecommendation({ block_type: "strength", ...exercise.latest_performance?.prescribed,
-    sets: exercise.latest_values.sets,
-    reps: (exercise.latest_performance?.prescribed.reps as StructuredBlock["reps"]) ?? exercise.latest_values.reps,
-  }, exercise);
   return <li className={`history-row ${styles.card}`} data-tone={exercise.identity_kind === "legacy" ? "grey" : "green"}>
     <button className={styles.open} type="button" aria-haspopup="dialog" aria-label={`View ${exercise.name} performance history${exercise.identity_kind === "legacy" ? ` for ${formatAppDate(exercise.latest_day)}` : ""}`} onClick={onSelect}>
-      <span className={styles.cardHeading}><span className="history-row-title">{exercise.name}</span><span className={styles.chevron} aria-hidden="true">›</span></span>
-      <span className={styles.resultLabel}>{result.label}</span><strong className={styles.result} data-weight={exercise.best_loads.length > 0 || undefined}>{result.value}</strong>
-      <WeightRecommendation value={{ ...recommendation, lastDay: undefined }} />
-      <span className={styles.date}>{exercise.identity_kind === "legacy" ? "Unlinked record" : exercise.identity_kind === "personal" ? "Your exercise · Last performed" : "Last performed"} · {formatAppDate(exercise.latest_day)}</span>
+      <span className={styles.cardMain}>
+        <span className={styles.cardName}>{exercise.name}</span>
+        <span className={styles.date}>{exercise.identity_kind === "legacy" ? "Unlinked record · " : exercise.identity_kind === "personal" ? "Your exercise · " : ""}{formatAppDate(exercise.latest_day)}</span>
+      </span>
+      <span className={styles.cardResult}><strong className={styles.result} data-weight={exercise.best_loads.length > 0 || undefined}>{result.value}</strong><span className={styles.resultLabel}>{result.label}</span></span>
+      <span className={styles.chevron} aria-hidden="true">›</span>
     </button>
   </li>;
 }
@@ -54,10 +52,13 @@ export function ExerciseLibrary({ library, token, cache }: { library: ExerciseLi
   const canonical = matching.filter(exercise => exercise.identity_kind !== "legacy");
   const legacy = matching.filter(exercise => exercise.identity_kind === "legacy");
   return <div className="history-tab-body">
-    <label className="history-exercise-search">Find an exercise
-      <input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search your exercise records" />
-    </label>
-    <p className={styles.scope}>Best saved loads, kept separate per weight unit.</p>
+    <div className={styles.toolbar}>
+      <label className={styles.search}>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></svg>
+        <input type="search" aria-label="Find an exercise" value={search} onChange={event => setSearch(event.target.value)} placeholder="Find an exercise" />
+      </label>
+      <span className={styles.count} aria-live="polite">{matching.length} {matching.length === 1 ? "exercise" : "exercises"}</span>
+    </div>
     {progressHintUnseen && !search ? <div className={styles.discoveryHint} role="note">
       <span>Tap an exercise to see its progress and session history.</span>
       <button type="button" onClick={dismissProgressHint} aria-label="Dismiss exercise progress tip">×</button>

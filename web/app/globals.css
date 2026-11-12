@@ -23294,3 +23294,26 @@ a, button, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 @media (prefers-reduced-motion: reduce) {
   .skeleton-content-reveal { animation: none; }
 }
+
+.history-day-picker { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: .85rem; color: var(--text-muted); }
+.history-day-group { display: grid; gap: 8px; }
+.history-day-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.history-day-heading h2 { margin: 0; font-size: .85rem; font-weight: 600; }
+.history-add-session { background: transparent; border: 0; color: var(--text-muted); padding: 10px 0; font-size: .8rem; cursor: pointer; }
+.history-add-session:hover { color: var(--text); }
+.history-day-group .history-row { padding: 12px 14px; }
+.history-detail-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 16px; }
+.history-extra-training { flex-basis: 100%; }
+.history-extra-training p { margin: 0; font-size: .85rem; }
+
+.history-trends > summary { color: var(--text-muted); cursor: pointer; padding: 12px 0; font-size: .85rem; }
+.history-trends[open] { display: grid; gap: 12px; }
+
+.history-date-control { position: relative; display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border: 1px solid var(--border-subtle); border-radius: 12px; background: transparent; color: var(--text-primary); font-size: .9rem; font-weight: 500; cursor: pointer; }
+.history-date-control > svg { flex-shrink: 0; color: var(--text-muted); }
+.history-date-chevron { margin-left: 4px; }
+.history-date-control:hover { border-color: var(--border-default); background: var(--bg-stat); }
+.history-date-control:focus-within { outline: 2px solid var(--brand-red); outline-offset: 3px; }
+.history-date-control input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; color-scheme: dark; }
+.history-date-clear { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: var(--text-muted); font: inherit; font-size: .8rem; cursor: pointer; }
+.history-date-clear span { font-size: 18px; }

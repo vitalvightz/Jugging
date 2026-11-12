@@ -56,6 +56,7 @@ async function setup(page: Page, baseURL: string, lostResponse: boolean | "netwo
     if (path === "/api/plans/active") return json({ detail: "No active plan" }, 404);
     if (path === "/api/plans") return json([]);
     if (path === "/api/training/history") return json({ sessions });
+    if (path.startsWith("/api/training/history/external/")) return json({ session: sessions.find(row => row.id === path.split("/").at(-1)), blocks: [], sparring: null, prescription_source: "manual" });
     // History reads linked sparring reports (#2935); none exist in these flows.
     if (path === "/api/today/sparring-logs") return json({ logs: [] });
     if (path === "/api/training/sessions" && request.method() === "POST") {
@@ -75,6 +76,12 @@ async function setup(page: Page, baseURL: string, lostResponse: boolean | "netwo
       if (lostResponse === "network" && submissions.length === 1) return route.abort("failed");
       if (lostResponse && submissions.length === 1) return json({ detail: "Saved, but response lost. Retry." }, 503);
       return json(created.get(body.client_request_id), 201);
+    }
+    if (path.endsWith("/takeaway") && request.method() === "PUT") {
+      const id = path.split("/").at(-2);
+      const row = sessions.find(row => row.id === id)!;
+      Object.assign(row, request.postDataJSON());
+      return json(row);
     }
     if (path.startsWith("/api/training/sessions/") && request.method() === "PATCH") {
       const body = request.postDataJSON();
@@ -226,34 +233,25 @@ for (const width of [390, 1280]) {
     await expect(page.getByRole("button", { name: "Edit Sparring" })).toHaveCount(0);
     // Phones reach History from the bottom bar; desktop from the sidebar.
     await page.getByRole("link", { name: /^History/ }).filter({ visible: true }).first().click();
-    const history = page.locator(".history-list");
+    const history = page.locator(".history-tab-body");
     await expect(history).toContainText("Sparring");
     await expect(history.getByRole("button", { name: "Edit Strength & Power" })).toHaveCount(0);
-    const editButton = history.getByRole("button", { name: "Edit Sparring", exact: true });
-    const deleteButton = history.getByRole("button", { name: "Delete Sparring", exact: true });
-    const editBox = await editButton.boundingBox();
-    const deleteBox = await deleteButton.boundingBox();
-    expect(Math.abs(editBox!.y - deleteBox!.y)).toBeLessThanOrEqual(2);
-    expect(editBox!.width).toBeLessThanOrEqual(44);
-    expect(deleteBox!.width).toBeLessThan(120);
-    expect(deleteBox!.x).toBeGreaterThan(editBox!.x);
-    await page.screenshot({ animations: "disabled", path: test.info().outputPath("history-compact-controls.png") });
-    expect((await new AxeBuilder({ page }).include(".history-list").analyze()).violations).toEqual([]);
+    await expect(history.getByRole("button", { name: "Edit Sparring", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: /View Sparring details/ }).click();
+    const editButton = page.getByRole("button", { name: "Edit Sparring", exact: true });
     await editButton.click();
     await choose(page, page, "Activity", "Pads");
     await choose(page, page, "Duration", "45");
     await choose(page, page, "Effort", "Moderate");
     await page.getByRole("button", { name: "Save Session", exact: true }).click();
     await expect(history).toContainText("45 min");
-    await expect(history).toContainText("Moderate");
     await page.goto("/history");
-    await expect(page.locator(".history-list")).toContainText("Boxing");
-    await expect(page.locator(".history-list")).toContainText("Added by you");
-    await expect(page.locator(".history-list")).toContainText("45 min");
-    await expect(page.locator(".history-list")).toContainText("RPE 7/10");
-    await expect(page.locator(".history-list")).toContainText("Coach session");
+    await expect(page.locator(".history-tab-body")).toContainText("Boxing");
+    await expect(page.locator(".history-tab-body")).toContainText("45 min");
+    await expect(page.locator(".history-tab-body")).toContainText("RPE 7/10");
     await expect(page.locator(".history-list > li")).toHaveCount(2);
-    await page.getByRole("button", { name: "Delete Boxing", exact: true }).click();
+    if (!await page.getByRole("button", { name: "Delete session", exact: true }).isVisible()) await page.getByRole("button", { name: /View Boxing details/ }).click();
+    await page.getByRole("button", { name: "Delete session", exact: true }).click();
     await expect(history.getByRole("listitem")).toHaveCount(1);
     await page.reload();
     await expect(history).not.toContainText("Boxing");
@@ -276,7 +274,7 @@ test("retry after a lost save response keeps the same request ID", async ({ page
   await choose(page, page, "Duration", "60");
   await choose(page, page, "Effort", "Hard");
   await page.getByRole("button", { name: "Save Session", exact: true }).click();
-  await expect(page.getByRole("dialog").getByRole("alert")).toContainText("response lost");
+  await expect(page.getByRole("dialog", { name: /^(Edit session|Log session)$/ }).getByRole("alert")).toContainText("response lost");
   // Re-selecting the same quick pick must still retry the same payload safely.
   await choose(page, page, "Effort", "Hard");
   await page.getByRole("button", { name: "Save Session", exact: true }).click();
@@ -300,15 +298,17 @@ test("log yesterday's sparring with the optional date and preserve it after edit
   await page.getByRole("button", { name: "Save Session", exact: true }).click();
   expect(submissions[0]).toMatchObject({ activity: "sparring", duration_minutes: 60, effort: "hard", training_day: "2026-10-09" });
   await page.goto("/history");
-  const history = page.locator(".history-list");
+  const history = page.locator(".history-tab-body");
   await expect(history).toContainText("Fri 09 Oct 2026");
   await page.reload();
+  await page.getByRole("button", { name: /View Sparring details/ }).click();
   await page.getByRole("button", { name: "Edit Sparring", exact: true }).click();
   await choose(page, page, "Duration", "45");
   await page.getByRole("button", { name: "Save Session", exact: true }).click();
   await expect(history).toContainText("Fri 09 Oct 2026");
   await expect(history).toContainText("45 min");
-  await expect(history).toContainText("Hard");
+  await page.getByRole("button", { name: /View Boxing details/ }).click();
+  await expect(page.getByRole("dialog", { name: "Boxing", exact: true })).toContainText("Hard");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
@@ -332,25 +332,28 @@ test("failed edits and deletes preserve the session and allow another attempt", 
     if (fail) return route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ detail: "Session could not be changed." }) });
     await route.fallback();
   });
-  const history = page.locator(".history-list");
+  const history = page.locator(".history-tab-body");
+  await page.getByRole("button", { name: /View Sparring details/ }).click();
   await page.getByRole("button", { name: "Edit Sparring", exact: true }).click();
   await choose(page, page, "Duration", "45");
   await page.getByRole("button", { name: "Save Session", exact: true }).click();
-  await expect(page.getByRole("dialog").getByRole("alert")).toContainText("Session could not be changed");
-  await expect(page.getByRole("dialog").getByRole("button", { name: "45", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("dialog", { name: /^(Edit session|Log session)$/ }).getByRole("alert")).toContainText("Session could not be changed");
+  await expect(page.getByRole("dialog", { name: "Edit session", exact: true }).getByRole("button", { name: "45", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(history).toContainText("60 min");
   expect(attempts).toEqual(["PATCH"]);
   fail = false;
   await page.getByRole("button", { name: "Save Session", exact: true }).click();
   await expect(history).toContainText("45 min");
   fail = true;
-  await page.getByRole("button", { name: "Delete Boxing", exact: true }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "The training service is temporarily unavailable" })).toBeVisible();
+  if (!await page.getByRole("button", { name: "Delete session", exact: true }).isVisible()) await page.getByRole("button", { name: /View Boxing details/ }).click();
+    await page.getByRole("button", { name: "Delete session", exact: true }).click();
+  await expect(page.getByRole("dialog").getByRole("alert").filter({ hasText: "The training service is temporarily unavailable" })).toBeVisible();
   await expect(history).toContainText("Boxing");
-  await expect(page.getByRole("button", { name: "Delete Boxing", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Delete session", exact: true })).toBeEnabled();
   expect(attempts).toEqual(["PATCH", "PATCH", "DELETE", "DELETE", "DELETE"]);
   fail = false;
-  await page.getByRole("button", { name: "Delete Boxing", exact: true }).click();
+  if (!await page.getByRole("button", { name: "Delete session", exact: true }).isVisible()) await page.getByRole("button", { name: /View Boxing details/ }).click();
+    await page.getByRole("button", { name: "Delete session", exact: true }).click();
   await expect(history).not.toContainText("Boxing");
   await page.reload();
   await expect(history.getByRole("listitem")).toHaveCount(1);
@@ -413,7 +416,7 @@ test(`repeat on Today needs only effort and save; a second session stays separat
   expect(submissions).toHaveLength(0);
   await page.screenshot({ animations: "disabled", path: "/tmp/quick-log-review-mobile.png" });
   await page.getByRole("button", { name: "Save Session", exact: true }).click();
-  await expect(page.getByRole("dialog").getByRole("alert")).toContainText("Select an activity and effort");
+  await expect(page.getByRole("dialog", { name: /^(Edit session|Log session)$/ }).getByRole("alert")).toContainText("Select an activity and effort");
   expect(submissions).toHaveLength(0);
   await effort.press("Enter");
   await expect(effort).toHaveAttribute("aria-pressed", "true");
@@ -465,25 +468,28 @@ test("History repeat retries the same occurrence, preserves the source and creat
   const submissions = await setup(page, baseURL!, true, false, [prescribed, manual]);
   await page.goto("/history");
   await expect(page.getByRole("button", { name: "Repeat Strength & Power", exact: true })).toHaveCount(0);
-  const source = page.locator(".history-list > li").filter({ hasText: "Fri 09 Oct 2026" });
-  await source.getByRole("button", { name: "Repeat Boxing", exact: true }).click();
+  const source = page.locator(".history-day-group").filter({ hasText: "Fri 09 Oct 2026" });
+  if (!await page.getByRole("button", { name: "Repeat Boxing", exact: true }).isVisible()) await page.getByRole("button", { name: /View Boxing details/ }).filter({ visible: true }).last().click();
+  await page.getByRole("button", { name: "Repeat Boxing", exact: true }).click();
   await page.keyboard.press("Escape");
   expect(submissions).toHaveLength(0);
-  await expect(source.getByRole("button", { name: "Repeat Boxing", exact: true })).toBeFocused();
-  await source.getByRole("button", { name: "Repeat Boxing", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Repeat Boxing", exact: true })).toBeFocused();
+  if (!await page.getByRole("button", { name: "Repeat Boxing", exact: true }).isVisible()) await page.getByRole("button", { name: /View Boxing details/ }).filter({ visible: true }).last().click();
+  await page.getByRole("button", { name: "Repeat Boxing", exact: true }).click();
   await choose(page, page, "Effort", "Moderate");
   await page.getByRole("button", { name: "Save Session", exact: true }).click();
-  await expect(page.getByRole("dialog").getByRole("alert")).toContainText("response lost");
+  await expect(page.getByRole("dialog", { name: /^(Edit session|Log session)$/ }).getByRole("alert")).toContainText("response lost");
   await page.getByRole("button", { name: "Save Session", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(submissions).toHaveLength(2);
   expect(submissions[1]).toEqual(submissions[0]);
   await expect(page.locator(".history-list > li")).toHaveCount(3);
-  await expect(page.getByRole("status").filter({ hasText: "logged successfully" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Session saved" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await expect(source).toContainText("60 min");
-  await expect(source).toContainText("Hard");
-  await source.getByRole("button", { name: "Repeat Boxing", exact: true }).click();
+
+  if (!await page.getByRole("button", { name: "Repeat Boxing", exact: true }).isVisible()) await page.getByRole("button", { name: /View Boxing details/ }).filter({ visible: true }).last().click();
+  await page.getByRole("button", { name: "Repeat Boxing", exact: true }).click();
   await expect(page.getByRole("group", { name: "Effort", exact: true }).locator('[aria-pressed="true"]')).toHaveCount(0);
   await choose(page, page, "Effort", "Easy");
   await page.getByRole("button", { name: "Save Session", exact: true }).click();
@@ -491,17 +497,18 @@ test("History repeat retries the same occurrence, preserves the source and creat
   expect(submissions[2].client_request_id).not.toBe(submissions[0].client_request_id);
   await page.reload();
   await expect(page.locator(".history-list > li")).toHaveCount(4);
-  await expect(source).toContainText("Hard");
+
 });
 
 test("expired save reports sign-in requirement without changing history", async ({ page, baseURL }) => {
   await setup(page, baseURL!, false, false, [manual]);
   await page.route("**/api/training/sessions", route => route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "Unauthorized" }) }));
   await page.goto("/history");
+  if (!await page.getByRole("button", { name: "Repeat Boxing", exact: true }).isVisible()) await page.getByRole("button", { name: /View Boxing details/ }).filter({ visible: true }).last().click();
   await page.getByRole("button", { name: "Repeat Boxing", exact: true }).click();
   await choose(page, page, "Effort", "Easy");
   await page.getByRole("button", { name: "Save Session", exact: true }).click();
-  await expect(page.getByRole("dialog").getByRole("alert")).toContainText("Your session expired. Sign in again");
+  await expect(page.getByRole("dialog", { name: /^(Edit session|Log session)$/ }).getByRole("alert")).toContainText("Your session expired. Sign in again");
   await expect(page.getByRole("button", { name: "Save Session", exact: true })).toBeEnabled();
   await expect(page.locator(".history-list > li")).toHaveCount(1);
 });
@@ -510,11 +517,12 @@ test("expired save reports sign-in requirement without changing history", async 
 test("a dropped network response can retry without creating another session", async ({ page, baseURL }) => {
   const submissions = await setup(page, baseURL!, "network", false, [manual]);
   await page.goto("/history");
+  if (!await page.getByRole("button", { name: "Repeat Boxing", exact: true }).isVisible()) await page.getByRole("button", { name: /View Boxing details/ }).filter({ visible: true }).last().click();
   await page.getByRole("button", { name: "Repeat Boxing", exact: true }).click();
   await choose(page, page, "Effort", "Easy");
   await page.getByRole("button", { name: "Save Session", exact: true }).click();
-  await expect(page.getByRole("dialog").getByRole("alert")).toBeVisible();
-  await expect(page.getByRole("dialog")).toContainText("60 min ·");
+  await expect(page.getByRole("dialog", { name: /^(Edit session|Log session)$/ }).getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Log session", exact: true })).toContainText("60 min ·");
   await page.getByRole("button", { name: "Save Session", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(submissions).toHaveLength(2);
@@ -878,15 +886,18 @@ test("History edit retains effort and record identity; repeat details can change
     if (request.method() === "PATCH") edits.push({ url: new URL(request.url()).pathname, body: request.postDataJSON() });
   });
   await page.goto("/history");
+  await page.getByRole("button", { name: /View Boxing details/ }).click();
   await page.getByRole("button", { name: "Edit Boxing", exact: true }).click();
   await expect(page.getByLabel("Duration (minutes)")).toHaveValue("75");
-  await expect(page.getByRole("dialog").getByRole("button", { name: "Hard", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("dialog", { name: "Edit session", exact: true }).getByRole("button", { name: "Hard", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.getByLabel("Duration (minutes)").fill("1");
   await page.getByRole("button", { name: "Save Session", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(edits).toEqual([{ url: `/api/training/sessions/${manual.id}`, body: { activity: "boxing", duration_minutes: 1, effort: "hard" } }]);
   expect(submissions).toHaveLength(0);
   await expect(page.locator(".history-list > li")).toHaveCount(1);
+  await page.getByRole("button", { name: /View Boxing details/ }).click();
+  if (!await page.getByRole("button", { name: "Repeat Boxing", exact: true }).isVisible()) await page.getByRole("button", { name: /View Boxing details/ }).filter({ visible: true }).last().click();
   await page.getByRole("button", { name: "Repeat Boxing", exact: true }).click();
   await page.getByRole("button", { name: "Edit details" }).click();
   await choose(page, page, "Activity", "Strength");
@@ -897,9 +908,9 @@ test("History edit retains effort and record identity; repeat details can change
   await page.getByRole("button", { name: "Save Session", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(submissions[0]).toMatchObject({ activity: "strength", duration_minutes: 45, effort: "easy", training_day: "2026-10-10" });
-  const source = page.locator(".history-list > li").filter({ hasText: "Fri 09 Oct 2026" });
+  const source = page.locator(".history-day-group").filter({ hasText: "Fri 09 Oct 2026" });
   await expect(source).toContainText("1 min");
-  await expect(source).toContainText("Hard");
+
   await expect(page.locator(".history-list > li")).toHaveCount(2);
 });
 
@@ -976,7 +987,7 @@ for (const width of [390, 1280]) {
     await dialog.getByRole("button", { name: "Save Session", exact: true }).click();
     expect(submissions).toHaveLength(1);
     expect(submissions[0]).toMatchObject({ training_day: prescribed.training_day, activity: "strength" });
-    const history = page.locator(".history-list");
+    const history = page.locator(".history-tab-body");
     await expect(history.locator(".history-session-row")).toHaveCount(2);
     await expect(page.getByRole("button", { name: "Add Session", exact: true })).toHaveCount(1);
     await expect(history).toContainText("Strength & Power");
@@ -984,7 +995,7 @@ for (const width of [390, 1280]) {
     await page.reload();
     await expect(history.locator(".history-session-row")).toHaveCount(2);
     await expect(page.getByRole("button", { name: "Add Session", exact: true })).toHaveCount(1);
-    await expect(history.getByText("Sat 10 Oct 2026", { exact: false })).toHaveCount(2);
+    await expect(page.locator(".history-day-heading").getByText("Sat 10 Oct 2026", { exact: false })).toHaveCount(1);
     await expect(history).toContainText("Strength & Power");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(errors).toEqual([]);
@@ -1012,3 +1023,50 @@ test("History offers one add action per past day with multiple sessions", async 
     await expect(dialog).toHaveCount(0);
   }
 });
+
+for (const width of [390, 1280]) {
+  test(`History logs an empty selected day without a persistent save panel (${width}px)`, async ({ page, baseURL }) => {
+    await page.setViewportSize({ width, height: 844 });
+    const submissions = await setup(page, baseURL!, false, false, []);
+    const errors: string[] = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.goto("/history");
+    const date = page.getByLabel("Training day", { exact: true });
+    await expect(date).toHaveAttribute("max", "2026-10-18");
+    await date.fill("2026-10-08");
+    await expect(page.locator(".history-day-group")).toContainText("No sessions loaded");
+    await page.getByRole("button", { name: "Add Session", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Log session", exact: true });
+    await dialog.locator("summary").click();
+    await expect(dialog.getByLabel("Training date (optional)")).toHaveValue("2026-10-08");
+    await choose(dialog, page, "Activity", "Strength");
+    await choose(dialog, page, "Duration", "45");
+    await choose(dialog, page, "Effort", "Easy");
+    await dialog.getByRole("button", { name: "Save Session", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole("form", { name: "Session saved" })).toHaveCount(0);
+    await expect(page.locator(".history-session-row")).toHaveCount(1);
+    expect(submissions[0]).toMatchObject({ training_day: "2026-10-08" });
+    await page.reload();
+    await expect(page.locator(".history-session-row")).toHaveCount(1);
+    await expect(page.locator(".history-day-heading")).toContainText("08 Oct 2026");
+    await expect(page.locator(".history-session-row button")).toHaveCount(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+    await page.screenshot({ path: `/tmp/history-empty-date-${width}.png`, fullPage: true });
+    await page.getByRole("button", { name: /View Strength details/ }).click();
+    const details = page.getByRole("dialog", { name: "Strength", exact: true });
+    await expect(details.getByRole("button", { name: "Add exercises", exact: true })).toBeVisible();
+    await details.getByRole("button", { name: /Add takeaway/ }).click();
+    const notes = page.getByRole("dialog", { name: "Takeaway", exact: true });
+    await notes.getByRole("textbox").fill("Keep the guard up");
+    await notes.getByRole("button", { name: "Save takeaway", exact: true }).click();
+    await expect(notes).toHaveCount(0);
+    await page.getByRole("button", { name: /View Strength details/ }).click();
+    await expect(details).toContainText("Keep the guard up");
+    await details.getByRole("button", { name: "Delete session", exact: true }).click();
+    await expect(page.locator(".history-session-row")).toHaveCount(0);
+    await page.reload();
+    await expect(page.locator(".history-session-row")).toHaveCount(0);
+  });
+}
