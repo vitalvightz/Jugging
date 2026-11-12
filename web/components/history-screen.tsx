@@ -193,6 +193,7 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
   const [editHint, dismissEditHint] = useSeenOnce("discovery-history-edit-seen");
   // A run's edit sheet opened from its details, which reopen once it closes.
   const [editRun, setEditRun] = useState<TrainingHistorySession | null>(null);
+  const followUpSparring = (row: TrainingHistorySession) => setSparringDraft(manualSparringDraft(row));
   async function remove(row: TrainingHistorySession) {
     if (deleting) return false;
     // A plan session goes back to not done on the plan, so confirm first.
@@ -244,7 +245,7 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
         <section className="history-day-group" key={day} aria-label={formatAppDate(day)}>
           <div className="history-day-heading">
             <h2><RowDate day={day} today={today} /></h2>
-            {token && today && day <= today ? <LogTraining accessToken={token} initialTrainingDay={day} historyMode onSaved={onUpdate} /> : null}
+            {token && today && day <= today ? <LogTraining onSparringFollowUp={followUpSparring} accessToken={token} initialTrainingDay={day} historyMode onSaved={onUpdate} /> : null}
           </div>
           <ul className="history-list">
             {shown.filter(row => row.training_day === day).map(row => (
@@ -299,23 +300,23 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
         cache={detailsCache} onDismiss={() => setSelected(null)}
         actions={<div className="history-detail-actions">
           {error ? <p className="error-banner" role="alert">{error}</p> : null}
+
           {selected.source === "external" ? <>
-            <LogTraining accessToken={token} entry={selected} historyMode onSaved={row => { onUpdate(row); setSelected(null); }} />
-            {canRepeatTraining(selected) ? <LogTraining accessToken={token} repeatEntry={selected} historyMode onSaved={row => { onUpdate(row); setSelected(null); }} /> : null}
-            <TakeawayEditor token={token} row={selected} onSaved={row => { onUpdate(row); setSelected(null); }} />
+            <LogTraining onSparringFollowUp={followUpSparring} accessToken={token} entry={selected} historyMode onSaved={row => { onUpdate(row); setSelected(null); }} />
+            {canRepeatTraining(selected) ? <LogTraining onSparringFollowUp={followUpSparring} accessToken={token} repeatEntry={selected} historyMode onSaved={row => { onUpdate(row); setSelected(null); }} /> : null}
+            <TakeawayEditor label="Notes" token={token} row={selected} onSaved={row => { onUpdate(row); setSelected(null); }} />
             {selected.activity === "sparring" && sparringLogs ? <button type="button" className="history-session-delete" onClick={() => {
               const log = sparringLogs.get(selected.id);
               setSparringDraft(log ? sparringReportDraft(selected.id, selected.title, log) : manualSparringDraft(selected)); setSelected(null);
             }}>Sparring details</button> : null}
           </> : selected.history_editable ? <PlanSessionEditor token={token} row={selected} onSaved={row => { onUpdate(row); setSelected(null); }} /> : null}
-          {selected.source === "unlxck" ? <div className="history-extra-training"><p className="muted">Completed extra exercises? Log a separate manual session for this day.</p>
-            <LogTraining accessToken={token} initialTrainingDay={selected.training_day} historyMode onSaved={onUpdate} /></div> : null}
-          {selected.source === "external" || selected.history_editable ? <button className="history-session-delete" type="button" disabled={deleting !== null}
-            onClick={() => { void remove(selected).then(removed => { if (removed) setSelected(null); }); }}>Delete session</button> : null}
+          {selected.source === "external" || selected.history_editable ? <details className="history-actions-menu"><summary aria-label="More session actions">···</summary>
+          <div className="history-actions-items"><button className="history-session-delete" type="button" disabled={deleting !== null}
+            onClick={() => { void remove(selected).then(removed => { if (removed) setSelected(null); }); }}>Delete session</button></div></details> : null}
         </div>}
         onEditRun={row => { setEditRun(row); setSelected(null); }}
         onEditExercises={selected.source === "external" ? row => { setExercisesFor({ row, reopenDetails: true }); setSelected(null); } : undefined} /> : null}
-      {editRun && token ? <LogTraining key={`edit-${editRun.id}`} accessToken={token} entry={editRun} autoOpen historyMode
+      {editRun && token ? <LogTraining onSparringFollowUp={followUpSparring} key={`edit-${editRun.id}`} accessToken={token} entry={editRun} autoOpen historyMode
         onSaved={updated => { detailsCache.delete(`external:${updated.id}`); onUpdate(updated); setEditRun(updated); }}
         onClosed={() => { setSelected(editRun); setEditRun(null); }} /> : null}
       {exercisesFor && token ? <ManualExerciseLogger key={exercisesFor.row.id} token={token} session={exercisesFor.row} reference={exercisesFor.reference}

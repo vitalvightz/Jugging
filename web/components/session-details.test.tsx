@@ -28,6 +28,7 @@ test("details distinguish unknown actuals, reuse visit cache, and dismiss with E
   const render = () => root.render(<SessionDetails row={row} token="token" cache={cache} onDismiss={() => { dismissed = true; }} />);
   try {
     await act(async () => render());
+    for (const button of container.querySelectorAll<HTMLButtonElement>("ol button[aria-expanded]")) await act(async () => button.click());
     assert.match(container.textContent!, /Performed values unknown/);
     assert.match(container.textContent!, /Completed amount unknown/);
     assert.equal(container.querySelectorAll("ol > li").length, 2);
@@ -70,7 +71,8 @@ test("completed-as-prescribed blocks start collapsed and never repeat matching r
   try {
     await act(async () => root.render(<SessionDetails row={row} token="token" cache={new Map()} onDismiss={() => {}} />));
     const toggles = [...container.querySelectorAll<HTMLButtonElement>("ol button[aria-expanded]")];
-    assert.deepEqual(toggles.map(button => button.getAttribute("aria-expanded")), ["false", "true"]);
+    assert.deepEqual(toggles.map(button => button.getAttribute("aria-expanded")), ["false", "false"]);
+    await act(async () => toggles[1].click());
     assert.match(container.textContent!, /4 × 2/);
     const press = container.querySelector('[aria-label="Performance: Press"]')!;
     // Done beside planned on one row, with the changed value marked.
@@ -90,9 +92,8 @@ test("a hand-logged session shows effort and duration worded like an Unlxck one"
   const root = createRoot(container);
   try {
     await act(async () => root.render(<SessionDetails row={manual} token="token" cache={new Map()} onDismiss={() => {}} />));
-    const facts = [...container.querySelectorAll("dl > div")].map(fact => `${fact.querySelector("dt")?.textContent}: ${fact.querySelector("dd")?.textContent}`);
-    assert.ok(facts.includes("Session effort: Easy"), facts.join(" | "));
-    assert.ok(facts.includes("Duration: 45 min"), facts.join(" | "));
+    assert.match(container.querySelector("header")!.textContent!, /45 min · Easy · Added by you/);
+    assert.equal(container.querySelector('[aria-label="Session overview"]'), null);
     assert.doesNotMatch(container.textContent!, /min recorded/);
   } finally { act(() => root.unmount()); container.remove(); globalThis.fetch = fetch; }
 });

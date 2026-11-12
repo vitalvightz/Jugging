@@ -65,7 +65,7 @@ async function setup(page: Page, baseURL: string, { slowSearch = false, failFirs
     if (path === "/api/training/sessions" && request.method() === "POST") {
       const body = request.postDataJSON();
       const row: Session = { id: `manual-${sessions.length}`, source: "external", title: body.activity.charAt(0).toUpperCase() + body.activity.slice(1), activity: body.activity,
-        duration_minutes: body.duration_minutes, effort: body.effort, status: "done", training_day: day, plan_id: null, exercise_count: 0, takeaway: "" };
+        duration_minutes: body.duration_minutes, effort: body.effort, status: "done", training_day: body.training_day ?? day, plan_id: null, exercise_count: 0, takeaway: "" };
       sessions.unshift(row);
       return json(row, 201);
     }
@@ -212,7 +212,9 @@ for (const width of [390, 1280]) {
     await expect(page.locator(".history-session-row").first()).toContainText("2 exercises");
     await page.getByRole("button", { name: /View Strength details/ }).click();
     const details = page.getByRole("dialog", { name: "Strength" });
-    await expect(details.locator("ol li")).toHaveText(["Back Squat3 × 5 · 75 kg", "Plank3 × 40 sec"]);
+    await expect(details.getByRole("button", { name: "Back Squat", exact: true })).toHaveAttribute("aria-expanded", "false");
+    await expect(details).toContainText("75 kg");
+    await expect(details).toContainText("40 sec");
     await expect(details).not.toContainText("Prescribed");
     await shoot(page, "09-session-details", width);
     await details.getByRole("button", { name: "Edit exercises" }).click();
@@ -238,7 +240,7 @@ for (const width of [390, 1280]) {
     await sheet.getByRole("button", { name: "Done" }).click();
     // Session Details reopens with the new exercise.
     const reopened = page.getByRole("dialog", { name: "Strength" });
-    await expect(reopened.locator("ol li")).toHaveCount(3);
+    await expect(reopened.locator("ol > li")).toHaveCount(3);
     await reopened.getByRole("button", { name: "Close session details" }).click();
     await expect(page.getByText("3 exercises")).toBeVisible();
 
@@ -286,6 +288,7 @@ for (const width of [390, 1280]) {
     expect((actual.set_entries as { rpe?: number }[]).map(row => row.rpe ?? null)).toEqual([7, 8.5, null]);
     await sheet.getByRole("button", { name: "Done", exact: true }).click();
     const details = page.getByRole("dialog", { name: "Strength", exact: true });
+    await page.getByRole("dialog", { name: "Strength", exact: true }).getByRole("button", { name: "Back Squat", exact: true }).click();
     const results = details.locator("details").filter({ hasText: "3 × 5 · 75–80 kg" });
     await expect(results).toBeVisible();
     await results.locator("summary").click();
