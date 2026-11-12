@@ -1715,3 +1715,41 @@ test("cancelling a draft resets location and answers before another injury", asy
     assert.equal(document.querySelector('input[type="range"]'), null);
   } finally { unmountMain(container, root); }
 });
+
+test("clearance is visible on a closed injury and opening it retires the discovery hint", async () => {
+  const key = "discovery-injury-clearance-seen";
+  window.localStorage.removeItem(key);
+  const injury = { ...SHOULDER, episode_id: "episode-1" };
+  const ui = mount();
+  try {
+    await act(async () => ui.root.render(<ToastProvider><TodayInjuryManager openInjuries={[injury]} token="token" onRefresh={async () => {}} /></ToastProvider>));
+    assert.equal(ui.container.querySelector(".today-injury-controls")?.hasAttribute("hidden"), true);
+    const clearance = ui.container.querySelector<HTMLButtonElement>('[aria-label="Report clearance"]')!;
+    assert.ok(clearance);
+    assert.equal(clearance.closest("[hidden]"), null);
+    assert.match(ui.container.querySelector(".injury-discovery-hint")?.textContent ?? "", /what your clinician says you can do/);
+    await click(clearance);
+    assert.equal(window.localStorage.getItem(key), "1");
+    assert.equal(ui.container.querySelector(".injury-discovery-hint"), null);
+    const sheet = document.querySelector('[role="dialog"]')!;
+    assert.match(sheet.textContent ?? "", /The rehab exercises your clinician allows/);
+    assert.match(sheet.textContent ?? "", /does not issue or verify medical clearance/);
+  } finally { ui.cleanup(); window.localStorage.removeItem(key); }
+});
+
+test("a medical hold stays visible when collapsed even beside permissive reported clearance", async () => {
+  const injury: InjuryFlagRecord = { ...SHOULDER, episode_id: "episode-1", clinician_clearance: {
+    episode_id: "episode-1", scopes: ["rehab", "training", "contact"], source: "athlete_reported", externally_verified: false,
+  }, rehab_decision: { outcome: "medical_review", summary: "Get this injury checked before training.", reason_codes: ["red_flag_medical_gate"] } };
+  const ui = mount();
+  try {
+    await act(async () => ui.root.render(<ToastProvider><TodayInjuryManager openInjuries={[injury]} token="token" onRefresh={async () => {}} /></ToastProvider>));
+    const guidance = ui.container.querySelector('[aria-label="Guidance"]')!;
+    assert.ok(guidance);
+    assert.equal(guidance.closest("[hidden]"), null);
+    assert.match(guidance.textContent ?? "", /reported warning sign needs medical review/);
+    assert.match(guidance.textContent ?? "", /checked before training/);
+    assert.equal(ui.container.querySelectorAll('[aria-label="Guidance"]').length, 1);
+    assert.match(ui.container.querySelector(".injury-clearance")?.textContent ?? "", /Contact training/);
+  } finally { ui.cleanup(); }
+});

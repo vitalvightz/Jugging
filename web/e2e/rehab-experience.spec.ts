@@ -108,9 +108,9 @@ test("a readiness schedule hold keeps LOAD eligibility at 375px", async ({ page,
   const { errors } = await setup(page, baseURL!, "earned_load", undefined, true);
   const summary = page.locator(".today-injury-summary-row");
   await expect(summary).toContainText("Stage: Load");
-  await expect(summary).toContainText("You meet the checks for this LOAD exercise.");
   await expect(summary).not.toContainText("Progression is on hold");
   await summary.click();
+  await expect(page.locator(".injury-stage-entry")).toContainText("You meet the checks for this LOAD exercise.");
   await expect(page.locator(".today-injury-care")).toContainText("Today’s rehab on hold");
   await expect(page.locator(".today-injury-care")).toContainText("Complete today's check-in");
   await expect(page.locator(".injury-progress")).toHaveAttribute("aria-label", /DYNAMIC exercises aren’t available/);
@@ -322,3 +322,43 @@ test("rehab access never offers held exercises", async ({ page, baseURL }) => {
   await setup(page, baseURL!, "achilles", undefined, true);
   await expect(page.getByRole("navigation", { name: "Your rehab", exact: true })).toHaveCount(0);
 });
+
+for (const width of [320, 390, 1280]) {
+  test(`injury discovery keeps clearance visible and explains stages at ${width}px`, async ({ page, baseURL }) => {
+    await page.setViewportSize({ width, height: 844 });
+    const { errors } = await setup(page, baseURL!, "chest");
+    const injury = page.locator(".today-injury-item").first();
+    await injury.scrollIntoViewIfNeeded();
+    await expect(injury.locator(".today-injury-summary-row")).toHaveAttribute("aria-expanded", "false");
+    const clearance = injury.getByRole("button", { name: /^(Change|Report) clearance$/ });
+    await expect(clearance).toBeVisible();
+    await expect(page.locator(".injury-discovery-hint")).toContainText("what your clinician says you can do");
+    await shot(page, `injury-clearance-visible-${width}.png`);
+    await clearance.click();
+    const sheet = page.getByRole("dialog", { name: "Clearance & restrictions", exact: true });
+    await expect(sheet).toBeVisible();
+    await expect(sheet).toContainText("The rehab exercises your clinician allows.");
+    await expect(sheet).toContainText("Whether your clinician allows training and contact.");
+    await expect(sheet).toContainText("Restrictions and safety holds still apply.");
+    await expect(page.locator(".injury-discovery-hint")).toHaveCount(0);
+    await sheet.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(sheet).toHaveCount(0);
+    await injury.locator(".today-injury-summary-row").click();
+    const guide = injury.locator(".injury-stage-guide");
+    await guide.locator("summary").click();
+    await expect(guide).toContainText("Comfortable movement.");
+    await expect(guide).toContainText("Stages are not clearance to train.");
+    expect(await injury.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await shot(page, `injury-stage-guide-${width}.png`);
+    await page.getByRole("button", { name: "+ Add another injury", exact: true }).click();
+    const add = page.getByRole("dialog", { name: "Add another injury", exact: true });
+    await expect(add).toContainText("Your answers help set today’s rehab and training limits.");
+    await add.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(add).toHaveCount(0);
+    await page.reload();
+    await expect(page.locator(".injury-discovery-hint")).toHaveCount(0);
+    await expect(page.locator(".today-injury-item").first().getByRole("button", { name: /^(Change|Report) clearance$/ })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  });
+}

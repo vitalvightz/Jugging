@@ -23346,3 +23346,18 @@ a, button, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .history-records .history-chip { max-width: 100%; white-space: normal; word-break: normal; overflow-wrap: break-word; }
 .history-records .history-chip:not([data-tone]) { padding: 0; border: 0; border-radius: 0; background: transparent; }
 .history-records .history-row-note, .history-records .history-summary-line, .history-records .history-summary-note { line-height: 1.5; overflow-wrap: break-word; }
+
+/* Injury guidance stays beside the action it explains. */
+.injury-discovery-hint { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 44px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--border-default); border-left: 2px solid var(--brand-red); border-radius: 10px; background: var(--bg-panel); color: var(--text-secondary); font: inherit; font-size: 13px; line-height: 1.5; text-align: left; cursor: pointer; }
+.injury-discovery-hint > span { flex: none; font-size: 20px; }
+.injury-discovery-hint:focus-visible, .injury-stage-guide summary:focus-visible { outline: 2px solid var(--brand-red); outline-offset: 2px; }
+.injury-entry-help { margin: 0 0 10px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.injury-stage-guide { color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.injury-stage-guide summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; }
+.injury-stage-guide summary::before { content: "+"; margin-right: 8px; }
+.injury-stage-guide[open] summary::before { content: "−"; }
+.injury-stage-guide dl { margin: 0; display: grid; gap: 6px; }
+.injury-stage-guide dl > div { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; }
+.injury-stage-guide dt { font-weight: 600; color: var(--text-primary); }
+.injury-stage-guide dd { margin: 0; }
+.today-injury-item > .injury-clearance .injury-detail-link { min-height: 48px; color: var(--text-primary); font-weight: 600; }

@@ -237,7 +237,7 @@ export function RehabStageMeter({ decision }: { decision: InjuryFlagRecord["reha
   const next = decision.progression?.next_transition;
   const entry = rehabEntryExplanation(decision);
   const nextStep = rehabNextStep(decision);
-  return <span className="injury-stage-meter">
+  return <><span className="injury-stage-meter">
     <span className="injury-stage-meter-steps" aria-hidden="true">
       {STAGES.map((value, index) => <span key={value} data-complete={index <= current}
         data-current={index === current || undefined} />)}
@@ -247,7 +247,20 @@ export function RehabStageMeter({ decision }: { decision: InjuryFlagRecord["reha
       {entry ? <span className="injury-stage-entry">{entry}</span> : null}
       {nextStep ?? (next ? null : `Stage ${current + 1} of ${STAGES.length} · Future availability varies by injury`)}
     </span>
-  </span>;
+  </span>
+    <details className="injury-stage-guide">
+      <summary>What do the stages mean?</summary>
+      <dl>
+        <div><dt>Calm</dt><dd>Protecting the area.</dd></div>
+        <div><dt>Restore</dt><dd>Comfortable movement.</dd></div>
+        <div><dt>Load</dt><dd>Strengthening.</dd></div>
+        <div><dt>Dynamic</dt><dd>Faster, controlled movement.</dd></div>
+        <div><dt>Return</dt><dd>Sport-specific rehab.</dd></div>
+      </dl>
+      <p>Stages are not clearance to train. Only follow the rehab shown for you. Some stages are not available for every injury.</p>
+      <p>Open Progression checks to see what is needed next.</p>
+    </details>
+  </>;
 }
 
 export function rehabStageLabel(decision: InjuryFlagRecord["rehab_decision"]): string | null {

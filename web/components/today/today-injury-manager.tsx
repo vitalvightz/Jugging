@@ -1,5 +1,6 @@
 "use client";
 
+import { OnceHint, useSeenOnce } from "@/components/once-hint";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 
 import {
@@ -332,6 +333,7 @@ export function TodayInjuryManager({
   const surfaceFollowUpStatus = SURFACE_FOLLOW_UP_STATUS[surfaceFollowUpMode];
   const isSurfaceRecheck = surfaceFollowUpMode === "recheck";
   const isSurfaceInitial = surfaceFollowUpMode === "initial";
+  const [clearanceHint, dismissClearanceHint] = useSeenOnce("discovery-injury-clearance-seen");
   const [isAddFormOpen, setIsAddFormOpen] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [editingFlagId, setEditingFlagId] = useState<string | null>(null);
@@ -668,6 +670,12 @@ export function TodayInjuryManager({
         <EffectiveClinicianClearanceStatus clearance={effectiveClearance} /> : null}
       {openInjuries.length ? (
         <>
+          {clearanceHint && openInjuries.some(injury => (injury.clinician_clearance || injury.episode_id)
+            && !getSurfaceGuidance(injury) && injury.rehab_decision?.outcome !== "wound_care"
+            && (!injury.surface_class || injury.surface_class === "non_surface")) ? (
+            <OnceHint className="injury-discovery-hint" onDismiss={dismissClearanceHint}
+              label="Tap Clearance to record what your clinician says you can do." />
+          ) : null}
           <ul className="today-injury-list">
             {openInjuries.map((injury) => {
               const selectedStatus = selectedStatusByFlagId[injury.id];
@@ -701,6 +709,9 @@ export function TodayInjuryManager({
               // A confirmation or follow-up in progress keeps the controls open.
               const isOpen = Boolean(openInjuryIds[injury.id]) ||
                 confirmingClearId === injury.id || surfaceFollowUpId === injury.id;
+              // A medical or scheduling hold must stay readable when the row is closed.
+              const showHoldGuidance = !isSurface && (injury.rehab_decision?.outcome === "medical_review"
+                || injury.rehab_decision?.schedule?.state === "held");
               const bodyId = `${injury.id}-controls`;
 
               return (
@@ -761,6 +772,8 @@ export function TodayInjuryManager({
                       <p>{surfaceGuidance.message}</p>
                     </div>
                   ) : null}
+                  {showHoldGuidance ? <InjuryCareStatus rehabHref={rehabTargets[injury.id]} injury={injury} token={token} onRefresh={onRefresh} showClearance={false} summaryVisible /> : null}
+                  <InjuryClearance key={`${injury.id}:${injury.episode_id}`} injury={injury} token={token} onRefresh={onRefresh} />
                   <div id={bodyId} className="today-injury-controls" hidden={!isOpen}>
                   {hasPathway ? <RehabStageMeter decision={injury.rehab_decision} /> : null}
                   <div className="today-injury-meta">
@@ -772,7 +785,7 @@ export function TodayInjuryManager({
                       </small>
                     </span>
                   </div>
-                  {!isSurface && (injury.rehab_decision || injury.episode_id) ? <InjuryCareStatus rehabHref={rehabTargets[injury.id]} injury={injury} token={token} onRefresh={onRefresh} showClearance={false} summaryVisible /> : null}
+                  {!isSurface && !showHoldGuidance && (injury.rehab_decision || injury.episode_id) ? <InjuryCareStatus rehabHref={rehabTargets[injury.id]} injury={injury} token={token} onRefresh={onRefresh} showClearance={false} summaryVisible /> : null}
                   <div className="today-injury-update-head">
                     <p className="today-field-label today-injury-status-label">{delayedPrompts.some(prompt =>
                       prompt.injury_id === injury.id && prompt.injury_episode_id === injury.episode_id)
@@ -818,7 +831,6 @@ export function TodayInjuryManager({
                       );
                     })}
                   </div>
-                  <InjuryClearance key={`${injury.id}:${injury.episode_id}`} injury={injury} token={token} onRefresh={onRefresh} />
                   <button type="button" className={`today-tool-link injury-resolve-link${confirmingClearId === injury.id ? " today-segment-pending" : ""}${selectedStatus === "resolved" ? " today-segment-active" : ""}`} aria-pressed={selectedStatus === "resolved"} aria-describedby={confirmingClearId === injury.id ? `${injury.id}-pending-hint` : undefined}
                     disabled={isAdding || pendingFlagId !== null} onClick={() => handleInjuryAction(injury, "resolved")}>Mark resolved</button>
                   <Collapse show={confirmingClearId === injury.id || surfaceFollowUpId === injury.id}>
@@ -1020,6 +1032,9 @@ export function TodayInjuryManager({
           onSubmit={addInjury}
         >
           <p className="today-injury-step">{selectingLocation ? "1. Where is the injury?" : "2. Describe the injury"}</p>
+          <p className="injury-entry-help">{selectingLocation
+            ? "Choose where it hurts. Your answers help set today’s rehab and training limits."
+            : "Choose the type you know, then say how it affects training today."}</p>
             <div ref={mapRef} hidden={!selectingLocation || manualArea}>
               <BodyMap side={bodyMapSide} selections={newInjurySelections}
                 onZoneSelect={selectBodyMapZone} onSideChange={setBodyMapSide} />
@@ -1125,6 +1140,7 @@ export function TodayInjuryManager({
           /> : null}
           <div ref={impactGroupRef} className="injury-impact-input">
             <p className="today-field-label">Impact on training<span className="today-field-required">Required</span></p>
+            <p className="injury-entry-help">How much it limits you today, not a medical diagnosis.</p>
             <LevelSlider ariaLabel="Impact on training" invalid={addMissing === "impact"}
               labels={["Not limiting me", "Limiting me", "Can’t train normally"]}
               value={INJURY_IMPACT_OPTIONS.find(option => option.value === newImpact)?.guidedSeverity ?? null}
