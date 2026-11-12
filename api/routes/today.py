@@ -26,6 +26,7 @@ from api.services.training_history import (
 from api.contracts.session_details import SessionDetails
 from api.services.session_details import session_details
 from api.services.today_reads import run_reads_concurrently
+from api.plan_mappers import with_parsed_planning_brief
 from api.contracts.exercise_library import ExerciseLibraryResponse, ExercisePerformancesResponse
 from api.contracts.manual_exercises import ManualExerciseEntry, PerformedExerciseInput, ManualExerciseListResponse
 from api.services.manual_exercises import delete_session_exercise, list_session_exercises, save_session_exercise
@@ -234,6 +235,8 @@ def _history_title(store: AppStore, athlete_id: str, completion: Mapping[str, An
 def _title_plan(store: AppStore, athlete_id: str, plan_id: str) -> tuple[Any, Any] | None:
     """The owner-scoped plan row and its effective calendar, for session titles."""
     plan = store.get_training_plan_for_athlete(plan_id, athlete_id)
+    # Each title lookup decoded the brief text again (once per History row).
+    plan = with_parsed_planning_brief(plan) if plan else plan
     structured = resolve_effective_structured_plan(plan) if plan else None
     return (plan, structured) if plan and structured else None
 
