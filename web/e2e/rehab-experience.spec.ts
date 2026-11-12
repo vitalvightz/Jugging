@@ -355,7 +355,7 @@ for (const width of [320, 390, 1280]) {
     const guideBox = (await guide.boundingBox())!;
     expect(Math.abs(expandedClearance.x - guideBox.x)).toBeLessThan(1);
     expect(Math.abs(expandedClearance.width - guideBox.width)).toBeLessThan(1);
-    await expect(guide).toContainText("Stages are not clearance to train.");
+    await expect(guide.locator("p")).toHaveCount(0);
     expect(await injury.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
     await shot(page, `injury-stage-guide-${width}.png`);
     await page.getByRole("button", { name: "+ Add another injury", exact: true }).click();
