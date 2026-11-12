@@ -2202,6 +2202,12 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
         except _STORE_CLIENT_ERRORS as exc:
             self._raise_operation_http_error(operation=operation, detail="failed to read plan", exc=exc)
 
+    def get_plan_summary_for_athlete(self, plan_id: str, athlete_id: str) -> dict[str, Any] | None:
+        """Owner-scoped plan summary columns only (a few KB, not the ~1 MB row)."""
+        return self._owned_plan_projection(
+            plan_id, athlete_id, columns=PLAN_SUMMARY_SELECT, operation="get_plan_summary_for_athlete"
+        )
+
     def get_plan_runtime_for_athlete(self, plan_id: str, athlete_id: str) -> dict[str, Any] | None:
         """``get_plan_for_athlete`` with the runtime brief (no candidate_pools)."""
         return self._owned_plan_projection(

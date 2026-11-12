@@ -48,7 +48,7 @@ from api.state_machine import (
 from api.generation_config import generation_worker_id
 from api.schema_requirements import GENERATION_JOB_STAGE2_COST_COLUMNS
 from api.store import _signup_date_of_birth, _signup_full_name, _generation_hard_max_runtime_seconds, _generation_startup_max_attempts, is_job_loaded_stalled_generation_job, is_stage1_planner_stalled_generation_job, is_startup_stale_generation_job
-from api.store import ADMIN_ONLY_PLAN_COLUMNS, RehabExposureWindow, TRAINING_PLAN_SELECT
+from api.store import ADMIN_ONLY_PLAN_COLUMNS, PLAN_SUMMARY_SELECT, RehabExposureWindow, TRAINING_PLAN_SELECT
 from api.xp import XP_CALENDAR_SCOPED_ACTIONS, XP_REWARD_AMOUNTS, XpAction
 from api.services.xp_awards import XP_ABUSE_HARDENING_VERSION
 from api.services.notification_foundation import (
@@ -902,6 +902,13 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
     def get_plan_identity_for_athlete(self, plan_id: str, athlete_id: str) -> dict | None:
         row = self._owned_plan_row(plan_id, athlete_id)
         return {"id": row["id"], "athlete_id": row["athlete_id"]} if row else None
+
+    def get_plan_summary_for_athlete(self, plan_id: str, athlete_id: str) -> dict | None:
+        # Mirrors PLAN_SUMMARY_SELECT: only the columns a plan summary uses.
+        row = self.get_plan_for_athlete(plan_id, athlete_id)
+        if not row:
+            return None
+        return {key: row[key] for key in (c.strip() for c in PLAN_SUMMARY_SELECT.split(",")) if key in row}
 
     def get_plan_runtime_for_athlete(self, plan_id: str, athlete_id: str) -> dict | None:
         # Mirrors ATHLETE_PLAN_RUNTIME_SELECT: the athlete row, runtime brief.

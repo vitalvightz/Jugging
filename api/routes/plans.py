@@ -48,6 +48,19 @@ class PlanActivationRequest(BaseModel):
     overlap_action: str | None = None
 
 
+class _SummaryPlanReads:
+    """A store whose owner-scoped plan read returns the summary columns only."""
+
+    def __init__(self, store: AppStore):
+        self._store = store
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._store, name)
+
+    def get_plan_for_athlete(self, plan_id: str, athlete_id: str) -> dict[str, Any] | None:
+        return self._store.get_plan_summary_for_athlete(plan_id, athlete_id)
+
+
 def build_plans_router(*, require_profile, require_plan_row, get_store) -> APIRouter:
     router = APIRouter()
     # Kept in the factory signature for compatibility with create_app wiring.
@@ -194,11 +207,27 @@ def build_plans_router(*, require_profile, require_plan_row, get_store) -> APIRo
         training_day = resolve_training_day_str(
             datetime.now(timezone.utc), athlete_timezone=profile.athlete_timezone
         )
-        plan_row = resolve_active_plan(
-            store,
+        # The summary needs ten columns, and eligibility only status and
+        # fight_date, so the pointed-to plan is read as its summary (a few KB,
+        # not the ~1 MB row). This pass cannot write. Any other outcome
+        # (no pointer, an unusable or foreign plan) runs the unchanged full
+        # resolution below, with auto-activation and its custom-plan checks.
+        summary = resolve_active_plan(
+            _SummaryPlanReads(store),
             profile.athlete_id,
             current_training_day=training_day,
-        ).plan
+            auto_activate=False,
+        )
+        if summary.source == "explicit":
+            plan_row = summary.plan
+        elif summary.source == "read_failure":
+            plan_row = None  # authority reads fail closed, as before
+        else:
+            plan_row = resolve_active_plan(
+                store,
+                profile.athlete_id,
+                current_training_day=training_day,
+            ).plan
         if not plan_row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="plan not found")
         return _map_plan_summary(plan_row, current_training_day=training_day)
