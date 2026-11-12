@@ -30,6 +30,7 @@ from api.plan_mappers import (
     _map_plan_summary,
     _map_weekly_schedule,
     plan_calendar_spine,
+    with_parsed_planning_brief,
 )
 from api.rehab_labels import resolve_rehab_label_policy
 from api.services.exercise_media import attach_exercise_media
@@ -295,7 +296,9 @@ def build_plans_router(*, require_profile, require_plan_row, get_store) -> APIRo
         # phases are exactly the ones the plan page shows. Only what never
         # touches the calendar is skipped: plan source, rehab labels, media and
         # the brief's candidate_pools (they only stamp exercise identity).
-        plan_row = _read_plan_for_viewer(plan_id, profile=profile, store=store, runtime_brief=True)
+        plan_row = with_parsed_planning_brief(
+            _read_plan_for_viewer(plan_id, profile=profile, store=store, runtime_brief=True)
+        )  # decoded once, not by each mapping step
         training_day = resolve_training_day_str(
             datetime.now(timezone.utc), athlete_timezone=profile.athlete_timezone
         )

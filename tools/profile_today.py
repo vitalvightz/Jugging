@@ -1,8 +1,13 @@
-"""Read-only profile of one athlete's Today build against the live store.
+"""Read-only profile of one athlete's Today build, calendar or History, live store.
 
 Run inside the API container (it reads the same environment as the API):
 
     python tools/profile_today.py --athlete <uuid> --now 2026-11-12T19:04:00Z
+    python tools/profile_today.py --athlete <uuid> --target calendar
+    python tools/profile_today.py --athlete <uuid> --target history
+
+Calendar and History are served through the real app, signed in as the athlete
+without any credential; the app's startup tasks never run.
 
 Prints timings, function names, store-call counts and JSON field sizes only,
 never athlete content. It cannot change production data: every HTTP request
@@ -21,6 +26,7 @@ import json
 import os
 import pstats
 import statistics
+import sys
 import threading
 import time
 from collections import Counter, defaultdict
@@ -28,7 +34,10 @@ from datetime import datetime
 
 READ_PREFIXES = ("get_", "list_", "count_", "fetch_", "is_", "has_")
 # Reads whose names do not start with a read prefix.
-READ_METHODS = {"latest_sparring_log_day", "xp_award_exists", "private_media_worker_healthy", "is_admin_email"}
+READ_METHODS = {"latest_sparring_log_day", "xp_award_exists", "private_media_worker_healthy", "is_admin_email",
+                # Every signed-in request: reads the existing profile, and would
+                # only create one if missing, a write the HTTP guard refuses.
+                "ensure_profile"}
 REPO_MARKERS = ("/api/", "/fightcamp/")
 
 
@@ -78,6 +87,8 @@ class ReadOnlyTimedStore:
         self.ms: defaultdict = defaultdict(float)
         self.main_thread_calls: Counter = Counter()
         self.refused: Counter = Counter()
+        self.timeline: list[tuple[float, float, str]] = []
+        self.t0 = time.perf_counter()
         self._lock = threading.Lock()
 
     def __getattr__(self, name):
@@ -100,12 +111,18 @@ class ReadOnlyTimedStore:
                 with self._lock:
                     self.calls[name] += 1
                     self.ms[name] += elapsed
+                    self.timeline.append(((started - self.t0) * 1000, elapsed, name))
                     if threading.current_thread() is threading.main_thread():
                         self.main_thread_calls[name] += 1
         return timed
 
     def reset(self):
         self.calls.clear(); self.ms.clear(); self.main_thread_calls.clear()
+        self.timeline.clear(); self.t0 = time.perf_counter()
+
+    def timeline_rows(self) -> list[str]:
+        """Each store call in start order: offset, duration, method (no arguments)."""
+        return [f"+{start:7.1f}ms {duration:7.1f}ms  {name}" for start, duration, name in sorted(self.timeline)]
 
 
 def _sizes(value, depth=0, max_depth=2):
@@ -132,8 +149,7 @@ def _stage_timings(timings) -> dict:
 
 
 def _profile_rows(profiler: cProfile.Profile, sort: str, limit: int) -> list[str]:
-    stream = io.StringIO()
-    stats = pstats.Stats(profiler, stream=stream)
+    stats = profiler if isinstance(profiler, pstats.Stats) else pstats.Stats(profiler, stream=io.StringIO())
     stats.sort_stats(sort)
     rows = []
     for func, (cc, nc, tt, ct, _) in sorted(stats.stats.items(), key=lambda kv: -(kv[1][3] if sort == "cumulative" else kv[1][2])):
@@ -147,10 +163,159 @@ def _profile_rows(profiler: cProfile.Profile, sort: str, limit: int) -> list[str
     return rows
 
 
+class _ThreadProfiles:
+    """cProfile for request handlers, which run on worker threads.
+
+    Python 3.12+ has one process-wide profiler that already sees every thread
+    (a second one raises), so a single profile is enabled around the request.
+    Python 3.11 (the production image) profiles per thread, so each handler and
+    pool task gets its own profile, merged afterwards.
+    """
+
+    PROCESS_WIDE = sys.version_info >= (3, 12)
+
+    def __init__(self):
+        self.enabled = False
+        self.profiles: list[cProfile.Profile] = []
+        self._lock = threading.Lock()
+        self._process_profile: cProfile.Profile | None = None
+
+    def start(self):
+        if self.PROCESS_WIDE:
+            self._process_profile = cProfile.Profile()
+            self._process_profile.enable()
+        self.enabled = True
+
+    def stop(self):
+        self.enabled = False
+        if self._process_profile is not None:
+            self._process_profile.disable()
+            self.profiles.append(self._process_profile)
+            self._process_profile = None
+
+    def wrap(self, fn):
+        def run(*args, **kwargs):
+            if not self.enabled or self.PROCESS_WIDE:
+                return fn(*args, **kwargs)
+            profile = cProfile.Profile()
+            profile.enable()
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                profile.disable()
+                with self._lock:
+                    self.profiles.append(profile)
+        return run
+
+    def install(self):
+        import fastapi.dependencies.utils as dependency_utils
+        import fastapi.routing as routing
+        from api.services import today_reads
+
+        for module in (routing, dependency_utils):
+            original = module.run_in_threadpool
+
+            async def profiled(func, *args, _original=original, **kwargs):
+                return await _original(self.wrap(func), *args, **kwargs)
+
+            module.run_in_threadpool = profiled
+        pool = getattr(today_reads, "_PREFETCH_POOL", None)
+        if pool is not None:
+            submit = pool.submit
+            pool.submit = lambda fn, *args, **kwargs: submit(self.wrap(fn), *args, **kwargs)
+
+    def merged(self) -> pstats.Stats | None:
+        if not self.profiles:
+            return None
+        stats = pstats.Stats(self.profiles[0], stream=io.StringIO())
+        for profile in self.profiles[1:]:
+            stats.add(profile)
+        return stats
+
+
+def profile_route(args, raw_store, store, http_refused, import_ms) -> dict:
+    """Serve one GET through the real app, signed in as the athlete; never runs startup tasks."""
+    profiles = _ThreadProfiles()
+    profiles.install()  # before the app is built, so every handler thread is covered
+    from fastapi.testclient import TestClient
+
+    from api.auth import AuthenticatedUser
+
+    # Importing api.app builds the production app at module level: a second
+    # store and auth service, plus startup schema validation (an RPC the HTTP
+    # guard refuses). Hide the credentials for the import only, so that build
+    # takes its existing "missing configuration" path; the profiler's own store
+    # already exists, and only create_app is used.
+    credentials = {key: os.environ.pop(key) for key in ("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
+                   if key in os.environ}
+    try:
+        from api.app import create_app
+    finally:
+        os.environ.update(credentials)
+
+    profile_row = raw_store.get_profile(args.athlete) or {}
+    user = AuthenticatedUser(user_id=args.athlete, email=str(profile_row.get("email") or ""),
+                             full_name=str(profile_row.get("full_name") or ""), metadata={})
+
+    class _SignedIn:
+        def get_user_from_token(self, token: str):
+            return user
+
+    app = create_app(store=store, auth_service=_SignedIn(), enable_in_process_generation=False)
+    # create_app configures logging to stdout; the report must be the only output.
+    import logging
+
+    logging.disable(logging.CRITICAL)
+    client = TestClient(app)  # no context manager: the app's startup (lifespan) never runs
+    if args.target == "calendar":
+        plan_id = raw_store.get_active_plan_id(args.athlete)
+        if not plan_id:
+            raise SystemExit("athlete has no active plan")
+        path = f"/api/plans/{plan_id}/calendar"
+    else:
+        path = "/api/training/history?include_skipped=true&limit=200"  # the web app's first page
+
+    def call():
+        store.reset()
+        started = time.perf_counter()
+        response = client.get(path, headers={"Authorization": "Bearer profile"})
+        return response, (time.perf_counter() - started) * 1000
+
+    cold, cold_ms = call()
+    cold_calls = sum(store.calls.values())
+    warm = [call() for _ in range(max(args.warm_runs, 1))]
+    profiles.start()
+    last, _ = call()
+    profiles.stop()
+    store_calls = {name: {"calls": store.calls[name], "ms": round(store.ms[name], 1)} for name in sorted(store.calls)}
+    payload = last.json() if last.status_code == 200 else None
+    merged = profiles.merged()
+    return {
+        "label": args.label,
+        "target": args.target,
+        "path": "/api/plans/:id/calendar" if args.target == "calendar" else path,
+        "import_ms": round(import_ms),
+        "status_codes": sorted({cold.status_code, *(r.status_code for r, _ in warm), last.status_code}),
+        "cold": {"total_ms": round(cold_ms), "store_calls": cold_calls},
+        "warm": {"total_ms": [round(ms) for _, ms in warm],
+                 "median_total_ms": round(statistics.median(ms for _, ms in warm))},
+        "store_calls_one_warm_request": store_calls,
+        "store_call_timeline_one_warm_request": store.timeline_rows(),
+        "refused_writes": dict(store.refused),
+        "refused_http_requests": {k: v for k, v in http_refused.items()},
+        "response_bytes": len(last.content),
+        "response_rows": len(payload.get("sessions", [])) if isinstance(payload, dict) and "sessions" in payload else None,
+        "response_fields": _sizes(payload)["fields"] if isinstance(payload, dict) else None,
+        "profile_top_cumulative_repo": _profile_rows(merged, "cumulative", 40) if merged else [],
+        "profile_top_own_time": _profile_rows(merged, "tottime", 25) if merged else [],
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--athlete", required=True)
-    parser.add_argument("--now", required=True, help="ISO instant, e.g. 2026-11-12T19:04:00Z")
+    parser.add_argument("--target", choices=("today", "calendar", "history"), default="today")
+    parser.add_argument("--now", help="ISO instant, e.g. 2026-11-12T19:04:00Z (required for today)")
     parser.add_argument("--warm-runs", type=int, default=5)
     parser.add_argument("--label", default=os.getenv("PROFILE_LABEL", ""))
     args = parser.parse_args()
@@ -162,8 +327,13 @@ def main() -> None:
     from api.store import SupabaseAppStore
     import_ms = (time.perf_counter() - import_started) * 1000
 
-    now = datetime.fromisoformat(args.now.replace("Z", "+00:00"))
     raw_store = SupabaseAppStore.from_env()
+    if args.target != "today":
+        print(json.dumps(profile_route(args, raw_store, ReadOnlyTimedStore(raw_store), http_refused, import_ms), indent=1))
+        return
+    if not args.now:
+        raise SystemExit("--now is required for --target today")
+    now = datetime.fromisoformat(args.now.replace("Z", "+00:00"))
     profile_row = raw_store.get_profile(args.athlete) or {}
     timezone_name = profile_row.get("athlete_timezone")
     store = ReadOnlyTimedStore(raw_store)
@@ -207,6 +377,7 @@ def main() -> None:
                               for stage in sorted({k for _, _, s in warm for k in s})},
         },
         "store_calls_one_warm_build": store_calls,
+        "store_call_timeline_one_warm_build": store.timeline_rows(),
         "refused_writes": dict(store.refused),
         "refused_http_requests": dict(http_refused),
         "response_bytes": len(response_json),

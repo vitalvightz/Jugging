@@ -16,13 +16,24 @@ TOOL = Path(__file__).resolve().parents[1] / "tools" / "profile_today.py"
 SECRET_NAME = "Sentinel Camp Name"
 
 
-def _run(monkeypatch, capsys, store) -> dict:
+def _run(monkeypatch, capsys, store, *extra) -> dict:
+    import fastapi.dependencies.utils as dependency_utils
+    import fastapi.routing as routing
     import httpx
 
-    monkeypatch.setattr(httpx.Client, "send", httpx.Client.send)  # the tool's guard is undone after
+    from api.services import today_reads
+
+    # Everything the tool patches is restored after each test.
+    monkeypatch.setattr(httpx.Client, "send", httpx.Client.send)
+    monkeypatch.setattr(routing, "run_in_threadpool", routing.run_in_threadpool)
+    monkeypatch.setattr(dependency_utils, "run_in_threadpool", dependency_utils.run_in_threadpool)
+    monkeypatch.setattr(today_reads._PREFETCH_POOL, "submit", today_reads._PREFETCH_POOL.submit)
     monkeypatch.setattr(api.store.SupabaseAppStore, "from_env", classmethod(lambda cls: store))
-    monkeypatch.setattr(sys, "argv", ["profile_today.py", "--athlete", ATHLETE,
-                                      "--now", "2026-06-03T15:00:00Z", "--warm-runs", "1"])
+    import logging
+
+    monkeypatch.setattr(logging.root.manager, "disable", logging.root.manager.disable)
+    args = list(extra) or ["--now", "2026-06-03T15:00:00Z"]
+    monkeypatch.setattr(sys, "argv", ["profile_today.py", "--athlete", ATHLETE, "--warm-runs", "1", *args])
     runpy.run_path(str(TOOL), run_name="__main__")
     out = capsys.readouterr().out
     assert SECRET_NAME not in out  # content never leaves the server
@@ -89,3 +100,40 @@ def test_a_real_store_write_is_refused_before_any_request_leaves(monkeypatch):
 
     assert sum(refused.values()) >= 2
     assert all(label.split()[0] in {"POST", "PATCH", "PUT", "DELETE"} for label in refused)
+
+
+@pytest.mark.parametrize("target", ["calendar", "history"])
+def test_route_targets_serve_through_the_app_read_only(monkeypatch, capsys, target):
+    from api.auth import AuthenticatedUser
+
+    store = _store_with_intake_injury()
+    store.ensure_profile(AuthenticatedUser(user_id=ATHLETE, email="ari@example.com", full_name="Ari", metadata={}))
+    next(iter(store.plans.values()))["plan_name"] = SECRET_NAME
+    report = _run(monkeypatch, capsys, store, "--target", target)
+
+    assert report["status_codes"] == [200]
+    assert report["refused_writes"] == {} and report["refused_http_requests"] == {}
+    assert report["store_call_timeline_one_warm_request"]
+    assert report["profile_top_cumulative_repo"]
+
+
+def test_route_targets_do_not_build_the_production_app_on_import(monkeypatch, capsys):
+    """With credentials set, importing api.app builds a second app and runs startup
+    validation (an RPC). The profiler must take only create_app from it."""
+    from api.auth import AuthenticatedUser
+
+    store = _store_with_intake_injury()
+    store.ensure_profile(AuthenticatedUser(user_id=ATHLETE, email="ari@example.com", full_name="Ari", metadata={}))
+    built = {"validate_runtime_schema": 0}
+    store.validate_runtime_schema = lambda: built.__setitem__("validate_runtime_schema", built["validate_runtime_schema"] + 1)
+    monkeypatch.setenv("SUPABASE_URL", "https://db.invalid")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-role-key-for-tests")
+    monkeypatch.delitem(sys.modules, "api.app", raising=False)  # import fresh, as on the server; restored after
+
+    report = _run(monkeypatch, capsys, store, "--target", "calendar")
+
+    assert report["status_codes"] == [200]
+    assert built["validate_runtime_schema"] == 0  # no production app was built on import
+    assert report["refused_http_requests"] == {}
+    import os
+    assert os.environ["SUPABASE_URL"] == "https://db.invalid"  # credentials restored after the import

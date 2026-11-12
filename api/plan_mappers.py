@@ -111,6 +111,26 @@ def _decode_structured_text(value: Any) -> dict[str, Any] | None:
     return {"raw": value}
 
 
+def with_parsed_planning_brief(row: Mapping[str, Any]) -> dict[str, Any]:
+    """The plan row with its stored brief text parsed once, when it is an object.
+
+    Several readers of one plan (projection context, effective plan, calendar
+    spine, plan detail) each decoded the same ~0.3 MB brief text; History did it
+    once per row. Every reader accepts a parsed object exactly as it would have
+    decoded the text. Text that is blank, invalid or not an object is left as it
+    was, so each reader still handles it in its own way.
+    """
+    brief = row.get("planning_brief")
+    if isinstance(brief, str) and brief.strip():
+        try:
+            decoded = json.loads(brief)
+        except ValueError:
+            return dict(row)
+        if isinstance(decoded, dict):
+            return {**row, "planning_brief": decoded}
+    return dict(row)
+
+
 def _map_profile_row(row: dict[str, Any]) -> ProfileRecord:
     raw_username = row.get("username")
     history_raw = row.get("username_change_history") or []
