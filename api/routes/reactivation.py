@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -10,6 +11,7 @@ import os
 import time
 
 from datetime import date, datetime, timezone
+from typing import Any
 from html import escape
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -52,6 +54,14 @@ def build_reactivation_router(*, require_profile, get_store) -> APIRouter:
             raise HTTPException(401, "Invalid signature") from None
         try:
             event = json.loads(body)
+        except ValueError:
+            raise HTTPException(400, "Invalid event") from None
+        # The Supabase reads and write run on a thread: on the event loop they
+        # stalled every other request's start for each provider callback.
+        return await asyncio.to_thread(_record_delivery_event, store, event)
+
+    def _record_delivery_event(store: AppStore, event: Any) -> dict[str, bool]:
+        try:
             column = {"email.delivered": "delivered_at", "email.clicked": "clicked_at"}.get(event.get("type"))
             if column:
                 provider_id = event["data"]["email_id"]

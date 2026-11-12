@@ -192,7 +192,7 @@ def build_admin_router() -> APIRouter:
         ]
 
     @router.get("/api/admin/plans/review", response_model=list[AdminPlanSummary])
-    async def list_admin_review_plans(
+    def list_admin_review_plans(
         request: Request,
         background_tasks: BackgroundTasks,
         _: ProfileRecord = Depends(require_admin),
@@ -648,10 +648,10 @@ def build_admin_router() -> APIRouter:
         active_tasks: set[str] = Depends(get_active_generation_tasks),
         enable_in_process_generation: bool = Depends(get_enable_in_process_generation),
     ) -> GenerationJobResponse:
-        row = store.get_admin_athlete(athlete_id)
+        row = await asyncio.to_thread(store.get_admin_athlete, athlete_id)
         if not row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="athlete not found")
-        latest_intake = store.get_latest_intake(athlete_id)
+        latest_intake = await asyncio.to_thread(store.get_latest_intake, athlete_id)
         if not latest_intake or not isinstance(latest_intake.get("intake"), dict):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -757,7 +757,7 @@ def build_admin_router() -> APIRouter:
                 stale_job_checker=_is_stale_job,
                 stale_after_seconds=stale_after_seconds,
             )
-            return _job_response(job, store=store, viewer_role="admin")
+            return await asyncio.to_thread(_job_response, job, store=store, viewer_role="admin")
         blocking_job = await asyncio.to_thread(
             _find_blocking_generation_job_for_athlete,
             store=store,
@@ -786,7 +786,7 @@ def build_admin_router() -> APIRouter:
             stale_job_checker=_is_stale_job,
             stale_after_seconds=stale_after_seconds,
         )
-        return _job_response(job, store=store, viewer_role="admin")
+        return await asyncio.to_thread(_job_response, job, store=store, viewer_role="admin")
 
     @router.patch("/api/admin/athletes/{athlete_id}/latest-intake", response_model=AdminAthleteRecord)
     def update_admin_athlete_latest_intake(
