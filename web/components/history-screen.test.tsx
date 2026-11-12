@@ -28,7 +28,7 @@ test("legacy completion records stay visible without claiming independent workou
       replaceMe: () => {}, previewAppearanceMode: () => {},
     }}><HistoryScreen /></AppSessionContext.Provider>));
     assert.match(container.textContent ?? "", /Legacy record/);
-    assert.match(container.textContent ?? "", /workout identity unverified/);
+    assert.equal(container.querySelectorAll(".history-session-row").length, 2);
     const done = [...container.querySelectorAll("dt")].find(item => item.textContent === "Done");
     assert.equal(done?.nextElementSibling?.textContent, "1");
   } finally {
@@ -173,12 +173,12 @@ test("Sessions shows the training summary, takeaways, linked sparring reports an
     assert.match(summary.textContent ?? "", /Boxing.*60m/);
     assert.match(summary.textContent ?? "", /Sparring.*45m/);
 
-    assert.match(container.textContent ?? "", /Right hand up after the jab/);
-    assert.ok(button("Edit takeaway"));
+    assert.match(container.querySelector(".history-row-takeaway")?.textContent ?? "", /Right hand up after the jab/);
+    assert.equal(button("Edit takeaway"), undefined);
     // The manual sparring session shows its linked report, loaded alongside.
     assert.ok(requests.some(url => url.includes("sparring-logs")));
-    assert.match(container.textContent ?? "", /6 rounds · Light head contact/);
-    assert.ok(button("Update report"));
+    assert.doesNotMatch(container.querySelector(".history-list")?.textContent ?? "", /6 rounds · Light head contact/);
+    assert.equal(button("Update report"), undefined);
 
     await act(async () => button("Takeaways · 1")!.click());
     assert.equal(container.querySelectorAll(".history-row").length, 1);

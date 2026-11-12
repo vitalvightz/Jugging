@@ -1,13 +1,13 @@
 .library { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .library .card { padding: 0; min-width: 0; overflow: hidden; }
-.open { display: flex; flex-direction: column; gap: 8px; width: 100%; height: 100%; padding: 18px 20px; border: 0; border-radius: inherit; background: transparent; color: var(--text-primary); text-align: left; font: inherit; cursor: pointer; }
+.open { display: flex; align-items: center; gap: 14px; width: 100%; height: 100%; padding: 16px; border: 0; border-radius: inherit; background: transparent; color: var(--text-primary); text-align: left; font: inherit; cursor: pointer; }
 .open:hover { background: color-mix(in srgb, var(--text-primary) 3%, transparent); }
 .open:focus-visible { outline: 2px solid var(--brand-red); outline-offset: -3px; }
 .cardHeading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; width: 100%; }
 .chevron { color: var(--text-muted); font-size: 24px; }
-.resultLabel { margin: 4px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
-.result { font-size: clamp(20px, 3vw, 28px); font-weight: 750; line-height: 1.25; overflow-wrap: anywhere; }
-.date { margin-top: 4px; color: var(--text-muted); font-size: 12px; }
+.resultLabel { display: block; margin: 2px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.result { font-size: clamp(16px, 2vw, 20px); font-weight: 750; line-height: 1.25; overflow-wrap: anywhere; }
+.date { display: block; margin-top: 5px; color: var(--text-muted); font-size: 12px; }
 .scope { margin: 0 0 16px; color: var(--text-muted); font-size: 13px; line-height: 1.6; }
 .discoveryHint { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; padding: 10px 12px; border: 1px solid var(--border-default); border-left: 2px solid var(--brand-red); border-radius: 8px; background: var(--bg-panel); color: var(--text-secondary); font-size: 13px; line-height: 1.4; }
 .discoveryHint span { flex: 1; }
@@ -45,3 +45,17 @@
 }
 /* Loading placeholders sized like the record they stand in for. */
 .recordSkeleton { display: grid; gap: 12px; }
+
+.cardMain { flex: 1; min-width: 0; }
+.cardName { display: block; font-weight: 650; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.cardResult { max-width: 45%; text-align: right; }
+.cardResult .resultLabel { font-size: 10px; line-height: 1.4; }
+.toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; }
+.search { display: flex; flex: 1 1 190px; align-items: center; gap: 10px; min-width: 0; padding: 0 12px; min-height: 46px; border: 1px solid var(--border-default); border-radius: 12px; color: var(--text-muted); background: var(--bg-stat); }
+.search:focus-within { outline: 2px solid var(--brand-red); outline-offset: 2px; }
+.search input { width: 100%; min-width: 0; padding: 12px 0; border: 0; outline: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 14px; }
+.search svg { flex-shrink: 0; }
+.count { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.discoveryHint { border: 0; background: transparent; padding: 0; margin: 0; font-size: 12px; }
+.discoveryHint button { margin: 0; }
+.library .card { border-left-width: 1px; }

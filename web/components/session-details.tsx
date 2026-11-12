@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode, type CSSProperties } from "react";
 import { getSessionDetails } from "@/lib/api";
 import type { SessionDetailBlock, SessionDetailRun, SessionDetails as Details } from "@/lib/api-schema.generated";
 import { formatAppDate } from "@/lib/date-format";
@@ -285,10 +285,11 @@ function RunRecord({ run, history, onEditRun }: {
   </div>;
 }
 
-export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = true, onEditExercises, onEditRun }: {
+export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = true, onEditExercises, onEditRun, actions }: {
   row: TrainingHistorySession; token: string; cache: SessionDetailsCache; onDismiss: () => void;
   /** A suspended parent sheet owns focus restoration during a modal handoff. */
   restoreFocus?: boolean;
+  actions?: ReactNode;
   /** Hands off to the exercise logger; this sheet closes first so only one modal is open. */
   onEditExercises?: (row: TrainingHistorySession) => void;
   /** Hands off to the run's edit sheet; this sheet closes first. */
@@ -329,7 +330,7 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
   const run = record && isRun(record) ? { ...row, ...record } : null;
   const expanded = open ?? new Set(details?.blocks.flatMap((block, index) => opensByDefault(block, details.blocks.length) ? [index] : []) ?? []);
   return <dialog ref={dialog} className={`${styles.dialog} ${styles.workspace}`} aria-labelledby={heading} data-closing={closing || undefined}
-    onCancel={event => { event.preventDefault(); dismiss(); }}
+    onCancel={event => { if (event.target !== event.currentTarget) return; event.preventDefault(); dismiss(); }}
     onClick={event => { if (event.target === event.currentTarget) {
       const bounds = event.currentTarget.getBoundingClientRect();
       if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dismiss();
@@ -340,6 +341,8 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
         {record ? <span className={styles.sessionStatus} data-status={sessionTone(record.status)}><StatusIcon status={sessionTone(record.status)} />{sessionStatusLabel(record.status)}</span> : null}</p></div>
       <button type="button" className={styles.close} aria-label="Close session details" onClick={() => dismiss()}>×</button></header>
     <div className={styles.body} tabIndex={0} role="region" aria-label="Session record">
+      {row.source === "unlxck" && row.completion_origin == null ? <p className={styles.quiet}>Legacy completion · workout identity unverified</p> : null}
+      {actions}
       {/* Opens near its loaded size (a skeleton of the record), glides the
           rest of the way, and fades the record in without moving the sheet. */}
       <AutoHeight swapKey={details ? "loaded" : error ? "error" : "loading"} swapMotion="fade">
@@ -347,10 +350,10 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
         {error ? <div role="alert"><p>Unable to load session details. Try again.</p><button type="button" className="secondary-button" onClick={() => { setError(false); setAttempt(value => value + 1); }}>Retry</button></div> : null}
         {details && record && run ? <div className={styles.recordContent}>
           <RunRecord run={run} history={details.runs ?? null} onEditRun={onEditRun ? () => onEditRun(run) : undefined} />
-          {details.blocks.length ? <section className={styles.section}>
+          {details.blocks.length || onEditExercises ? <section className={styles.section}>
             <div className={styles.manualHead}><h3>Drills & exercises</h3>
               {onEditExercises ? <button type="button" className={styles.manualAction} aria-haspopup="dialog"
-                onClick={() => onEditExercises(run)}>Edit exercises</button> : null}</div>
+                onClick={() => onEditExercises(run)}>{details.blocks.length ? "Edit exercises" : "Add exercises"}</button> : null}</div>
             <ol className={styles.manualList}>{details.blocks.map((block, index) => <li key={index}>
               <span className={styles.manualName}>{block.name}</span>
               {block.actual.set_entries?.length ? <SetResults entries={block.actual.set_entries} completed={block.actual.sets} /> : <span className={styles.manualValues}>{summarise(block.actual, block.format) || NO_MEASUREMENTS}</span>}
