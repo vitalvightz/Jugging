@@ -1,5 +1,6 @@
 import re
 from collections.abc import Iterable
+from functools import lru_cache
 
 from .normalization import strip_surrounding_punctuation as _strip_surrounding_punct
 from .regex_config import compile_regex
@@ -212,17 +213,29 @@ def remove_negated_phrases(text: str) -> str:
         return ""
     nlp = get_nlp()
     if nlp and _NEGSPACY_AVAILABLE:
-        doc = nlp(text)
-        if any(tok._.negex for tok in doc):
-            tokens = [tok.text for tok in doc if not tok._.negex]
-            return " ".join(tokens).strip()
-        # Negex only marks named entities, so symptom-level negations such as
-        # "no shoulder pain" slip through. Drop only chunks that *begin* with a
-        # negation cue (clinical forward-scope) instead of returning the text
-        # untouched. Embedded negations like "shoulder clicking no pain" are
-        # left for Negex so we never discard the non-negated half of a chunk.
-        return _strip_leading_negation_chunks(text)
+        return _remove_negex_phrases(nlp, text)
     return _strip_negated_chunks_fallback(text)
+
+
+@lru_cache(maxsize=4096)
+def _remove_negex_phrases(nlp, text: str) -> str:
+    """Negex filtering for one text with one loaded pipeline.
+
+    The result depends only on the pipeline and the text, and is an immutable
+    string, so repeats are served from memory. One Today build asks about the
+    same few injury phrases (area, description, "area pain") around two hundred
+    times, and each spaCy pass costs milliseconds.
+    """
+    doc = nlp(text)
+    if any(tok._.negex for tok in doc):
+        tokens = [tok.text for tok in doc if not tok._.negex]
+        return " ".join(tokens).strip()
+    # Negex only marks named entities, so symptom-level negations such as
+    # "no shoulder pain" slip through. Drop only chunks that *begin* with a
+    # negation cue (clinical forward-scope) instead of returning the text
+    # untouched. Embedded negations like "shoulder clicking no pain" are
+    # left for Negex so we never discard the non-negated half of a chunk.
+    return _strip_leading_negation_chunks(text)
 
 
 def _strip_leading_negation_chunks(text: str) -> str:

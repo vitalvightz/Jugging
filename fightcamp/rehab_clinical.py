@@ -212,7 +212,36 @@ def load_pathway_catalog(path: Path | None = None) -> PathwayCatalog:
     return PathwayCatalog.model_validate(raw)
 
 
+_DEFAULT_POLICIES: tuple[tuple, tuple[ClinicalPolicy, ...]] | None = None
+
+
+def _file_identity(path: Path) -> tuple:
+    stat = path.stat()
+    return (str(path), stat.st_mtime_ns, stat.st_size)
+
+
 def load_clinical_policies(path: Path | None = None, *, bank: list[dict] | None = None) -> tuple[ClinicalPolicy, ...]:
+    """The composed clinical policies.
+
+    The default files are composed once and reused while neither file changes
+    on disk: a Today build used to re-read and re-validate both JSON files
+    several times per request. Policies are frozen models and nothing mutates
+    them, so sharing the tuple is the same as composing it again. An explicit
+    ``path`` or ``bank`` always composes fresh.
+    """
+    global _DEFAULT_POLICIES
+    if path is not None or bank is not None:
+        return _compose_clinical_policies(path, bank=bank)
+    identity = (_file_identity(PATHWAYS_PATH), _file_identity(DATA_DIR / "rehab_bank.json"))
+    cached = _DEFAULT_POLICIES
+    if cached is not None and cached[0] == identity:
+        return cached[1]
+    policies = _compose_clinical_policies(None)
+    _DEFAULT_POLICIES = (identity, policies)
+    return policies
+
+
+def _compose_clinical_policies(path: Path | None = None, *, bank: list[dict] | None = None) -> tuple[ClinicalPolicy, ...]:
     raw = json.loads((path or PATHWAYS_PATH).read_text(encoding="utf-8"))
     if isinstance(raw, dict) and raw.get("schema_version") == 2 and "policies" in raw:
         # Read-only compatibility for the pre-pathway policy file format. It is
