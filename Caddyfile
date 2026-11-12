@@ -32,6 +32,9 @@
     header @api Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
 
     reverse_proxy api:8000 {
+        # Lets the app report time between this proxy and its first middleware
+        # (Server-Timing "queue"). Overwrites any value a client sent.
+        header_up X-Request-Start "t={time.now.unix_ms}"
         transport http {
             dial_timeout 10s
             response_header_timeout 180s

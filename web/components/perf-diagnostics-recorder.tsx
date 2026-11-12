@@ -5,7 +5,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   appendNavigation,
   readPerfLog,
+  resourcePhases,
   sanitizePath,
+  sanitizeRequestId,
   setPerfDiagnosticsEnabled,
   summarize,
   writePerfLog,
@@ -43,7 +45,14 @@ function hasContent(main: Element | null): boolean {
   return false;
 }
 
-type FetchRecord = { kind: "api" | "route"; path: string; start: number; ttfb: number | null; end: number | null; bytes: number | null; status: number | null; server: PerfRequest["server"] };
+type FetchRecord = { kind: "api" | "route"; path: string; start: number; ttfb: number | null; end: number | null; bytes: number | null; status: number | null; server: PerfRequest["server"]; requestId: string | null; phases: PerfRequest["phases"] };
+
+/** This request's resource timing entry: same URL, started with or just after the fetch call. */
+function phasesFor(href: string, start: number): PerfRequest["phases"] {
+  const entries = performance.getEntriesByName(href, "resource") as PerformanceResourceTiming[];
+  const entry = entries.filter(candidate => candidate.startTime >= start - 1).sort((a, b) => a.startTime - b.startTime)[0];
+  return resourcePhases(entry);
+}
 const fetchLog: FetchRecord[] = [];
 
 function parseServerTiming(header: string | null): PerfRequest["server"] {
@@ -58,8 +67,9 @@ function parseServerTiming(header: string | null): PerfRequest["server"] {
 
 /**
  * Times this tab's own API and route-payload requests while diagnostics are on.
- * Reads status, size and the Server-Timing header only: never request or
- * response headers otherwise, and never bodies' contents.
+ * Reads status, size, the Server-Timing header and the API's random
+ * X-Request-ID only: never other request or response headers, and never
+ * bodies' contents.
  */
 function installFetchRecorder(): () => void {
   const original = window.fetch;
@@ -70,7 +80,8 @@ function installFetchRecorder(): () => void {
       ? url.pathname.startsWith("/api/") ? "api" : url.searchParams.has("_rsc") ? "route" : null
       : null;
     if (!url || !kind) return original(input, init);
-    const record: FetchRecord = { kind, path: sanitizePath(url.href, location.origin), start: performance.now(), ttfb: null, end: null, bytes: null, status: null, server: [] };
+    const record: FetchRecord = { kind, path: sanitizePath(url.href, location.origin), start: performance.now(), ttfb: null, end: null, bytes: null, status: null, server: [], requestId: null, phases: null };
+    const href = url.href;
     fetchLog.push(record);
     if (fetchLog.length > 400) fetchLog.splice(0, fetchLog.length - 400);
     try {
@@ -78,11 +89,16 @@ function installFetchRecorder(): () => void {
       record.ttfb = performance.now();
       record.status = response.status;
       record.server = parseServerTiming(response.headers.get("server-timing"));
+      record.requestId = sanitizeRequestId(response.headers.get("x-request-id"));
       // Size and completion from a copy, so the app's own read is untouched.
       void response.clone().arrayBuffer()
         .then(buffer => { record.bytes = buffer.byteLength; })
         .catch(() => undefined)
-        .finally(() => { record.end = performance.now(); });
+        .finally(() => {
+          record.end = performance.now();
+          // The resource entry is queued after the body ends; read it next task.
+          setTimeout(() => { record.phases = phasesFor(href, record.start); }, 0);
+        });
       return response;
     } catch (error) {
       record.end = performance.now();
@@ -104,6 +120,8 @@ function requestsSince(tap: number, until: number): PerfRequest[] {
       bytes: record.bytes,
       status: record.status,
       server: record.server,
+      requestId: record.requestId,
+      phases: record.phases,
     }));
 }
 

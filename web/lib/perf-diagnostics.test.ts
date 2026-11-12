@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { appendNavigation, median, sanitizePath, summarize, type PerfNavigation } from "./perf-diagnostics.ts";
+import {
+  appendNavigation,
+  median,
+  resourcePhases,
+  sanitizePath,
+  sanitizeRequestId,
+  summarize,
+  type PerfNavigation,
+} from "./perf-diagnostics.ts";
 
 test("paths lose ids, numbers and every query value", () => {
   assert.equal(sanitizePath("/api/plans/41e5d6a9-8929-41e8-a0f4-fd6911cd03fd"), "/api/plans/:id");
@@ -32,4 +40,19 @@ test("the log is bounded", () => {
   assert.equal(log.length, 40);
   assert.equal(log[0].to, "/r20");
   assert.equal(median([null, 3, 1, 2]), 2);
+});
+
+test("request ids are kept only when they look like the API's random id", () => {
+  assert.equal(sanitizeRequestId("3f9a01bc"), "3f9a01bc");
+  assert.equal(sanitizeRequestId(null), null);
+  assert.equal(sanitizeRequestId("athlete@example.com"), null);
+  assert.equal(sanitizeRequestId("x".repeat(37)), null);
+});
+
+test("resource timing splits a request into setup, wait and download", () => {
+  assert.deepEqual(resourcePhases({ startTime: 100, requestStart: 140.4, responseStart: 790.6, responseEnd: 812 }),
+    { setup: 40, wait: 650, download: 21 });
+  // Detail withheld (requestStart 0) or no entry: nothing rather than a wrong split.
+  assert.equal(resourcePhases({ startTime: 100, requestStart: 0, responseStart: 0, responseEnd: 900 }), null);
+  assert.equal(resourcePhases(undefined), null);
 });

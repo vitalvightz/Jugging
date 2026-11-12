@@ -28,6 +28,15 @@ export type PerfRequest = {
   bytes: number | null;
   status: number | null;
   server: Array<{ name: string; ms: number }>;
+  /** The API's random per-request id, to find this request in server logs. */
+  requestId?: string | null;
+  /**
+   * Browser-measured phases (PerformanceResourceTiming), ms. `setup` is queueing,
+   * DNS, TCP and TLS before the request was sent; `wait` is request sent to first
+   * byte; `download` is first to last byte. `wait` minus the server's `queue` and
+   * `app` is the network and proxy hops between the phone and the API.
+   */
+  phases?: { setup: number; wait: number; download: number } | null;
 };
 
 export type PerfNavigation = {
@@ -86,6 +95,26 @@ export function sanitizePath(raw: string, origin = "https://x.invalid"): string 
     .join("/");
   const keys = [...new Set([...url.searchParams.keys()].filter(key => key !== "_rsc"))].sort();
   return keys.length ? `${path}?${keys.map(key => `${key}=`).join("&")}` : path;
+}
+
+const REQUEST_ID = /^[a-z0-9-]{1,36}$/i;
+
+/** The API's X-Request-ID when it looks like one, else null. */
+export function sanitizeRequestId(value: string | null): string | null {
+  return value && REQUEST_ID.test(value) ? value : null;
+}
+
+type ResourcePhaseSource = Pick<PerformanceResourceTiming, "startTime" | "requestStart" | "responseStart" | "responseEnd">;
+
+/** Setup/wait/download from a resource entry; null when the browser withheld detail. */
+export function resourcePhases(entry: ResourcePhaseSource | undefined): PerfRequest["phases"] {
+  if (!entry || !(entry.requestStart > 0) || !(entry.responseStart >= entry.requestStart)) return null;
+  const ms = (value: number) => Math.max(0, Math.round(value));
+  return {
+    setup: ms(entry.requestStart - entry.startTime),
+    wait: ms(entry.responseStart - entry.requestStart),
+    download: ms(entry.responseEnd - entry.responseStart),
+  };
 }
 
 export function median(values: Array<number | null>): number | null {

@@ -140,8 +140,23 @@ def score_injury_phrase(t_clean: str, synonym_map: Dict[str, List[str]] | None =
     Expected `synonym_map` format:
       { canonical_type: ["syn1", "syn2", ...], ... }
     """
-    t_clean = remove_negated_phrases(t_clean or "")
-    t_clean = _normalize(t_clean)
+    t_clean = _normalize(remove_negated_phrases(t_clean or ""))
+    if synonym_map is None:
+        # The default maps are module constants, so the score is a pure
+        # function of the negation-stripped text. Today scores the same few
+        # injury phrases dozens of times per build; each caller still gets its
+        # own result and its own ``flags`` list.
+        cached = _score_default_maps(t_clean)
+        return {**cached, "flags": list(cached["flags"])}  # type: ignore[typeddict-item]
+    return _score_cleaned_phrase(t_clean, synonym_map)
+
+
+@lru_cache(maxsize=4096)
+def _score_default_maps(t_clean: str) -> ScoredInjuryPhrase:
+    return _score_cleaned_phrase(t_clean, None)
+
+
+def _score_cleaned_phrase(t_clean: str, synonym_map: Dict[str, List[str]] | None) -> ScoredInjuryPhrase:
     if not t_clean:
         return {
             "injury_type": "unspecified",

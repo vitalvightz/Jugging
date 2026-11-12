@@ -610,6 +610,9 @@ def create_app(
 
         timings, timing_token = server_timing.begin()
         request_started = time.perf_counter()
+        queued = server_timing.proxy_queue_ms(request.headers.get("x-request-start"))
+        if queued is not None:
+            timings.add("queue", queued)
         try:
             response = await _dispatch_with_diagnostics(request, invalidate_caches)
         finally:
