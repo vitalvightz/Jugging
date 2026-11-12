@@ -9,6 +9,7 @@ from api.contracts.completion import HistoryCompletionEdit
 from api.contracts.external_training import ExternalTrainingCreate, ExternalTrainingFields, ExternalTrainingTakeaway
 from api.contracts.training_day import resolve_training_day_str
 from api.contracts.training_disciplines import training_title
+from api.services.today_reads import run_reads_concurrently
 
 
 def external_occurrence(row: dict) -> dict:
@@ -44,8 +45,11 @@ def training_history_page(store, athlete_id: str, *, limit: int, before_day: str
     def external_read(*, limit: int, before_day: str | None) -> list[dict]:
         return store.list_external_training_sessions(athlete_id, limit=limit, before_day=before_day)
 
-    prescribed = prescribed_read(limit=limit, before_day=before_day)
-    external = external_read(limit=limit, before_day=before_day)
+    # Independent sources: one round trip instead of two.
+    prescribed, external = run_reads_concurrently(
+        lambda: prescribed_read(limit=limit, before_day=before_day),
+        lambda: external_read(limit=limit, before_day=before_day),
+    )
     full = [source for source in (prescribed, external) if len(source) >= limit]
     if not full:
         return _combine(athlete_id, prescribed, external, include_skipped), None

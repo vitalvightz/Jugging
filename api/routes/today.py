@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 import logging
 from typing import Any, Literal, Mapping
+from functools import partial
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
@@ -24,6 +25,7 @@ from api.services.training_history import (
 )
 from api.contracts.session_details import SessionDetails
 from api.services.session_details import session_details
+from api.services.today_reads import run_reads_concurrently
 from api.contracts.exercise_library import ExerciseLibraryResponse, ExercisePerformancesResponse
 from api.contracts.manual_exercises import ManualExerciseEntry, PerformedExerciseInput, ManualExerciseListResponse
 from api.services.manual_exercises import delete_session_exercise, list_session_exercises, save_session_exercise
@@ -224,11 +226,16 @@ def _history_title(store: AppStore, athlete_id: str, completion: Mapping[str, An
     if not plan_id:
         return None
     if plan_id not in plans:
-        plan = store.get_training_plan_for_athlete(plan_id, athlete_id)
-        structured = resolve_effective_structured_plan(plan) if plan else None
-        plans[plan_id] = (plan, structured) if plan and structured else None
+        plans[plan_id] = _title_plan(store, athlete_id, plan_id)
     resolved = plans[plan_id]
     return _session_history_title(*resolved, completion) if resolved else None
+
+
+def _title_plan(store: AppStore, athlete_id: str, plan_id: str) -> tuple[Any, Any] | None:
+    """The owner-scoped plan row and its effective calendar, for session titles."""
+    plan = store.get_training_plan_for_athlete(plan_id, athlete_id)
+    structured = resolve_effective_structured_plan(plan) if plan else None
+    return (plan, structured) if plan and structured else None
 
 
 def _session_history_title(
@@ -343,7 +350,19 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
         rows, next_before_day = training_history_page(
             store, profile.athlete_id, limit=limit, before_day=before_day.isoformat() if before_day else None,
             include_skipped=include_skipped, manual_only=manual_only)
-        plans = {}
+        # The plans that titles come from and the manual-exercise counts depend
+        # only on this page's rows: read them in one concurrent wave instead of
+        # one plan after another and then the counts.
+        title_plan_ids = sorted({
+            str(row.get("plan_id") or "") for row in rows
+            if row["source"] != "external" and _saved_session_title(row) is None
+        } - {""})
+        external_ids = [str(row["id"]) for row in rows if row["source"] == "external"]
+        *title_plans, counts = run_reads_concurrently(
+            *(partial(_title_plan, store, profile.athlete_id, plan_id) for plan_id in title_plan_ids),
+            lambda: store.count_manual_exercises(profile.athlete_id, external_ids),
+        )
+        plans = dict(zip(title_plan_ids, title_plans))
         for row in rows:
             if row["source"] == "external":
                 continue
@@ -356,7 +375,6 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
                 row["activity"] = "sparring"
             row["history_editable"] = bool(row.get("id")) and plan_completion_history_editable(row)
             row["id"] = str(row.get("id") or row.get("session_id"))
-        counts = store.count_manual_exercises(profile.athlete_id, [str(row["id"]) for row in rows if row["source"] == "external"])
         for row in rows:
             if row["source"] == "external":
                 row["exercise_count"] = counts.get(str(row["id"]), 0)

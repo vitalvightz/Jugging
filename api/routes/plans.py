@@ -60,6 +60,7 @@ def build_plans_router(*, require_profile, require_plan_row, get_store) -> APIRo
         *,
         profile: ProfileRecord,
         store: AppStore,
+        runtime_brief: bool = False,
     ) -> dict[str, Any]:
         try:
             uuid.UUID(plan_id)
@@ -67,7 +68,14 @@ def build_plans_router(*, require_profile, require_plan_row, get_store) -> APIRo
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="plan not found")
 
         is_admin = is_effective_admin_profile(profile, store)
-        if is_admin:
+        if runtime_brief:
+            # The viewer's own plan, with the runtime brief and without the
+            # admin-only Stage-2 blobs (1.9 MB -> 0.5 MB for an admin's camp).
+            # An admin reading another athlete's plan still gets it whole.
+            plan_row = store.get_plan_runtime_for_athlete(plan_id, profile.athlete_id)
+            if plan_row is None and is_admin:
+                plan_row = store.get_plan(plan_id)
+        elif is_admin:
             plan_row = store.get_plan(plan_id)
         else:
             plan_row = store.get_plan_for_athlete(plan_id, profile.athlete_id)
@@ -254,10 +262,11 @@ def build_plans_router(*, require_profile, require_plan_row, get_store) -> APIRo
         profile: ProfileRecord = Depends(require_profile),
         store: AppStore = Depends(get_store),
     ) -> PlanCalendar:
-        # Same read, mapping and guards as the plan detail above, so the dates
-        # and phases are exactly the ones the plan page shows. Only what never
-        # touches the calendar is skipped: plan source, rehab labels and media.
-        plan_row = _read_plan_for_viewer(plan_id, profile=profile, store=store)
+        # Same mapping and guards as the plan detail above, so the dates and
+        # phases are exactly the ones the plan page shows. Only what never
+        # touches the calendar is skipped: plan source, rehab labels, media and
+        # the brief's candidate_pools (they only stamp exercise identity).
+        plan_row = _read_plan_for_viewer(plan_id, profile=profile, store=store, runtime_brief=True)
         training_day = resolve_training_day_str(
             datetime.now(timezone.utc), athlete_timezone=profile.athlete_timezone
         )

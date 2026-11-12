@@ -210,3 +210,63 @@ def test_concurrent_saves_never_leave_a_pre_save_view_remembered():
         # The save began after the build did, so whichever order they took,
         # the pre-save view must not survive.
         assert recent_today_command(store, athlete_id=ATHLETE, athlete_timezone="UTC") is None
+
+
+def _no_write_store():
+    store = _with_open_flags(_store_with_intake_injury())
+    for row in store.intakes[ATHLETE]:
+        row["intake"] = {"injuries": ""}  # nothing to seed: the sync only reads
+    store.reads.clear()
+    return store
+
+
+def test_the_intake_sync_reads_together_once_with_an_identical_view(monkeypatch):
+    store = _no_write_store()
+    sequential_store = _no_write_store()
+    # Same rows, same ids and timestamps.
+    sequential_store.injury_flags = {k: [dict(r) for r in v] for k, v in store.injury_flags.items()}
+    with monkeypatch.context() as patch:
+        patch.setattr(boundary, "_prefetch_sync_reads", lambda *a, **k: None)
+        expected = _view(sequential_store)
+
+    main_thread_reads: list[str] = []
+    all_reads: Counter = Counter()
+    for name in ("list_injury_flags", "get_intake"):
+        # The class method, not the counting wrapper, so each read counts once.
+        original = getattr(FakeStore, name).__get__(store)
+
+        def tracked(*args, _name=name, _original=original, **kwargs):
+            all_reads[_name] += 1
+            if threading.current_thread() is threading.main_thread():
+                main_thread_reads.append(_name)
+            return _original(*args, **kwargs)
+
+        store.__dict__[name] = tracked
+    actual = _view(store)
+
+    assert actual.model_dump(mode="json") == expected.model_dump(mode="json")
+    # The sync's flag and intake reads left the sequential path entirely…
+    assert main_thread_reads == []
+    # …and each was still read exactly once.
+    assert all_reads["get_intake"] == 1
+    assert all_reads["list_injury_flags"] == 2  # open, and open+resolved
+
+
+def test_a_sync_write_still_reads_the_flags_fresh_afterwards():
+    store = _with_open_flags(_store_with_intake_injury())  # intake injury: the sync seeds
+    writes = {"n": 0}
+    original = store.adopt_or_create_intake_injury_flag
+
+    def adopt(fields):
+        writes["n"] += 1
+        return original(fields)
+
+    store.adopt_or_create_intake_injury_flag = adopt
+    store.reads.clear()
+    view = _view(store)
+
+    assert writes["n"] >= 1
+    # Prefetched flags predate the write: the sync's final open-flag read and
+    # the view's open+resolved read both go back to the store, as before.
+    assert store.reads["list_injury_flags"] == 4
+    assert [injury["body_area"] for injury in view.open_injuries]

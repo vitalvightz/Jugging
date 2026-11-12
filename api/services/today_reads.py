@@ -7,7 +7,7 @@ scope never reuses a readiness decision or a read from an earlier request.
 import contextvars
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from api.store import PROFILE_COMPLIANCE_SELECT, AppStore
 
@@ -27,6 +27,26 @@ _SHARED_READS = frozenset({
 _PREFETCH_POOL = ThreadPoolExecutor(max_workers=16, thread_name_prefix="today-read")
 
 ReadCall = tuple[str, tuple[Any, ...], dict[str, Any]]
+
+
+def run_reads_concurrently(*reads: Callable[[], Any]) -> list[Any]:
+    """Run independent leaf reads at once; results in order.
+
+    Every read runs to completion. If any raised, the first one's error (in
+    argument order) is raised, as if the reads had run one after another, so a
+    caller's error handling is unchanged.
+    """
+    futures = [_PREFETCH_POOL.submit(contextvars.copy_context().run, read) for read in reads]
+    outcomes = []
+    for future in futures:
+        try:
+            outcomes.append((True, future.result()))
+        except Exception as exc:  # noqa: BLE001 - re-raised below in order
+            outcomes.append((False, exc))
+    for ok, value in outcomes:
+        if not ok:
+            raise value
+    return [value for _, value in outcomes]
 
 
 class _BuildReadCache:

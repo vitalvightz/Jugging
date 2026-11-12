@@ -19,7 +19,11 @@ from api.store import AppStore
 from .active_plan import ActivePlanResolution, resolve_active_plan
 from .today_reads import ReadCall, _BuildReadCache
 from .today_service import _UPCOMING_COMPLETION_READ_LIMIT
-from .intake_injury_sync import sync_active_plan_intake_injuries
+from .intake_injury_sync import (
+    _ACTIVE_STATUSES as ACTIVE_FLAG_STATUSES,
+    _DEDUPE_STATUSES as DEDUPE_FLAG_STATUSES,
+    sync_active_plan_intake_injuries,
+)
 from .today_readiness_boundary_core import (
     ReadinessContextHealth,
     resolve_today_landing,
@@ -90,6 +94,32 @@ def _resolve_active_plan_once(
         return None
 
 
+def _prefetch_sync_reads(
+    store: _BuildReadCache,
+    *,
+    athlete_id: str,
+    active_plan: ActivePlanResolution | None,
+) -> None:
+    """Issue the intake sync's reads together instead of one after another.
+
+    The sync reads the open flags, the plan's intake row and the
+    open+resolved flags strictly in sequence, though each depends only on the
+    athlete and the resolved plan: three round trips before the view's reads
+    could start. Read here concurrently, they reach the sync from this
+    operation's cache exactly as if it had read them itself. A failed read is
+    not kept, so the sync reads it again and handles its own failure.
+    """
+    plan = active_plan.plan if active_plan is not None else None
+    intake_id = str(plan.get("intake_id") or "").strip() if isinstance(plan, dict) else ""
+    reads: list[ReadCall] = [
+        ("list_injury_flags", (athlete_id,), {"statuses": ACTIVE_FLAG_STATUSES, "limit": 500}),
+        ("list_injury_flags", (athlete_id,), {"statuses": DEDUPE_FLAG_STATUSES, "limit": 500}),
+    ]
+    if intake_id:
+        reads.append(("get_intake", (intake_id,), {}))
+    store.prefetch(reads)
+
+
 def _prefetch_view_reads(
     store: _BuildReadCache,
     *,
@@ -158,6 +188,10 @@ def build_today_command_view(
             store, athlete_id=athlete_id, athlete_timezone=athlete_timezone, now=now
         )
     with server_timing.measure("today_sync"):
+        try:
+            _prefetch_sync_reads(store, athlete_id=athlete_id, active_plan=active_plan)
+        except Exception:  # noqa: BLE001 - prefetch is an optimisation; the sync reads for itself
+            logger.exception("[today] sync read prefetch failed athlete_id=%s", athlete_id)
         sync_active_plan_intake_injuries(
             store,
             athlete_id=athlete_id,

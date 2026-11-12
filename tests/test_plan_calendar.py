@@ -78,3 +78,61 @@ def test_a_plan_without_a_structured_card_has_no_calendar():
 
     assert response.status_code == 200
     assert response.json()["structured_plan"] is None
+
+
+POOLS = {"GPP": {"strength_slots": [{"selected": {"name": "Box Jump (Max Height)"}, "alternates": []}]}}
+ADMIN = {"Authorization": "Bearer admin-token"}
+
+
+def _count_plan_reads(store):
+    from collections import Counter
+
+    calls = Counter()
+    for name in ("get_plan", "get_plan_for_athlete", "get_plan_runtime_for_athlete"):
+        original = getattr(store, name)
+
+        def counted(*args, _name=name, _original=original, **kwargs):
+            calls[_name] += 1
+            return _original(*args, **kwargs)
+
+        setattr(store, name, counted)
+    return calls
+
+
+def test_calendar_reads_the_runtime_brief_and_still_matches_the_detail():
+    client, store, _ = _build_client()
+    _seed(store, _athlete(client))
+    # Candidate pools only stamp exercise identity inside blocks; the calendar
+    # is read without them and must still equal the detail's spine.
+    store.plans[PLAN_ID]["planning_brief"] = json.dumps({"fight_date": "2026-12-01", "candidate_pools": POOLS})
+    store.plans[PLAN_ID]["stage2_payload"] = {"prompt": "x" * 1000}
+    calls = _count_plan_reads(store)
+
+    calendar = client.get(f"/api/plans/{PLAN_ID}/calendar", headers=H).json()["structured_plan"]
+    assert calls["get_plan_runtime_for_athlete"] == 1 and calls["get_plan"] == 0
+    detail = client.get(f"/api/plans/{PLAN_ID}", headers=H).json()["outputs"]["structured_plan"]
+
+    from api.plan_mappers import plan_calendar_spine
+    assert calendar == plan_calendar_spine(detail)
+
+
+def test_an_admins_own_calendar_skips_the_admin_only_blobs():
+    client, store, _ = _build_client()
+    _seed(store, "admin-1")
+    store.plans[PLAN_ID]["stage2_payload"] = {"prompt": "x" * 1000}
+    calls = _count_plan_reads(store)
+
+    response = client.get(f"/api/plans/{PLAN_ID}/calendar", headers=ADMIN)
+
+    assert response.status_code == 200 and response.json()["structured_plan"]["weeks"]
+    assert calls["get_plan_runtime_for_athlete"] == 1 and calls["get_plan"] == 0
+
+
+def test_an_admin_still_reads_another_athletes_calendar():
+    client, store, _ = _build_client()
+    _seed(store, "someone-else")
+
+    response = client.get(f"/api/plans/{PLAN_ID}/calendar", headers=ADMIN)
+
+    assert response.status_code == 200
+    assert response.json()["plan_id"] == PLAN_ID and response.json()["structured_plan"]["weeks"]
