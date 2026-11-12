@@ -275,7 +275,7 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
         <button type="button" onClick={dismissEditHint} aria-label="Dismiss session editing tip">×</button>
       </div> : null}
       <ul className="history-list">
-        {shown.map((row) => (
+        {shown.map((row, index) => (
           <li key={`${row.source}-${row.id}`} className="history-row history-session-row" data-tone={sessionStatusTone(row.status)}>
             <button type="button" className="history-session-open" aria-haspopup="dialog"
               aria-label={`View ${trainingTitle(row) || "session"} details for ${formatAppDate(row.training_day)}`}
@@ -304,7 +304,8 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
             {row.source === "external" && row.activity === "sparring" && sparringLogs?.get(row.id) ? (
               <Chips chips={sessionSparringChips(sparringLogs.get(row.id)!)} />
             ) : null}
-            {token && today && row.training_day < today ? <div className="history-session-actions"><LogTraining accessToken={token}
+            {/* One action after the last visible session for each training day. */}
+            {token && today && row.training_day < today && shown[index + 1]?.training_day !== row.training_day ? <div className="history-session-actions"><LogTraining accessToken={token}
               initialTrainingDay={row.training_day} onSaved={onUpdate} /></div> : null}
             {row.source === "external" ? <div className="history-session-actions">
               {row.activity === "sparring" && sparringLogs && token ? (() => {
