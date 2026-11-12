@@ -716,7 +716,9 @@ test("set history recalled past an unmeasured Done opens as individual drafts in
 });
 
 test("written prescriptions remain prescriptions, never suggestions or Try actions", async () => {
-  const previous = record(deadlift, { actual: { sets: 4, reps: 8, load: { value: 125, unit: "kg" }, feel: "right" } });
+  // Right at an RPE over the plan's earns no step, so nothing calculated competes with the written load.
+  const previous = record(deadlift, { actual: { sets: 4, reps: 8, load: { value: 125, unit: "kg" }, feel: "right",
+    effort: { method: "RPE", value: 8 } } });
   for (const progression_hold of [false, true]) for (const value of [1, 100, 125, 130]) {
     const authored = { ...deadlift, progression_hold, prescription_source: "athlete" as const,
       load: { method: "absolute" as const, value, unit: "kg" } };

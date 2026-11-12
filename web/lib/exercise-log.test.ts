@@ -282,12 +282,17 @@ test("a raise is earned by the work done, not by the wording of a progression ru
   // A low reported RPE or "felt strong" reads as easy when the athlete gave no answer.
   assert.equal(nextStepFor(deadlift, done({ effort: { method: "RPE", value: 6 } }), true)?.kind, "load");
   assert.equal(nextStepFor(deadlift, done({ reps: 10 }, { status: "modified", reason: "felt_strong" }), true)?.kind, "load");
-  // A bare "done" is never taken as easy; "right" holds; "hard" is not a raise.
-  for (const actual of [{}, { feel: "right" as const }, { feel: "hard" as const }, { effort: { method: "RPE" as const, value: 8 } }]) {
+  // A bare "done" is never taken as easy; "hard", or an RPE over the plan's, is not a raise.
+  for (const actual of [{}, { feel: "hard" as const }, { effort: { method: "RPE" as const, value: 8 } },
+    { feel: "right" as const, effort: { method: "RPE" as const, value: 8 } }]) {
     assert.equal(nextStepFor(deadlift, done(actual), true), null);
   }
-  // The athlete's own answer outranks the RPE they typed.
-  assert.equal(nextStepFor(deadlift, done({ feel: "right", effort: { method: "RPE", value: 5 } }), true), null);
+  // "Right" is appropriate effort: every set and rep done earns the smallest plate step.
+  assert.deepEqual(nextStepFor(deadlift, done({ feel: "right" }), true), { kind: "load", load: { value: 82.5, unit: "kg" } });
+  // The athlete's own answer outranks the RPE they typed: Right stays one step, Easy earns the usual share.
+  const heavy = (feel: "right" | "easy") => done({ feel, load: { value: 200, unit: "kg" }, effort: { method: "RPE", value: 5 } });
+  assert.deepEqual(nextStepFor(deadlift, heavy("right"), true), { kind: "load", load: { value: 202.5, unit: "kg" } });
+  assert.deepEqual(nextStepFor(deadlift, heavy("easy"), true), { kind: "load", load: { value: 205, unit: "kg" } });
   // Restrictions close the engine itself, whatever the performance.
   assert.equal(nextStepFor(deadlift, done({ feel: "easy" }), false), null);
   // Missed work, a deviation, a skip, or no weight on record earns nothing.
@@ -297,9 +302,9 @@ test("a raise is earned by the work done, not by the wording of a progression ru
     done({ feel: "easy" }, { reason: "fatigue" }), done({ feel: "easy" }, { reason: "equipment" }),
     log(deadlift, { prescribed: deadlift, actual: { feel: "easy" } }),
   ]) assert.equal(nextStepFor(deadlift, previous, true), null);
-  // A changed dose, a lower planned effort, a plan-set weight or a hold instruction is respected.
+  // More work than was done, a lower planned effort, a plan-set weight or a hold instruction is respected.
   for (const patch of [
-    { reps: 10 }, { sets: 3 }, { effort: { method: "RPE", value: 5 } }, { load: { value: 60, unit: "kg" } },
+    { reps: 10 }, { sets: 5 }, { effort: { method: "RPE", value: 5 } }, { load: { value: 60, unit: "kg" } },
     { progression_rule: "Keep the same dose and make each rep sharp." }, { progression_rule: "none this block" },
     { progression_rule: "Maintain the listed working dose." }, { progression_rule: "Do not add load this week." },
   ]) assert.equal(nextStepFor({ ...deadlift, ...patch }, done({ feel: "easy" }), true), null);
@@ -323,9 +328,17 @@ test("inside a rep range reps come first, and a one-tap done counts as the botto
   // 8 on every set, easy: a little more weight.
   assert.deepEqual(nextStepFor(squat, done({ reps: 8, feel: "easy" }), true), { kind: "load", load: { value: 42.5, unit: "kg" } });
   assert.equal(nextStepLabel({ kind: "load", load: { value: 42.5, unit: "kg" } }), "Try 42.5 kg");
-  // 7 reps, right: maintain and build towards 8. Top of the range but only "right": hold.
-  assert.equal(nextStepFor(squat, done({ reps: 7, feel: "right" }), true), null);
-  assert.equal(nextStepFor(squat, done({ reps: 8, feel: "right" }), true), null);
+  // Right works through the range the same way, and at the top earns the smallest step.
+  assert.deepEqual(nextStepFor(squat, done({ reps: 7, feel: "right" }), true), { kind: "reps", reps: 8 });
+  assert.deepEqual(nextStepFor(squat, done({ reps: 8, feel: "right" }), true), { kind: "load", load: { value: 42.5, unit: "kg" } });
+  // Today asking for fewer reps or sets than were done keeps that evidence; more does not.
+  assert.deepEqual(nextStepFor({ ...squat, reps: "5-6" }, done({ reps: 8, feel: "easy" }), true)?.kind, "load");
+  assert.deepEqual(nextStepFor({ ...squat, sets: 2 }, done({ reps: 8, feel: "easy" }), true)?.kind, "load");
+  assert.equal(nextStepFor({ ...squat, sets: 4 }, done({ reps: 8, feel: "easy" }), true), null);
+  assert.equal(nextStepFor({ ...squat, reps: "8-10" }, done({ reps: 8, feel: "easy" }), true), null);
+  // A lighter dose today is not also eased by a weight cut.
+  assert.equal(backoffLoadFor({ ...squat, sets: 2 }, done({ reps: 8, feel: "hard" })), null);
+  assert.ok(backoffLoadFor(squat, done({ reps: 8, feel: "hard" })));
   // Sets logged one by one: the weakest set decides, and an uncounted set earns nothing.
   const rows = (reps: (number | null)[]) => done({ feel: "easy", sets: reps.length,
     set_entries: reps.map((count, index) => ({ set_number: index + 1, reps: count, load: { value: 40, unit: "kg" } })) });
@@ -346,14 +359,14 @@ test("feedback is interpreted consistently with recorded RPE against the plan", 
   assert.equal(felt({}), null);
 });
 
-test("matching planned RPE without feedback holds progression for summary and per-set effort", () => {
+test("matching planned RPE without feedback is Right, earning the smallest step for summary and per-set effort", () => {
   for (const effort of [
     { effort: { method: "RPE", value: 7 } },
     { sets: 4, set_entries: Array.from({ length: 4 }, () => ({ reps: 8, rpe: 7, load: { value: 100, unit: "kg" } })) },
   ] satisfies ExerciseLogRecord["actual"][]) {
     const completed = log(deadlift, { actual: { reps: 8, load: { value: 100, unit: "kg" }, ...effort } });
     assert.equal(feelOf(completed), "right");
-    assert.equal(nextStepFor(deadlift, completed, true), null);
+    assert.deepEqual(nextStepFor(deadlift, completed, true), { kind: "load", load: { value: 102.5, unit: "kg" } });
     assert.equal(backoffLoadFor(deadlift, completed), null);
     const unplanned = { ...deadlift, effort: undefined };
     const withoutTarget = { ...completed, prescribed: unplanned };
@@ -364,16 +377,18 @@ test("matching planned RPE without feedback holds progression for summary and pe
 });
 
 test("a green day never outranks taper, the final fortnight, an injury or a hold", () => {
+  // Only phases that wind training down close progression; open plans and other labels stay open.
   const open = { decisionTier: "green", openInjuries: 0, phase: "SPP", safetyHold: false, fightDate: "2026-12-20", trainingDay: "2026-11-10" };
   assert.equal(progressionOpen(open), true);
   // An open plan has no fight date.
   assert.equal(progressionOpen({ ...open, phase: "GPP", fightDate: undefined }), true);
   for (const patch of [
     { decisionTier: "modify" }, { decisionTier: "not_checked_in" }, { decisionTier: undefined },
-    { openInjuries: 1 }, { phase: "TAPER" }, { phase: "" }, { safetyHold: true },
+    { openInjuries: 1 }, { phase: "TAPER" }, { phase: "FIGHT_WEEK" }, { phase: "REINTEGRATION" }, { phase: "Weight cut" }, { safetyHold: true },
     { fightDate: "2026-11-24" }, { fightDate: "2026-11-12" }, { fightDate: "not a date" }, { trainingDay: "" },
   ]) assert.equal(progressionOpen({ ...open, ...patch }), false, JSON.stringify(patch));
   assert.equal(progressionOpen({ ...open, fightDate: "2026-11-25" }), true);
+  for (const phase of ["", undefined, null, "BUILD"]) assert.equal(progressionOpen({ ...open, phase, fightDate: undefined }), true, String(phase));
 });
 
 test("the first weight is asked once for weighted strength work with none on record", () => {
@@ -496,8 +511,8 @@ test("a fixed working number progresses inside the server's permitted range", ()
   assert.deepEqual(nextStepFor(squat, done({ feel: "easy" }), true), { kind: "reps", reps: 9 });
   assert.deepEqual(nextStepFor(squat, done({ reps: 11, feel: "easy" }), true), { kind: "reps", reps: 12 });
   assert.equal(nextStepFor(squat, done({ reps: 12, feel: "easy" }), true)?.kind, "load");
-  // An explicit answer outranks the RPE; with no answer the RPE still counts.
-  assert.equal(nextStepFor(squat, done({ reps: 9, feel: "right", effort: { method: "RPE", value: 5 } }), true), null);
+  // An explicit answer outranks the RPE; with no answer the RPE still counts. Right still moves up the range.
+  assert.deepEqual(nextStepFor(squat, done({ reps: 9, feel: "right", effort: { method: "RPE", value: 5 } }), true), { kind: "reps", reps: 10 });
   assert.deepEqual(nextStepFor(squat, done({ reps: 9, effort: { method: "RPE", value: 6 } }), true), { kind: "reps", reps: 10 });
   // A range the prescription sits outside, or a malformed one, is ignored.
   assert.deepEqual(progressionRepRange({ ...squat, rep_range: [10, 12] }), [8, 8]);

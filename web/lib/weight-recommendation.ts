@@ -1,4 +1,4 @@
-import { backoffLoadFor, lastLoadFor, lastPerformanceFor, logFieldsForBlock, nextStepFor, progressionOpen, progressionRepRange } from "./exercise-log";
+import { backoffLoadFor, compatibleDose, lastLoadFor, lastPerformanceFor, logFieldsForBlock, nextStepFor, progressionOpen } from "./exercise-log";
 import type { ExerciseLogMeasure, ExerciseLogRecord, ExerciseRecentLoad, StructuredBlock } from "./types";
 
 export type WeightContext = {
@@ -40,15 +40,9 @@ export function weightRecommendation(block: StructuredBlock, context: WeightCont
   const prescription = field?.prescribed?.[0];
   const prescribed = prescription && field?.apiUnit ? { value: prescription, unit: field.apiUnit } : null;
   const before = previous?.prescribed as StructuredBlock | undefined;
-  const todayReps = progressionRepRange(block);
-  const beforeReps = before && progressionRepRange(before);
-  const legacy = beforeReps != null && todayReps != null && before?.rep_range == null
-    && beforeReps[0] === beforeReps[1] && beforeReps[0] === todayReps[0]
-    && beforeReps[0] <= todayReps[1];
   // Compare known components independently; absent manual prescriptions still carry forward.
-  const incompatible = (typeof block.sets === "number" && typeof before?.sets === "number"
-    && block.sets !== before.sets)
-    || (todayReps != null && beforeReps != null && !legacy && todayReps.join() !== beforeReps.join());
+  // Asking for fewer sets or reps than last time keeps that evidence; asking for more does not.
+  const incompatible = Boolean(before && !compatibleDose(block, before));
   const oldLoad = before?.load?.value ?? previous?.actual.load?.value;
   const oldUnit = before?.load?.unit ?? previous?.actual.load?.unit;
   const changedLoad = prescription != null && oldLoad != null && (prescription !== oldLoad || field?.apiUnit !== oldUnit);
