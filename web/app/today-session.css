@@ -676,6 +676,13 @@ html .today-page .today-decision-banner:has(.today-decision-disclosure[open]) {
   padding: 0 14px 14px;
 }
 
+/* These rows remain outside the collapsible controls; keep their contents
+   aligned with the padded controls rather than the card's clipped edge. */
+.today-injury-item > .injury-clearance,
+.today-injury-item > .today-injury-care {
+  padding-inline: 14px;
+}
+
 .today-injury-controls[hidden] {
   display: none;
 }

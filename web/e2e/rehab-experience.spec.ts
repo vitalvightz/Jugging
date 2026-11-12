@@ -332,6 +332,10 @@ for (const width of [320, 390, 1280]) {
     await expect(injury.locator(".today-injury-summary-row")).toHaveAttribute("aria-expanded", "false");
     const clearance = injury.getByRole("button", { name: /^(Change|Report) clearance$/ });
     await expect(clearance).toBeVisible();
+    const cardBox = (await injury.boundingBox())!;
+    const clearanceBox = (await clearance.boundingBox())!;
+    expect(clearanceBox.x - cardBox.x).toBeGreaterThanOrEqual(12);
+    expect(cardBox.x + cardBox.width - clearanceBox.x - clearanceBox.width).toBeGreaterThanOrEqual(12);
     await expect(page.locator(".injury-discovery-hint")).toContainText("what your clinician says you can do");
     await shot(page, `injury-clearance-visible-${width}.png`);
     await clearance.click();
@@ -347,6 +351,10 @@ for (const width of [320, 390, 1280]) {
     const guide = injury.locator(".injury-stage-guide");
     await guide.locator("summary").click();
     await expect(guide).toContainText("Comfortable movement.");
+    const expandedClearance = (await clearance.boundingBox())!;
+    const guideBox = (await guide.boundingBox())!;
+    expect(Math.abs(expandedClearance.x - guideBox.x)).toBeLessThan(1);
+    expect(Math.abs(expandedClearance.width - guideBox.width)).toBeLessThan(1);
     await expect(guide).toContainText("Stages are not clearance to train.");
     expect(await injury.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
     await shot(page, `injury-stage-guide-${width}.png`);
