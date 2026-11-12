@@ -31,11 +31,19 @@ change memoizes them:
   them. An explicit `path` or `bank` composes fresh.
 
 No safety decision changes: each cached value equals a fresh computation
-(pinned in `tests/test_today_core_cpu_caches.py`) and the full suite passes.
+(pinned in `tests/test_today_core_cpu_caches.py`). In the full suite, 565
+tests passed before the run was stopped; the failures it hit
+(`test_achilles_load_activation`, `test_api_types_generated`,
+`test_custom_open_plans`, `test_computed_support`) fail identically on the
+base commit.
 
-Measured locally on the same fixture: `today_core` ~870ms → ~210ms on the
-first build in a process, ~100ms once warm. Production times differ by
-hardware and injury count; check the next iPhone report.
+Measured locally on the same fixture, with production settings
+(`UNLXCK_DISABLE_SPACY=1`, as `compose.yaml` sets for the API):
+`today_core` ~111ms → ~21ms warm, ~169ms → ~50ms on the first build in a
+process. The spaCy cache only matters where spaCy is enabled (the generation
+worker, local runs); in the API the gains come from phrase scoring and policy
+loading. Production times differ by hardware and injury count; check the
+next iPhone report.
 
 The largest remaining core item is structured-plan projection
 (`resolve_effective_structured_plan`, ~40ms here). It shapes session
@@ -43,7 +51,7 @@ decisions, so it was left alone.
 
 ## Request overhead: where the 200–370ms can be
 
-The path is iPhone → Next.js `/api` rewrite (web host) → Caddy → uvicorn.
+The path is iPhone → Vercel (Next.js `/api` rewrite) → Hetzner Caddy → uvicorn.
 `app` starts at the first FastAPI middleware, so the gap includes both network
 hops, Caddy, and any wait before the event loop picks the request up.
 
@@ -66,8 +74,36 @@ Reading the next report: `wait − queue − app` is the phone ↔ web host ↔ 
 network time. A large `queue` points at event-loop or worker saturation. A
 large `setup` points at connection reuse.
 
+## Today route payload request (not reproduced)
+
+The report showed a revisit to Today whose route changed at ~330ms after a
+~315ms route payload (`_rsc`) request. A production build driven by
+Playwright did not reproduce it:
+
+- Home → Today → Plans → History → Home → Today through the tab bar: every
+  tap changed the URL in 50–100ms with no route request.
+- Entering Today from Home's primary button: also served from the cache.
+- Jumping the clock 6 minutes, past `staleTimes` (300s), and tapping Today:
+  no request at all, so route-cache expiry is not the cause in Next 16.4.
+
+Two gaps in the recorder made the report ambiguous, and are now closed:
+
+- Next's full prefetches of tab routes carry no `next-router-prefetch`
+  header but do carry `_rsc`, so the report counted background prefetches as
+  route requests. Route requests now record `prefetch` from their headers.
+- A navigation recorded only the bare target path, so a tab tap on `/today`
+  and Home's `/today?preview=1` button looked the same. Each navigation now
+  records `via` (`nav` or `page`) and `href` with query keys.
+
+`prefetch: true` proves a background prefetch, but `false` does not prove the
+opposite, since some of Next's full prefetches carry no marker. Each route
+request therefore also records `blockedRoute`: true only when it started
+before the screen changed and its response arrived before the screen changed.
+That is strong timing evidence the navigation waited on it, though not proof
+of cause. In the next report, look for a Today revisit with
+`blockedRoute: true`, and note its `via` and `href`.
+
 ## Not covered here
 
-- The occasional ~315ms blocking Today route payload (`_rsc`) request.
 - History's main request (327ms app / 578ms total).
 - Cold start (HTML first byte and the first API request).

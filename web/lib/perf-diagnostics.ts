@@ -37,6 +37,19 @@ export type PerfRequest = {
    * `app` is the network and proxy hops between the phone and the API.
    */
   phases?: { setup: number; wait: number; download: number } | null;
+  /**
+   * Route payload requests only: Next marked it a background prefetch. Some
+   * of Next's full prefetches carry no marker, so `false` does not by itself
+   * mean the navigation waited on it; see `blockedRoute`.
+   */
+  prefetch?: boolean;
+  /**
+   * Route payload requests only: it started before the screen changed and its
+   * response arrived before the screen changed, so the navigation plausibly
+   * waited on it. False when the screen changed first (a background request).
+   * Null when the screen never changed or the response never arrived.
+   */
+  blockedRoute?: boolean | null;
 };
 
 export type PerfNavigation = {
@@ -58,6 +71,10 @@ export type PerfNavigation = {
   timedOut: boolean;
   /** The next tap came before this screen settled. */
   interrupted?: boolean;
+  /** Where the tapped link was: the tab bar / side nav, or a link on the page. */
+  via?: "nav" | "page";
+  /** The tapped link with query keys (never values), e.g. `/today?preview=`. */
+  href?: string;
 };
 
 export type PerfReport = {
@@ -95,6 +112,16 @@ export function sanitizePath(raw: string, origin = "https://x.invalid"): string 
     .join("/");
   const keys = [...new Set([...url.searchParams.keys()].filter(key => key !== "_rsc"))].sort();
   return keys.length ? `${path}?${keys.map(key => `${key}=`).join("&")}` : path;
+}
+
+/** Whether a fetch's own headers mark it as a Next router prefetch. */
+export function isRouterPrefetch(headers: HeadersInit | undefined): boolean {
+  if (!headers) return false;
+  try {
+    return new Headers(headers).has("next-router-prefetch");
+  } catch {
+    return false;
+  }
 }
 
 const REQUEST_ID = /^[a-z0-9-]{1,36}$/i;
@@ -137,6 +164,22 @@ export function summarize(navigations: PerfNavigation[]): PerfReport["summary"] 
       return api.length ? Math.max(...api.map(request => request.end)) : null;
     })),
   }));
+}
+
+/** Whether a route request plausibly held up the screen change (see `blockedRoute`). */
+export function routeRequestBlocked(request: Pick<PerfRequest, "start" | "ttfb">, routeChanged: number | null): boolean | null {
+  if (routeChanged === null || request.ttfb === null) return null;
+  return request.start <= routeChanged && request.ttfb <= routeChanged;
+}
+
+/** Marks each route request with whether the navigation waited on it. */
+export function withBlockedRoutes(navigation: PerfNavigation): PerfNavigation {
+  return {
+    ...navigation,
+    requests: navigation.requests.map(request => (request.kind === "route"
+      ? { ...request, blockedRoute: routeRequestBlocked(request, navigation.routeChanged) }
+      : request)),
+  };
 }
 
 export function appendNavigation(log: PerfNavigation[], navigation: PerfNavigation): PerfNavigation[] {

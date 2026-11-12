@@ -3,6 +3,9 @@ import test from "node:test";
 
 import {
   appendNavigation,
+  isRouterPrefetch,
+  routeRequestBlocked,
+  withBlockedRoutes,
   median,
   resourcePhases,
   sanitizePath,
@@ -55,4 +58,32 @@ test("resource timing splits a request into setup, wait and download", () => {
   // Detail withheld (requestStart 0) or no entry: nothing rather than a wrong split.
   assert.equal(resourcePhases({ startTime: 100, requestStart: 0, responseStart: 0, responseEnd: 900 }), null);
   assert.equal(resourcePhases(undefined), null);
+});
+
+test("router prefetches are told apart from navigation payload requests", () => {
+  assert.equal(isRouterPrefetch({ "Next-Router-Prefetch": "1", RSC: "1" }), true);
+  assert.equal(isRouterPrefetch(new Headers({ "next-router-prefetch": "1" })), true);
+  assert.equal(isRouterPrefetch([["rsc", "1"]]), false);
+  assert.equal(isRouterPrefetch(undefined), false);
+});
+
+test("a route request counts as blocking only when the screen changed after its response", () => {
+  // Started at the tap, answered at 310ms, screen changed at 330ms: the navigation waited.
+  assert.equal(routeRequestBlocked({ start: 2, ttfb: 310 }, 330), true);
+  // Screen changed at 20ms from the cache; the request is background work.
+  assert.equal(routeRequestBlocked({ start: 2, ttfb: 310 }, 20), false);
+  // Started after the screen changed (e.g. prefetching the next tabs).
+  assert.equal(routeRequestBlocked({ start: 40, ttfb: 60 }, 20), false);
+  // Not enough to judge.
+  assert.equal(routeRequestBlocked({ start: 2, ttfb: null }, 330), null);
+  assert.equal(routeRequestBlocked({ start: 2, ttfb: 310 }, null), null);
+});
+
+test("only route requests are marked", () => {
+  const visit = nav("/today", 400, 900, [800]);
+  visit.routeChanged = 330;
+  visit.requests.push({ kind: "route", path: "/today", start: 2, ttfb: 310, end: 320, bytes: 1, status: 200, server: [], prefetch: false });
+  const marked = withBlockedRoutes(visit).requests;
+  assert.equal(marked[0].blockedRoute, undefined);
+  assert.equal(marked[1].blockedRoute, true);
 });

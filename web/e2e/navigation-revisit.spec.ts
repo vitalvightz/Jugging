@@ -129,6 +129,11 @@ test("speed diagnostics stay off by default, record navigations when on, and lea
   expect(report.navigations.length).toBeGreaterThan(0);
   const visit = report.navigations.find((entry: { to: string }) => entry.to === "/today");
   expect(visit.routeChanged).not.toBeNull();
+  expect(visit.via).toBe("nav");
+  expect(visit.href).toBe("/today");
+  for (const request of visit.requests.filter((entry: { kind: string }) => entry.kind === "route")) {
+    expect(typeof request.prefetch).toBe("boolean");
+  }
   expect(visit.requests.some((request: { path: string }) => request.path === "/api/today")).toBe(true);
   const text = JSON.stringify(report);
   expect(text).not.toContain(PRIMARY.token);
