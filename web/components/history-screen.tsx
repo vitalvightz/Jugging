@@ -193,6 +193,7 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
   const [editHint, dismissEditHint] = useSeenOnce("discovery-history-edit-seen");
   // A run's edit sheet opened from its details, which reopen once it closes.
   const [editRun, setEditRun] = useState<TrainingHistorySession | null>(null);
+  const followUpSparring = (row: TrainingHistorySession) => setSparringDraft(manualSparringDraft(row));
   async function remove(row: TrainingHistorySession) {
     if (deleting) return false;
     // A plan session goes back to not done on the plan, so confirm first.
@@ -244,7 +245,7 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
         <section className="history-day-group" key={day} aria-label={formatAppDate(day)}>
           <div className="history-day-heading">
             <h2><RowDate day={day} today={today} /></h2>
-            {token && today && day <= today ? <LogTraining accessToken={token} initialTrainingDay={day} historyMode onSaved={onUpdate} /> : null}
+            {token && today && day <= today ? <LogTraining onSparringFollowUp={followUpSparring} accessToken={token} initialTrainingDay={day} historyMode onSaved={onUpdate} /> : null}
           </div>
           <ul className="history-list">
             {shown.filter(row => row.training_day === day).map(row => (
@@ -299,23 +300,23 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
         cache={detailsCache} onDismiss={() => setSelected(null)}
         actions={<div className="history-detail-actions">
           {error ? <p className="error-banner" role="alert">{error}</p> : null}
+
           {selected.source === "external" ? <>
-            <LogTraining accessToken={token} entry={selected} historyMode onSaved={row => { onUpdate(row); setSelected(null); }} />
-            {canRepeatTraining(selected) ? <LogTraining accessToken={token} repeatEntry={selected} historyMode onSaved={row => { onUpdate(row); setSelected(null); }} /> : null}
+            <LogTraining onSparringFollowUp={followUpSparring} accessToken={token} entry={selected} historyMode onSaved={row => { onUpdate(row); setSelected(null); }} />
+            {canRepeatTraining(selected) ? <LogTraining onSparringFollowUp={followUpSparring} accessToken={token} repeatEntry={selected} historyMode onSaved={row => { onUpdate(row); setSelected(null); }} /> : null}
             <TakeawayEditor token={token} row={selected} onSaved={row => { onUpdate(row); setSelected(null); }} />
             {selected.activity === "sparring" && sparringLogs ? <button type="button" className="history-session-delete" onClick={() => {
               const log = sparringLogs.get(selected.id);
               setSparringDraft(log ? sparringReportDraft(selected.id, selected.title, log) : manualSparringDraft(selected)); setSelected(null);
             }}>Sparring details</button> : null}
           </> : selected.history_editable ? <PlanSessionEditor token={token} row={selected} onSaved={row => { onUpdate(row); setSelected(null); }} /> : null}
-          {selected.source === "unlxck" ? <div className="history-extra-training"><p className="muted">Completed extra exercises? Log a separate manual session for this day.</p>
-            <LogTraining accessToken={token} initialTrainingDay={selected.training_day} historyMode onSaved={onUpdate} /></div> : null}
-          {selected.source === "external" || selected.history_editable ? <button className="history-session-delete" type="button" disabled={deleting !== null}
-            onClick={() => { void remove(selected).then(removed => { if (removed) setSelected(null); }); }}>Delete session</button> : null}
+          {selected.source === "external" || selected.history_editable ? <details className="history-actions-menu"><summary aria-label="More session actions">···</summary>
+          <div className="history-actions-items"><button className="history-session-delete" type="button" disabled={deleting !== null}
+            onClick={() => { void remove(selected).then(removed => { if (removed) setSelected(null); }); }}>Delete session</button></div></details> : null}
         </div>}
         onEditRun={row => { setEditRun(row); setSelected(null); }}
         onEditExercises={selected.source === "external" ? row => { setExercisesFor({ row, reopenDetails: true }); setSelected(null); } : undefined} /> : null}
-      {editRun && token ? <LogTraining key={`edit-${editRun.id}`} accessToken={token} entry={editRun} autoOpen historyMode
+      {editRun && token ? <LogTraining onSparringFollowUp={followUpSparring} key={`edit-${editRun.id}`} accessToken={token} entry={editRun} autoOpen historyMode
         onSaved={updated => { detailsCache.delete(`external:${updated.id}`); onUpdate(updated); setEditRun(updated); }}
         onClosed={() => { setSelected(editRun); setEditRun(null); }} /> : null}
       {exercisesFor && token ? <ManualExerciseLogger key={exercisesFor.row.id} token={token} session={exercisesFor.row} reference={exercisesFor.reference}
@@ -368,7 +369,7 @@ function SparringRows({ history, sessions, token, onSaved }: {
   const lastHard = history.last_hard_day ? daysAgoLabel(history.last_hard_day, today) : null;
   const lastRocked = history.last_rocked_day ? daysAgoLabel(history.last_rocked_day, today) : null;
   return (
-    <div className="history-tab-body">
+    <div className="history-tab-body history-records">
       <section className="history-summary" aria-label="Sparring totals">
         <SummaryGroup
           label="Last 7 days"
@@ -515,7 +516,7 @@ function CheckinRows({ rows, today }: { rows: TodayCheckinHistoryRecord[]; today
       })
     : null;
   return (
-    <div className="history-tab-body">
+    <div className="history-tab-body history-records">
       {week ? (
         <section className="history-summary" aria-label="Check-ins in the last 7 days">
           <SummaryGroup
@@ -563,15 +564,8 @@ function InjuryRow({ row }: { row: InjuryFlagRecord }) {
         <span className="history-row-title">{title}</span>
         <StatusBadge tone={injuryStatusTone(row.status)} label={injuryStatusLabel(row.status)} />
       </div>
-      <Chips
-        chips={[
-          {
-            label: `${row.severity.charAt(0).toUpperCase()}${row.severity.slice(1)}`,
-            tone: injurySeverityTone(row.severity),
-          },
-        ]}
-      />
       <div className="history-row-meta">
+        <span data-tone={injurySeverityTone(row.severity)}>{row.severity.charAt(0).toUpperCase() + row.severity.slice(1)}</span>
         <span>Reported {formatAppDate(row.created_at)}</span>
         {row.resolved_at ? <span>Resolved {formatAppDate(row.resolved_at)}</span> : null}
         {!row.resolved_at && row.latest_reported_status ? (
@@ -600,7 +594,7 @@ function InjuryRows({ rows }: { rows: InjuryFlagRecord[] }) {
   const active = rows.filter((row) => row.status !== "resolved");
   const resolved = rows.filter((row) => row.status === "resolved");
   return (
-    <div className="history-tab-body">
+    <div className="history-tab-body history-records">
       <section className="history-summary" aria-label="Injuries">
         <SummaryGroup
           label="Injuries"

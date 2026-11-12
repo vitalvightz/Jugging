@@ -55,7 +55,10 @@ export function manualSparringDraft(row: TrainingHistorySession): SparringDraft 
   };
 }
 
-type Props = { historyMode?: boolean; accessToken: string | null; entry?: TrainingHistorySession; repeatEntry?: TrainingHistorySession; recent?: boolean; history?: TrainingHistorySession[]; quickSession?: { activity: TrainingActivity; sport?: TrainingSport | null; session_type?: TrainingSessionType | null; duration_minutes: number; title: string; effort?: TrainingEffort | null }; onSaved?: (row: TrainingHistorySession) => void; onSparringReported?: () => void; variant?: "compact" | "tile" | "primary";
+type Props = {
+  /** Parent-owned follow-ups survive the History details sheet closing. */
+  onSparringFollowUp?: (row: TrainingHistorySession) => void;
+  historyMode?: boolean; accessToken: string | null; entry?: TrainingHistorySession; repeatEntry?: TrainingHistorySession; recent?: boolean; history?: TrainingHistorySession[]; quickSession?: { activity: TrainingActivity; sport?: TrainingSport | null; session_type?: TrainingSessionType | null; duration_minutes: number; title: string; effort?: TrainingEffort | null }; onSaved?: (row: TrainingHistorySession) => void; onSparringReported?: () => void; variant?: "compact" | "tile" | "primary";
   /** Preselect a date for a new session; editing keeps the original record date. */
   initialTrainingDay?: string;
   /** With `entry`: open its edit sheet at once, with no trigger button, and report when it closes. */
@@ -65,7 +68,7 @@ export function LogTraining(props: Props) {
   return props.accessToken ? <LogTrainingContent key={props.accessToken} {...props} accessToken={props.accessToken} /> : null;
 }
 
-function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, history, quickSession, onSaved, onSparringReported, variant = "compact", autoOpen = false, initialTrainingDay, historyMode = false, onClosed }: Props & { accessToken: string }) {
+function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, history, quickSession, onSaved, onSparringReported, variant = "compact", autoOpen = false, initialTrainingDay, historyMode = false, onSparringFollowUp, onClosed }: Props & { accessToken: string }) {
   const [open, setOpen] = useState(false);
   // The sheet slides away before it unmounts, rather than vanishing in a frame.
   const [closing, setClosing] = useState(false);
@@ -302,7 +305,12 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
       if (historyMode) showToast("Session saved");
       else if (!entry && !repeatEntry && row.source === "external" && row.activity !== "sparring") setTakeawayRow(row);
       else setSaved(`${trainingTitle(row)} logged successfully. Saved to Training History.`);
-      if (!historyMode && !editing && row.source === "external" && row.activity === "sparring") setSparringDraft(manualSparringDraft(row));
+      if (!editing && row.source === "external") {
+        if (row.activity === "sparring") {
+          if (onSparringFollowUp) onSparringFollowUp(row);
+          else setSparringDraft(manualSparringDraft(row));
+        }
+      }
     } catch (reason) {
       if (currentToken.current === token && reason instanceof ApiError && reason.code === "health_data_consent_required") {
         setServerConsentRequired(true); setError(null);
@@ -401,12 +409,12 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
       {quickSession ? <button className={styles.actionRow} type="button" onClick={() => startEdit(quickSession, true, quickSession.title)} aria-haspopup="dialog" aria-label={quickSession.title} aria-describedby={`${fieldId}-quick`}>
         <span><strong>{quickSession.title}</strong><span className="muted" id={`${fieldId}-quick`}>{trainingLabel(quickSession)} · {quickSession.duration_minutes} min</span></span>
         <svg className={styles.chevron} viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 5 7 7-7 7" /></svg>
-      </button> : repeatSource ? <button className={repeatEntry ? styles.repeatButton : styles.actionRow} type="button" onClick={() => startEdit(repeatSource, true)} aria-haspopup="dialog" aria-label={repeatEntry ? `Repeat ${trainingTitle(repeatSource)}` : "Repeat last session"} aria-describedby={!repeatEntry ? `${fieldId}-recent` : undefined}>
+      </button> : repeatSource ? <button className={historyMode ? "history-session-delete" : repeatEntry ? styles.repeatButton : styles.actionRow} type="button" onClick={() => startEdit(repeatSource, true)} aria-haspopup="dialog" aria-label={repeatEntry ? `Repeat ${trainingTitle(repeatSource)}` : "Repeat last session"} aria-describedby={!repeatEntry ? `${fieldId}-recent` : undefined}>
         {repeatEntry ? "Repeat" : <><span><strong>Repeat last session</strong><span className="muted" id={`${fieldId}-recent`}>{trainingLabel(repeatSource)} · {repeatSource.duration_minutes} min</span></span><svg className={styles.chevron} viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 5 7 7-7 7" /></svg></>}
       </button> : null}
       </Collapse>
       {repeatEntry || autoOpen ? null : entry ? <button className={historyMode ? "history-session-delete" : styles.editButton} type="button" onClick={() => startEdit(entry)} aria-haspopup="dialog" aria-label={`Edit ${trainingTitle(entry)}`} title="Edit session">
-        {historyMode ? "Edit session" : null}<svg className="ex-log-edit-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M4 20h4L18.5 9.5a2.12 2.12 0 0 0-3-3L5 17v3Z" /><path d="m14.5 7.5 3 3" /></svg>
+        {historyMode ? "Edit" : null}<svg className="ex-log-edit-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M4 20h4L18.5 9.5a2.12 2.12 0 0 0-3-3L5 17v3Z" /><path d="m14.5 7.5 3 3" /></svg>
       </button> :
         <button className={historyMode ? "history-add-session" : variant === "primary" ? `cta ${styles.primary}` : variant === "tile" ? `${tileStyles.tile} ${tileStyles.log}` : styles.actionRow} type="button" onClick={() => startEdit()} aria-haspopup="dialog" aria-label={initialTrainingDay ? "Add Session" : "Log session"}>
           {initialTrainingDay ? <strong>+ Add Session</strong> : variant === "primary" ? <><span aria-hidden="true">+</span> Log session</> : variant === "tile" ? <TrainingActionContent kind="log" /> : <><span><strong>{recent && (repeatSource || quickSession) ? "Log another session" : "Log session"}</strong><span className="muted">{mySport ? `${sportLabel(mySport)}, strength, conditioning and more.` : "Sparring, boxing, running, strength and more."}</span></span><span aria-hidden="true">+</span></>}

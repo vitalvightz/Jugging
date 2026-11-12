@@ -9,8 +9,7 @@ import { EXERCISE_LOG_REASON_LABELS } from "@/lib/exercise-log";
 import type { ExerciseLogReason } from "@/lib/types";
 import { lockOverlayScroll } from "@/lib/overlay-scroll-lock";
 import { comparisonRows, detailMeasurements, matchesPrescription, splitLoad, type ComparisonRow } from "@/lib/session-details";
-import { recordStatus, StatusIcon, TileIcon, type RecordStatus } from "./record-icons";
-import { NO_MEASUREMENTS, summarise } from "@/lib/manual-exercises";
+import { recordStatus, StatusIcon, type RecordStatus } from "./record-icons";
 import { sessionTypes, sportLabel, trainingTitle } from "@/lib/training-disciplines";
 import type { TrainingHistorySession } from "@/lib/training-history";
 import styles from "./session-details.module.css";
@@ -38,17 +37,12 @@ const OUTCOMES = { as_prescribed: "Completed as prescribed", modified: "Modified
 /** Short status for a row; the full outcome stays in the expanded record. */
 const SHORT_OUTCOMES = { as_prescribed: "Done", modified: "Modified", skipped: "Skipped",
   done_as_shown: "Done", changed: "Changed", stopped: "Stopped" };
-const QUIET_STATUSES = new Set(["as_prescribed", "done_as_shown"]);
 const hasWeight = (label: string, value?: string) => label === "Load" && !!value && /\d/.test(value);
 
-/** Blocks with something to see start open: a lone block, or any change, skip or unknown outcome. */
-export function opensByDefault(block: SessionDetailBlock, count: number): boolean {
-  return count === 1 || (block.source !== "manual" && !QUIET_STATUSES.has(block.status ?? ""));
-}
-
 /** What a row shows: the weight on its own and the rest of the dose, from what was done or else what was planned. */
-export function blockSummary(block: SessionDetailBlock): { load: string | null; dose: string } {
-  return detailMeasurements(block.actual).length ? splitLoad(block.actual) : splitLoad(block.prescribed);
+export function blockSummary(block: SessionDetailBlock, compact = false): { load: string | null; dose: string } {
+  const values = detailMeasurements(block.actual).length ? block.actual : block.prescribed;
+  return splitLoad(compact ? Object.fromEntries(Object.entries(values).filter(([key]) => !["rest", "intensity", "effort", "tempo"].includes(key))) : values);
 }
 
 /** Done beside planned, one measurement per row; the weight is gold, changed values stand out. */
@@ -118,13 +112,13 @@ function TrainingBlockBody({ block, context }: { block: SessionDetailBlock; cont
 }
 
 /** A collapsible record card: name, dose and the weight in gold; the full record expands on request. */
-export function TrainingBlock({ block, index, heading, recordId, open, onToggle, numbered = true }: {
-  block: SessionDetailBlock; index: number; heading?: string; recordId?: string; open: boolean; onToggle: () => void; numbered?: boolean;
+export function TrainingBlock({ block, index, heading, recordId, open, onToggle, numbered = true, compact = false }: {
+  block: SessionDetailBlock; index: number; heading?: string; recordId?: string; open: boolean; onToggle: () => void; numbered?: boolean; compact?: boolean;
 }) {
   const body = useId();
   const context = heading ? `${block.name} · ${heading} · Record ${index + 1}` : block.name;
   const label = block.source === "manual" ? "Logged" : block.status ? SHORT_OUTCOMES[block.status] : "Not recorded";
-  const { load, dose } = blockSummary(block);
+  const { load, dose } = blockSummary(block, compact);
   return <li className={styles.block} data-performance={recordId} data-open={open} tabIndex={recordId ? -1 : undefined}>
     <div className={styles.blockHeading}>{numbered ? <span className={styles.number}>{String(index + 1).padStart(2, "0")}</span> : null}
       <div className={styles.blockTitle}><h4><button type="button" className={styles.blockToggle} aria-expanded={open} aria-controls={body} onClick={onToggle}>{heading || block.name}</button></h4>
@@ -141,9 +135,6 @@ export function TrainingBlock({ block, index, heading, recordId, open, onToggle,
 function SessionRecordSkeleton() {
   return <div className={styles.recordSkeleton}>
     <p role="status" className="sr-only">Loading session details…</p>
-    <div className={styles.recordSkeletonFacts}>
-      <Skeleton height={62} /><Skeleton height={62} /><Skeleton height={62} />
-    </div>
     <Skeleton variant="text" width="52%" height={18} />
     <Skeleton height={64} /><Skeleton height={64} />
   </div>;
@@ -326,19 +317,27 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
     return () => { cancelled = true; };
   }, [row.id, row.source, token, cache, attempt]);
   const record = details?.session;
-  const [open, setOpen] = useState<ReadonlySet<number> | null>(null);
+  const [open, setOpen] = useState<ReadonlySet<number>>(() => new Set());
   const run = record && isRun(record) ? { ...row, ...record } : null;
-  const expanded = open ?? new Set(details?.blocks.flatMap((block, index) => opensByDefault(block, details.blocks.length) ? [index] : []) ?? []);
-  return <dialog ref={dialog} className={`${styles.dialog} ${styles.workspace}`} aria-labelledby={heading} data-closing={closing || undefined}
+  const expanded = open;
+  const facts = record ?? row;
+  const title = row.source === "external" && row.activity === "roadwork" ? trainingTitle(row) : facts.title;
+  const sport = facts.sport ? sportLabel(facts.sport) : null;
+  const sessionType = facts.session_type ? sessionTypes(facts.sport).find(item => item.id === facts.session_type)?.label || facts.session_type.replaceAll("_", " ") : null;
+  const metadata = [facts.duration_minutes != null ? `${facts.duration_minutes} min` : null, sessionEffort(facts),
+    facts.source === "external" ? "Added by you" : "UNLXCK",
+    ...[sport, sessionType].filter(value => value && !title.toLocaleLowerCase().includes(value.toLocaleLowerCase()))].filter(Boolean);
+  return <dialog ref={dialog} className={`${styles.dialog} ${styles.journal}`} aria-labelledby={heading} data-closing={closing || undefined}
     onCancel={event => { if (event.target !== event.currentTarget) return; event.preventDefault(); dismiss(); }}
     onClick={event => { if (event.target === event.currentTarget) {
       const bounds = event.currentTarget.getBoundingClientRect();
       if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dismiss();
     } }}>
     <header className={styles.header}><div><p className={styles.eyebrow}>Session details</p>
-      <h2 id={heading}>{row.source === "external" && row.activity === "roadwork" ? trainingTitle(row) : record?.title || row.title}</h2>
+      <h2 id={heading}>{title}</h2>
       <p className={styles.quiet}>{formatAppDate(record?.training_day || row.training_day)}
-        {record ? <span className={styles.sessionStatus} data-status={sessionTone(record.status)}><StatusIcon status={sessionTone(record.status)} />{sessionStatusLabel(record.status)}</span> : null}</p></div>
+        <span className={styles.sessionStatus} data-status={sessionTone(facts.status)}><StatusIcon status={sessionTone(facts.status)} />{sessionStatusLabel(facts.status)}</span></p>
+      <p className={styles.journalMeta}>{metadata.join(" · ")}</p></div>
       <button type="button" className={styles.close} aria-label="Close session details" onClick={() => dismiss()}>×</button></header>
     <div className={styles.body} tabIndex={0} role="region" aria-label="Session record">
       {row.source === "unlxck" && row.completion_origin == null ? <p className={styles.quiet}>Legacy completion · workout identity unverified</p> : null}
@@ -354,56 +353,33 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
             <div className={styles.manualHead}><h3>Drills & exercises</h3>
               {onEditExercises ? <button type="button" className={styles.manualAction} aria-haspopup="dialog"
                 onClick={() => onEditExercises(run)}>{details.blocks.length ? "Edit exercises" : "Add exercises"}</button> : null}</div>
-            <ol className={styles.manualList}>{details.blocks.map((block, index) => <li key={index}>
-              <span className={styles.manualName}>{block.name}</span>
-              {block.actual.set_entries?.length ? <SetResults entries={block.actual.set_entries} completed={block.actual.sets} /> : <span className={styles.manualValues}>{summarise(block.actual, block.format) || NO_MEASUREMENTS}</span>}
-              {block.notes ? <p className={styles.note}>{block.notes}</p> : null}
-            </li>)}</ol>
+            <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} numbered={false} compact
+              open={expanded.has(index)} onToggle={() => setOpen(new Set(expanded.has(index) ? [...expanded].filter(item => item !== index) : [...expanded, index]))} />)}</ol>
           </section> : null}
           {record.notes || record.takeaway ? <section className={styles.section}><h3>Notes</h3>
             {record.notes ? <p className={styles.note}>{record.notes}</p> : null}
             {record.takeaway ? <p className={styles.note}>Takeaway: {record.takeaway}</p> : null}</section> : null}
         </div> : null}
-        {details && record && !run ? <div className={styles.sessionLayout}>
-          <section className={styles.sessionSummary} aria-label="Session overview">
-            <dl className={styles.sessionFacts}>
-              <div><TileIcon name="source" /><dt>Source</dt><dd>{record.source === "external" ? "Added by you" : "Unlxck"}</dd></div>
-              {/* One effort tile and one duration tile, worded the same whether the
-                  session came from Unlxck or was logged by hand. */}
-              {sessionEffort(record) ? <div><TileIcon name="effort" /><dt>Session effort</dt><dd>{sessionEffort(record)}</dd></div> : null}
-              {record.duration_minutes != null ? <div><TileIcon name="time" /><dt>Duration</dt><dd>{record.duration_minutes} min</dd></div> : null}
-              {record.pain_after != null ? <div><TileIcon name="pain" /><dt>Pain after</dt><dd>{record.pain_after}/10</dd></div> : null}
-            </dl>
-          </section>
-          <div className={styles.recordContent}>
-          {record.source === "external" ? <section className={styles.section}>
-            {record.sport || record.session_type ? <dl className={styles.measurements}>
-              {record.sport ? <div><dt>Sport</dt><dd>{sportLabel(record.sport)}</dd></div> : null}
-              {record.session_type ? <div><dt>Session type</dt><dd>{sessionTypes(record.sport).find(item => item.id === record.session_type)?.label || record.session_type.replaceAll("_", " ")}</dd></div> : null}
-            </dl> : null}
-            <div className={styles.manualHead}><h3>Exercises</h3>
-              {onEditExercises && record.activity !== "sparring" ? <button type="button" className={styles.manualAction} aria-haspopup="dialog"
+        {details && record && !run ? <div className={styles.recordContent}>
+          {record.pain_after != null ? <p className={styles.note}>Pain after: {record.pain_after}/10</p> : null}
+          <section className={styles.section}>
+            <div className={styles.manualHead}><h3>{record.source === "external" ? "Exercises" : "Exercises & training blocks"}</h3>
+              {record.source === "external" && onEditExercises && record.activity !== "sparring" ? <button type="button" className={styles.manualAction} aria-haspopup="dialog"
                 onClick={() => onEditExercises({ ...row, ...record })}>{details.blocks.length ? "Edit exercises" : "Add exercises"}</button> : null}</div>
-            {details.blocks.length ? <ol className={styles.manualList}>{details.blocks.map((block, index) => <li key={index}>
-              <span className={styles.manualName}>{block.name}</span>
-              {block.actual.set_entries?.length ? <SetResults entries={block.actual.set_entries} completed={block.actual.sets} /> : <span className={styles.manualValues}>{summarise(block.actual, block.format) || NO_MEASUREMENTS}</span>}
-              {block.notes ? <p className={styles.note}>{block.notes}</p> : null}
-            </li>)}</ol> : <p className={styles.quiet}>No exercises recorded. Only activity, duration and effort were logged.</p>}
-            {details.sparring ? <><h3>Sparring report</h3><p>{details.sparring.rounds_completed} rounds{details.sparring.round_seconds != null ? ` · ${details.sparring.round_seconds} sec` : ""} · {details.sparring.intensity}</p>
-              {details.sparring.head_contact ? <p>Head contact: {details.sparring.head_contact}</p> : null}
-              {details.sparring.rocked != null ? <p>Rocked: {details.sparring.rocked ? "Yes" : "No"}</p> : null}
-              {details.sparring.notes ? <p className={styles.note}>{details.sparring.notes}</p> : null}</> : null}
-          </section> : <section className={styles.section}><h3>Exercises & training blocks</h3>
             {details.prescription_source === "exercise_logs" ? <p className={styles.quiet}>Saved exercise logs only. Full prescription and block order unavailable.</p> : null}
-            {details.blocks.length ? <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index}
-              open={expanded.has(index)} onToggle={() => setOpen(new Set(expanded.has(index) ? [...expanded].filter(item => item !== index) : [...expanded, index]))} />)}</ol> : null}
-          </section>}
+            {details.blocks.length ? <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} numbered={false} compact
+              open={expanded.has(index)} onToggle={() => setOpen(new Set(expanded.has(index) ? [...expanded].filter(item => item !== index) : [...expanded, index]))} />)}</ol>
+              : record.source === "external" ? <p className={styles.quiet}>No exercises recorded.</p> : null}
+          </section>
+          {details.sparring ? <section className={styles.section}><h3>Sparring report</h3><p>{details.sparring.rounds_completed} rounds{details.sparring.round_seconds != null ? ` · ${details.sparring.round_seconds} sec` : ""} · {details.sparring.intensity}</p>
+            {details.sparring.head_contact ? <p>Head contact: {details.sparring.head_contact}</p> : null}
+            {details.sparring.rocked != null ? <p>Rocked: {details.sparring.rocked ? "Yes" : "No"}</p> : null}
+            {details.sparring.notes ? <p className={styles.note}>{details.sparring.notes}</p> : null}</section> : null}
           {details.message ? <p className={styles.quiet}>{details.message}</p> : null}
-          {record.notes || record.modification_reason || record.takeaway ? <section className={styles.section}><h3>Session feedback</h3>
+          {record.notes || record.modification_reason || record.takeaway ? <section className={styles.section}><h3>Notes</h3>
             {record.modification_reason ? <p className={styles.note}>Modification: {record.modification_reason}</p> : null}
             {record.notes ? <p className={styles.note}>{record.notes}</p> : null}
             {record.takeaway ? <p className={styles.note}>Takeaway: {record.takeaway}</p> : null}</section> : null}
-          </div>
         </div> : null}
       </AutoHeight>
     </div>
