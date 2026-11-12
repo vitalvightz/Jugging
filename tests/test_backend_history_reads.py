@@ -140,3 +140,23 @@ def test_training_history_preserves_plan_session_identity_for_sparring_reports()
     row = response.json()["sessions"][0]
     assert row["session_id"] == "2026-06-04-strength"
     assert row["title"] == "Hard sparring"
+
+
+@pytest.mark.parametrize("session_fields", [
+    {"session_type": "sparring"},
+    {"blocks": [{"block_type": "sparring", "display_name": "Coach-led rounds"}]},
+])
+def test_history_identifies_sparring_from_saved_structure_without_title_match(session_fields):
+    client, _ = seed({"plan_id": PLAN, "training_day": "2026-06-04",
+                      "session": {"session_id": "2026-06-04-strength", "title": "Evening practice", **session_fields}})
+    response = client.get("/api/training/history", headers=HEADERS)
+    assert response.status_code == 200
+    assert response.json()["sessions"][0]["activity"] == "sparring"
+
+
+def test_history_does_not_use_mismatched_snapshot_to_identify_sparring():
+    client, _ = seed({"plan_id": "other-plan", "training_day": "2026-06-04",
+                      "session": {"session_id": "2026-06-04-strength", "title": "Evening practice", "session_type": "sparring"}})
+    response = client.get("/api/training/history", headers=HEADERS)
+    assert response.status_code == 200
+    assert response.json()["sessions"][0]["activity"] is None

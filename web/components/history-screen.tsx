@@ -341,15 +341,15 @@ export function unreportedSparringSessions(sessions: TrainingHistorySession[], l
     if (row.status === "skipped" || row.completion_origin === "day_credit") return false;
     if (row.source === "external") return row.activity === "sparring" && !reported.has(row.id);
     // Match the completed session, never other work alongside contact that day.
-    const isSparring = row.activity === "sparring" || /^(?:hard |light |technical )?sparring(?:$|[\s(—–:-])/i.test(row.title.trim());
+    const isSparring = row.activity === "sparring" || /^(?:(?:boxing|muay thai|kickboxing|mma|bjj|grappling|wrestling)\s*(?:[·—–:-]\s*)?)?(?:hard |light |technical )?sparring(?:$|[\s(—–:-])/i.test(row.title.trim());
     return isSparring && !logs.some(log => log.plan_id === row.plan_id
       && log.session_id === row.session_id && log.training_day === row.training_day);
   });
 }
 
-function SparringRows({ history, sessions, token, onSaved }: {
+function SparringRows({ history, sessions, token, onSaved, hasMore }: {
   history: SparringLogHistoryResponse; sessions: TrainingHistorySession[]; token: string | null;
-  onSaved: (log: SparringLogRecord) => void;
+  onSaved: (log: SparringLogRecord) => void; hasMore: boolean;
 }) {
   const { logs, current_training_day: today } = history;
   const [draft, setDraft] = useState<SparringDraft | null>(null);
@@ -362,8 +362,8 @@ function SparringRows({ history, sessions, token, onSaved }: {
     return (
       <EmptyState
         eyebrow="Sparring history"
-        title="No sparring logged yet."
-        description="Finish a sparring round timer on Today to log your rounds. They'll show here with weekly totals."
+        title={hasMore ? "No sparring in the loaded history." : "No sparring logged yet."}
+        description={hasMore ? "Load earlier sessions to find older sparring completions." : "Complete a sparring session or log your sparring on Today to see it here."}
         example="Thu 02 Jul 2026: 5 × 3 min · Hard · Light head contact"
         primaryAction={{ label: "Open Today", href: "/today" }}
       />
@@ -730,7 +730,7 @@ function HistoryContent() {
       void load(exercises, getExerciseLibrary, setExercises);
     } else if (tab === "sparring") {
       void load(sparring, listSparringLogHistory, setSparring);
-      // Manual sparring logged without details is still sparring history.
+      // Both completed plan sparring and manual sparring belong in this tab.
       void load(sessions, async accessToken => {
         const page = await getTrainingHistory(accessToken, true);
         if (!cancelled) setSessionCursor(page.next_before_day ?? null);
@@ -808,7 +808,7 @@ function HistoryContent() {
       : tab === "exercises"
         ? exercises
       : tab === "sparring"
-        ? sparring
+        ? { error: sparring.error ?? sessions.error, rows: sparring.rows !== null && sessions.rows !== null ? sparring.rows : null }
         : tab === "checkins"
           ? checkins
           : injuries;
@@ -816,8 +816,10 @@ function HistoryContent() {
   function retryActiveTab() {
     if (tab === "sessions") setSessions({ rows: null, error: null });
     else if (tab === "exercises") setExercises({ rows: null, error: null });
-    else if (tab === "sparring") setSparring({ rows: null, error: null });
-    else if (tab === "checkins") setCheckins({ rows: null, error: null });
+    else if (tab === "sparring") {
+      if (sparring.error) setSparring({ rows: null, error: null });
+      if (sessions.error) setSessions({ rows: null, error: null });
+    } else if (tab === "checkins") setCheckins({ rows: null, error: null });
     else setInjuries({ rows: null, error: null });
   }
   useOnReconnect(retryActiveTab, Boolean(active.error));
@@ -884,7 +886,14 @@ function HistoryContent() {
       ) : tab === "exercises" ? (
         exercises.rows && token ? <ExerciseLibrary library={exercises.rows} token={token} cache={exerciseHistoryCache} /> : <ListSkeleton />
       ) : tab === "sparring" ? (
-        sparring.rows ? <SparringRows history={sparring.rows} sessions={sessions.rows ?? []} token={token} onSaved={onSparringSaved} /> : <ListSkeleton />
+        sparring.rows ? <>
+          <SparringRows history={sparring.rows} sessions={sessions.rows ?? []} token={token} onSaved={onSparringSaved} hasMore={sessionCursor !== null} />
+          {moreSessionsError ? <p className="error-banner" role="alert">{moreSessionsError}</p> : null}
+          {sessionCursor !== null ? <button type="button" className="secondary-button" disabled={loadingMoreSessions}
+            onClick={() => void loadMoreSessions()}>
+            {loadingMoreSessions ? "Loading…" : moreSessionsError ? "Retry loading earlier sessions" : "Load earlier sessions"}
+          </button> : null}
+        </> : <ListSkeleton />
       ) : tab === "checkins" ? (
         <CheckinRows rows={checkins.rows ?? []} today={today} />
       ) : (

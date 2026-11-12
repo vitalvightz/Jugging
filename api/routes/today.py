@@ -192,7 +192,7 @@ def _checkin_record(row: dict[str, Any]) -> TodayCheckinRecord:
     return TodayCheckinRecord(**{**row, "recommendation_triggers": list(triggers)})
 
 
-def _saved_session_title(completion: Mapping[str, Any]) -> str | None:
+def _saved_history_session(completion: Mapping[str, Any]) -> Mapping[str, Any] | None:
     """Read owned historical evidence, never current-plan content.
 
     Older snapshots omit identity metadata; when supplied, it must match the
@@ -207,7 +207,12 @@ def _saved_session_title(completion: Mapping[str, Any]) -> str | None:
     for source, key in ((snapshot, "plan_id"), (snapshot, "training_day"), (session, "session_id")):
         if source.get(key) is not None and str(source[key]) != str(completion.get(key)):
             return None
-    title = session.get("title")
+    return session
+
+
+def _saved_session_title(completion: Mapping[str, Any]) -> str | None:
+    session = _saved_history_session(completion)
+    title = session.get("title") if session else None
     return title if isinstance(title, str) and title.strip() else None
 
 
@@ -343,6 +348,12 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
             if row["source"] == "external":
                 continue
             row["title"] = _history_title(store, profile.athlete_id, row, plans) or "Unlxck session"
+            session = _saved_history_session(row)
+            if session and (session.get("session_type") == "sparring" or any(
+                isinstance(block, Mapping) and block.get("block_type") == "sparring"
+                for block in (session.get("blocks") if isinstance(session.get("blocks"), list) else [])
+            )):
+                row["activity"] = "sparring"
             row["history_editable"] = bool(row.get("id")) and plan_completion_history_editable(row)
             row["id"] = str(row.get("id") or row.get("session_id"))
         counts = store.count_manual_exercises(profile.athlete_id, [str(row["id"]) for row in rows if row["source"] == "external"])

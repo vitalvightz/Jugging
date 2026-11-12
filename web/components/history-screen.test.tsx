@@ -303,3 +303,69 @@ test("Sparring tab includes completed UNLXCK sparring without a separate report"
     assert.equal(records.querySelectorAll(".history-list > li").length, 1);
   } finally { ui.cleanup(); }
 });
+
+function sparringHistoryBody(day: string) {
+  const totals = { days: 7, sessions: 0, rounds: 0, hard_rounds: 0, hard_days: 0, heavy_head_contact_sessions: 0, rocked_count: 0 };
+  return { logs: [], current_training_day: day, last_7_days: totals, last_28_days: { ...totals, days: 28 }, last_hard_day: null, last_rocked_day: null };
+}
+
+async function clickHistoryButton(container: HTMLElement, label: string) {
+  const button = [...container.querySelectorAll("button")].find(item => item.textContent === label);
+  assert.ok(button, `Missing ${label}`);
+  await act(async () => button.click());
+}
+
+test("Sparring waits for session history after reports load and retries a failed session read", async () => {
+  const today = athleteTrainingDayISO(new Date(), undefined);
+  let finish!: (response: Response) => void;
+  const pending = new Promise<Response>(resolve => { finish = resolve; });
+  let fail = true;
+  let reportReads = 0;
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+  const ui = await renderSessions((async (input: unknown) => {
+    if (String(input).includes("sparring-logs")) { reportReads++; return json(sparringHistoryBody(today)); }
+    if (String(input).includes("training/history")) return fail ? pending : json({ sessions: [] });
+    return json({});
+  }) as typeof fetch);
+  try {
+    await clickHistoryButton(ui.container, "Sparring");
+    assert.doesNotMatch(ui.container.textContent ?? "", /No sparring logged yet/);
+    await act(async () => finish(json({ detail: "Session history unavailable" }, 503)));
+    assert.match(ui.container.querySelector('[role="alert"]')?.textContent ?? "", /Session history unavailable/);
+    fail = false;
+    const readsBeforeRetry = reportReads;
+    await clickHistoryButton(ui.container, "Retry");
+    assert.equal(ui.container.querySelector('[role="alert"]'), null);
+    assert.match(ui.container.textContent ?? "", /No sparring logged yet/);
+    assert.equal(reportReads, readsBeforeRetry);
+  } finally { ui.cleanup(); }
+});
+
+test("Sparring can page past recent non-sparring sessions and retry a failed older page", async () => {
+  const today = athleteTrainingDayISO(new Date(), undefined);
+  const olderDay = shiftDay(today, -400);
+  let fail = true;
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+  const ui = await renderSessions((async (input: unknown) => {
+    const url = String(input);
+    if (url.includes("sparring-logs")) return json(sparringHistoryBody(today));
+    if (!url.includes("training/history")) return json({});
+    if (url.includes("before_day=")) return fail ? json({ detail: "Earlier history unavailable" }, 503)
+      : json({ sessions: [{ id: "old-sparring", session_id: "contact", source: "unlxck", title: "Boxing sparring",
+        status: "done", training_day: shiftDay(today, -401), plan_id: "plan", completion_origin: "reported" }], next_before_day: null });
+    return json({ sessions: [], next_before_day: olderDay });
+  }) as typeof fetch);
+  try {
+    await clickHistoryButton(ui.container, "Sparring");
+    assert.match(ui.container.textContent ?? "", /No sparring in the loaded history/);
+    assert.doesNotMatch(ui.container.textContent ?? "", /No sparring logged yet/);
+    await clickHistoryButton(ui.container, "Load earlier sessions");
+    assert.match(ui.container.querySelector('[role="alert"]')?.textContent ?? "", /Earlier history unavailable/);
+    fail = false;
+    await clickHistoryButton(ui.container, "Retry loading earlier sessions");
+    assert.match(ui.container.textContent ?? "", /Boxing sparring/);
+    assert.equal(ui.container.querySelector('[role="alert"]'), null);
+    assert.equal(ui.container.querySelectorAll(".history-records .history-list > li").length, 1);
+    assert.ok(![...ui.container.querySelectorAll("button")].some(item => item.textContent === "Load earlier sessions"));
+  } finally { ui.cleanup(); }
+});
