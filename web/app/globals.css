@@ -23328,3 +23328,21 @@ a, button, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .history-detail-actions .history-actions-menu { margin-left: auto; }
 .history-detail-actions .history-actions-menu > summary { min-width: 44px; justify-content: center; padding: 0; border: 0; border-radius: 0; font-size: 22px; }
 .history-detail-actions .history-actions-items { border-radius: 8px; padding: 0 12px; }
+
+/* Other journal tabs: whole labels wrap together rather than shrinking into columns. */
+.history-records { min-width: 0; gap: 12px; }
+.history-records .history-summary { padding: 0 0 12px; border: 0; border-bottom: 1px solid var(--border-subtle); border-radius: 0; background: transparent; gap: 8px; }
+.history-records .history-summary-stats { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.history-records .history-summary-stats > div { flex-direction: row-reverse; align-items: baseline; justify-content: flex-end; max-width: 100%; padding: 0; border-radius: 0; background: transparent; gap: 6px; }
+.history-records .history-summary-stats dt { word-break: normal; overflow-wrap: normal; }
+.history-records .history-summary-stats dd { flex-shrink: 0; font-size: 1rem; }
+.history-records .history-list { min-width: 0; gap: 8px; }
+.history-records .history-row { min-width: 0; padding: 12px 14px; gap: 6px; }
+.history-records .history-row-head { flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.history-records .history-row-head > :first-child { flex: 1 1 140px; min-width: min(100%, 140px); overflow-wrap: break-word; word-break: normal; line-height: 1.45; }
+.history-records .history-row-head > .badge { max-width: 100%; white-space: normal; word-break: normal; overflow-wrap: break-word; }
+.history-records .history-row-when { white-space: normal; }
+.history-records .history-chips { gap: 4px 10px; }
+.history-records .history-chip { max-width: 100%; white-space: normal; word-break: normal; overflow-wrap: break-word; }
+.history-records .history-chip:not([data-tone]) { padding: 0; border: 0; border-radius: 0; background: transparent; }
+.history-records .history-row-note, .history-records .history-summary-line, .history-records .history-summary-note { line-height: 1.5; overflow-wrap: break-word; }

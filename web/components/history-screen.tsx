@@ -369,7 +369,7 @@ function SparringRows({ history, sessions, token, onSaved }: {
   const lastHard = history.last_hard_day ? daysAgoLabel(history.last_hard_day, today) : null;
   const lastRocked = history.last_rocked_day ? daysAgoLabel(history.last_rocked_day, today) : null;
   return (
-    <div className="history-tab-body">
+    <div className="history-tab-body history-records">
       <section className="history-summary" aria-label="Sparring totals">
         <SummaryGroup
           label="Last 7 days"
@@ -516,7 +516,7 @@ function CheckinRows({ rows, today }: { rows: TodayCheckinHistoryRecord[]; today
       })
     : null;
   return (
-    <div className="history-tab-body">
+    <div className="history-tab-body history-records">
       {week ? (
         <section className="history-summary" aria-label="Check-ins in the last 7 days">
           <SummaryGroup
@@ -564,15 +564,8 @@ function InjuryRow({ row }: { row: InjuryFlagRecord }) {
         <span className="history-row-title">{title}</span>
         <StatusBadge tone={injuryStatusTone(row.status)} label={injuryStatusLabel(row.status)} />
       </div>
-      <Chips
-        chips={[
-          {
-            label: `${row.severity.charAt(0).toUpperCase()}${row.severity.slice(1)}`,
-            tone: injurySeverityTone(row.severity),
-          },
-        ]}
-      />
       <div className="history-row-meta">
+        <span data-tone={injurySeverityTone(row.severity)}>{row.severity.charAt(0).toUpperCase() + row.severity.slice(1)}</span>
         <span>Reported {formatAppDate(row.created_at)}</span>
         {row.resolved_at ? <span>Resolved {formatAppDate(row.resolved_at)}</span> : null}
         {!row.resolved_at && row.latest_reported_status ? (
@@ -601,7 +594,7 @@ function InjuryRows({ rows }: { rows: InjuryFlagRecord[] }) {
   const active = rows.filter((row) => row.status !== "resolved");
   const resolved = rows.filter((row) => row.status === "resolved");
   return (
-    <div className="history-tab-body">
+    <div className="history-tab-body history-records">
       <section className="history-summary" aria-label="Injuries">
         <SummaryGroup
           label="Injuries"

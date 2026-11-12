@@ -171,3 +171,78 @@ for (const width of [390, 1280]) {
     });
   }
 }
+
+for (const width of [320, 390, 1280]) {
+  test(`Compact History record tabs keep words readable at ${width}px`, async ({ page, baseURL }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await setup(page, baseURL!);
+    let empty = false;
+    const checkins = [
+      { id: "check-1", training_day: day, sleep: "good", body: "normal", pain: "none", recommendation_state: "train_as_planned", recommendation_reason: "Continue with your planned training." },
+      { id: "check-2", training_day: "2026-10-18", sleep: "poor", body: "flat", pain: "high", recommendation_state: "pull_back", recommendation_reason: "Reduce training and review your symptoms.", neurological_symptoms: true, cannot_warm_into_movement: true, sharp_pain: true },
+    ];
+    const injuries = [
+      { id: "injury-1", label: "Right shoulder discomfort after repeated overhead pressing", body_area: "shoulder", description: "Soreness when lifting the arm overhead", severity: "moderate", status: "monitoring", created_at: `${day}T09:00:00Z`, latest_reported_status: "worse" },
+      { id: "injury-2", label: "Left ankle discomfort after running", body_area: "ankle", description: "Walking comfortably again", severity: "mild", status: "resolved", created_at: "2026-10-01T09:00:00Z", resolved_at: `${day}T09:00:00Z` },
+    ];
+    const totals = { days: 7, sessions: 2, rounds: 12, hard_rounds: 6, hard_days: 1, heavy_head_contact_sessions: 1, rocked_count: 1 };
+    const logs = [
+      { id: "spar-1", training_day: day, source: "free", intensity: "hard", planned_intensity: "light", rounds_completed: 6, round_seconds: 180, head_contact: "heavy", rocked: true, external_session_id: "external-spar", notes: "Stopped the session after symptoms", focus: "Keep the guard up after the jab", detail_revision: 1 },
+      { id: "spar-2", training_day: "2026-10-18", source: "free", intensity: "light", rounds_completed: 6, round_seconds: 120, head_contact: "light", rocked: false, notes: "Technical rounds only", detail_revision: 1 },
+    ];
+    await page.route("**/api/today/checkins?**", route => route.fulfill({ json: empty ? [] : checkins }));
+    await page.route("**/api/injury-flags?**", route => route.fulfill({ json: empty ? [] : injuries }));
+    await page.route("**/api/today/sparring-logs?**", route => route.fulfill({ json: { logs: empty ? [] : logs, current_training_day: day, last_7_days: totals, last_28_days: { ...totals, days: 28 }, last_hard_day: day, last_rocked_day: day } }));
+    const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
+    await page.goto("/history");
+    for (const tab of ["Check-ins", "Injuries", "Sparring"]) {
+      await page.getByRole("tab", { name: tab, exact: true }).click();
+      const records = page.locator(".history-records");
+      await expect(records.locator(".history-row")).toHaveCount(2);
+      if (tab === "Check-ins") {
+        await expect(records).toContainText("Train as planned");
+        await expect(records).toContainText("Neurological symptoms");
+        await expect(records).toContainText("Could not warm into movement");
+      } else if (tab === "Injuries") {
+        await expect(records).toContainText(injuries[0].label);
+        await expect(records).toContainText("Latest: worse");
+        await expect(records).toContainText("Resolved");
+      } else {
+        await expect(records).toContainText("Heavy head contact");
+        await expect(records).toContainText("Rocked / dropped");
+        await expect(records).toContainText("Talk to your coach before your next hard spar.");
+        await records.getByRole("button", { name: /Update sparring report/ }).click();
+        await expect(page.getByRole("dialog", { name: "Update sparring report", exact: true })).toBeVisible();
+        await page.keyboard.press("Escape");
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      // A normal word must stay on one line; wrap between words instead.
+      const splitWords = await records.evaluate(element => {
+        const broken: string[] = [];
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) {
+          const node = walker.currentNode;
+          for (const match of (node.textContent ?? "").matchAll(/[A-Za-z]{3,}/g)) {
+            const range = document.createRange();
+            range.setStart(node, match.index!); range.setEnd(node, match.index! + match[0].length);
+            if (range.getClientRects().length > 1) broken.push(match[0]);
+          }
+        }
+        return broken;
+      });
+      expect(splitWords).toEqual([]);
+      expect((await new AxeBuilder({ page }).include(".history-records").analyze()).violations).toEqual([]);
+      await page.getByRole("heading", { name: "History", exact: true }).click();
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({ path: `/tmp/history-records-${tab.toLowerCase()}-${width}.png`, animations: "disabled", fullPage: true });
+    }
+    empty = true;
+    await page.reload();
+    for (const tab of ["Check-ins", "Injuries", "Sparring"]) {
+      await page.getByRole("tab", { name: tab, exact: true }).click();
+      await expect(page.locator(".history-row")).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: tab === "Check-ins" ? "No check-ins yet." : tab === "Injuries" ? "No injuries reported." : "No sparring logged yet.", exact: true })).toBeVisible();
+    }
+    expect(errors).toEqual([]);
+  });
+}
