@@ -67,6 +67,8 @@ class _BuildReadCache:
         self._intakes: dict[str, Any] = {}
         self._flags: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
         self._reads: dict[tuple[Any, ...], Any] = {}
+        # Counts writes, so a wave started before one keeps none of its rows.
+        self._writes = 0
 
     def __getattr__(self, name: str) -> Any:
         attr = getattr(self._store, name)
@@ -83,6 +85,7 @@ class _BuildReadCache:
             return attr
 
         def write(*args: Any, **kwargs: Any) -> Any:
+            self._writes += 1
             self._flags.clear()
             self._reads.clear()
             return attr(*args, **kwargs)
@@ -124,6 +127,16 @@ class _BuildReadCache:
         its consumer reads again and records its own failure. Reads not in the
         shared set, or already held, are skipped.
         """
+        self.begin_prefetch(calls)()
+
+    def begin_prefetch(self, calls: Iterable[ReadCall]) -> Callable[[], None]:
+        """Start a prefetch wave; the returned function waits for it and keeps the rows.
+
+        The caller may do other work meanwhile, on this thread. If that work
+        writes through this cache, the whole wave is discarded: a row read
+        before a write is never served after it, and its consumer reads again.
+        """
+        writes = self._writes
         pending: list[tuple[str, tuple[Any, ...], Any]] = []
         for name, args, kwargs in calls:
             if name == "list_injury_flags":
@@ -140,19 +153,26 @@ class _BuildReadCache:
                 continue
             context = contextvars.copy_context()
             pending.append((name, (args, kwargs), _PREFETCH_POOL.submit(context.run, reader, *args, **kwargs)))
-        for name, (args, kwargs), future in pending:
-            try:
-                value = future.result()
-            except Exception:  # noqa: BLE001 - the consumer repeats the read and handles it
-                continue
-            if name == "list_injury_flags":
-                key = (args[0], tuple(kwargs.get("statuses", ("open", "monitoring"))), kwargs.get("limit", 20))
-                self._flags.setdefault(key, [dict(row) for row in (value or [])])
-            elif name == "get_intake":
-                self._intakes.setdefault(args[0], value)
-            else:
-                self._reads.setdefault(_key(name, args, kwargs), deepcopy(value))
 
+        def finish() -> None:
+            outcomes = []
+            for name, (args, kwargs), future in pending:
+                try:
+                    outcomes.append((name, args, kwargs, future.result()))
+                except Exception:  # noqa: BLE001 - the consumer repeats the read and handles it
+                    continue
+            if self._writes != writes:
+                return
+            for name, args, kwargs, value in outcomes:
+                if name == "list_injury_flags":
+                    key = (args[0], tuple(kwargs.get("statuses", ("open", "monitoring"))), kwargs.get("limit", 20))
+                    self._flags.setdefault(key, [dict(row) for row in (value or [])])
+                elif name == "get_intake":
+                    self._intakes.setdefault(args[0], value)
+                else:
+                    self._reads.setdefault(_key(name, args, kwargs), deepcopy(value))
+
+        return finish
 
 def _key(name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[Any, ...]:
     return (name, args, tuple(sorted(kwargs.items())))
