@@ -76,9 +76,9 @@ function AccountIdentityRow({ identity }: { identity: AccountIdentity }) {
         {role ? (
           <span
             className={`sidebar-role-badge sidebar-role-${role}`}
-            aria-label={t("role", { role: role === "admin" ? t("administrator") : t("athlete") })}
+            aria-label={t("role", { role: role === "admin" ? t("administrator") : role === "coach" ? "Coach" : t("athlete") })}
           >
-            {role === "admin" ? t("admin") : t("athlete")}
+            {role === "admin" ? t("admin") : role === "coach" ? "Coach" : t("athlete")}
           </span>
         ) : identity.isSessionResolving ? (
           <Skeleton variant="block" width={74} height={24} style={{ borderRadius: 999 }} />
@@ -377,7 +377,12 @@ export function AppNav() {
     "/onboarding": { label: t("campSetup"), meta: t("campSetupMeta") },
     "/settings": { label: t("settings"), meta: t("settingsMeta") },
   };
-  const signedInLinks = SIDE_NAV_ITEMS.map((item) => ({ ...item, ...navCopy[item.href] }));
+  const athleteLinks = SIDE_NAV_ITEMS.map((item) => ({ ...item, ...navCopy[item.href] }));
+  const signedInLinks = me?.profile.role === "coach"
+    ? [{ href: "/coach", label: "Coach workspace", meta: "Fighters & preparation" },
+       { href: "/settings/coach-access", label: "Coach access", meta: "Invitations & sharing" },
+       athleteLinks.find(item => item.href === "/settings")!]
+    : [...athleteLinks, ...(me?.profile.role === "admin" ? [{ href: "/coach", label: "Coach workspace", meta: "Fighters & preparation" }] : []), { href: "/settings/coach-access", label: "Coach access", meta: "Invitations & sharing" }];
 
   const profile = me?.profile;
   const displayName = profile?.full_name || t("athlete");
@@ -388,7 +393,7 @@ export function AppNav() {
   const isAdminWorkspace = shouldShowAdminPanelLink(role, isActive(pathname, "/admin"));
   // Phones with the bottom bar get + Create and the account button instead of
   // the sidebar; CSS limits both to phone widths, so tablets keep the drawer.
-  const hasPhoneBar = isReady && showsMobileTabBar(pathname, hasSession);
+  const hasPhoneBar = isReady && role !== "coach" && showsMobileTabBar(pathname, hasSession);
   const identity: AccountIdentity = { displayName, displayEmail, initials, avatarUrl, role, isSessionResolving };
 
   return (
