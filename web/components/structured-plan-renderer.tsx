@@ -11,6 +11,7 @@ import {
   readableExerciseMetrics,
   classifySessionlessDay,
   isPlainRestDay,
+  PLAIN_REST_HEADLINE_RE,
   isZeroLoadSupportSession,
   isCompactPlanSupportSession,
   mentalSessionCategory,
@@ -1801,7 +1802,7 @@ export function SessionlessDayCard({
         anchor={card?.mindset_anchor}
         dedupeContext={[cleanText(card?.headline), displayTitle]}
       />
-      {isRest ? <p className="sp-muted">Rest day.</p> : null}
+      {isRest && !PLAIN_REST_HEADLINE_RE.test(cleanText(card?.headline) ?? "") ? <p className="sp-muted">Rest day.</p> : null}
       {date && (kind === "technical" || kind === "light_combat") ? <ExerciseSessionScope date={date} session={{
         session_id: date, session_type: "skill", title: cleanText(card?.headline) ?? displayTitle, blocks: [],
       }}><SessionChangesFoot session={{ session_id: date, session_type: "skill", blocks: [] }} /></ExerciseSessionScope> : null}
