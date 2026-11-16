@@ -4,6 +4,11 @@ import { type TodayDecisionBanner, type TodayDecisionTier } from "@/lib/today";
 import type { TodaySafetyCheck } from "@/lib/types";
 import { stripInternalMarkers } from "@/lib/injury-display";
 
+function sameGuidance(a?: string, b?: string): boolean {
+  const normalize = (value?: string) => value?.trim().toLowerCase().replace(/\s+/g, " ").replace(/[.!]+$/, "");
+  return Boolean(normalize(a)) && normalize(a) === normalize(b);
+}
+
 function isSupersededReadinessMessage(value?: string): boolean {
   return value?.trim() ===
     "Previous readiness guidance is superseded by the injury warning.";
@@ -154,8 +159,8 @@ export function TodayDecisionPanel({
             {directive.rest ? <span className="today-decision-action-rest">{directive.rest}</span> : null}
           </p>
         ) : null}
-        {!isCompactPreview ? <p className="today-decision-detail">{banner.detail}</p> : null}
-        {banner.safety && !isSupersededReadinessMessage(banner.safety) ? (
+        {!isCompactPreview && !sameGuidance(banner.detail, banner.action) ? <p className="today-decision-detail">{banner.detail}</p> : null}
+        {banner.safety && !isSupersededReadinessMessage(banner.safety) && !sameGuidance(banner.safety, banner.action) && (isCompactPreview || !sameGuidance(banner.safety, banner.detail)) ? (
           <p className="today-decision-safety">{banner.safety}</p>
         ) : null}
       </div>

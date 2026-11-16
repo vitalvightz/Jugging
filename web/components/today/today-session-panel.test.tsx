@@ -1038,7 +1038,7 @@ test("a new safety hold offers stopped logging without resuming frozen work", ()
 });
 
 for (const [status, performance, label] of [
-  ["done", "done_as_shown", "Completed"], ["modified", "changed", "Modified"], ["skipped", undefined, "Skipped"],
+  ["done", "done_as_shown", "Completed"], ["modified", "changed", "Modified"], ["skipped", undefined, "Not done"],
 ] as const) {
   test(`simple rehab ${label} saves without a questionnaire`, async () => {
     const container = document.createElement("div"); document.body.appendChild(container);
@@ -1064,6 +1064,13 @@ for (const [status, performance, label] of [
       assert.equal(calls[0].status, status);
       assert.equal(calls[0].session_rpe, null);
       assert.equal(refreshes, 1);
+      if (status === "skipped") {
+        assert.equal(container.querySelector(".toast-message")?.textContent?.trim(), "Not done");
+        state.today.completion_status = "skipped";
+        const html = renderPanel(state);
+        assert.match(html, /Not done/);
+        assert.doesNotMatch(html, /Session skipped/);
+      }
     } finally { globalThis.fetch = original; act(() => root.unmount()); container.remove(); }
   });
 }

@@ -789,7 +789,7 @@ export function TodayInjuryManager({
                   <div className="today-injury-update-head">
                     <p className="today-field-label today-injury-status-label">{delayedPrompts.some(prompt =>
                       prompt.injury_id === injury.id && prompt.injury_episode_id === injury.episode_id)
-                      ? "How’s your injury after yesterday’s rehab?" : "How's your injury?"}</p>
+                      ? "How’s your injury after yesterday’s rehab?" : "Anything changed?"}</p>
                   </div>
                   <div
                     className="today-segment-row today-injury-status-row"

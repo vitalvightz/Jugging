@@ -996,7 +996,7 @@ export function TodaySessionPanel({
         fadeThrough(() => setReviewOpen(false));
       }
       setRehabPerformance(undefined);
-      showToast(getCompletionLabel(nextStatus), { tone: "success", mergeKeys: XP_TOAST_KEYS.session });
+      showToast(rehabOnlyPrescription && nextStatus === "skipped" ? "Not done" : getCompletionLabel(nextStatus), { tone: "success", mergeKeys: XP_TOAST_KEYS.session });
       // Order matters: the confirmation toast is already up and the refresh
       // below is what surfaces the XP award, so the review prompt is queued
       // here and only renders once both have landed.
@@ -1683,7 +1683,7 @@ export function TodaySessionPanel({
             {!isSessionPreview ? (
               <div>
                 <p className="today-detail-label">Status</p>
-                <p>{getCompletionLabel(status)}</p>
+                <p>{rehabOnlyPrescription && status === "skipped" ? "Not done" : getCompletionLabel(status)}</p>
               </div>
             ) : null}
           </div>
@@ -1779,7 +1779,7 @@ export function TodaySessionPanel({
         ) : null}
 
         {canCompleteSession && (status === "done" || status === "modified" || status === "skipped") ? (
-          <p className="today-terminal-status">{getCompletionLabel(status)}</p>
+          <p className="today-terminal-status">{rehabOnlyPrescription && status === "skipped" ? "Not done" : getCompletionLabel(status)}</p>
         ) : null}
 
         {/* Timer shortcuts remain available after logging. */}
@@ -1791,7 +1791,7 @@ export function TodaySessionPanel({
         {rehabOnlyPrescription && (canCompleteSession || guidanceCanCheckOff) && !["done", "modified", "skipped"].includes(status) ? <div className="today-injury-guidance" role="group" aria-label={calmOnly ? "Did you follow the guidance?" : "Did you complete your rehab?"}>
           <p>{calmOnly ? "Did you follow the guidance?" : "Did you complete your rehab?"}</p>
           <div className="today-segment-row">
-            {([["done", "Completed"], ["modified", "Modified"], ["skipped", "Skipped"]] as const).map(([value, label]) => {
+            {([["done", "Completed"], ["modified", "Modified"], ["skipped", "Not done"]] as const).map(([value, label]) => {
               const chosen = rehabCheckOff?.value === value;
               return <button key={value} type="button" className={chosen ? "today-segment today-segment-chosen" : "today-segment"}
                 aria-pressed={chosen} disabled={isSubmitting && !chosen}
