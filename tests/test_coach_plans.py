@@ -224,6 +224,24 @@ def test_interrupted_consent_leaves_an_inert_plan_and_retry_reuses_it(plans):
     assert result.json()['plan_id'] == plan['id'] and len(store.plans) == 1
 
 
+def test_failed_activation_does_not_map_unaccepted_assignment_as_released(plans):
+    client, store, _ = plans
+    row, _ = create(client)
+    send(client, row)
+    store.respond_coach_plan = lambda *args, **kw: False
+    response = client.post(f"{ASSIGNMENTS}/{row['id']}/activate", headers=AS_FIGHTER, json={})
+    assert response.status_code == 409
+    plan = next(iter(store.plans.values()))
+    assert plan['status'] == 'review_required'
+    assert not store.custom_plans[row['id']].get('accepted_at')
+
+    detail = client.get(f"/api/plans/{plan['id']}", headers=AS_FIGHTER)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()['status'] == 'review_required'
+    assert detail.json()['activation_state'] == 'status_ineligible'
+    assert detail.json()['structured_card_state']['state'] == 'live'
+
+
 def test_coach_deletes_only_unsent_drafts(plans):
     client, store, _ = plans
     draft, _ = create(client)
