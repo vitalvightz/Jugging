@@ -144,6 +144,18 @@ test("rest and off days across published plans use one non-expandable row", () =
   }
 });
 
+test("a rest day with a prescribed mindset cue stays readable without duplicate rest copy", () => {
+  const plan: StructuredPlan = { weeks: [{ days: [
+    { date: "2026-11-16", day_type: "rest", sessions: [],
+      today_card: { headline: "Rest day", mindset_anchor: { focus_cue: "Visualise the opening exchange for five minutes" } } },
+  ] }] };
+  const html = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} today={new Date(2026, 10, 16)} />);
+  assert.equal(countOccurrences(html, "cm-rest-day"), 0);
+  assert.equal(countOccurrences(html, "cm-day-summary"), 1);
+  assert.match(html, /Visualise the opening exchange for five minutes/);
+  assert.doesNotMatch(html, /Rest day\\.<\\/p>/);
+});
+
 test("custom and generated calendars keep rest days inert without disabling planned sessions", () => {
   const plan: StructuredPlan = { weeks: [{ week_index: 1, days: [
     { weekday: "Mon", date: "2026-11-02", day_type: "rest", sessions: [] },
