@@ -996,7 +996,7 @@ export function TodaySessionPanel({
         fadeThrough(() => setReviewOpen(false));
       }
       setRehabPerformance(undefined);
-      showToast(getCompletionLabel(nextStatus), { tone: "success", mergeKeys: XP_TOAST_KEYS.session });
+      showToast(rehabOnlyPrescription && nextStatus === "skipped" ? "Not done" : getCompletionLabel(nextStatus), { tone: "success", mergeKeys: XP_TOAST_KEYS.session });
       // Order matters: the confirmation toast is already up and the refresh
       // below is what surfaces the XP award, so the review prompt is queued
       // here and only renders once both have landed.
@@ -1683,7 +1683,7 @@ export function TodaySessionPanel({
             {!isSessionPreview ? (
               <div>
                 <p className="today-detail-label">Status</p>
-                <p>{getCompletionLabel(status)}</p>
+                <p>{rehabOnlyPrescription && status === "skipped" ? "Not done" : getCompletionLabel(status)}</p>
               </div>
             ) : null}
           </div>
@@ -1779,7 +1779,7 @@ export function TodaySessionPanel({
         ) : null}
 
         {canCompleteSession && (status === "done" || status === "modified" || status === "skipped") ? (
-          <p className="today-terminal-status">{getCompletionLabel(status)}</p>
+          <p className="today-terminal-status">{rehabOnlyPrescription && status === "skipped" ? "Not done" : getCompletionLabel(status)}</p>
         ) : null}
 
         {/* Timer shortcuts remain available after logging. */}
