@@ -101,7 +101,7 @@ export function isTabActive(pathname: string, href: string): boolean {
 export function MobileTabBar() {
   const t = useTranslations("Navigation");
   const pathname = usePathname();
-  const { isReady, session } = useAppSession();
+  const { isReady, session, me } = useAppSession();
   const { isActive: generationActive } = useGenerationStatus();
   const barRef = useRef<HTMLElement>(null);
   // The tapped tab lights at once. The route commits a moment later, and
@@ -113,7 +113,8 @@ export function MobileTabBar() {
     setPendingHref(null);
   }
 
-  const isHidden = !isReady || !showsMobileTabBar(pathname, Boolean(session));
+  // Coaches navigate from the side menu; the tabs are athlete destinations.
+  const isHidden = !isReady || me?.profile.role === "coach" || !showsMobileTabBar(pathname, Boolean(session));
 
   useEffect(() => {
     const { documentElement } = document;

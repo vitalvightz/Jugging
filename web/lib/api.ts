@@ -8,7 +8,7 @@ import {
   reportNetworkFailure,
 } from "@/lib/connectivity";
 import type { ExternalTrainingFields, TrainingHistoryPage, TrainingHistorySession } from "@/lib/training-history";
-import type { SessionDetails, ExerciseLibraryResponse, ExercisePerformancesResponse } from "@/lib/api-schema.generated";
+import type { CoachFighterWeight, SessionDetails, ExerciseLibraryResponse, ExercisePerformancesResponse } from "@/lib/api-schema.generated";
 import type { ManualExerciseEntry, ManualExerciseListResponse, PerformedExerciseInput } from "@/lib/api-schema.generated";
 import type { LibraryFeaturedResponse, LibraryPreview, LibrarySearchResponse } from "@/lib/api-schema.generated";
 import type { CustomDoseSuggestion, CustomPlan, CustomPlanInput } from "@/lib/api-schema.generated";
@@ -594,6 +594,22 @@ export function getTrainingHistory(token: string, includeSkipped = false, before
 
 export function getSessionDetails(token: string, source: TrainingHistorySession["source"], id: string): Promise<SessionDetails> {
   return readJson(`/api/training/history/${source}/${encodeURIComponent(id)}`, { token });
+}
+
+/** A coach's read-only views of one connected fighter; the API checks the connection on every call. */
+const fighterPath = (athleteId: string) => `/api/coach/fighters/${encodeURIComponent(athleteId)}`;
+
+export function getFighterHistory(token: string, athleteId: string, beforeDay?: string): Promise<TrainingHistoryPage> {
+  const before = beforeDay ? `&before_day=${encodeURIComponent(beforeDay)}` : "";
+  return readJson(`${fighterPath(athleteId)}/training/history?limit=30${before}`, { token });
+}
+
+export function getFighterSessionDetails(token: string, athleteId: string, source: TrainingHistorySession["source"], id: string): Promise<SessionDetails> {
+  return readJson(`${fighterPath(athleteId)}/training/history/${source}/${encodeURIComponent(id)}`, { token });
+}
+
+export function getFighterWeight(token: string, athleteId: string): Promise<CoachFighterWeight> {
+  return readJson(`${fighterPath(athleteId)}/weight`, { token });
 }
 
 export function getExerciseLibrary(token: string): Promise<ExerciseLibraryResponse> {

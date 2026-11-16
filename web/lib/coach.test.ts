@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fighterSummary, weekStart, type Fighter } from "./coach";
+import {
+  connectionSharing,
+  fighterSummary,
+  weekStart,
+  type Connection,
+  type Fighter,
+} from "./coach";
 const blank: Fighter = {
   id: "fighter",
   connection_id: "c",
@@ -14,6 +20,7 @@ const blank: Fighter = {
   plan_name: null,
   share_recovery: false,
   share_injuries: false,
+  share_weight: false,
   schedule: [],
   sessions: [],
   recovery: null,
@@ -21,12 +28,12 @@ const blank: Fighter = {
 };
 test("missing logs do not classify an athlete as needing attention", () => {
   const r = fighterSummary(blank);
-  assert.equal(r.attention, false);
+  assert.equal(r.attention, null);
   assert.equal(r.active, false);
   assert.equal(r.weekSessions, 0);
   assert.equal(r.recovery, "Not shared");
 });
-test("seven-day activity and Monday week boundary", () => {
+test("weekly activity starts on Monday", () => {
   assert.equal(weekStart("2026-11-15"), "2026-11-09");
   const row = {
     id: "x",
@@ -60,7 +67,7 @@ test("recovery concern must be recent and explicit", () => {
       share_recovery: true,
       recovery: [{ day: "2026-11-15", sleep: "poor", source: "today" }],
     }).attention,
-    true,
+    "Poor sleep reported",
   );
   assert.equal(
     fighterSummary({
@@ -68,10 +75,87 @@ test("recovery concern must be recent and explicit", () => {
       share_recovery: true,
       recovery: [{ day: "2026-10-30", sleep: "poor", source: "today" }],
     }).attention,
-    false,
+    null,
   );
   assert.equal(
     fighterSummary({ ...blank, share_recovery: true, recovery: [] }).recovery,
     "No check-in",
+  );
+});
+test("injury flags and heavy contact outrank recovery as the reason", () => {
+  const injury = {
+    id: "i",
+    body_area: "knee",
+    severity: "moderate",
+    status: "open",
+    updated_at: "2026-11-15T12:00:00Z",
+  };
+  const report = {
+    id: "s",
+    day: "2026-11-14",
+    intensity: "hard",
+    rounds: 3,
+    round_seconds: null,
+    head_contact: "heavy",
+    rocked: false,
+  };
+  assert.equal(
+    fighterSummary({ ...blank, injuries: [injury], sparring_reports: [report] })
+      .attention,
+    "1 open injury flag",
+  );
+  const contact = fighterSummary({ ...blank, sparring_reports: [report] });
+  assert.equal(contact.attention, "Contact concern reported");
+  assert.equal(contact.active, true);
+});
+
+const accepted: Connection = {
+  id: "c",
+  coach_id: "coach",
+  athlete_id: "fighter",
+  invited_email: "fighter@example.com",
+  coach_name: "Coach",
+  status: "accepted",
+  share_recovery: true,
+  share_injuries: true,
+  share_weight: true,
+  health_consent: true,
+};
+test("coach access describes everything only when everything is shared", () => {
+  assert.deepEqual(connectionSharing(accepted), {
+    label: "Sharing training, weight, recovery and injuries",
+    note: null,
+    missing: [],
+  });
+});
+test("a connection accepted before weight sharing does not claim weight", () => {
+  const legacy = { ...accepted, share_weight: undefined };
+  assert.deepEqual(connectionSharing(legacy), {
+    label: "Sharing training, recovery and injuries",
+    note: "Not sharing weight.",
+    missing: ["weight"],
+  });
+  assert.equal(
+    connectionSharing({ ...legacy, share_injuries: false }).label,
+    "Sharing training and recovery",
+  );
+});
+test("withdrawn health consent leaves only training shared", () => {
+  const sharing = connectionSharing({ ...accepted, health_consent: false });
+  assert.equal(sharing.label, "Sharing training");
+  assert.equal(
+    sharing.note,
+    "Weight, recovery and injuries paused while health-data consent is off.",
+  );
+  assert.deepEqual(sharing.missing, []);
+  assert.equal(
+    connectionSharing({
+      ...accepted,
+      health_consent: false,
+      share_weight: false,
+      share_recovery: false,
+      share_injuries: false,
+    }).note,
+    null,
   );
 });

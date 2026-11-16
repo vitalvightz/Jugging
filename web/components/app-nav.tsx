@@ -378,11 +378,11 @@ export function AppNav() {
     "/settings": { label: t("settings"), meta: t("settingsMeta") },
   };
   const athleteLinks = SIDE_NAV_ITEMS.map((item) => ({ ...item, ...navCopy[item.href] }));
+  const coachLink = { href: "/coach", label: "Coach workspace", meta: "Fighters & preparation" };
+  // Athletes reach Coach access from Settings; it is not a daily destination.
   const signedInLinks = me?.profile.role === "coach"
-    ? [{ href: "/coach", label: "Coach workspace", meta: "Fighters & preparation" },
-       { href: "/settings/coach-access", label: "Coach access", meta: "Invitations & sharing" },
-       athleteLinks.find(item => item.href === "/settings")!]
-    : [...athleteLinks, ...(me?.profile.role === "admin" ? [{ href: "/coach", label: "Coach workspace", meta: "Fighters & preparation" }] : []), { href: "/settings/coach-access", label: "Coach access", meta: "Invitations & sharing" }];
+    ? [coachLink, { href: "/settings/coach-access", label: "Coach access", meta: "Invitations" }, athleteLinks.find((item) => item.href === "/settings")!]
+    : me?.profile.role === "admin" ? [...athleteLinks, coachLink] : athleteLinks;
 
   const profile = me?.profile;
   const displayName = profile?.full_name || t("athlete");

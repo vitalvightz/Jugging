@@ -65,7 +65,7 @@ import { filterTakeaways } from "@/lib/training-summary";
 import { trainingTitle } from "@/lib/training-disciplines";
 import { canRepeatTraining, sortTrainingHistory, type TrainingHistorySession } from "@/lib/training-history";
 import { useTrainingDay } from "@/lib/use-training-day";
-import { SessionDetails, type SessionDetailsCache } from "./session-details";
+import { SessionDetails, SessionRow, type SessionDetailsCache } from "./session-details";
 import { ManualExerciseLogger } from "./manual-exercise-logger";
 import { ExerciseLibrary, type ExerciseHistoryCache } from "./exercise-library";
 import type { ExerciseLibraryResponse } from "@/lib/api-schema.generated";
@@ -249,21 +249,7 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
           </div>
           <ul className="history-list">
             {shown.filter(row => row.training_day === day).map(row => (
-              <li key={`${row.source}-${row.id}`} className="history-row history-session-row" data-tone={sessionStatusTone(row.status)}>
-                <button type="button" className="history-session-open" aria-haspopup="dialog"
-                  aria-label={`View ${trainingTitle(row) || "session"} details for ${formatAppDate(row.training_day)}`}
-                  onClick={() => { dismissEditHint(); setSelected(row); }} />
-                <div className="history-row-head">
-                  <span className="history-row-title">{trainingTitle(row)?.trim() || "Session"}</span>
-                  <StatusBadge tone={sessionStatusTone(row.status)} label={sessionStatusLabel(row.status)} />
-                </div>
-                <div className="history-row-meta">
-                  {runSummary(row) ? <span>{runSummary(row)}</span> : row.duration_minutes ? <span>{row.duration_minutes} min</span> : null}
-                  {row.source === "external" && row.exercise_count ? <span>{plural(row.exercise_count, "exercise")}</span> : null}
-                  {row.session_rpe != null ? <span>RPE {row.session_rpe}/10</span> : null}
-                </div>
-                {row.takeaway?.trim() ? <p className="history-row-takeaway">{row.takeaway}</p> : null}
-              </li>
+              <SessionRow key={`${row.source}-${row.id}`} row={row} onOpen={() => { dismissEditHint(); setSelected(row); }} />
             ))}
           </ul>
           {!shown.some(row => row.training_day === day) ? <p className="muted">No sessions loaded for this day. Log completed training above.</p> : null}

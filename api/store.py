@@ -1358,6 +1358,14 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
         """
         return self._get_profile_by_id(athlete_id)
 
+    def get_accepted_coach_connection(self, coach_id: str, athlete_id: str) -> dict[str, Any] | None:
+        """The accepted connection that lets ``coach_id`` read ``athlete_id``, or ``None``."""
+        return self._select_first(
+            self.client.table("coach_connections")
+            .select("id,coach_id,athlete_id,status,share_recovery,share_injuries,share_weight")
+            .eq("coach_id", coach_id).eq("athlete_id", athlete_id).eq("status", "accepted")
+        )
+
     def get_profile_compliance(self, athlete_id: str) -> dict[str, Any] | None:
         """Fresh compliance facts only; intentionally no separate cache."""
         return self._select_first(

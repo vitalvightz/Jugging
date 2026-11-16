@@ -24,7 +24,7 @@ from api.store import SupabaseAppStore
 from tests.support import FakeAuthService, FakeStore, grant_default_compliance
 from tests.test_custom_open_plans import AUTH, WEEKDAYS, body
 from api.services.today_service import resolve_training_day
-from datetime import date
+from datetime import date, timedelta
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -179,6 +179,13 @@ def test_saved_custom_plan_publish_view_activate_today_and_retries(persistence):
     published = client.post(endpoint, headers=AUTH)
     assert published.status_code == 200, published.text
     plan_id = published.json()["plan_id"]
+    # An open plan made Friday-Sunday starts the coming Monday, so on those
+    # training days nothing is scheduled today. Date the plan's creation to this
+    # week's Tuesday so the Today assertion below holds on every weekday.
+    training_day = date.fromisoformat(resolve_training_day(None))
+    if training_day.weekday() >= 4:
+        tuesday = training_day - timedelta(days=training_day.weekday() - 1)
+        db.execute("update plans set created_at=%s where id=%s", (f"{tuesday}T12:00:00Z", plan_id))
     row = store.get_plan(plan_id)
     assert isinstance(row["planning_brief"], str)
     assert json.loads(row["planning_brief"])["custom_plan"]["id"] == draft["id"]

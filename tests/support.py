@@ -513,6 +513,7 @@ def _normalized_injury_description(value) -> str:
 class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
     def __init__(self, admin_emails: set[str] | None = None):
         self.profiles: dict[str, dict] = {}
+        self.coach_connections: list[dict] = []
         self.intakes: dict[str, list[dict]] = {}
         self.plans: dict[str, dict] = {}
         self.active_plan_ids: dict[str, str] = {}
@@ -795,6 +796,10 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         profile["username_change_history"] = [entry.isoformat() for entry in recent] + [now.isoformat()]
         profile["updated_at"] = _now()
         return profile
+
+    def get_accepted_coach_connection(self, coach_id: str, athlete_id: str) -> dict | None:
+        return next((row for row in self.coach_connections if row["coach_id"] == coach_id
+                     and row["athlete_id"] == athlete_id and row["status"] == "accepted"), None)
 
     def get_latest_intake(self, athlete_id: str) -> dict | None:
         items = self.intakes.get(athlete_id, [])

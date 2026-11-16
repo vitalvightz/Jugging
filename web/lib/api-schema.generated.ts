@@ -341,6 +341,15 @@ export type ClinicalReviewLifecycleRequest = {
   reason: string;
 };
 
+export type CoachFighterWeight = {
+  shared: boolean;
+  entries: NutritionBodyweightLogEntry[];
+  current_weight_kg: number | null;
+  target_weight_kg: number | null;
+  rolling_7_day_average_weight: number | null;
+  weekly_pace_kg: number | null;
+};
+
 export type CoachMessagePushRequest = {
   athlete_id: string;
   message_id: string;
