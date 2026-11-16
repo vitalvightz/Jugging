@@ -128,15 +128,17 @@ const ATHLETE_VISIBLE_STATUSES = new Set(["ready", "publishable_with_flags"]);
 
 /**
  * A plan counts as released to the athlete once it lands in an athlete-visible
- * status with non-empty plan_text. Used both to render the published state and
- * to confirm an approval that may have completed server-side after a network
- * timeout on the approve request.
+ * status with plan text or an authored custom card. Used both to render the
+ * published state and to confirm an approval that may have completed server-side
+ * after a network timeout on the approve request.
  */
 export function isPlanReleasedToAthlete(
-  plan: Pick<PlanDetail, "status" | "outputs"> & Partial<Pick<PlanDetail, "custom_plan_id" | "structured_card_state">>,
+  plan: Pick<PlanDetail, "status" | "outputs"> & Partial<Pick<PlanDetail, "plan_source" | "custom_plan_id" | "structured_card_state">>,
 ): boolean {
   const status = (plan.status || "").trim().toLowerCase();
-  const customCard = Boolean(plan.custom_plan_id && plan.structured_card_state?.state === "live"
+  // Coach assignments share the custom compiler, but have no editable athlete
+  // draft ID. Release depends on the content source, not permission to edit it.
+  const customCard = Boolean((plan.plan_source === "custom" || plan.custom_plan_id) && plan.structured_card_state?.state === "live"
     && plan.outputs.structured_plan?.plan_metadata?.prescription_source === "athlete");
   return (ATHLETE_VISIBLE_STATUSES.has(status) || (status === "archived" && customCard))
     && (Boolean(plan.outputs.plan_text.trim()) || customCard);

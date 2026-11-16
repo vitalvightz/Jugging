@@ -102,6 +102,19 @@ def test_draft_assign_preview_activate_history_and_supersede(plans):
     assert result.status_code == 200, result.text
     plan_id = result.json()['plan_id']
     assert result.json()['custom_plan_id'] is None
+    # Coach assignments are structured-only custom plans. They skip Stage 2 and
+    # expose the same content source as athlete-authored plans without granting
+    # access to the coach's editable draft.
+    detail = client.get(f'/api/plans/{plan_id}', headers=AS_FIGHTER)
+    assert detail.status_code == 200, detail.text
+    detail = detail.json()
+    assert detail['status'] == 'ready'
+    assert detail['plan_source'] == 'custom' and detail['custom_plan_id'] is None
+    assert detail['outputs']['plan_text'] == ''
+    assert detail['outputs']['structured_plan']['plan_metadata']['prescription_source'] == 'athlete'
+    assert detail['structured_card_state']['state'] == 'live'
+    assert store.plans[plan_id]['stage2_status'] == 'not_required'
+    assert not store.generation_jobs
     assert store.get_active_plan_id(FIGHTER) == plan_id
     assert assignment_view(store, store.custom_plans[row['id']])['assignment_status'] == 'active'
     assert client.post(f"{ASSIGNMENTS}/{row['id']}/decline", headers=AS_FIGHTER).status_code == 409
