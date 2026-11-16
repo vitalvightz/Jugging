@@ -317,3 +317,19 @@ def test_logging_requires_explicit_write_consent_and_only_owned_sessions_can_reo
     assert client.get(f"{SESSIONS}/{mine}/exercises", headers=AS_COACH).status_code == 403
     rows = client.get(BASE + "/training/history", headers=AS_COACH).json()["sessions"]
     assert not any(row["coach_exercises_editable"] for row in rows)
+
+
+def test_calendar_categories_use_saved_sessions_and_respect_injury_sharing(camp):
+    client, store, connection = camp
+    strength = store.upsert_session_completion(FIGHTER, session())
+    rehab_data = session(session_type="rehab", title="Rehab", block_type="rehab")
+    rehab_data["session_id"] = rehab_data["prescription_snapshot"]["session"]["session_id"] = "rehab"
+    rehab = store.upsert_session_completion(FIGHTER, rehab_data)
+    rows = client.get(BASE + "/training/history", headers=AS_COACH).json()["sessions"]
+    kinds = {row["id"]: row["training_category"] for row in rows}
+    assert kinds[strength["id"]] == "strength" and kinds[rehab["id"]] == "rehab"
+    connection["share_injuries"] = False
+    rows = client.get(BASE + "/training/history", headers=AS_COACH).json()["sessions"]
+    assert next(row for row in rows if row["id"] == rehab["id"])["training_category"] == "training"
+    connection["status"] = "revoked"
+    assert client.get(BASE + "/training/history", headers=AS_COACH).status_code == 404

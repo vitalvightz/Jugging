@@ -27,6 +27,7 @@ export type CoachSession = {
   recorded_at: string;
 };
 export type Recovery = {
+  recorded_at?: string;
   day: string;
   sleep?: string;
   body?: string;
@@ -162,7 +163,8 @@ export function fighterSummary(fighter: Fighter) {
   const { today } = fighter;
   const recent = dayOffset(today, -6);
   const monday = weekStart(today);
-  const latest = fighter.recovery?.[0];
+  const latest = fighter.share_recovery ? fighter.recovery?.[0] : undefined;
+  const injuries = fighter.share_injuries ? fighter.injuries : null;
   const stale = latest && latest.day < recent;
   const tired = latest?.body === "flat" || (latest?.fatigue ?? 0) >= 4;
   const poorSleep = latest?.sleep === "poor";
@@ -184,9 +186,9 @@ export function fighterSummary(fighter: Fighter) {
         fighter.sparring_reports?.some((s) => s.rounds > 0 && s.day >= monday),
       ),
     // The reason a coach should look at this fighter, or null.
-    attention: fighter.injuries?.length
-      ? `${fighter.injuries.length} open injury ${fighter.injuries.length === 1 ? "flag" : "flags"}`
-      : fighter.sparring_reports?.some(
+    attention: injuries?.length
+      ? `${injuries.length} open injury ${injuries.length === 1 ? "flag" : "flags"}`
+      : fighter.share_injuries && fighter.sparring_reports?.some(
             (s) => s.day >= recent && (s.rocked || s.head_contact === "heavy"),
           )
         ? "Contact concern reported"
@@ -215,4 +217,38 @@ export function humanize(value: string | null | undefined): string {
   return value
     ? value.replaceAll("_", " ").replace(/^./, (s) => s.toUpperCase())
     : "Not recorded";
+}
+
+// Keep source readings separate while presenting each calendar date once.
+export function groupCoachCheckIns(rows: readonly Recovery[]) {
+  const days = new Map<string, Recovery[]>();
+  for (const row of [...rows].sort((a, b) => b.day.localeCompare(a.day) || ((Date.parse(b.recorded_at ?? "") || 0) - (Date.parse(a.recorded_at ?? "") || 0)))) {
+    const readings = days.get(row.day) ?? [];
+    readings.push(row); days.set(row.day, readings);
+  }
+  return [...days].map(([day, readings]) => ({ day, readings }));
+}
+export type RecoveryTone = "good" | "caution" | "concern" | "unknown";
+export function coachRecoveryTone(field: string, value: string | number | undefined): RecoveryTone {
+  if (typeof value === "string") {
+    if (["good", "normal", "sharp"].includes(value)) return "good";
+    if (["okay", "flat", "tired", "mild", "moderate"].includes(value)) return "caution";
+    if (["poor", "severe"].includes(value)) return "concern";
+    return "unknown";
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 1 || value > 5) return "unknown";
+  if (field === "fatigue") return value >= 4 ? "concern" : value === 3 ? "caution" : "good";
+  if (field === "sleep_quality") return value <= 2 ? "concern" : value === 3 ? "caution" : "good";
+  return value <= 2 ? "concern" : value === 3 ? "caution" : "good";
+}
+export function coachCheckInValues(readings: readonly Recovery[]) {
+  const labels = { sleep: "Sleep", body: "Body", readiness: "Readiness", fatigue: "Fatigue", sleep_quality: "Sleep quality" } as const;
+  const values = new Map<string, { label: string; tone: RecoveryTone }>();
+  for (const reading of readings) for (const field of Object.keys(labels) as (keyof typeof labels)[]) {
+    const value = reading[field];
+    if (value == null) continue;
+    const label = `${labels[field]}: ${typeof value === "number" ? `${value}/5` : humanize(value)}`;
+    values.set(label, { label, tone: coachRecoveryTone(field, value) });
+  }
+  return [...values.values()];
 }

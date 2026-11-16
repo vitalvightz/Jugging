@@ -123,7 +123,7 @@ sparring contact report, and takeaways, which stay the athlete's to give.
 
 ## Definitions
 
-History covers the last 56 athlete-local training days (04:00 rollover, UTC for
+Roster summaries cover the last 56 athlete-local training days (04:00 rollover, UTC for
 unknown timezones). Weeks start on Monday.
 
 | Display | Meaning |
@@ -179,3 +179,20 @@ Camp Timeline requires a meaningful current schedule and fight date.
 
 Apply the new migration before deploying. It has only been tested locally;
 production data and schema have not been changed for this PR.
+
+
+## Coach calendar and recovery
+
+Training History defaults to a monthly calendar using completed/modified records
+from the existing paginated History API. Calendar and List share the same rows,
+session details, exercise records and coach feedback. Older months follow the
+existing before-day cursor; record identity is source plus id. Scheduled,
+skipped, deleted, future and day-credit rows do not become completed markers.
+The coach-only history projection supplies a category from the saved session;
+unshared injury categories remain generic. There are no database changes.
+
+Recovery groups check-in sources by date, retaining distinct reported values.
+The latest three dates and three sparring reports are shown initially, with
+expansion controls. Open injuries remain separate from check-in status; mild
+and moderate injuries are amber, severe is red, and missing/unshared values are
+grey. Profile style metadata omits a duplicated sport label.

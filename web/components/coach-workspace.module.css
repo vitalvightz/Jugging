@@ -449,3 +449,40 @@
 :global(html[data-theme="light"]) .intensity[data-intensity="medium"],
 :global(html[data-theme="light"]) .intensity[data-intensity="moderate"] { color: #8a5700; }
 :global(html[data-theme="light"]) .intensity[data-intensity="technical"] { color: #1764a2; }
+.trainingCalendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin: 14px 0; }
+.trainingCalendar > small { text-align: center; color: var(--text-muted); }
+.trainingCalendar > button { min-width: 0; min-height: 45px; padding: 5px 2px; color: var(--text-primary); background: transparent; border: 1px solid transparent; border-radius: 7px; }
+.trainingCalendar > button[aria-pressed="true"] { background: var(--bg-surface-alt); border-color: var(--border-strong); }
+.trainingCalendar > button[aria-current="date"] { text-decoration: underline; text-underline-offset: 4px; }
+.calendarDots { display: flex; justify-content: center; flex-wrap: wrap; gap: 2px; min-height: 5px; margin-top: 5px; }
+.calendarDots i, .calendarLegend i { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--text-muted); }
+.calendarDots [data-training-tone="strength"], .calendarLegend [data-training-tone="strength"] { background: #74b9ff !important; }
+.calendarDots [data-training-tone="sparring"], .calendarLegend [data-training-tone="sparring"] { background: #ff6d84 !important; }
+.calendarDots [data-training-tone="rehab"], .calendarLegend [data-training-tone="rehab"] { background: #c19aff !important; }
+.calendarDots [data-training-tone="modified"], .calendarLegend [data-training-tone="modified"] { background: #f1c16c !important; }
+.calendarLegend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 10px; color: var(--text-muted); margin-bottom: 18px; }
+.calendarLegend span { display: flex; align-items: center; gap: 4px; }
+.recoveryPriority { border: 1px solid var(--border-strong); border-radius: 8px; padding: 12px; margin: 12px 0; }
+.recoveryPriority h3, .recoveryPriority p { margin: 4px 0; }
+.workspace [data-recovery-tone="good"] { color: var(--success-ink) !important; }
+.workspace [data-recovery-tone="caution"] { color: #e7b75e !important; }
+.workspace [data-recovery-tone="concern"] { color: var(--danger-ink) !important; }
+.workspace [data-recovery-tone="unknown"] { color: var(--text-muted) !important; }
+:global(html[data-theme="light"]) .workspace [data-recovery-tone="caution"] { color: #865400 !important; }
+.pill[aria-pressed="true"] { background: var(--bg-surface-alt); border-color: var(--text-muted); color: var(--text-primary); }
+/* Keep headings and controls intact; move whole groups onto the next line. */
+.sectionHeading { flex-wrap: wrap; row-gap: 10px; }
+.sectionHeading h2, .weekControls, .calendarLegend span { white-space: nowrap; }
+.sectionHeading > small { flex-basis: 100%; }
+.actions, .weekControls { flex-shrink: 0; }
+.pill { white-space: nowrap; flex-shrink: 0; }
+@media (max-width: 600px) {
+  .connection { align-items: stretch; gap: 16px; }
+  .connection .rowCopy { flex-basis: 100%; }
+  .connection .rowCopy > small { overflow-wrap: break-word; line-height: 1.6; }
+  .connection .actions { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; gap: 10px; }
+  .connection .invitationActions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .connection .actions > button { width: 100%; min-width: 0; white-space: normal; word-break: normal; overflow-wrap: normal; }
+  .tiles > div > span { white-space: nowrap; }
+}
+.recoveryTiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -22,6 +22,8 @@ export type DistanceUnit = "km" | "miles";
 export const RUN_TYPES = ["easy", "tempo", "intervals", "sprints", "long", "race"] as const;
 export type RunType = (typeof RUN_TYPES)[number];
 export type TrainingHistorySession = {
+  /** Coach-only category, masked with the athlete’s sharing permissions. */
+  training_category?: "strength" | "sparring" | "rehab" | "training";
   session_id?: string | null;
   id: string;
   source: "unlxck" | "external";

@@ -33,6 +33,9 @@ import type { CoachFighterWeight } from "@/lib/api-schema.generated";
 import { isSafeAvatarImageUrl } from "@/lib/avatar-image-url";
 import {
   coachRpc,
+  groupCoachCheckIns,
+  coachCheckInValues,
+  coachRecoveryTone,
   completed,
   connectionSharing,
   formatList,
@@ -43,6 +46,7 @@ import {
   type Connection,
   type Fighter,
 } from "@/lib/coach";
+import { CALENDAR_WEEKDAYS } from "@/lib/plan-calendar";
 import { formatAppDate } from "@/lib/date-format";
 import {
   formatFastedState,
@@ -257,7 +261,7 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
                 <small>{sharing.note}</small>
               ) : null}
             </div>
-            <div className={styles.actions}>
+            <div className={`${styles.actions} ${pending ? styles.invitationActions : ""}`}>
               {!coach && !pending && sharing.missing.length ? (
                 <button
                   className="cta"
@@ -588,6 +592,8 @@ function FighterOverview({
 }) {
   const summary = fighterSummary(f);
   const sharingKey = `${f.share_weight}:${f.share_recovery}:${f.share_injuries}:${f.allow_session_logging}`;
+  const [allSparring, setAllSparring] = useState(false);
+  const [allCheckIns, setAllCheckIns] = useState(false);
   const [week, setWeek] = useState(weekStart(f.today));
   const end = dayOffset(week, 6);
   const weekly = f.sessions.filter((s) => s.day >= week && s.day <= end);
@@ -628,11 +634,16 @@ function FighterOverview({
           ),
         )
       : null;
-  const latest = f.recovery?.[0];
+  const checkIns = groupCoachCheckIns(f.share_recovery ? f.recovery ?? [] : []);
+  const latest = checkIns[0];
+  const latestSleep = latest?.readings.find(row => row.sleep != null || row.sleep_quality != null);
+  const latestBody = latest?.readings.find(row => row.body != null || row.readiness != null);
+  const sleepTone = coachRecoveryTone(latestSleep?.sleep ? "sleep" : "sleep_quality", latestSleep?.sleep ?? latestSleep?.sleep_quality);
+  const bodyTone = coachRecoveryTone("readiness", latestBody?.body ?? latestBody?.readiness);
+  const warnings = coachCheckInValues(latest?.readings ?? []).filter(value => value.tone === "caution" || value.tone === "concern");
+  const injuries = f.share_injuries ? f.injuries ?? [] : [];
+  const injuryTone = injuries.some(injury => injury.severity === "severe") ? "concern" : injuries.some(injury => ["mild", "moderate"].includes(injury.severity)) ? "caution" : "unknown";
   const unknown = f.share_recovery ? "Not recorded" : "Not shared";
-  const weekAgo = dayOffset(f.today, -6);
-  const week7 = f.recovery?.filter((r) => r.day >= weekAgo) ?? [];
-  const older = f.recovery?.filter((r) => r.day < weekAgo) ?? [];
   return (
     <>
       <section className={styles.panel}>
@@ -642,11 +653,11 @@ function FighterOverview({
             <h2>{f.name || "Fighter"}</h2>
             {[f.sport ? humanize(f.sport) : null, f.age != null ? `${f.age} years` : null, f.record].filter(Boolean).length ?
               <small>{[f.sport ? humanize(f.sport) : null, f.age != null ? `${f.age} years` : null, f.record].filter(Boolean).join(" · ")}</small> : null}
-            {[...(f.technical_style ?? []), ...(f.tactical_style ?? []), f.stance].filter(Boolean).length ?
-              <small>{[...(f.technical_style ?? []), ...(f.tactical_style ?? []), f.stance].filter(Boolean).map(value => humanize(value)).join(" · ")}</small> : null}
+            {[...new Set([...(f.technical_style ?? []), ...(f.tactical_style ?? []), f.stance].filter(value => value && value.trim().toLowerCase() !== f.sport?.trim().toLowerCase()))].length ?
+              <small>{[...new Set([...(f.technical_style ?? []), ...(f.tactical_style ?? []), f.stance].filter(value => value && value.trim().toLowerCase() !== f.sport?.trim().toLowerCase()))].map(value => humanize(value)).join(" · ")}</small> : null}
             {f.last_training ? <small>Last training · {humanize(f.last_training.activity)} · {formatAppDate(f.last_training.day)}</small> : null}
             {summary.attention ? (
-              <small className={styles.concern}>{summary.attention}</small>
+              <small className={styles.concern} data-recovery-tone={injuries.length ? injuryTone : undefined}>{summary.attention}</small>
             ) : null}
           </div>
         </div>
@@ -693,7 +704,7 @@ function FighterOverview({
               className={styles.pill}
               aria-label="Previous week"
               disabled={week <= weekStart(dayOffset(f.today, -49))}
-              onClick={() => setWeek(dayOffset(week, -7))}
+              onClick={() => { setWeek(dayOffset(week, -7)); setAllSparring(false); }}
             >
               Previous
             </button>
@@ -705,7 +716,7 @@ function FighterOverview({
               className={styles.pill}
               aria-label="Next week"
               disabled={week >= weekStart(f.today)}
-              onClick={() => setWeek(dayOffset(week, 7))}
+              onClick={() => { setWeek(dayOffset(week, 7)); setAllSparring(false); }}
             >
               Next
             </button>
@@ -748,16 +759,17 @@ function FighterOverview({
             <div><strong>{reports.filter(report => report.intensity === "hard").length}</strong><small>Hard</small></div>
           </div>
           <ul className={styles.sparringReports}>
-            {[...reports].sort((a, b) => b.day.localeCompare(a.day)).map((s) => (
+            {[...reports].sort((a, b) => b.day.localeCompare(a.day)).slice(0, allSparring ? undefined : 3).map((s) => (
               <li key={s.id}>
                 <div className={styles.sectionHeading}><strong>{formatAppDate(s.day)}</strong>
                   <span className={styles.intensity} data-intensity={s.intensity}>{s.intensity === "medium" ? "Moderate" : humanize(s.intensity)}</span></div>
-                <p>{s.rounds} rounds{s.head_contact != null ? ` · ${s.head_contact === "none" ? "No head contact" : `${humanize(s.head_contact)} head contact`}` : ""}</p>
-                {s.rocked ? <p className={styles.rocked} role="note">⚠ Athlete reported being rocked</p> : null}
+                <p>{s.rounds} rounds{f.share_injuries && s.head_contact != null ? ` · ${s.head_contact === "none" ? "No head contact" : `${humanize(s.head_contact)} head contact`}` : ""}</p>
+                {f.share_injuries && s.rocked ? <p className={styles.rocked} role="note">⚠ Athlete reported being rocked</p> : null}
                 <CoachFeedback key={`${sharingKey}:${s.id}`} token={token} athleteId={f.id} source="sparring" targetId={s.id} editable={f.can_leave_feedback === true} />
               </li>
             ))}
           </ul>
+          {reports.length > 3 ? <button type="button" className="ghost-button" aria-expanded={allSparring} onClick={() => setAllSparring(!allSparring)}>{allSparring ? "Show recent reports" : "View all reports"}</button> : null}
         </section>
       ) : (
         <section className={styles.panel}>
@@ -773,104 +785,53 @@ function FighterOverview({
         key={`history:${sharingKey}:${historyKey}`}
         token={token}
         athleteId={f.id}
+        today={f.today}
       />
       <section className={styles.panel}>
-        <div className={styles.sectionHeading}>
-          <h2>Recovery</h2>
-          <span
-            className={
-              summary.recovery === "Recovery concern"
-                ? styles.concern
-                : styles.muted
-            }
-          >
-            {summary.recovery}
-            {latest ? ` · ${formatAppDate(latest.day)}` : ""}
-          </span>
+        <div className={styles.sectionHeading}><h2>Recovery</h2>{latest ? <small className={styles.muted}>Latest check-in · {formatAppDate(latest.day)}</small> : null}</div>
+        {injuries.length ? <div className={styles.recoveryPriority}>
+          <h3>Open injuries · {injuries.length}</h3>
+          <ul className={styles.activity}>{injuries.map(injury => <li key={injury.id}>
+            <strong>{humanize(injury.body_area)}</strong>
+            <span data-recovery-tone={coachRecoveryTone("injury", injury.severity)}>{humanize(injury.severity)} · {humanize(injury.status)}</span>
+          </li>)}</ul>
+        </div> : !f.share_injuries ? <p className={styles.muted}>Injuries: Not shared</p> : null}
+        {f.share_recovery && warnings.length ? <div className={styles.recoveryPriority}>
+          <strong>Recovery concerns</strong>
+          {warnings.map(value => <p key={value.label} data-recovery-tone={value.tone}>{value.label}</p>)}
+        </div> : f.share_recovery && sleepTone === "good" && bodyTone === "good" ? <p data-recovery-tone="good">Recovery check-in: No new concerns</p> : null}
+        <div className={`${styles.tiles} ${styles.recoveryTiles}`}>
+          <div><span>Sleep</span><strong data-recovery-tone={sleepTone}>{latestSleep?.sleep ? humanize(latestSleep.sleep) : latestSleep?.sleep_quality != null ? `${latestSleep.sleep_quality}/5` : unknown}</strong></div>
+          <div><span>Readiness</span><strong data-recovery-tone={bodyTone}>{latestBody?.body ? humanize(latestBody.body) : latestBody?.readiness != null ? `${latestBody.readiness}/5` : unknown}</strong></div>
         </div>
-        <div className={styles.tiles}>
-          {[
-            [
-              "Sleep",
-              latest?.sleep
-                ? humanize(latest.sleep)
-                : latest?.sleep_quality
-                  ? `${latest.sleep_quality}/5`
-                  : unknown,
-            ],
-            [
-              "Readiness",
-              latest?.body
-                ? humanize(latest.body)
-                : latest?.readiness
-                  ? `${latest.readiness}/5`
-                  : unknown,
-            ],
-            [
-              "Injuries",
-              !f.share_injuries
-                ? "Not shared"
-                : f.injuries?.length
-                  ? `${f.injuries.length} open`
-                  : "None reported",
-            ],
-          ].map(([label, value]) => (
-            <div key={label}>
-              <span>{label}</span>
-              <strong>{value}</strong>
-            </div>
-          ))}
-        </div>
-        {f.injuries?.length ? (
-          <ul className={styles.activity}>
-            {f.injuries.map((i) => (
-              <li key={i.id}>
-                <strong>{humanize(i.body_area)}</strong>
-                <span>
-                  {humanize(i.severity)} · {humanize(i.status)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        {f.share_recovery ? (
-          <>
-            <h3>Last 7 days</h3>
-            {week7.length ? (
-              <CheckIns rows={week7} />
-            ) : (
-              <p className={styles.empty}>No check-ins in the last 7 days.</p>
-            )}
-            {older.length ? (
-              <details className={styles.more}>
-                <summary>Older check-ins ({older.length})</summary>
-                <CheckIns rows={older} />
-              </details>
-            ) : null}
-          </>
-        ) : null}
+        {f.share_recovery ? <>
+          <h3>Recent check-ins</h3>
+          {checkIns.length ? <CheckIns rows={allCheckIns ? checkIns : checkIns.slice(0, 3)} /> : <p className={styles.empty}>No check-ins recorded.</p>}
+          {checkIns.length > 3 ? <button type="button" className="ghost-button" aria-expanded={allCheckIns} onClick={() => setAllCheckIns(!allCheckIns)}>{allCheckIns ? "Show recent check-ins" : "View all check-ins"}</button> : null}
+        </> : <p className={styles.muted}>Recovery check-ins: Not shared</p>}
       </section>
     </>
   );
 }
 
-function CheckIns({ rows }: { rows: NonNullable<Fighter["recovery"]> }) {
-  return (
-    <ul className={styles.activity}>
-      {rows.map((r, i) => (
-        <li key={`${r.day}:${i}`}>
-          <strong>{formatAppDate(r.day)}</strong>
-          <span>
-            {r.sleep
-              ? `Sleep: ${r.sleep} · Body: ${r.body}`
-              : `Readiness: ${r.readiness}/5 · Fatigue: ${r.fatigue}/5 · Sleep: ${r.sleep_quality}/5`}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
+function CheckIns({ rows }: { rows: ReturnType<typeof groupCoachCheckIns> }) {
+  return <ul className={styles.activity}>{rows.map(row => <li key={row.day}>
+    <strong>{formatAppDate(row.day)}</strong>
+    {coachCheckInValues(row.readings).map(value => <span key={value.label} data-recovery-tone={value.tone}>{value.label}</span>)}
+  </li>)}</ul>;
 }
 
+function mergeHistory(before: TrainingHistorySession[], after: TrainingHistorySession[]) {
+  return sortTrainingHistory([...new Map([...before, ...after].map(row => [`${row.source}:${row.id}`, row])).values()]);
+}
+function trainingTone(row: TrainingHistorySession) {
+  if (row.status === "modified") return "modified";
+  const category = row.training_category ?? row.activity ?? row.session_type;
+  if (category === "sparring") return "sparring";
+  if (["rehab", "recovery"].includes(category ?? "")) return "rehab";
+  if (["strength", "strength_power", "conditioning"].includes(category ?? "")) return "strength";
+  return "training";
+}
 const HISTORY_STEP = 10;
 
 // The athlete's own History, read-only: the same rows and the same session
@@ -878,10 +839,15 @@ const HISTORY_STEP = 10;
 function TrainingHistory({
   token,
   athleteId,
+  today,
 }: {
+  today: string;
   token: string;
   athleteId: string;
 }) {
+  const [view, setView] = useState<"calendar" | "list">("calendar");
+  const [month, setMonth] = useState(today.slice(0, 7));
+  const [day, setDay] = useState(today);
   const [rows, setRows] = useState<TrainingHistorySession[] | null>(null);
   const [next, setNext] = useState<string | null>(null);
   const [visible, setVisible] = useState(HISTORY_STEP);
@@ -911,7 +877,7 @@ function TrainingHistory({
     getFighterHistory(token, athleteId)
       .then((page) => {
         if (!active) return;
-        setRows(sortTrainingHistory(page.sessions));
+        setRows(mergeHistory([], page.sessions));
         setNext(page.next_before_day ?? null);
       })
       .catch(() => {
@@ -922,11 +888,11 @@ function TrainingHistory({
     };
   }, [token, athleteId, attempt, fail]);
   async function more() {
-    if (rows && next && visible + HISTORY_STEP > rows.length) {
+    if (rows && next && visible + HISTORY_STEP > completedRows.length) {
       setBusy(true);
       try {
         const page = await getFighterHistory(token, athleteId, next);
-        setRows(sortTrainingHistory([...rows, ...page.sessions]));
+        setRows(mergeHistory(rows, page.sessions));
         setNext(page.next_before_day ?? null);
       } catch {
         fail();
@@ -937,10 +903,58 @@ function TrainingHistory({
     }
     setVisible(visible + HISTORY_STEP);
   }
-  const shown = rows?.slice(0, visible) ?? [];
+  // A history page ends on a whole training day. Fetch until the selected
+  // month is covered, following the existing exclusive before-day cursor.
+  useEffect(() => {
+    setBusy(false);
+    if (view !== "calendar" || !rows || !next || next <= `${month}-01`) return;
+    let active = true;
+    setBusy(true);
+    getFighterHistory(token, athleteId, next).then(page => {
+      if (!active) return;
+      if (page.next_before_day && page.next_before_day >= next) throw Error("History cursor did not advance");
+      setRows(current => mergeHistory(current ?? [], page.sessions));
+      setNext(page.next_before_day ?? null);
+    }).catch(() => { if (active) fail(); }).finally(() => { if (active) setBusy(false); });
+    return () => { active = false; };
+  }, [view, month, rows, next, token, athleteId, fail]);
+  const completedRows = (rows ?? []).filter(row => (row.status === "done" || row.status === "modified") && row.completion_origin !== "day_credit" && row.training_day <= today && !(row as TrainingHistorySession & { deleted_at?: unknown }).deleted_at);
+  const shown = view === "list" ? completedRows.slice(0, visible) : completedRows.filter(row => row.training_day === day);
+  const first = new Date(`${month}-01T12:00:00Z`);
+  const offset = (first.getUTCDay() + 6) % 7;
+  const count = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  function changeMonth(delta: number) {
+    const nextMonth = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + delta, 1)).toISOString().slice(0, 7);
+    setMonth(nextMonth); setDay(`${nextMonth}-01`);
+  }
   return (
     <section className={styles.panel}>
-      <h2>Training history</h2>
+      <div className={styles.sectionHeading}><h2>Training history</h2>
+        <div className={styles.actions} aria-label="History view">{(["calendar", "list"] as const).map(mode => <button key={mode} type="button" className={styles.pill} aria-pressed={view === mode} onClick={() => setView(mode)}>{mode === "calendar" ? "Calendar" : "List"}</button>)}</div>
+      </div>
+      {view === "calendar" && rows && !error ? <>
+        <div className={styles.sectionHeading}>
+          <strong>{first.toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" })}</strong>
+          <div className={styles.actions}><button type="button" className={styles.pill} aria-label="Previous month" onClick={() => changeMonth(-1)}>‹</button>
+            <button type="button" className={styles.pill} onClick={() => { setMonth(today.slice(0, 7)); setDay(today); }}>Today</button>
+            <button type="button" className={styles.pill} aria-label="Next month" disabled={month >= today.slice(0, 7)} onClick={() => changeMonth(1)}>›</button></div>
+        </div>
+        <div className={styles.trainingCalendar} role="group" aria-label="Training calendar">
+          {CALENDAR_WEEKDAYS.map(label => <small key={label}>{label.slice(0, 1)}</small>)}
+          {Array.from({ length: offset }, (_, index) => <span key={`gap-${index}`} />)}
+          {Array.from({ length: count }, (_, index) => {
+            const iso = `${month}-${String(index + 1).padStart(2, "0")}`;
+            const sessions = completedRows.filter(row => row.training_day === iso);
+            return <button type="button" key={iso} aria-label={`${formatAppDate(iso)}: ${sessions.length} completed sessions`} aria-pressed={day === iso} aria-current={iso === today ? "date" : undefined} onClick={() => setDay(iso)}>
+              {index + 1}<span className={styles.calendarDots}>{sessions.map(row => <i key={`${row.source}:${row.id}`} data-training-tone={trainingTone(row)} aria-label={trainingTone(row)} />)}</span>
+            </button>;
+          })}
+        </div>
+        <div className={styles.calendarLegend}>{["strength", "sparring", "rehab", "modified", "training"].map(tone => <span key={tone}><i data-training-tone={tone} />{humanize(tone)}</span>)}</div>
+        {busy ? <p role="status" className={styles.muted}>Loading earlier sessions…</p> : null}
+        <h3>{formatAppDate(day)}</h3>
+        {!busy && !shown.length ? <p className={styles.empty}>No completed sessions recorded for this day.</p> : null}
+      </> : null}
       {error ? (
         <div className={styles.error} role="alert">
           Unable to load training history.
@@ -958,8 +972,8 @@ function TrainingHistory({
         </div>
       ) : !rows ? (
         <Loading />
-      ) : !rows.length ? (
-        <p className={styles.empty}>No sessions recorded yet.</p>
+      ) : view === "list" && !completedRows.length ? (
+        <p className={styles.empty}>No completed sessions recorded yet.</p>
       ) : null}
       <div className={styles.history}>
         {[...new Set(shown.map((row) => row.training_day))].map((day) => (
@@ -968,7 +982,7 @@ function TrainingHistory({
             key={day}
             aria-label={formatAppDate(day)}
           >
-            <h3>{formatAppDate(day)}</h3>
+            {view === "list" ? <h3>{formatAppDate(day)}</h3> : null}
             <ul className="history-list">
               {shown
                 .filter((row) => row.training_day === day)
@@ -983,7 +997,7 @@ function TrainingHistory({
           </section>
         ))}
       </div>
-      {rows && !error && (visible < rows.length || next) ? (
+      {view === "list" && rows && !error && (visible < completedRows.length || next) ? (
         <button
           className={`ghost-button ${styles.showMore}`}
           type="button"

@@ -100,13 +100,14 @@ test("injury flags and heavy contact outrank recovery as the reason", () => {
     rocked: false,
   };
   assert.equal(
-    fighterSummary({ ...blank, injuries: [injury], sparring_reports: [report] })
+    fighterSummary({ ...blank, share_injuries: true, injuries: [injury], sparring_reports: [report] })
       .attention,
     "1 open injury flag",
   );
-  const contact = fighterSummary({ ...blank, sparring_reports: [report] });
+  const contact = fighterSummary({ ...blank, share_injuries: true, sparring_reports: [report] });
   assert.equal(contact.attention, "Contact concern reported");
   assert.equal(contact.active, true);
+  assert.equal(fighterSummary({ ...blank, injuries: [injury], sparring_reports: [report], recovery: [{ day: blank.today, source: "today", sleep: "poor" }] }).attention, null);
 });
 
 const accepted: Connection = {
@@ -158,4 +159,33 @@ test("withdrawn health consent leaves only training shared", () => {
     }).note,
     null,
   );
+});
+
+test("check-in dates group sources, retain distinct values and use recorded timestamps", async () => {
+  const { groupCoachCheckIns, coachCheckInValues, coachRecoveryTone } = await import("./coach");
+  const rows = groupCoachCheckIns([
+    { day: "2026-11-15", source: "today", sleep: "good", body: "normal", recorded_at: "2026-11-15T13:00:00Z" },
+    { day: "2026-11-15", source: "daily", readiness: 3, fatigue: 4, sleep_quality: 2, recorded_at: "2026-11-15T10:00:00Z" },
+    { day: "2026-11-14", source: "today", sleep: "okay" },
+    { day: "2026-11-15", source: "today", sleep: "good", body: "normal", recorded_at: "2026-11-15T12:00:00Z" },
+  ]);
+  assert.deepEqual(rows.map(row => row.day), ["2026-11-15", "2026-11-14"]);
+  const values = coachCheckInValues(rows[0].readings);
+  assert.equal(values.filter(value => value.label === "Sleep: Good").length, 1);
+  assert.ok(values.some(value => value.label === "Readiness: 3/5"));
+  assert.ok(values.some(value => value.label === "Fatigue: 4/5"));
+  assert.equal(coachRecoveryTone("sleep_quality", 1), "concern");
+  assert.equal(coachRecoveryTone("sleep_quality", 2), "concern");
+  assert.equal(coachRecoveryTone("sleep_quality", 3), "caution");
+  assert.equal(coachRecoveryTone("sleep_quality", 4), "good");
+  assert.equal(coachRecoveryTone("sleep_quality", 5), "good");
+  assert.equal(coachRecoveryTone("sleep_quality", undefined), "unknown");
+  assert.equal(coachRecoveryTone("sleep", "poor"), "concern");
+  assert.equal(coachRecoveryTone("injury", "mild"), "caution");
+  assert.equal(coachRecoveryTone("injury", "severe"), "concern");
+  assert.equal(coachRecoveryTone("body", "flat"), "caution");
+  assert.equal(coachRecoveryTone("body", "normal"), "good");
+  assert.equal(coachRecoveryTone("readiness", undefined), "unknown");
+  assert.equal(coachRecoveryTone("readiness", 99), "unknown");
+  assert.equal(coachRecoveryTone("body", "unknown"), "unknown");
 });

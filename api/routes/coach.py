@@ -87,9 +87,22 @@ def _is_health_session(row: Mapping[str, Any]) -> bool:
             or any(isinstance(block, Mapping) and block.get("block_type") == "rehab" for block in blocks))
 
 
+class CoachHistorySession(TrainingHistorySession):
+    training_category: Literal["strength", "sparring", "rehab", "training"] = "training"
+
+
+class CoachHistoryResponse(TrainingHistoryResponse):
+    sessions: list[CoachHistorySession]
+
+
 def _coach_row(row: Mapping[str, Any], fighter: ConnectedFighter) -> dict[str, Any]:
     safe = {key: value for key, value in row.items() if key not in PRIVATE_TEXT}
     safe["history_editable"] = False
+    saved = _saved_history_session(row) if row.get("source") != "external" else None
+    kind = (saved or {}).get("session_type") or row.get("activity")
+    safe["training_category"] = ("rehab" if kind in HEALTH_SESSION_TYPES else
+                                 "strength" if kind in {"strength", "strength_power", "conditioning"} else
+                                 "sparring" if kind == "sparring" else "training")
     safe["coach_exercises_editable"] = (
         fighter.allow_session_logging and fighter.health_consent and row.get("source") == "external"
         and str(row.get("logged_by_coach_id") or "") == fighter.coach.athlete_id
@@ -97,6 +110,7 @@ def _coach_row(row: Mapping[str, Any], fighter: ConnectedFighter) -> dict[str, A
     if not fighter.share_injuries:
         safe.pop("pain_after", None)
         if _is_health_session(row):
+            safe["training_category"] = "training"
             safe["title"] = MASKED_TITLE
             safe["session_type"] = None
     return safe
@@ -175,7 +189,7 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
         delete_session_exercise(store, fighter.profile.athlete_id, entry_id, str(exercise_entry_id))
         return Response(status_code=204)
 
-    @router.get("/api/coach/fighters/{athlete_id}/training/history", response_model=TrainingHistoryResponse)
+    @router.get("/api/coach/fighters/{athlete_id}/training/history", response_model=CoachHistoryResponse)
     def fighter_training_history(before_day: date | None = None,
                                  limit: int = Query(default=200, ge=1, le=200),
                                  fighter: ConnectedFighter = Depends(connected_fighter),
