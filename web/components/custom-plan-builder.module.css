@@ -496,8 +496,7 @@
 }
 
 .calendarFightDate { margin: -4px 0 12px; color: var(--text-primary); font: 700 11px/1.4 var(--font-mono); }
-.calendarDate[data-fight-day="true"] { outline: 2px solid var(--brand-red); outline-offset: -2px; background: var(--brand-red-soft); box-shadow: inset 0 0 16px rgba(181, 18, 43, .16); }
-.calendarDate[data-fight-day="true"] .dateSelect small { color: var(--text-primary); font: 700 9px/1.2 var(--font-mono); text-transform: uppercase; letter-spacing: .02em; }
+.calendarDate[data-fight-day="true"] .dateSelect small { color: var(--text-primary); }
 .calendarDate[data-fight-day="true"][data-outside="true"] { opacity: 1; }
 .datedCalendar[data-readonly="true"] .calendarSession { cursor: pointer; }
 .datedCalendar[data-readonly="true"] .selectedDaySessions { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
