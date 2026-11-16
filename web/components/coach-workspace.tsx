@@ -31,6 +31,8 @@ import { isSafeAvatarImageUrl } from "@/lib/avatar-image-url";
 import {
   coachRpc,
   completed,
+  connectionSharing,
+  formatList,
   dayOffset,
   fighterSummary,
   humanize,
@@ -169,14 +171,17 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
   async function command(action: string, id?: string) {
     if (busy) return;
     setBusy(true);
+    // Accepting, or choosing to share the rest, shares training, weight,
+    // recovery and injury status together. Nothing else grants health data.
+    const share = action === "accept" || action === "consent";
     try {
       await coachRpc(token, "coach_connection_command", {
         p_action: action,
         p_id: id ?? null,
         p_email: action === "invite" ? email : null,
-        // Accepting shares training, weight, recovery and injury status together.
-        p_recovery: action === "accept",
-        p_injuries: action === "accept",
+        p_recovery: share,
+        p_injuries: share,
+        p_weight: share,
       });
       if (action === "invite") setEmail("");
       await reload();
@@ -227,6 +232,7 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
       {connections?.map((c) => {
         const pending = c.status === "pending";
         const name = c.coach_name || "Your coach";
+        const sharing = connectionSharing(c);
         return (
           <article className={styles.connection} key={c.id}>
             <div className={styles.rowCopy}>
@@ -238,10 +244,22 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
                     : "Connected"
                   : pending
                     ? "Wants to connect as your coach. Accepting shares your training, weight, recovery and injury information. Disconnect anytime."
-                    : "Connected · Sharing training, weight, recovery and injuries"}
+                    : `Connected · ${sharing.label}`}
               </small>
+              {!coach && !pending && sharing.note ? (
+                <small>{sharing.note}</small>
+              ) : null}
             </div>
             <div className={styles.actions}>
+              {!coach && !pending && sharing.missing.length ? (
+                <button
+                  className="cta"
+                  disabled={busy}
+                  onClick={() => void command("consent", c.id)}
+                >
+                  Share {formatList(sharing.missing)}
+                </button>
+              ) : null}
               {!coach && pending ? (
                 <button
                   className="cta"
@@ -522,6 +540,7 @@ function FighterOverview({
   token: string;
 }) {
   const summary = fighterSummary(f);
+  const sharingKey = `${f.share_weight}:${f.share_recovery}:${f.share_injuries}`;
   const [week, setWeek] = useState(weekStart(f.today));
   const end = dayOffset(week, 6);
   const weekly = f.sessions.filter((s) => s.day >= week && s.day <= end);
@@ -703,8 +722,15 @@ function FighterOverview({
           </ul>
         </section>
       ) : null}
-      <FightWeight token={token} fighter={f} />
-      <TrainingHistory token={token} athleteId={f.id} />
+      {/* A new key when sharing changes drops everything these loaded
+          (weigh-ins, session rows, cached session records, an open record
+          sheet) and reloads it under the new permissions. */}
+      <FightWeight key={`weight:${sharingKey}`} token={token} fighter={f} />
+      <TrainingHistory
+        key={`history:${sharingKey}`}
+        token={token}
+        athleteId={f.id}
+      />
       <section className={styles.panel}>
         <div className={styles.sectionHeading}>
           <h2>Recovery</h2>
@@ -826,6 +852,15 @@ function TrainingHistory({
       getFighterSessionDetails(accessToken, athleteId, source, id),
     [athleteId],
   );
+  // A failed read can mean access ended: drop the rows, the open record and
+  // cached records rather than leaving them on screen.
+  const fail = useCallback(() => {
+    setRows(null);
+    setNext(null);
+    setSelected(null);
+    cache.clear();
+    setError(true);
+  }, [cache]);
   useEffect(() => {
     let active = true;
     getFighterHistory(token, athleteId)
@@ -835,12 +870,12 @@ function TrainingHistory({
         setNext(page.next_before_day ?? null);
       })
       .catch(() => {
-        if (active) setError(true);
+        if (active) fail();
       });
     return () => {
       active = false;
     };
-  }, [token, athleteId, attempt]);
+  }, [token, athleteId, attempt, fail]);
   async function more() {
     if (rows && next && visible + HISTORY_STEP > rows.length) {
       setBusy(true);
@@ -849,7 +884,7 @@ function TrainingHistory({
         setRows(sortTrainingHistory([...rows, ...page.sessions]));
         setNext(page.next_before_day ?? null);
       } catch {
-        setError(true);
+        fail();
         return;
       } finally {
         setBusy(false);
@@ -869,6 +904,7 @@ function TrainingHistory({
             type="button"
             onClick={() => {
               setError(false);
+              setVisible(HISTORY_STEP);
               setAttempt(attempt + 1);
             }}
           >
@@ -959,7 +995,9 @@ function FightWeight({
         if (active) setWeight(next);
       })
       .catch(() => {
-        if (active) setFailed(true);
+        if (!active) return;
+        setWeight(null);
+        setFailed(true);
       });
     return () => {
       active = false;

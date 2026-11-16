@@ -5,6 +5,11 @@ export type Connection = {
   invited_email: string;
   coach_name: string;
   status: "pending" | "accepted";
+  share_recovery?: boolean;
+  share_injuries?: boolean;
+  share_weight?: boolean;
+  // The athlete's own health-data consent; only on the athlete's own rows.
+  health_consent?: boolean | null;
 };
 export type CoachSession = {
   id: string;
@@ -42,6 +47,7 @@ export type Fighter = {
   plan_name: string | null;
   share_recovery: boolean;
   share_injuries: boolean;
+  share_weight: boolean;
   schedule: { day: string; id: string; type: string; title: string }[];
   sparring_reports?: {
     id: string;
@@ -94,6 +100,43 @@ export async function coachRpc<T>(
   }
   return response.json() as Promise<T>;
 }
+export function formatList(items: string[]): string {
+  return items.length < 2
+    ? (items[0] ?? "")
+    : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+const HEALTH_SHARING = [
+  ["share_weight", "weight"],
+  ["share_recovery", "recovery"],
+  ["share_injuries", "injuries"],
+] as const;
+
+// What an accepted connection shares right now: the athlete's choice for this
+// coach, limited by their own health-data consent. Training is always shared.
+// Connections accepted before weight sharing existed have not agreed to it.
+export function connectionSharing(connection: Connection) {
+  const healthOff = connection.health_consent === false;
+  const granted = HEALTH_SHARING.filter(
+    ([key]) => connection[key] === true,
+  ).map(([, label]) => label);
+  const missing = HEALTH_SHARING.filter(
+    ([key]) => connection[key] !== true,
+  ).map(([, label]) => label);
+  const paused = formatList(healthOff ? granted : []);
+  return {
+    label: `Sharing ${formatList(["training", ...(healthOff ? [] : granted)])}`,
+    // Shown under the label when anything is withheld, or null.
+    note: paused
+      ? `${paused[0].toUpperCase()}${paused.slice(1)} paused while health-data consent is off.`
+      : !healthOff && missing.length
+        ? `Not sharing ${formatList(missing)}.`
+        : null,
+    // Categories the athlete can still choose to share with this coach.
+    missing: healthOff ? [] : missing,
+  };
+}
+
 export function dayOffset(day: string, offset: number): string {
   const date = new Date(`${day}T12:00:00Z`);
   date.setUTCDate(date.getUTCDate() + offset);
