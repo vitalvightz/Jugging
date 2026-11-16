@@ -49,9 +49,9 @@ bootstrap += (root / 'supabase/migrations/20261018114339_add_completion_origin.s
 for table in ('profiles','plans','daily_checkins','session_logs','today_checkins','session_completions','external_training_sessions','injury_flags'):
     owner = 'id' if table == 'profiles' else 'athlete_id'
     bootstrap += f'alter table public.{table} enable row level security; grant select on public.{table} to authenticated; create policy owner_only on public.{table} for select to authenticated using ({owner}=auth.uid());\n'
-bootstrap += (root / 'supabase/migrations/20261115232832_coach_workspace.sql').read_text()
-bootstrap += (root / 'supabase/migrations/20261116001001_coach_signup_invitations.sql').read_text()
-bootstrap += (root / 'supabase/migrations/20261116002339_coach_self_signup.sql').read_text()
+bootstrap += (root / 'supabase/migrations/20261116001139_coach_workspace.sql').read_text()
+bootstrap += (root / 'supabase/migrations/20261116001150_coach_signup_invitations.sql').read_text()
+bootstrap += (root / 'supabase/migrations/20261116003447_coach_self_signup.sql').read_text()
 bootstrap += (root / 'tests/coach_workspace_permissions.sql').read_text()
 bootstrap += (root / 'tests/coach_signup_invitations.sql').read_text()
 bootstrap += (root / 'tests/coach_self_signup.sql').read_text()

@@ -30,7 +30,7 @@ the authenticated email from `auth.users`, rather than an editable profile email
 - `web/components/compliance-gate-screen.tsx`: complete the Google/link choice.
 - `api/models.py`, `api/routes/profile.py`, `api/store.py`: validate the explicit
   account type, save age/Terms first, execute the restricted RPC, refresh role.
-- `supabase/migrations/20261116002339_coach_self_signup.sql`: server-owned
+- `supabase/migrations/20261116003447_coach_self_signup.sql`: server-owned
   selection timestamp, guarded transition and service-only RPC.
 - Type declarations, isolated PostgreSQL assertions, backend tests and signup
   browser fixtures are updated with the contract.

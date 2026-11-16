@@ -20,7 +20,7 @@ accounts remain valid. Signup cannot grant admin or gym-owner privileges.
 
 ## Migration and security
 
-Apply `supabase/migrations/20261115232832_coach_workspace.sql` through the
+Apply `supabase/migrations/20261116001139_coach_workspace.sql` through the
 repository's normal Supabase migration release process before deploying the UI.
 It adds one table, `coach_connections`, with participant-only SELECT RLS and no
 browser INSERT/UPDATE/DELETE grants. Three public, security-invoker RPCs delegate
@@ -118,7 +118,7 @@ the existing app's locale and theme shell.
   `web/lib/beta-navigation.ts`, `web/lib/auth-routing.ts`: existing navigation
   integration and coach destination.
 - `web/lib/coach.ts`, `web/lib/coach.test.ts`: typed RPC adapter and count rules.
-- `supabase/migrations/20261115232832_coach_workspace.sql`: connection table,
+- `supabase/migrations/20261116001139_coach_workspace.sql`: connection table,
   indexes, RLS, permission transitions and consent-aware projections.
 - `tests/coach_workspace_permissions.sql`, `tools/test_coach_workspace.py`:
   isolated PostgreSQL migration/permission tests.
@@ -150,7 +150,7 @@ Approved administrators can also use the consent-bound coach workspace without
 changing their admin role or losing existing admin access. This does not grant
 access to unaccepted athlete performance records.
 
-`20261116001001_coach_signup_invitations.sql` adds a service-only
+`20261116001150_coach_signup_invitations.sql` adds a service-only
 `coach_invitation_rules` table and a private profile-insert trigger. An operator
 can configure exact Auth email domains for a coach. Only Auth accounts created
 on or after rule activation receive pending invitations; existing signups and
