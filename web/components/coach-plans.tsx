@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import type { CoachPlan, CoachPlannedSession } from "@/lib/api-schema.generated";
 import { weekStart, dayOffset, humanize, type Fighter } from "@/lib/coach";
 import { sharePlanWithFighters } from "@/lib/custom-plan-share";
-import { assignCoachPlan, listCoachPlans, getFighterPlan } from "@/lib/api";
+import { deleteCoachPlan, assignCoachPlan, listCoachPlans, getFighterPlan } from "@/lib/api";
 import { CustomPlanBuilder } from "./custom-plan-builder";
 import { AssignedPlanPreview } from "./assigned-plan-preview";
 import { StatusIcon } from "./record-icons";
@@ -104,7 +104,16 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
       {scheduleOpen === plan.id ? <section className={styles.planSchedule} aria-label={`${plan.name} schedule`}><h3>Training schedule</h3>{!schedule ? <p role="status">Loading schedule…</p> : schedule.filter(row => row.plan_id === plan.published_plan_id).length ? <ul>{schedule.filter(row => row.plan_id === plan.published_plan_id).map(row => <li key={`${row.day}:${row.id}`}><span>{formatAppDate(row.day)}</span><strong>{row.title}</strong></li>)}</ul> : <p>No sessions scheduled.</p>}</section> : null}
       {preview === plan.id ? <AssignedPlanPreview plan={plan} /> : null}
       {plan.assignment_status === "draft" && plan.incomplete ? <p className={styles.planActionNote}>Finish schedule and doses to assign.</p> : null}
-      {others.length ? <SharePlan token={token} plan={plan} others={others} /> : null}
+      {others.length || plan.assignment_status === "draft" ? <div className={styles.planLinks}>
+        {others.length ? <SharePlan token={token} plan={plan} others={others} /> : null}
+        {plan.assignment_status === "draft" ? <button type="button" className={`${styles.planShareToggle} ${styles.planDeleteLink}`} disabled={pending} onClick={async () => {
+          if (!window.confirm(`Delete "${plan.name}"? This can't be undone.`)) return;
+          setPending(true); setError("");
+          try { await deleteCoachPlan(token, fighter.id, plan.id); setPlans(rows => rows?.filter(row => row.id !== plan.id)); }
+          catch { setError("Couldn't delete. It may have been sent already; refresh."); }
+          finally { setPending(false); }
+        }}>Delete draft</button> : null}
+      </div> : null}
     </article>)}
     <button type="button" className={styles.newPlanAction} onClick={() => { setEditing(""); }}><PlanIcon name="plus" />Create New Plan</button>
   </>;

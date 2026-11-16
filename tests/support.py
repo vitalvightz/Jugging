@@ -2179,6 +2179,13 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         self.custom_plans[plan_id].update(copy.deepcopy(fields), updated_at=_now())
         return self.get_custom_plan(athlete_id, plan_id)
 
+    def delete_coach_draft(self, coach_id: str, fighter_id: str, plan_id: str) -> bool:
+        row = self.custom_plans.get(plan_id)
+        if not row or row.get("athlete_id") != coach_id or row.get("fighter_id") != fighter_id or row.get("assigned_at"):
+            return False
+        del self.custom_plans[plan_id]
+        return True
+
     def delete_custom_plan(self, athlete_id: str, plan_id: str) -> bool:
         if not self.get_custom_plan(athlete_id, plan_id):
             return False

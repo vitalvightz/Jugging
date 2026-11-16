@@ -1373,3 +1373,27 @@ test('a coach sends an assigned plan to other fighters as independent copies', a
   const a11y = await new AxeBuilder({ page }).include('[aria-label="Fight camp"]').analyze();
   expect(a11y.violations).toEqual([]);
 });
+
+test('a coach deletes an unsent draft after confirming', async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 390, height: 1000 });
+  await fixture(page, baseURL!);
+  const base = { kind: 'self_directed', incomplete: false, fighter_id: fighterId, coach_name: 'Test Coach', published_plan_id: null,
+    created_at: '2026-11-15T12:00:00Z', updated_at: '2026-11-15T12:00:00Z', sessions: [] };
+  const rows = [{ ...base, id: 'draft-plan', name: 'Old draft', assignment_status: 'draft', assigned_at: null },
+    { ...base, id: 'sent-plan', name: 'Sent plan', assignment_status: 'pending', assigned_at: '2026-11-15T12:00:00Z' }];
+  const deleted: string[] = [];
+  await page.route('**/api/coach/fighters/*/plans**', route => {
+    if (route.request().method() === 'DELETE') { deleted.push(new URL(route.request().url()).pathname.split('/').pop()!); return route.fulfill({ status: 204 }); }
+    return route.fulfill({ json: rows });
+  });
+  await page.goto('/coach/plans');
+  await expect(page.getByRole('article', { name: 'Sent plan' }).getByRole('button', { name: 'Delete draft' })).toHaveCount(0);
+  page.once('dialog', dialog => dialog.dismiss());
+  await page.getByRole('article', { name: 'Old draft' }).getByRole('button', { name: 'Delete draft', exact: true }).click();
+  await expect(page.getByRole('article', { name: 'Old draft' })).toBeVisible();
+  expect(deleted).toEqual([]);
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('article', { name: 'Old draft' }).getByRole('button', { name: 'Delete draft', exact: true }).click();
+  await expect(page.getByRole('article', { name: 'Old draft' })).toHaveCount(0);
+  expect(deleted).toEqual(['draft-plan']);
+});

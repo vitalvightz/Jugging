@@ -703,7 +703,12 @@
 }
 
 /* Send a plan to other fighters: a quiet link that expands into a checklist. */
-.planShare { margin-top: 12px; text-align: center; }
+.planLinks { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: center; gap: 4px 16px; margin-top: 12px; }
+.planLinks > .planShare:has(.planSharePanel) { flex-basis: 100%; }
+.planShare { text-align: center; }
+.planDeleteLink { color: #e2738a; }
+.planDeleteLink:hover { color: #ff8fa5; }
+:global(html[data-theme="light"]) .planDeleteLink { color: #b3122f; }
 .planShareToggle { min-height: 36px; padding: 6px 10px; border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: 12px; font-weight: 550; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .planShareToggle:hover { color: var(--text-primary); }
 .planSharePanel { display: grid; gap: 12px; margin: 0; padding: 14px; border: 1px solid #292c32; border-radius: 12px; background: #131519; text-align: left; }

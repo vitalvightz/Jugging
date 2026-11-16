@@ -197,6 +197,14 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
         updated = store.coach_plan_command(fighter.coach.athlete_id, fighter.profile.athlete_id, row['id'], 'update', fields)
         return assignment_view(store, updated)
 
+    @router.delete('/api/coach/fighters/{athlete_id}/plans/{plan_id}', status_code=204)
+    def delete_coach_draft(row=Depends(authored_plan), fighter: ConnectedFighter = Depends(connected_fighter),
+                           store: AppStore = Depends(get_store)):
+        # Sent plans are the fighter's record; only unsent drafts can be removed.
+        if row.get('assigned_at') or not store.delete_coach_draft(fighter.coach.athlete_id, fighter.profile.athlete_id, str(row['id'])):
+            raise HTTPException(409, 'Only unsent drafts can be deleted.')
+        return Response(status_code=204)
+
     @router.post('/api/coach/fighters/{athlete_id}/plans/{plan_id}/assign', response_model=CoachPlan)
     def assign_coach_plan(row=Depends(authored_plan), fighter: ConnectedFighter = Depends(connected_fighter),
                           store: AppStore = Depends(get_store)):
