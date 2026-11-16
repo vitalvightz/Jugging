@@ -104,6 +104,11 @@ class TrainingHistorySession(BaseModel):
     exercise_count: int | None = None
     # A plan session History may edit (RPE, pain, notes) or remove.
     history_editable: bool = False
+    # Set by coach History only, from the live connection and session author.
+    coach_exercises_editable: bool = False
+    # Attribution survives deletion of the coach account.
+    logged_by_coach: bool = False
+    logged_by_coach_name: str | None = None
 
 
 class TrainingHistoryResponse(BaseModel):

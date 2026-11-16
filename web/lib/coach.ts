@@ -8,6 +8,7 @@ export type Connection = {
   share_recovery?: boolean;
   share_injuries?: boolean;
   share_weight?: boolean;
+  allow_session_logging?: boolean;
   // The athlete's own health-data consent; only on the athlete's own rows.
   health_consent?: boolean | null;
 };
@@ -48,6 +49,7 @@ export type Fighter = {
   share_recovery: boolean;
   share_injuries: boolean;
   share_weight: boolean;
+  allow_session_logging?: boolean;
   schedule: { day: string; id: string; type: string; title: string }[];
   sparring_reports?: {
     id: string;

@@ -3,7 +3,7 @@ import test from "node:test";
 import { window } from "./test-dom";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { SessionDetails, type SessionDetailsCache } from "./session-details";
+import { SessionDetails, SessionRow, type SessionDetailsCache } from "./session-details";
 import type { TrainingHistorySession } from "@/lib/training-history";
 import { SHEET_EXIT_MS } from "@/lib/use-sheet-exit";
 
@@ -187,4 +187,23 @@ test("a coach reads a fighter's record through their own loader, with no 'you' c
     await act(async () => root.unmount());
     container.remove();
   }
+});
+
+test("the athlete sees who logged a coach-recorded session", async () => {
+  const fetch = globalThis.fetch;
+  const coached: TrainingHistorySession = { ...row, id: "three", source: "external", title: "Boxing", activity: "boxing", plan_id: null,
+    duration_minutes: 60, effort: "hard", logged_by_coach: true, logged_by_coach_name: "Sam" };
+  globalThis.fetch = async () => new Response(JSON.stringify({ session: coached, prescription_source: "manual", blocks: [
+    { name: "Bag rounds", kind: "exercise", source: "manual", prescribed: {}, actual: { rounds: 6 }, status: null, responses: [] },
+  ] }));
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<ul><SessionRow row={coached} onOpen={() => {}} /></ul>));
+    assert.match(container.textContent!, /60 min.*Logged by coach Sam/);
+    await act(async () => root.render(<SessionDetails row={coached} token="token" cache={new Map()} onDismiss={() => {}} />));
+    for (const button of container.querySelectorAll<HTMLButtonElement>("ol button[aria-expanded]")) await act(async () => button.click());
+    assert.match(container.querySelector("header")!.textContent!, /60 min · Hard · Logged by coach Sam/);
+    assert.doesNotMatch(container.textContent!, /by you/i);
+  } finally { await act(async () => root.unmount()); container.remove(); globalThis.fetch = fetch; }
 });

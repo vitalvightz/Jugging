@@ -24,7 +24,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 type Call = { url: string; method: string; body: Record<string, unknown> | null };
 
-async function mount({ entries = [] as ManualExerciseEntry[], reference = null as TrainingHistorySession | null,
+async function mount({ fighterId = undefined as string | undefined, entries = [] as ManualExerciseEntry[], reference = null as TrainingHistorySession | null,
   respond = undefined as ((call: Call) => Response | undefined) | undefined } = {}) {
   const calls: Call[] = [];
   const originalFetch = globalThis.fetch;
@@ -45,7 +45,7 @@ async function mount({ entries = [] as ManualExerciseEntry[], reference = null a
         exercise_id: body.exercise.name ? "custom:new" : "key:back-squat", name, format: body.format, actual: { ...blank, ...body.actual }, notes: body.notes || null,
         revision: Number((call.body as { revision?: number }).revision ?? 0) + 1 });
     }
-    if (url.pathname === `/api/training/sessions/${session.id}/exercises`) return json({ entries });
+    if (url.pathname === `/api/training/sessions/${session.id}/exercises` || url.pathname === `/api/coach/fighters/${fighterId}/training/sessions/${session.id}/exercises`) return json({ entries });
     if (url.pathname === "/api/training/sessions/old-session/exercises") return json({ entries: [{ id: "old", entry_id: "old-entry", external_session_id: "old-session",
       training_day: "2026-10-12", exercise_id: "key:back-squat", name: "Back Squat", format: "strength", actual: { ...blank, sets: 3, reps: 5, load: { value: 75, unit: "kg" } }, notes: null }] });
     if (url.pathname === "/api/history/exercise-library") return json({ exercises: [squatRecord], as_of: "2026-10-19T00:00:00Z", coverage: "retained_logs" });
@@ -57,7 +57,7 @@ async function mount({ entries = [] as ManualExerciseEntry[], reference = null a
   document.body.append(container);
   const root = createRoot(container);
   const closed: (ManualExerciseEntry[] | null)[] = [];
-  await act(async () => root.render(<ManualExerciseLogger token="token" session={session} reference={reference} onClose={value => closed.push(value)} />));
+  await act(async () => root.render(<ManualExerciseLogger token="token" session={session} fighterId={fighterId} reference={reference} onClose={value => closed.push(value)} />));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
   const button = (text: string | RegExp) => [...container.querySelectorAll("button")].find(item =>
     typeof text === "string" ? item.textContent?.trim() === text || item.getAttribute("aria-label") === text : text.test(item.textContent ?? ""));
@@ -285,7 +285,7 @@ test("session details list manual exercises with only recorded values", async ()
   try {
     await act(async () => root.render(<SessionDetails row={session} token="token" cache={new Map() as SessionDetailsCache} onDismiss={() => {}} onEditExercises={row => edits.push(row)} />));
     const items = [...container.querySelectorAll("ol li")].map(item => item.textContent);
-    assert.deepEqual(items, ["Back Squat3 × 5 · 80 kg", "Landmine rotationPerformed · no measurements recorded"]);
+    assert.deepEqual(items, ["Back Squat3 × 580 kgLogged›", "Landmine rotationLogged›"]);
     assert.doesNotMatch(container.textContent!, /Prescribed/);
     await act(async () => [...container.querySelectorAll("button")].find(item => item.textContent === "Edit exercises")!.click());
     assert.equal(edits[0].id, session.id);
@@ -349,4 +349,29 @@ test("private bench press earns an editable draft from confirmed strength perfor
     await ui.click("Add exercise");
     assert.deepEqual((puts(ui.calls)[0].body!.actual as { load: object }).load, { value: 81, unit: "kg" });
   } finally { await ui.cleanup(); }
+});
+
+
+test("coach mode uses catalogue and manual names, never the coach's personal records", async () => {
+  const ui = await mount({ fighterId: "fighter-1", reference: { ...session, id: "old-session" } });
+  try {
+    assert.equal(ui.calls.some(call => call.url.includes("exercise-library")), false);
+    assert.doesNotMatch(ui.container.textContent!, /Back Squat|Reuse exercises/);
+    await ui.type('input[type="search"]', "plank");
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
+    await ui.click(/^PlankLibrary$/);
+    await ui.click("Done");
+    assert.deepEqual(puts(ui.calls)[0].body?.exercise, { catalogue_id: "plank-id" });
+    assert.ok(puts(ui.calls)[0].url.startsWith("/api/coach/fighters/fighter-1/"));
+    assert.equal(ui.calls.some(call => call.url.includes("exercise-library") || call.url.includes("old-session")), false);
+  } finally { ui.cleanup(); }
+  const manual = await mount({ fighterId: "fighter-1" });
+  try {
+    await manual.type('input[type="search"]', "Landmine rotation");
+    await manual.click(/Add “Landmine rotation”/);
+    await manual.click("Bodyweight");
+    await manual.click("Done");
+    assert.deepEqual(puts(manual.calls)[0].body?.exercise, { name: "Landmine rotation" });
+    assert.equal(manual.calls.some(call => call.url.includes("exercise-library")), false);
+  } finally { manual.cleanup(); }
 });

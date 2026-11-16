@@ -12,6 +12,8 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { RequireAuth } from "@/components/auth-guard";
+import { ManualExerciseLogger } from "@/components/manual-exercise-logger";
+import { LogTraining } from "@/components/log-training";
 import { useAppSession } from "@/components/auth-provider";
 import {
   SessionDetails,
@@ -168,7 +170,7 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
   const { data: connections, error, setError, reload } = useLive(fetcher);
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
-  async function command(action: string, id?: string) {
+  async function command(action: string, id?: string, connection?: Connection) {
     if (busy) return;
     setBusy(true);
     // Accepting, or choosing to share the rest, shares training, weight,
@@ -176,12 +178,13 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
     const share = action === "accept" || action === "consent";
     try {
       await coachRpc(token, "coach_connection_command", {
-        p_action: action,
+        p_action: action === "logging" ? "consent" : action,
         p_id: id ?? null,
         p_email: action === "invite" ? email : null,
-        p_recovery: share,
-        p_injuries: share,
-        p_weight: share,
+        p_recovery: share || connection?.share_recovery === true,
+        p_injuries: share || connection?.share_injuries === true,
+        p_weight: share || connection?.share_weight === true,
+        p_logging: action === "accept" || action === "logging" || connection?.allow_session_logging === true,
       });
       if (action === "invite") setEmail("");
       await reload();
@@ -243,7 +246,7 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
                     ? "Pending"
                     : "Connected"
                   : pending
-                    ? "Wants to connect as your coach. Accepting shares your training, weight, recovery and injury information. Disconnect anytime."
+                    ? "Accepting shares training, weight, recovery and injuries, and lets your coach add sessions. Disconnect anytime."
                     : `Connected · ${sharing.label}`}
               </small>
               {!coach && !pending && sharing.note ? (
@@ -255,9 +258,14 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
                 <button
                   className="cta"
                   disabled={busy}
-                  onClick={() => void command("consent", c.id)}
+                  onClick={() => void command("consent", c.id, c)}
                 >
                   Share {formatList(sharing.missing)}
+                </button>
+              ) : null}
+              {!coach && !pending && !c.allow_session_logging ? (
+                <button className="cta" disabled={busy} onClick={() => void command("logging", c.id, c)}>
+                  Allow session logging
                 </button>
               ) : null}
               {!coach && pending ? (
@@ -304,21 +312,46 @@ function Fighters({ token, fighterId }: { token: string; fighterId?: string }) {
     [token, fighterId],
   );
   const { data: fighters, error, reload } = useLive(fetcher);
+  const loggingFighters = fighters?.filter((fighter) => fighter.allow_session_logging === true) ?? [];
+  // Bumped when a session is logged, so the History list reads it at once.
+  const [logged, setLogged] = useState(0);
   return (
     <>
-      {fighterId ? (
-        <Link className={styles.back} href="/coach">
-          ← All fighters
-        </Link>
-      ) : null}
-      <h1 className={fighterId ? styles.srOnly : undefined}>
-        {fighterId ? "Fighter overview" : "Your corner. In focus."}
-      </h1>
+      <div className={styles.pageHead}>
+        {fighterId ? (
+          <Link className={styles.back} href="/coach">
+            ← All fighters
+          </Link>
+        ) : (
+          <h1>Your corner. In focus.</h1>
+        )}
+        {loggingFighters.length ? (
+          <LogTraining
+            accessToken={token}
+            variant="primary"
+            fighters={loggingFighters.map((f) => ({
+              id: f.id,
+              name: f.name,
+              today: f.today,
+              sport: f.sport,
+            }))}
+            onSaved={() => {
+              setLogged((count) => count + 1);
+              void reload();
+            }}
+          />
+        ) : null}
+      </div>
+      {fighterId ? <h1 className={styles.srOnly}>Fighter overview</h1> : null}
       <LoadState error={error} loading={!fighters} retry={reload} />
       {!fighters ? null : !fighterId ? (
         <CoachDashboard fighters={fighters} />
       ) : fighters[0] ? (
-        <FighterOverview fighter={fighters[0]} token={token} />
+        <FighterOverview
+          fighter={fighters[0]}
+          token={token}
+          historyKey={logged}
+        />
       ) : (
         <section className={styles.panel}>
           <h2>Fighter unavailable</h2>
@@ -535,12 +568,14 @@ function Avatar({ fighter }: { fighter: Fighter }) {
 function FighterOverview({
   fighter: f,
   token,
+  historyKey,
 }: {
   fighter: Fighter;
   token: string;
+  historyKey: number;
 }) {
   const summary = fighterSummary(f);
-  const sharingKey = `${f.share_weight}:${f.share_recovery}:${f.share_injuries}`;
+  const sharingKey = `${f.share_weight}:${f.share_recovery}:${f.share_injuries}:${f.allow_session_logging}`;
   const [week, setWeek] = useState(weekStart(f.today));
   const end = dayOffset(week, 6);
   const weekly = f.sessions.filter((s) => s.day >= week && s.day <= end);
@@ -727,7 +762,7 @@ function FighterOverview({
           sheet) and reloads it under the new permissions. */}
       <FightWeight key={`weight:${sharingKey}`} token={token} fighter={f} />
       <TrainingHistory
-        key={`history:${sharingKey}`}
+        key={`history:${sharingKey}:${historyKey}`}
         token={token}
         athleteId={f.id}
       />
@@ -847,6 +882,7 @@ function TrainingHistory({
   const [attempt, setAttempt] = useState(0);
   const [selected, setSelected] = useState<TrainingHistorySession | null>(null);
   const [cache] = useState<SessionDetailsCache>(() => new Map());
+  const [editing, setEditing] = useState<TrainingHistorySession | null>(null);
   const load = useCallback<typeof getSessionDetails>(
     (accessToken, source, id) =>
       getFighterSessionDetails(accessToken, athleteId, source, id),
@@ -858,6 +894,7 @@ function TrainingHistory({
     setRows(null);
     setNext(null);
     setSelected(null);
+    setEditing(null);
     cache.clear();
     setError(true);
   }, [cache]);
@@ -948,6 +985,11 @@ function TrainingHistory({
           {busy ? "Loading…" : "Show earlier sessions"}
         </button>
       ) : null}
+      {editing ? createPortal(
+        <ManualExerciseLogger key={`${athleteId}:${editing.id}`} token={token} session={editing} fighterId={athleteId}
+          onClose={() => { setEditing(null); cache.clear(); setAttempt(value => value + 1); }} />,
+        document.body,
+      ) : null}
       {/* Outside the workspace so its styles never reach the record sheet. */}
       {selected
         ? createPortal(
@@ -957,6 +999,10 @@ function TrainingHistory({
               token={token}
               cache={cache}
               viewer="coach"
+              onEditExercises={selected.coach_exercises_editable ? () => {
+                setEditing(selected);
+                setSelected(null);
+              } : undefined}
               load={load}
               onDismiss={() => setSelected(null)}
             />,

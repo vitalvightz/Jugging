@@ -1769,7 +1769,7 @@ revoke insert, update, delete on public.push_subscriptions from authenticated;
 grant select on public.push_subscriptions to authenticated;
 grant all on public.push_subscriptions to service_role;
 
-+-- Secure beta feedback. All application access is server-side through the
+-- Secure beta feedback. All application access is server-side through the
 -- service role; there are intentionally no browser-facing RLS policies.
 
 create table if not exists public.beta_feedback (
@@ -2839,6 +2839,10 @@ create table if not exists public.external_training_sessions (
     or (duration_seconds between 1 and 36000 and duration_minutes = ceil(duration_seconds / 60.0))),
   -- Optional run type; see migrations/20261104120000_add_external_training_run_type.sql.
   run_type text,
+  -- Set when a connected coach entered the session for the athlete; see
+  -- migrations/20261116120000_coach_logged_sessions.sql.
+  logged_by_coach_id uuid references public.profiles(id) on delete set null,
+  logged_by_coach_name text constraint external_training_sessions_coach_name_length check (char_length(logged_by_coach_name) <= 120),
   constraint external_training_sessions_run_type check (
     run_type is null
     or (activity = 'roadwork' and run_type in ('easy', 'tempo', 'intervals', 'sprints', 'long', 'race'))),
@@ -3929,6 +3933,7 @@ set search_path = pg_catalog, public as $$
   )
   select s.training_day from public.external_training_sessions s, today
   where s.athlete_id=p_athlete_id and s.deleted_at is null and s.training_day<=today.day
+    and s.logged_by_coach_name is null
   union
   select s.training_day from public.session_completions s, today
   where s.athlete_id=p_athlete_id and s.completion_origin='reported'
@@ -3970,6 +3975,7 @@ set search_path = pg_catalog, public as $$
     join public.external_training_sessions s on s.id=e.external_session_id and s.athlete_id=e.athlete_id
     cross join today
     where e.athlete_id=p_athlete_id and e.deleted_at is null and s.deleted_at is null
+      and s.logged_by_coach_name is null
       and s.training_day<=today.day and public.xp_has_measurements(e.actual)
   );
 $$;
@@ -3992,7 +3998,7 @@ begin
   if new.action='manual_training_logged' then
     if not exists (
       select 1 from public.external_training_sessions s
-      where s.athlete_id=new.athlete_id and s.deleted_at is null
+      where s.athlete_id=new.athlete_id and s.deleted_at is null and s.logged_by_coach_name is null
         and new.idempotency_key='manual-training:'||s.id::text and s.training_day=new.calendar_date
         and s.training_day in (select training_day from public.xp_recorded_training_days(new.athlete_id))
     ) then raise exception 'manual XP requires an owned live training occurrence' using errcode='23514'; end if;

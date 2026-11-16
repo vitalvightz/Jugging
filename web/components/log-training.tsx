@@ -4,7 +4,7 @@ import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useAppSession } from "./auth-provider";
 import { habitTrainingDay } from "@/lib/training-habits";
-import { ApiError, editExternalTraining, getTrainingHistory, logExternalTraining, recordCompliance } from "@/lib/api";
+import { ApiError, editExternalTraining, getTrainingHistory, logExternalTraining, logFighterTraining, recordCompliance } from "@/lib/api";
 import { lockOverlayScroll } from "@/lib/overlay-scroll-lock";
 import { prefersReducedMotion } from "@/lib/reduced-motion";
 import { consentCopyForBand, hasHealthDataConsent } from "@/lib/compliance";
@@ -55,7 +55,12 @@ export function manualSparringDraft(row: TrainingHistorySession): SparringDraft 
   };
 }
 
+/** A connected fighter a coach can record a session for. `today` is the fighter's own training day. */
+export type LogFighter = { id: string; name: string; today: string; sport?: string | null };
+
 type Props = {
+  /** Coach mode: the session is recorded for one of these connected fighters, not for the signed-in user. */
+  fighters?: readonly LogFighter[];
   /** Parent-owned follow-ups survive the History details sheet closing. */
   onSparringFollowUp?: (row: TrainingHistorySession) => void;
   historyMode?: boolean; accessToken: string | null; entry?: TrainingHistorySession; repeatEntry?: TrainingHistorySession; recent?: boolean; history?: TrainingHistorySession[]; quickSession?: { activity: TrainingActivity; sport?: TrainingSport | null; session_type?: TrainingSessionType | null; duration_minutes: number; title: string; effort?: TrainingEffort | null }; onSaved?: (row: TrainingHistorySession) => void; onSparringReported?: () => void; variant?: "compact" | "tile" | "primary";
@@ -68,7 +73,7 @@ export function LogTraining(props: Props) {
   return props.accessToken ? <LogTrainingContent key={props.accessToken} {...props} accessToken={props.accessToken} /> : null;
 }
 
-function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, history, quickSession, onSaved, onSparringReported, variant = "compact", autoOpen = false, initialTrainingDay, historyMode = false, onSparringFollowUp, onClosed }: Props & { accessToken: string }) {
+function LogTrainingContent({ fighters, accessToken, entry, repeatEntry, recent = false, history, quickSession, onSaved, onSparringReported, variant = "compact", autoOpen = false, initialTrainingDay, historyMode = false, onSparringFollowUp, onClosed }: Props & { accessToken: string }) {
   const [open, setOpen] = useState(false);
   // The sheet slides away before it unmounts, rather than vanishing in a frame.
   const [closing, setClosing] = useState(false);
@@ -83,9 +88,13 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
   const { me, replaceMe } = useAppSession();
   const consentCopy = consentCopyForBand(me?.profile.age_band);
   const [serverConsentRequired, setServerConsentRequired] = useState(false);
-  const requiresConsent = !me || (me.profile.role === "athlete" && !hasHealthDataConsent(me)) || serverConsentRequired;
+  // With one fighter (their profile) it is preselected; from the roster the coach picks.
+  const [fighterId, setFighterId] = useState("");
+  const fighter = fighters?.find(item => item.id === fighterId) ?? (fighters?.length === 1 ? fighters[0] : null);
+  // The fighter's own consent is checked by the server; a coach is never asked for theirs here.
+  const requiresConsent = !fighters && (!me || (me.profile.role === "athlete" && !hasHealthDataConsent(me)) || serverConsentRequired);
   const [now, setNow] = useState(() => new Date());
-  const today = habitTrainingDay(now, me?.profile.athlete_timezone);
+  const today = fighter?.today ?? habitTrainingDay(now, me?.profile.athlete_timezone);
   const [sourceLabel, setSourceLabel] = useState("");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [customDuration, setCustomDuration] = useState(false);
@@ -108,7 +117,7 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
   const [sport, setSport] = useState<TrainingSport | null>(null);
   const [sessionType, setSessionType] = useState<TrainingSessionType | null>(null);
   // Whose session types the Activity grid shows; fixed when the sheet opens.
-  const mySport = athleteSport(me?.profile.technical_style);
+  const mySport = athleteSport(fighters ? (fighter?.sport ? [fighter.sport] : null) : me?.profile.technical_style);
   const [gridSport, setGridSport] = useState<TrainingSport | null>(null);
   const { showToast } = useToast();
   // A per-session switch; the saved profile sport never changes here.
@@ -130,6 +139,8 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
   const [sparringDraft, setSparringDraft] = useState<SparringDraft | null>(null);
   // Any other new session offers an optional takeaway in place of the saved line.
   const [takeawayRow, setTakeawayRow] = useState<TrainingHistorySession | null>(null);
+  // A coach's saved session offers exercises only: takeaways and sparring reports are the athlete's to give.
+  const [coachSaved, setCoachSaved] = useState<{ row: TrainingHistorySession; fighter: LogFighter } | null>(null);
   // ...and, beside it, optional exercises. A repeated session may reuse its source's names.
   const [exercisesOpen, setExercisesOpen] = useState(false);
   const [exerciseCount, setExerciseCount] = useState(0);
@@ -236,6 +247,8 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
     setError(null);
     setSaved(null);
     setTakeawayRow(null);
+    setCoachSaved(null);
+    setFighterId("");
     setExercisesOpen(false);
     setExerciseCount(0);
     setExerciseReference(repeat && row?.id && row.exercise_count ? row as TrainingHistorySession : null);
@@ -265,6 +278,11 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
     event.preventDefault();
     if (!accessToken || saving.current) return;
     if (requiresConsent) return;
+    if (fighters && !fighter) {
+      setError("Choose a fighter.");
+      dialog.current?.querySelector<HTMLSelectElement>("select")?.focus();
+      return;
+    }
     if (!activity || !effort) {
       setError("Select an activity and effort.");
       dialog.current?.querySelector<HTMLButtonElement>(!activity ? '[data-activity]' : '[data-effort]')?.focus();
@@ -293,10 +311,18 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
         ...(distanceValue !== null ? { distance_value: distanceValue, distance_unit: distanceUnit } : {}),
         ...(runSeconds !== null ? { duration_seconds: runSeconds } : {}),
         ...(isRun && runType ? { run_type: runType } : {}) };
+      const created = { ...body, ...(trainingDay ? { training_day: trainingDay } : {}), client_request_id: requestId.current ??= crypto.randomUUID() };
       const row = editing
         ? await editExternalTraining(token, editing, body)
-        : await logExternalTraining(token, { ...body, ...(trainingDay ? { training_day: trainingDay } : {}), client_request_id: requestId.current ??= crypto.randomUUID() });
+        : fighter ? await logFighterTraining(token, fighter.id, created) : await logExternalTraining(token, created);
       if (currentToken.current !== token) return;
+      if (fighter) {
+        onSaved?.(row);
+        requestId.current = null;
+        closeSheet();
+        setCoachSaved({ row, fighter });
+        return;
+      }
       if (recent) setLastSession(current => latestRepeatableTraining([row, ...(current ? [current] : [])]));
       onSaved?.(row);
       requestId.current = null;
@@ -424,6 +450,7 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
         <header className={styles.header}>
           <div><h2>{editing ? "Edit session" : repeating && activity ? `Log ${trainingLabel({ activity, sport, session_type: sessionType })}` : "Log session"}</h2>
             {repeating ? <p className={styles.source}>{duration} min · {sourceLabel}</p> : null}
+            {fighter && fighters?.length === 1 ? <p className={styles.source}>For {fighter.name || "your fighter"}</p> : null}
           </div>
           <button className={styles.close} type="button" aria-label="Close training log" disabled={busy} onClick={closeSheet}>×</button>
         </header>
@@ -436,6 +463,18 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
           <button type="button" className="ghost-button" disabled={busy} onClick={closeSheet}>Not now</button>
         </div> : <form className={styles.form} onSubmit={save} aria-label={editing ? "Edit session" : "Log session"}>
           <div className={styles.body}>
+            {fighters && fighters.length > 1 ? <label className={styles.customDuration}>Fighter
+              <select required value={fighterId} disabled={busy}
+                onChange={event => {
+                  const next = fighters.find(item => item.id === event.target.value);
+                  setFighterId(event.target.value); requestId.current = null;
+                  // Until an activity is picked, the grid follows the chosen fighter's sport.
+                  if (!activity) setGridSport(athleteSport(next?.sport ? [next.sport] : null));
+                }}>
+                <option value="" disabled>Choose a fighter</option>
+                {fighters.map(item => <option key={item.id} value={item.id}>{item.name || "Fighter"}</option>)}
+              </select>
+            </label> : null}
             {!repeating ? activityAndDuration : null}
             <fieldset className={styles.fieldset} disabled={busy} aria-label="Effort">
               <legend>{repeating ? "How hard was it today?" : "Effort"} <span className={styles.unit}>Required</span></legend>
@@ -460,6 +499,13 @@ function LogTrainingContent({ accessToken, entry, repeatEntry, recent = false, h
         </dialog>
       ) : null}
       {saved && !entry && !repeatEntry ? <p className="muted" role="status">{saved}</p> : null}
+      {coachSaved ? <p className={styles.coachSaved} role="status">
+        <span>{trainingTitle(coachSaved.row)} saved to {coachSaved.fighter.name || "your fighter"}&apos;s History.</span>
+        <button type="button" className="ghost-button" aria-haspopup="dialog" onClick={() => setExercisesOpen(true)}>
+          {exerciseCount ? `Exercises · ${exerciseCount}` : "Add exercises"}</button>
+      </p> : null}
+      {coachSaved && exercisesOpen ? <ManualExerciseLogger token={accessToken} session={coachSaved.row} fighterId={coachSaved.fighter.id}
+        onClose={entries => { setExercisesOpen(false); if (entries) { setExerciseCount(entries.length); onSaved?.(coachSaved.row); } }} /> : null}
       <Collapse show={Boolean(takeawayRow)}>
         {takeawayRow ? <SessionTakeawayPrompt key={takeawayRow.id} token={accessToken} row={takeawayRow} sheet={variant === "tile"}
           onSaved={() => setTakeawayRow(null)} onDismiss={() => setTakeawayRow(null)}

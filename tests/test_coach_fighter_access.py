@@ -34,7 +34,7 @@ def camp():
         client.app.state.auth_service.users_by_token[token] = user
     grant_default_compliance(store, FIGHTER)
     connection = {"id": str(uuid4()), "coach_id": COACH, "athlete_id": FIGHTER, "status": "accepted",
-                  "share_recovery": True, "share_injuries": True, "share_weight": True}
+                  "share_recovery": True, "share_injuries": True, "share_weight": True, "allow_session_logging": True}
     store.coach_connections.append(connection)
     return client, store, connection
 
@@ -144,6 +144,111 @@ def test_weight_shows_the_athletes_own_weigh_ins_and_target(camp):
     assert before == (store.profiles[FIGHTER], store.intakes)
 
 
+# --- Coach-recorded sessions -------------------------------------------------
+
+BACK_SQUAT = "exercise_bank.json:1090492c-7713-4845-89fc-f311b9088445"
+AS_FIGHTER = {"Authorization": "Bearer fighter-token"}
+SESSIONS = BASE + "/training/sessions"
+
+
+def boxing(**changes):
+    return {"activity": "boxing", "duration_minutes": 60, "effort": "hard", "sport": "boxing", "session_type": "pads",
+            "client_request_id": str(uuid4()), **changes}
+
+
+def squat(session_id, headers=AS_COACH, base=SESSIONS):
+    return {"url": f"{base}/{session_id}/exercises/{uuid4()}", "headers": headers, "json": {
+        "exercise": {"catalogue_id": BACK_SQUAT}, "format": "strength",
+        "actual": {"sets": 3, "reps": 5, "load": {"value": 100, "unit": "kg"}}}}
+
+
+def test_a_coach_session_lands_in_the_fighters_history_attributed_and_without_xp(camp, monkeypatch):
+    client, store, _ = camp
+    awards = []
+    monkeypatch.setattr("api.services.tracking_xp.reconcile_training_xp", lambda *args, **kwargs: awards.append(kwargs) or [])
+    body = boxing()
+    saved = client.post(SESSIONS, headers=AS_COACH, json=body)
+    assert saved.status_code == 201, saved.text
+    row = saved.json()
+    assert row["logged_by_coach"] is True and row["logged_by_coach_name"] == "coach-token"
+    assert row["duration_minutes"] == 60 and row["effort"] == "hard" and row["session_type"] == "pads"
+    stored = store.external_training_sessions[row["id"]]
+    assert stored["athlete_id"] == FIGHTER and stored["logged_by_coach_id"] == COACH
+    # A retry, or a double tap, is the same session; a different body is refused.
+    assert client.post(SESSIONS, headers=AS_COACH, json=body).json()["id"] == row["id"]
+    assert client.post(SESSIONS, headers=AS_COACH, json={**body, "duration_minutes": 90}).status_code == 409
+    assert len(store.external_training_sessions) == 1
+    # The coach did not report it for the athlete: no XP, now or on a later exercise.
+    assert client.put(**squat(row["id"])).status_code == 200
+    assert awards == []
+
+    theirs = client.get("/api/training/history?include_skipped=true&limit=200", headers=AS_FIGHTER).json()["sessions"]
+    assert [(item["id"], item["logged_by_coach_name"]) for item in theirs] == [(row["id"], "coach-token")]
+    details = client.get(f"/api/training/history/external/{row['id']}", headers=AS_FIGHTER).json()
+    assert details["session"]["logged_by_coach"] is True
+    assert details["blocks"][0]["actual"]["load"]["value"] == 100
+    overview = client.get(BASE + "/training/history", headers=AS_COACH).json()["sessions"]
+    assert overview[0]["id"] == row["id"] and overview[0]["logged_by_coach"] is True
+
+    # The athlete's own log is unchanged: unattributed, and it still earns XP.
+    own = client.post("/api/training/sessions", headers=AS_FIGHTER, json=boxing())
+    assert own.status_code == 201 and own.json()["logged_by_coach"] is False and own.json()["logged_by_coach_name"] is None
+    assert "logged_by_coach_id" not in store.external_training_sessions[own.json()["id"]]
+    assert len(awards) == 1
+
+
+def test_only_an_accepted_connection_can_write(camp):
+    client, store, connection = camp
+    for headers, path in ((None, SESSIONS), ({"Authorization": "Bearer stranger-token"}, SESSIONS),
+                          (AS_FIGHTER, SESSIONS), (AS_COACH, f"/api/coach/fighters/{STRANGER}/training/sessions")):
+        response = client.post(path, headers=headers, json=boxing())
+        assert response.status_code == (401 if headers is None else 404)
+    session_id = client.post(SESSIONS, headers=AS_COACH, json=boxing()).json()["id"]
+    for status in ("pending", "revoked", "removed", "declined"):
+        connection["status"] = status
+        assert client.post(SESSIONS, headers=AS_COACH, json=boxing()).status_code == 404
+        assert client.put(**squat(session_id)).status_code == 404
+        assert client.get(f"{SESSIONS}/{session_id}/exercises", headers=AS_COACH).status_code == 404
+    connection["status"] = "accepted"
+    store.profiles[COACH]["role"] = "athlete"
+    assert client.post(SESSIONS, headers=AS_COACH, json=boxing()).status_code == 404
+    store.profiles[COACH]["role"] = "coach"
+    # The athlete's own health-data consent gates logging for them too.
+    store.record_compliance_acceptance(FIGHTER, health_data_consent=False)
+    refused = client.post(SESSIONS, headers=AS_COACH, json=boxing())
+    assert refused.status_code == 403 and "health-data" in refused.json()["detail"]
+    assert client.put(**squat(session_id)).status_code == 403
+    assert len(store.external_training_sessions) == 1 and store.manual_exercise_entries == []
+    # Unknown fields, including someone else's identity, are rejected outright.
+    store.record_compliance_acceptance(FIGHTER, health_data_consent=True)
+    for extra in ({"athlete_id": STRANGER}, {"logged_by_coach_id": STRANGER}, {"training_day": "2999-01-01"}):
+        assert client.post(SESSIONS, headers=AS_COACH, json=boxing(**extra)).status_code == 422
+
+
+def test_a_coach_can_only_change_sessions_they_recorded(camp):
+    client, store, _ = camp
+    store.coach_connections.append({"id": str(uuid4()), "coach_id": STRANGER, "athlete_id": FIGHTER,
+                                    "status": "accepted", "share_recovery": True, "share_injuries": True, "allow_session_logging": True})
+    as_other = {"Authorization": "Bearer stranger-token"}
+    own = client.post("/api/training/sessions", headers=AS_FIGHTER, json=boxing()).json()["id"]
+    mine = client.post(SESSIONS, headers=AS_COACH, json=boxing()).json()["id"]
+    assert client.put(**squat(mine)).status_code == 200
+    # Not the athlete's own session, and not another connected coach's.
+    assert client.put(**squat(own)).status_code == 404
+    assert client.get(f"{SESSIONS}/{own}/exercises", headers=AS_COACH).status_code == 404
+    assert client.put(**squat(mine, headers=as_other)).status_code == 404
+    entry = client.get(f"{SESSIONS}/{mine}/exercises", headers=AS_COACH).json()["entries"][0]["entry_id"]
+    assert client.delete(f"{SESSIONS}/{mine}/exercises/{entry}", headers=as_other).status_code == 404
+    # No coach route edits or deletes a session; the record stays the athlete's.
+    for method in (client.patch, client.delete, client.put):
+        assert method(f"{SESSIONS}/{mine}", headers=AS_COACH).status_code in {404, 405}
+        assert method(f"{SESSIONS}/{own}", headers=AS_COACH).status_code in {404, 405}
+    assert client.delete(f"{SESSIONS}/{mine}/exercises/{entry}", headers=AS_COACH).status_code == 204
+    # The athlete keeps full control of it.
+    assert client.delete(f"/api/training/sessions/{mine}", headers=AS_FIGHTER).status_code == 204
+    assert client.put(**squat(mine)).status_code == 404
+
+
 def test_a_connection_accepted_before_weight_sharing_does_not_expose_weight(camp):
     client, store, connection = camp
     # Accepted under the earlier wording: recovery and injuries, never weight.
@@ -197,3 +302,18 @@ def test_mixed_rehab_sessions_reveal_no_injury_detail_unless_shared(camp, shared
         named_details = client.get(f"{BASE}/training/history/unlxck/{named['id']}", headers=AS_COACH).json()
         assert "Hamstring strain prehab" in [block["name"] for block in named_details["blocks"]]
     assert titles[plain["id"]] == "Power Day"
+
+
+def test_logging_requires_explicit_write_consent_and_only_owned_sessions_can_reopen(camp):
+    client, store, connection = camp
+    mine = client.post(SESSIONS, headers=AS_COACH, json=boxing()).json()["id"]
+    other = client.post("/api/training/sessions", headers=AS_FIGHTER, json=boxing()).json()["id"]
+    rows = client.get(BASE + "/training/history", headers=AS_COACH).json()["sessions"]
+    assert next(row for row in rows if row["id"] == mine)["coach_exercises_editable"] is True
+    assert next(row for row in rows if row["id"] == other)["coach_exercises_editable"] is False
+    connection.pop("allow_session_logging")  # Earlier accepted connections stay read-only.
+    assert client.post(SESSIONS, headers=AS_COACH, json=boxing()).status_code == 403
+    assert client.put(**squat(mine)).status_code == 403
+    assert client.get(f"{SESSIONS}/{mine}/exercises", headers=AS_COACH).status_code == 403
+    rows = client.get(BASE + "/training/history", headers=AS_COACH).json()["sessions"]
+    assert not any(row["coach_exercises_editable"] for row in rows)

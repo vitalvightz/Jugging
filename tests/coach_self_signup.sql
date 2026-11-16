@@ -22,6 +22,8 @@ set local role authenticated;
 select set_config('request.jwt.claim.role','authenticated',true);
 select pg_temp.assert_denied('select public.select_signup_account_type(auth.uid(),''coach'')');
 select pg_temp.assert_denied('select private.select_signup_account_type(auth.uid(),''coach'')');
+-- Target an account with a recorded choice, so this is an actual mutation.
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000015',true);
 select pg_temp.assert_denied('update public.profiles set signup_account_type_selected_at=null where id=auth.uid()');
 reset role;
 set local role service_role;

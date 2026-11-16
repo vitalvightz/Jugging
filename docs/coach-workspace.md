@@ -1,8 +1,8 @@
 # Coach workspace
 
-A read-only coach view inside the existing Next.js app. It reuses the existing
-AuthProvider, Supabase project and user access tokens, and adds no write path
-to athlete training data.
+A coach workspace inside the existing Next.js app. It reuses AuthProvider,
+Supabase and the athlete’s existing records. Coach writes require explicit
+athlete permission and are limited to new sessions and their own session exercises.
 
 ## Routes
 
@@ -23,8 +23,10 @@ connections without changing role.
 
 An invitation shows the coach's name, one sentence saying what is shared, and
 Accept / Decline. Accepting shares training, weight, recovery and injury status
-together (`share_recovery` and `share_injuries` are both set). The athlete can
-disconnect at any time, which ends access on the coach's next read.
+together, and explicitly allows the coach to add sessions. Earlier connections
+remain read-only until the athlete chooses **Allow session logging**. This
+action preserves existing health-sharing choices. Disconnect ends access on
+the next request.
 
 Safeguards that remain:
 
@@ -33,12 +35,13 @@ Safeguards that remain:
 - Acceptance requires the athlete's verified `auth.users.email`; editable
   profile fields are never trusted.
 - Weight, recovery and injury data are returned only while the athlete's global
-  `health_data_consent` is on. Weight follows `share_recovery`; pain scores,
+  `health_data_consent` is on. Weight follows its own `share_weight` flag; pain scores,
   rehab work, head contact and rocked reports follow `share_injuries`. Without
   it, rehab and recovery sessions appear as "Programme session".
 - Free-text notes, takeaways, medical narratives, raw plans, intake health
   details, nutrition settings and birth dates are never returned.
-- Coach reads are GET-only. Nothing a coach opens can be edited.
+- A coach can never edit or delete a record the athlete, or another coach,
+  entered. The only writes are sessions the coach records (below).
 - `accepted_at` and the sharing flags record what was agreed and when.
 
 ## Database
@@ -49,9 +52,9 @@ security-invoker RPCs that delegate to `coach_private` functions:
 
 - `coach_connections_list()`: the actor's pending and accepted connections.
 - `coach_connection_command(...)`: invite, accept, decline, revoke, remove.
-  Each transition is validated under a row lock. The `consent` action and the
-  two per-category parameters remain for compatibility; the app sends both as
-  true on accept and does not call `consent`.
+  Each transition is validated under a row lock. Only the athlete can grant
+  `p_logging`, `p_weight`, `p_recovery` and `p_injuries` on accept/consent.
+  Revoke/remove clear all permissions.
 - `coach_fighters(p_athlete_id)`: the consent-aware projection of accepted
   fighters.
 
@@ -82,7 +85,41 @@ Without an accepted connection every route answers 404, so a coach cannot
 probe for accounts. In the browser the rows and the session sheet are the
 athlete History components (`SessionRow`, `SessionDetails`) and the chart is
 `WeightTrendChart`. These routes need the backend deployed with the frontend;
-they add no migration.
+weight sharing requires the coach weight-consent migration.
+
+## Coach-recorded sessions
+
+"Log session" on the dashboard and on a fighter's profile opens the athlete's
+own `LogTraining` sheet in coach mode. From the dashboard the coach picks one
+of their connected fighters; from a profile that fighter is preselected. After
+saving, the coach can add exercises with the same `ManualExerciseLogger`,
+or reopen their saved session in Training history and choose **Edit exercises**.
+Coach mode offers the shared catalogue and manual names; it never loads the
+coach’s personal movements, past-session reuse or weight recommendations.
+
+- `POST /api/coach/fighters/{id}/training/sessions` saves through
+  `create_external_training`, the athlete's own manual-session path, onto the
+  fighter's `external_training_sessions`. It appears in the fighter's History
+  and the coach overview as "Logged by coach <name>".
+- `GET`/`PUT`/`DELETE .../training/sessions/{entry}/exercises[/{exercise}]`
+  reuse the manual-exercise services, only on a session that same coach
+  recorded.
+- Every write resolves the accepted connection first (404 otherwise) and needs
+  explicit `allow_session_logging` and the athlete's own health-data consent (403 otherwise), as the athlete's own
+  logging does.
+- The client request id makes a retry or double tap the same session.
+- `supabase/migrations/20261116021019_coach_logged_sessions.sql` adds
+  `allow_session_logging` (default false), `logged_by_coach_id` and
+  `logged_by_coach_name` and keeps coach-recorded
+  sessions out of XP: they are not recorded training days, their exercises are
+  not a first exercise result, and they cannot carry the manual-session award.
+  They do count as training load. Training and adherence streaks never read
+  manual sessions, so they are unchanged.
+
+Apply the migration before deploying: without the columns a coach's save fails,
+while athlete logging is unaffected. Not included: editing or deleting a
+recorded session from the coach side (the athlete can, from History), the
+sparring contact report, and takeaways, which stay the athlete's to give.
 
 ## Definitions
 
@@ -102,12 +139,13 @@ Missing, unshared or stale check-ins never create a concern.
 
 ## Verification
 
-- `python tools/test_coach_workspace.py --container <name>` runs both migrations
-  and the permission assertions in a disposable PostgreSQL 17 container, then
+- `python tools/test_coach_workspace.py --container <name>` loads the complete application schema,
+  applies/replays the logging migration and runs the permission assertions in a disposable PostgreSQL 17 container, then
   rolls back.
 - `python -m pytest tests/test_coach_fighter_access.py`: connection checks,
-  revocation, private-note stripping, unshared health detail and read-only
-  behaviour of the coach API.
+  revocation, private-note stripping, unshared health detail, and for
+  coach-recorded sessions: write permissions, attribution, duplicate
+  submissions, no XP and no access to records the coach did not enter.
 - `cd web && npm run typecheck && npm run lint && npm run test:unit`
 - `cd web && npm run build && npx playwright test e2e/coach-workspace.spec.ts`
   against a build with the placeholder public env values. The browser tests

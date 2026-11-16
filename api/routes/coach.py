@@ -1,9 +1,12 @@
-"""Read-only coach views of one connected athlete.
+"""A coach's access to one connected athlete.
 
 Every route first resolves the caller's accepted connection to the athlete.
 Without one the athlete is simply not found, so a coach cannot probe for
-accounts, and ending the connection ends access on the next request. Nothing
-here writes, and the athlete's free-text notes are never returned.
+accounts, and ending the connection ends access on the next request.
+
+Reads never return the athlete's free-text notes. The only writes are a session
+the coach records for the athlete and the exercises on that session: a coach
+can never change a record the athlete, or another coach, entered.
 """
 from __future__ import annotations
 
@@ -14,16 +17,20 @@ from typing import Any, Literal, Mapping
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from api.compliance import evaluate_profile_compliance
-from api.contracts.external_training import TrainingHistoryResponse
+from api.contracts.external_training import ExternalTrainingCreate, TrainingHistoryResponse, TrainingHistorySession
+from api.contracts.manual_exercises import ManualExerciseEntry, ManualExerciseListResponse, PerformedExerciseInput
 from api.contracts.session_details import SessionDetails
 from api.models import NutritionBodyweightLogEntry, ProfileRecord
 from api.nutrition_workspace import build_nutrition_workspace
 from api.plan_mappers import _map_profile_row
 from api.routes.today import _saved_history_session, history_sessions
+from api.services.manual_exercises import delete_session_exercise, list_session_exercises, save_session_exercise
 from api.services.session_details import MISSING_DETAILS, session_details
+from api.services.training_history import create_external_training
 from api.store import AppStore
 
 HEALTH_SESSION_TYPES = {"rehab", "recovery"}
@@ -38,11 +45,15 @@ HEALTH_WORDS = re.compile(r"\b(rehab|prehab|injur|physio|pain|recover|sore|strai
 @dataclass(frozen=True)
 class ConnectedFighter:
     profile: ProfileRecord
+    coach: ProfileRecord
+    # The athlete's own consent to health-data use, which training logs need.
+    health_consent: bool
     # Each is the connection's choice and the athlete's own health consent.
     share_recovery: bool
     share_injuries: bool
     # Weight is its own choice; connections accepted before it existed lack it.
     share_weight: bool
+    allow_session_logging: bool
 
 
 class CoachFighterWeight(BaseModel):
@@ -79,6 +90,10 @@ def _is_health_session(row: Mapping[str, Any]) -> bool:
 def _coach_row(row: Mapping[str, Any], fighter: ConnectedFighter) -> dict[str, Any]:
     safe = {key: value for key, value in row.items() if key not in PRIVATE_TEXT}
     safe["history_editable"] = False
+    safe["coach_exercises_editable"] = (
+        fighter.allow_session_logging and fighter.health_consent and row.get("source") == "external"
+        and str(row.get("logged_by_coach_id") or "") == fighter.coach.athlete_id
+    )
     if not fighter.share_injuries:
         safe.pop("pain_after", None)
         if _is_health_session(row):
@@ -106,9 +121,59 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
         if athlete is None or athlete.role != "athlete" or athlete.access_status != "approved":
             raise HTTPException(status_code=404, detail="Fighter not found.")
         health = evaluate_profile_compliance(athlete).health_consent_granted
-        return ConnectedFighter(athlete, health and connection.get("share_recovery") is True,
+        return ConnectedFighter(athlete, coach, health, health and connection.get("share_recovery") is True,
                                 health and connection.get("share_injuries") is True,
-                                health and connection.get("share_weight") is True)
+                                health and connection.get("share_weight") is True,
+                                connection.get("allow_session_logging") is True)
+
+    def writable_fighter(fighter: ConnectedFighter = Depends(connected_fighter)) -> ConnectedFighter:
+        # The athlete's own logging needs this consent too; a coach cannot
+        # collect training data the athlete has not agreed to have held.
+        if not fighter.allow_session_logging:
+            raise HTTPException(status_code=403, detail="This fighter has not allowed coach session logging.")
+        if not fighter.health_consent:
+            raise HTTPException(status_code=403, detail="This fighter has not allowed health-data use, so sessions can't be logged for them.")
+        return fighter
+
+    def coach_logged_session(entry_id: UUID,
+                             fighter: ConnectedFighter = Depends(writable_fighter),
+                             store: AppStore = Depends(get_store)) -> str:
+        """A live session this coach entered for this fighter; nothing else is theirs to change."""
+        row = store.get_external_training_session(fighter.profile.athlete_id, str(entry_id))
+        if (not row or row.get("deleted_at") or str(row.get("athlete_id")) != fighter.profile.athlete_id
+                or str(row.get("logged_by_coach_id") or "") != fighter.coach.athlete_id):
+            raise HTTPException(status_code=404, detail="Training session not found.")
+        return str(entry_id)
+
+    @router.post("/api/coach/fighters/{athlete_id}/training/sessions", response_model=TrainingHistorySession, status_code=201)
+    def log_fighter_training(body: ExternalTrainingCreate,
+                             fighter: ConnectedFighter = Depends(writable_fighter),
+                             store: AppStore = Depends(get_store)):
+        return create_external_training(
+            store, fighter.profile.athlete_id, fighter.profile.athlete_timezone, body,
+            logged_by_coach=(fighter.coach.athlete_id, fighter.coach.full_name))
+
+    @router.get("/api/coach/fighters/{athlete_id}/training/sessions/{entry_id}/exercises", response_model=ManualExerciseListResponse)
+    def list_fighter_session_exercises(fighter: ConnectedFighter = Depends(writable_fighter),
+                                       entry_id: str = Depends(coach_logged_session),
+                                       store: AppStore = Depends(get_store)):
+        return {"entries": list_session_exercises(store, fighter.profile.athlete_id, entry_id, health_consent_granted=True)}
+
+    @router.put("/api/coach/fighters/{athlete_id}/training/sessions/{entry_id}/exercises/{exercise_entry_id}",
+                response_model=ManualExerciseEntry)
+    def save_fighter_session_exercise(exercise_entry_id: UUID, body: PerformedExerciseInput,
+                                      fighter: ConnectedFighter = Depends(writable_fighter),
+                                      entry_id: str = Depends(coach_logged_session),
+                                      store: AppStore = Depends(get_store)):
+        return save_session_exercise(store, fighter.profile.athlete_id, entry_id, str(exercise_entry_id), body)
+
+    @router.delete("/api/coach/fighters/{athlete_id}/training/sessions/{entry_id}/exercises/{exercise_entry_id}", status_code=204)
+    def remove_fighter_session_exercise(exercise_entry_id: UUID,
+                                        fighter: ConnectedFighter = Depends(writable_fighter),
+                                        entry_id: str = Depends(coach_logged_session),
+                                        store: AppStore = Depends(get_store)):
+        delete_session_exercise(store, fighter.profile.athlete_id, entry_id, str(exercise_entry_id))
+        return Response(status_code=204)
 
     @router.get("/api/coach/fighters/{athlete_id}/training/history", response_model=TrainingHistoryResponse)
     def fighter_training_history(before_day: date | None = None,

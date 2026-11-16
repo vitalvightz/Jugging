@@ -608,6 +608,11 @@ export function getFighterSessionDetails(token: string, athleteId: string, sourc
   return readJson(`${fighterPath(athleteId)}/training/history/${source}/${encodeURIComponent(id)}`, { token });
 }
 
+/** A session a coach records for a connected fighter. It lands in the fighter's History, attributed to the coach. */
+export function logFighterTraining(token: string, athleteId: string, body: ExternalTrainingFields & { client_request_id: string; training_day?: string }): Promise<TrainingHistorySession> {
+  return readJson(`${fighterPath(athleteId)}/training/sessions`, { method: "POST", token, body: JSON.stringify(body) });
+}
+
 export function getFighterWeight(token: string, athleteId: string): Promise<CoachFighterWeight> {
   return readJson(`${fighterPath(athleteId)}/weight`, { token });
 }
@@ -644,20 +649,24 @@ export function saveTrainingTakeaway(token: string, id: string, takeaway: string
   return withTransientRetries(() => readJson(`/api/training/sessions/${encodeURIComponent(id)}/takeaway`, { method: "PUT", token, body: payload }));
 }
 
-export function listManualExercises(token: string, sessionId: string, signal?: AbortSignal): Promise<ManualExerciseListResponse> {
-  return readJson(`/api/training/sessions/${encodeURIComponent(sessionId)}/exercises`, { token, signal });
+/** Exercises on a manual session: the athlete's own, or with `fighterId` one a coach recorded for that fighter. */
+const sessionExercisesPath = (sessionId: string, fighterId?: string) =>
+  `${fighterId ? `${fighterPath(fighterId)}/training/sessions` : "/api/training/sessions"}/${encodeURIComponent(sessionId)}/exercises`;
+
+export function listManualExercises(token: string, sessionId: string, signal?: AbortSignal, fighterId?: string): Promise<ManualExerciseListResponse> {
+  return readJson(sessionExercisesPath(sessionId, fighterId), { token, signal });
 }
 
-export function saveManualExercise(token: string, sessionId: string, entryId: string, body: PerformedExerciseInput): Promise<ManualExerciseEntry> {
+export function saveManualExercise(token: string, sessionId: string, entryId: string, body: PerformedExerciseInput, fighterId?: string): Promise<ManualExerciseEntry> {
   const payload = JSON.stringify(body);
   // The client-chosen entry ID makes the save idempotent: a retry never adds a second exercise.
-  return withTransientRetries(() => readJson<ManualExerciseEntry>(`/api/training/sessions/${encodeURIComponent(sessionId)}/exercises/${encodeURIComponent(entryId)}`,
-    { method: "PUT", token, body: payload })).then(row => { requestXpRefresh(); return row; });
+  return withTransientRetries(() => readJson<ManualExerciseEntry>(`${sessionExercisesPath(sessionId, fighterId)}/${encodeURIComponent(entryId)}`,
+    { method: "PUT", token, body: payload })).then(row => { if (!fighterId) requestXpRefresh(); return row; });
 }
 
-export function deleteManualExercise(token: string, sessionId: string, entryId: string): Promise<void> {
+export function deleteManualExercise(token: string, sessionId: string, entryId: string, fighterId?: string): Promise<void> {
   // A tombstone answers a repeated delete.
-  return withTransientRetries(() => requestVoid(`/api/training/sessions/${encodeURIComponent(sessionId)}/exercises/${encodeURIComponent(entryId)}`,
+  return withTransientRetries(() => requestVoid(`${sessionExercisesPath(sessionId, fighterId)}/${encodeURIComponent(entryId)}`,
     { method: "DELETE", token }));
 }
 

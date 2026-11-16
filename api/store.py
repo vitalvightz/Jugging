@@ -1362,7 +1362,7 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
         """The accepted connection that lets ``coach_id`` read ``athlete_id``, or ``None``."""
         return self._select_first(
             self.client.table("coach_connections")
-            .select("id,coach_id,athlete_id,status,share_recovery,share_injuries,share_weight")
+            .select("id,coach_id,athlete_id,status,share_recovery,share_injuries,share_weight,allow_session_logging")
             .eq("coach_id", coach_id).eq("athlete_id", athlete_id).eq("status", "accepted")
         )
 

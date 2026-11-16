@@ -40,6 +40,16 @@
   outline: 2px solid #ee7b8b;
   outline-offset: 3px;
 }
+.pageHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+}
+.pageHead :global(.cta) {
+  min-height: 40px;
+}
 .back {
   justify-self: start;
   padding: 6px 0;
