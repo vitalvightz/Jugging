@@ -2050,7 +2050,7 @@ export function isPlainRestDay(day: StructuredDay): boolean {
     cleanText(card?.primary_warning) ||
     cleanText(card?.nutrition_summary) ||
     cleanText(card?.weight_cut_warning) ||
-    (!neutral && getSessionCoachingLines(card?.mindset_anchor).length > 0)
+    getSessionCoachingLines(card?.mindset_anchor).some(({ value }) => !/^recover well\.?$/i.test(value))
   );
 }
 
