@@ -128,6 +128,9 @@ def build_profile_router(*, require_profile, get_store) -> APIRouter:
                 health_data_consent=acceptance.health_data_consent,
             )
         )
+        if acceptance.account_type is not None:
+            require_onboarding_compliance(updated)
+            updated = _map_profile_row(store.select_signup_account_type(profile.athlete_id, acceptance.account_type))
         return _build_me_with_activation_xp(updated, store)
 
     @router.post("/api/me/username", response_model=MeResponse)

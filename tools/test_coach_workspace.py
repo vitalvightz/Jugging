@@ -23,6 +23,8 @@ create role anon;
 create role authenticated;
 create role service_role bypassrls;
 create schema auth;
+create schema private;
+create function auth.role() returns text language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claim.role',true),''),current_user::text) $$;
 create table auth.users(id uuid primary key, email text, email_confirmed_at timestamptz, created_at timestamptz not null default now());
 create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
 grant usage on schema auth to authenticated,anon;
@@ -49,8 +51,10 @@ for table in ('profiles','plans','daily_checkins','session_logs','today_checkins
     bootstrap += f'alter table public.{table} enable row level security; grant select on public.{table} to authenticated; create policy owner_only on public.{table} for select to authenticated using ({owner}=auth.uid());\n'
 bootstrap += (root / 'supabase/migrations/20261115232832_coach_workspace.sql').read_text()
 bootstrap += (root / 'supabase/migrations/20261116001001_coach_signup_invitations.sql').read_text()
+bootstrap += (root / 'supabase/migrations/20261116002339_coach_self_signup.sql').read_text()
 bootstrap += (root / 'tests/coach_workspace_permissions.sql').read_text()
 bootstrap += (root / 'tests/coach_signup_invitations.sql').read_text()
+bootstrap += (root / 'tests/coach_self_signup.sql').read_text()
 bootstrap += '\nrollback;\n'
 sql(bootstrap)
 print('Coach migration and PostgreSQL permission assertions passed (rolled back).')

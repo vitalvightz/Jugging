@@ -41,7 +41,6 @@ import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { hasSignupAdmission } from "@/lib/signup-invite-guard";
 import type { Session } from "@supabase/supabase-js";
 
-import type { UserRole } from "@/lib/types";
 import styles from "./auth-form.module.css";
 import { useFadeNavigate } from "@/components/fade-through";
 
@@ -69,11 +68,20 @@ export function AuthForm({
   const fadeNavigate = useFadeNavigate();
   const { isReady, session, me, replaceMe } = useAppSession();
   const nextPlan = () => getSafePlanReturnHref(new URLSearchParams(window.location.search).get("next"));
-  const destination = (account: Parameters<typeof getAuthenticatedLandingHref>[0]) =>
-    getAuthenticatedLandingHref(account, nextPlan());
-  const authRedirectPath = () => nextPlan() ? `/login?next=${encodeURIComponent(nextPlan()!)}` : "/login";
+  const destination = (account: Parameters<typeof getAuthenticatedLandingHref>[0]) => {
+    const path = getAuthenticatedLandingHref(account, nextPlan());
+    const choice = mode === "signup" ? accountType : new URLSearchParams(window.location.search).get("account_type");
+    return path === "/consent" && (choice === "coach" || choice === "athlete") ? `${path}?account_type=${choice}` : path;
+  };
+  const authRedirectPath = () => {
+    const params = new URLSearchParams();
+    if (nextPlan()) params.set("next", nextPlan()!);
+    if (mode === "signup") params.set("account_type", accountType);
+    return `/login${params.size ? `?${params}` : ""}`;
+  };
   const emailInputRef = useRef<HTMLInputElement | null>(null);
   const [showEmail, setShowEmail] = useState(false);
+  const [accountType, setAccountType] = useState<"athlete" | "coach">("athlete");
   const [isGooglePending, setIsGooglePending] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -147,10 +155,10 @@ export function AuthForm({
     if (!isReady) {
       return;
     }
-    if (session && me) {
+    if (session && me && !(mode === "signup" && (isPending || isVerifyPending))) {
       router.replace(destination(me));
     }
-  }, [isReady, me, router, session]);
+  }, [isReady, me, router, session, mode, isPending, isVerifyPending, accountType]);
 
   useEffect(() => {
     if (showEmail) {
@@ -179,6 +187,7 @@ export function AuthForm({
   async function finishSignup(newSession: Session) {
     try {
       const nextMe = await recordCompliance(newSession.access_token, {
+        account_type: accountType,
         date_of_birth: dateOfBirth,
         accept_terms: true,
         // Only sent when ticked. Sending `false` would record a
@@ -248,9 +257,6 @@ export function AuthForm({
       }
 
       if (mode === "signup") {
-        // Athlete is the only live role, so signup does not ask. Coach and gym
-        // owner accounts are assigned by an admin when those workspaces ship.
-        const selectedRole: UserRole = "athlete";
         let signUpResult;
         try {
           signUpResult = await client.auth.signUp({
@@ -265,7 +271,6 @@ export function AuthForm({
                 // caller bypasses this form. The server re-reads and re-derives
                 // the age band; nothing trusts this value as an age claim.
                 date_of_birth: dateOfBirth,
-                role: selectedRole,
               },
             },
           });
@@ -470,15 +475,23 @@ export function AuthForm({
         <div className="auth-header">
           <div>
             <p className={`kicker ${styles.brand}`}>UNLXCK</p>
-            <h1 id="auth-title" className={styles.title}>{verificationEmail ? t("verifyTitle") : mode === "signup" ? t("signupTitle") : t("welcomeBack")}</h1>
+            <h1 id="auth-title" className={styles.title}>{verificationEmail ? t("verifyTitle") : mode === "signup" ? accountType === "coach" ? t("wholeCampTitle") : t("signupTitle") : t("welcomeBack")}</h1>
             {mode === "signup" && !verificationEmail ? (
               <div className={styles.signupIntro}>
-                <p className="muted">{t("signupSummary")}</p>
+                <p className="muted">{accountType === "coach" ? "Manage your fighters." : t("signupSummary")}</p>
                 <p>{t("signupAccess")}</p>
               </div>
             ) : null}
           </div>
         </div>
+
+        {mode === "signup" && !verificationEmail ? <fieldset className={styles.accountTypes} disabled={isPending || isGooglePending}>
+          <legend>{t("chooseRole")}</legend>
+          {(["athlete", "coach"] as const).map(type => <label key={type} data-selected={accountType === type}>
+            <input type="radio" name="accountType" value={type} checked={accountType === type} onChange={() => { setAccountType(type); if (type === "coach") setHealthDataConsent(false); }} />
+            {t(type)}
+          </label>)}
+        </fieldset> : null}
 
         {message ? (
           <div className="success-banner" role="status" aria-live="polite" aria-atomic="true">
@@ -653,7 +666,7 @@ export function AuthForm({
                   UK GDPR Art. 9(2)(a) consent has to be specific and separate,
                   and a bundled tick would not be valid consent at all. It is
                   also optional — see signupConsentBlockReason. */}
-              <div className="field auth-consent-field">
+              {accountType === "athlete" ? <div className="field auth-consent-field">
                 <label className="auth-consent-row" htmlFor="healthDataConsent">
                   <input
                     id="healthDataConsent"
@@ -675,7 +688,7 @@ export function AuthForm({
                     {t("privacyNotice")}
                   </Link>
                 </p>
-              </div>
+              </div> : null}
             </>
           ) : null}
 

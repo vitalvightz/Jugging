@@ -1519,6 +1519,21 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="profile not found")
         return profile
 
+    @_invalidates_profile_cache()
+    def select_signup_account_type(self, athlete_id: str, account_type: str) -> dict[str, Any]:
+        """Finish an authenticated, fresh account's explicit athlete/coach choice."""
+        if account_type not in {"athlete", "coach"}:
+            raise HTTPException(status_code=422, detail="Choose athlete or coach")
+        try:
+            self.client.rpc("select_signup_account_type", {
+                "p_athlete_id": athlete_id, "p_account_type": account_type,
+            }).execute()
+            return self._require_profile(athlete_id)
+        except _STORE_CLIENT_ERRORS as exc:
+            if str(getattr(exc, "code", "")) == "42501":
+                raise HTTPException(status_code=403, detail="Account type can only be selected during signup") from exc
+            self._raise_operation_http_error(operation="select_signup_account_type", detail="Could not save account type", exc=exc)
+
     def _default_role_for(self, user: AuthenticatedUser) -> str:
         if self.is_admin_email(user.email):
             return "admin"

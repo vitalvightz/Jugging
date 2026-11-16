@@ -26,13 +26,14 @@ const json = (route: Route, body: unknown, status = 200) =>
  * session, so the form must switch to the one-time-code step instead of
  * sending the athlete off to their inbox and back to the login page.
  */
-async function startSignup(page: Page, baseURL: string, verifyStatus: "ok" | "rejected", immediate = false) {
+async function startSignup(page: Page, baseURL: string, verifyStatus: "ok" | "rejected", immediate = false, accountType: "athlete" | "coach" = "athlete") {
   await isolateFromNetwork(page, baseURL);
   const signupBodies: Array<Record<string, unknown>> = [];
   const complianceBodies: Array<Record<string, unknown>> = [];
   let accepted = false;
+  let savedRole = "athlete";
   const me = () => ({ profile: {
-    athlete_id: user.id, email: EMAIL, full_name: "", role: "athlete", access_status: "approved", starting_path: null,
+    athlete_id: user.id, email: EMAIL, full_name: "", role: savedRole, access_status: "approved", starting_path: null,
     technical_style: [], tactical_style: [], stance: "", professional_status: "", record: "",
     athlete_timezone: "Europe/London", athlete_locale: "en", appearance_mode: "dark", nutrition_profile: {},
     date_of_birth: "1996-05-04", meets_minimum_age: true, terms_accepted: accepted, health_consent_granted: false,
@@ -57,11 +58,13 @@ async function startSignup(page: Page, baseURL: string, verifyStatus: "ok" | "re
   await page.route("**/api/me/compliance", async (route) => {
     complianceBodies.push(route.request().postDataJSON());
     accepted = true;
+    savedRole = route.request().postDataJSON().account_type ?? "athlete";
     await json(route, me());
   });
 
   await grantSignupAccess(page, baseURL);
   await page.goto("/signup", { waitUntil: "domcontentloaded" });
+  await page.getByRole("radio", { name: accountType === "coach" ? "Coach" : "Athlete", exact: true }).check();
   await page.getByRole("button", { name: "Continue with email", exact: true }).click();
   // Full name is no longer asked at signup; intake collects it.
   await expect(page.getByLabel("Full name")).toHaveCount(0);
@@ -74,7 +77,7 @@ async function startSignup(page: Page, baseURL: string, verifyStatus: "ok" | "re
 
   if (!immediate) {
     await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
-    await expect(page.getByText(`Enter the code we sent to ${EMAIL}`)).toBeVisible();
+    await expect(page.getByText(`Enter the code sent to ${EMAIL} to finish signing up.`)).toBeVisible();
   }
   return { signupBodies, complianceBodies };
 }
@@ -93,14 +96,14 @@ test("a confirmation code finishes signup on the same page", async ({ page, base
 
   await expect(page).toHaveURL(/\/get-started$/);
   await expect(page.getByRole("heading", { name: "How would you like to start?" })).toBeVisible();
-  expect(complianceBodies).toEqual([{ date_of_birth: "1996-05-04", accept_terms: true }]);
+  expect(complianceBodies).toEqual([{ account_type: "athlete", date_of_birth: "1996-05-04", accept_terms: true }]);
 });
 
 test("immediate-session signup saves consent before the starting choice", async ({ page, baseURL }) => {
   const { complianceBodies } = await startSignup(page, baseURL ?? BASE_URL, "ok", true);
   await expect(page).toHaveURL(/\/get-started$/);
   await expect(page.getByRole("heading", { name: "How would you like to start?" })).toBeVisible();
-  expect(complianceBodies).toEqual([{ date_of_birth: "1996-05-04", accept_terms: true }]);
+  expect(complianceBodies).toEqual([{ account_type: "athlete", date_of_birth: "1996-05-04", accept_terms: true }]);
 });
 
 test("a rejected code explains itself and keeps the athlete on the code step", async ({ page, baseURL }) => {
@@ -109,10 +112,23 @@ test("a rejected code explains itself and keeps the athlete on the code step", a
   await page.getByLabel("Verification code").fill("000000");
   await page.getByRole("button", { name: "Verify and continue" }).click();
 
-  await expect(page.locator(".error-banner")).toContainText("That code is wrong or has expired");
+  await expect(page.locator(".error-banner")).toContainText("Code wrong or expired.");
   await expect(page).toHaveURL(/\/signup$/);
   await expect(page.getByRole("button", { name: /Resend code in \d+s/ })).toBeDisabled();
 
   await page.getByRole("button", { name: "Use a different email" }).click();
   await expect(page.getByLabel("Email")).toHaveValue(EMAIL);
 });
+
+for (const immediate of [false, true]) {
+  test(`coach signup reaches coach workspace (${immediate ? "immediate" : "email code"})`, async ({page,baseURL},info) => {
+    const {signupBodies,complianceBodies}=await startSignup(page,baseURL??BASE_URL,"ok",immediate,"coach");
+    if (!immediate) {
+      await page.getByLabel("Verification code").fill("123456");
+      await page.getByRole("button", {name:"Verify and continue"}).click();
+    }
+    await expect(page).toHaveURL(/\/coach$/);
+    expect(complianceBodies[0]).toMatchObject({account_type:"coach",accept_terms:true});
+    expect((signupBodies[0].data as Record<string,unknown>).role).toBeUndefined();
+  });
+}

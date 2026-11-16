@@ -1,0 +1,33 @@
+-- Run through the same service-role boundary used by the authenticated API.
+grant all on all tables in schema public to service_role;
+set local role service_role;
+select set_config('request.jwt.claim.role','service_role',true);
+select public.select_signup_account_type('00000000-0000-4000-8000-000000000015','coach');
+select pg_temp.assert_ok((select role from public.profiles where id='00000000-0000-4000-8000-000000000015')='coach','fresh account may choose coach');
+select pg_temp.assert_ok((select signup_account_type_selected_at is not null from public.profiles where id='00000000-0000-4000-8000-000000000015'),'account type selection is recorded');
+select public.select_signup_account_type('00000000-0000-4000-8000-000000000015','coach');
+select pg_temp.assert_denied('select public.select_signup_account_type(''00000000-0000-4000-8000-000000000015'',''athlete'')');
+select pg_temp.assert_denied('select public.select_signup_account_type(''00000000-0000-4000-8000-000000000003'',''coach'')');
+select public.select_signup_account_type('00000000-0000-4000-8000-000000000006','coach');
+select pg_temp.assert_ok((select role from public.profiles where id='00000000-0000-4000-8000-000000000006')='admin','signup choice cannot demote an administrator');
+-- Invalid staff types fail closed, even at the service-only RPC boundary.
+do $$ begin perform public.select_signup_account_type('00000000-0000-4000-8000-000000000015','admin'); raise exception 'Unexpected admin signup'; exception when invalid_parameter_value then raise notice 'PASS: cannot self-signup as admin'; end $$;
+reset role;
+update public.profiles set created_at=now()-interval '2 days' where id='00000000-0000-4000-8000-000000000014';
+set local role service_role;
+select set_config('request.jwt.claim.role','service_role',true);
+select pg_temp.assert_denied('select public.select_signup_account_type(''00000000-0000-4000-8000-000000000014'',''coach'')');
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claim.role','authenticated',true);
+select pg_temp.assert_denied('select public.select_signup_account_type(auth.uid(),''coach'')');
+select pg_temp.assert_denied('select private.select_signup_account_type(auth.uid(),''coach'')');
+select pg_temp.assert_denied('update public.profiles set signup_account_type_selected_at=null where id=auth.uid()');
+reset role;
+set local role service_role;
+select set_config('request.jwt.claim.role','service_role',true);
+select public.select_signup_account_type('00000000-0000-4000-8000-000000000011','coach');
+select pg_temp.assert_ok(not exists(select 1 from public.coach_connections where invited_email='other@tutanota.com' and status='pending'),'coach selection closes automatic incoming athlete invitations');
+select public.select_signup_account_type('00000000-0000-4000-8000-000000000010','athlete');
+select pg_temp.assert_denied('select public.select_signup_account_type(''00000000-0000-4000-8000-000000000010'',''coach'')');
+reset role;

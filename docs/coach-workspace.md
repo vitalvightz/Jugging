@@ -13,11 +13,10 @@ are unchanged.
   consent changes, decline and revocation. Linked from Settings so it is
   reachable from the phone account button. Also available in side navigation.
 
-Coach is an existing protected `profiles.role`. V1 does not enable coach
-self-registration or self-promotion. An operator must provision an approved
-coach account through the trusted service-role/database administration path;
-`tools/manage_admin.py promote` grants **admin**, not coach, and must not be used
-for this purpose. No live roles are changed by this implementation.
+Coach uses the existing protected `profiles.role`. New members can choose Coach
+through server-validated signup; see `docs/coach-signup.md`. Existing operator
+accounts remain valid. Signup cannot grant admin or gym-owner privileges.
+`tools/manage_admin.py promote` grants **admin**, not coach.
 
 ## Migration and security
 
@@ -103,8 +102,7 @@ and existing RLS. The migrations have been applied to the connected Supabase pro
 ## V1 limits
 
 Invitations are in-app only: recipients sign in using the invited verified email
-and open Settings → Coach access. No email or push system is added. Coach roles
-are operator-provisioned. The roster permits 250 live invitations/connections per
+and open Settings → Coach access. No email or push system is added. Coach roles may be chosen during fresh signup or provisioned by an operator. The roster permits 250 live invitations/connections per
 coach. Long-term history, custom-programme editing, messaging, analytics and
 programme generation are outside V1. Screens use English copy while retaining
 the existing app's locale and theme shell.
