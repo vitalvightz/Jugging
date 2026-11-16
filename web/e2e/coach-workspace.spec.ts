@@ -1406,7 +1406,7 @@ for (const width of [390, 1440]) {
     await fixture(page, baseURL!);
     await page.route('**/api/coach/fighters/*/plans**', route => route.fulfill({ json: [{
       id: 'calendar-plan', name: 'Fight camp', kind: 'self_directed', sessions: [], incomplete: false,
-      schedule_mode: 'dated', start_date: '2026-11-16', end_date: '2026-12-13',
+      schedule_mode: 'dated', start_date: '2026-11-16', end_date: '2026-12-06',
       assignment_status: 'active', published_plan_id: 'test-plan', fighter_id: fighterId,
       created_at: '2026-11-16T12:00:00Z', updated_at: '2026-11-16T12:00:00Z',
     }] }));
@@ -1439,7 +1439,12 @@ for (const width of [390, 1440]) {
     await calendar.getByRole('button', { name: 'View Strength & Power on Tue 01 Dec 2026', exact: true }).click();
     await expect(calendar.locator('[data-fight-day="true"]')).toHaveCount(1);
     await expect(calendar.locator('[data-fight-day="true"]').getByText('Fight day')).toBeVisible();
+    await expect(calendar.getByRole('button', { name: 'Select Sat 12 Dec 2026 (Fight day)' })).toBeDisabled();
     await expect(calendar.getByRole('list', { name: 'Sessions on selected day' })).toContainText('Strength & Power');
+    await expect(calendar.getByRole('button', { name: 'Next calendar period', exact: true })).toBeDisabled();
+    await calendar.getByRole('button', { name: 'Week', exact: true }).click();
+    await calendar.getByRole('button', { name: 'Next calendar period', exact: true }).click();
+    await expect(calendar.getByRole('button', { name: 'Select Sat 12 Dec 2026 (Fight day)' })).toBeVisible();
     await expect(calendar.getByRole('button', { name: 'Next calendar period', exact: true })).toBeDisabled();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const a11y = await new AxeBuilder({ page }).include('[aria-label="Fight camp schedule"]').analyze();
