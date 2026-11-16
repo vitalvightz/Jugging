@@ -1424,6 +1424,7 @@ for (const width of [390, 1440]) {
     const calendar = schedule.getByRole('region', { name: 'Plan calendar', exact: true });
     await expect(calendar).toBeVisible();
     await expect(calendar.getByText('Fight day · Sat 12 Dec 2026')).toBeVisible();
+    await expect(calendar.getByRole('button', { name: 'Select Tue 17 Nov 2026' })).toHaveCount(0);
     await expect(calendar.getByRole('button', { name: 'Week', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect(calendar.getByRole('button', { name: 'View Hard Sparring on Mon 16 Nov 2026', exact: true })).toBeVisible();
     await expect(calendar).not.toContainText('Unrelated session');
@@ -1439,12 +1440,12 @@ for (const width of [390, 1440]) {
     await calendar.getByRole('button', { name: 'View Strength & Power on Tue 01 Dec 2026', exact: true }).click();
     await expect(calendar.locator('[data-fight-day="true"]')).toHaveCount(1);
     await expect(calendar.locator('[data-fight-day="true"]').getByText('Fight day')).toBeVisible();
-    await expect(calendar.getByRole('button', { name: 'Select Sat 12 Dec 2026 (Fight day)' })).toBeDisabled();
+    await expect(calendar.locator('[data-fight-day="true"]').getByRole('button')).toHaveCount(0);
     await expect(calendar.getByRole('list', { name: 'Sessions on selected day' })).toContainText('Strength & Power');
     await expect(calendar.getByRole('button', { name: 'Next calendar period', exact: true })).toBeDisabled();
     await calendar.getByRole('button', { name: 'Week', exact: true }).click();
     await calendar.getByRole('button', { name: 'Next calendar period', exact: true }).click();
-    await expect(calendar.getByRole('button', { name: 'Select Sat 12 Dec 2026 (Fight day)' })).toBeVisible();
+    await expect(calendar.locator('[data-fight-day="true"]')).toBeVisible();
     await expect(calendar.getByRole('button', { name: 'Next calendar period', exact: true })).toBeDisabled();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const a11y = await new AxeBuilder({ page }).include('[aria-label="Fight camp schedule"]').analyze();
