@@ -792,7 +792,7 @@ for (const role of ["coach", "admin", "athlete"]) {
       await expect(sidebar.locator('a[href="/coach/invitations"]')).toBeVisible();
       await expect(sidebar.locator('a[href="/today"]')).toHaveCount(0);
       await sidebar.getByRole("link", { name: /^Plans/ }).click();
-      await expect(page.getByRole("button", { name: "Create Plan", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Create New Plan", exact: true })).toBeVisible();
       await page.goto('/coach/log');
       await expect(page.getByRole('dialog', { name: 'Log session' })).toBeVisible();
       await page.goto('/coach/settings');
@@ -1215,6 +1215,8 @@ test("one weigh-in shows weight summary without an invented trend", async ({ pag
 
 for (const width of [390, 1440]) {
   test(`coach draft to fighter consent and shared progress at ${width}px`, async ({ page, baseURL }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", error => pageErrors.push(error.message));
     await page.setViewportSize({ width, height: 1000 });
     await fixture(page, baseURL!);
     const rows: import('../lib/api-schema.generated').CoachPlan[] = [];
@@ -1235,7 +1237,7 @@ for (const width of [390, 1440]) {
       return route.fulfill({ json: rows });
     });
     await page.goto('/coach/plans');
-    await page.getByRole('button', { name: 'Create Plan', exact: true }).click();
+    await page.getByRole('button', { name: 'Create New Plan', exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'Fighter', exact: true })).toBeDisabled();
     await page.getByLabel('Plan name', { exact: true }).fill('Coach technical week');
     await page.getByRole('button', { name: /^Monday,/ }).click();
@@ -1278,9 +1280,17 @@ for (const width of [390, 1440]) {
       { id: 'spar', plan_id: 'test-plan', day: '2026-11-15', title: 'Technical', type: 'skill', blocks: [] },
     ] }));
     await page.goto('/coach/plans');
-    await expect(page.getByText('This week: 2 / 2 scheduled sessions completed')).toBeVisible();
-    await expect(page.getByRole('link', { name: 'View fighter progress' })).toHaveAttribute('href', `/coach/fighters/${fighterId}#training-history`);
+    await expect(page.getByRole('progressbar', { name: 'Weekly completion' })).toHaveAttribute('value', '100');
+    await expect(page.getByText('All sessions complete this week', { exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Progress', exact: true })).toHaveAttribute('href', `/coach/fighters/${fighterId}#training-history`);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await page.screenshot({ path: `test-results/coach-plan-assignment-${width}.png`, fullPage: true });
+    const dashboard = page.getByRole('region', { name: 'Fighter plans dashboard' });
+    await expect(dashboard.getByText('100%', { exact: true })).toBeVisible();
+    await expect(dashboard.getByText('Latest: 15 Nov · Done · RPE 6', { exact: true })).toBeVisible();
+    const dashboardA11y = await new AxeBuilder({ page }).include('[aria-label="Fighter plans dashboard"]').analyze();
+    expect(dashboardA11y.violations).toEqual([]);
+    expect(pageErrors).toEqual([]);
+    await page.screenshot({ path: `test-results/coach-plan-dashboard-${width}.png`, fullPage: true });
+    await dashboard.screenshot({ path: `test-results/coach-plan-dashboard-card-${width}.png` });
   });
 }

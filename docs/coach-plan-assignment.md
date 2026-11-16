@@ -100,3 +100,13 @@ compact doses (390px)`) also fails at its dose-label assertion: it expects
 `4 × 8 · 80 kg · rest 120s`, while the unchanged session renderer displays
 `4 × 8 · rest 120s` and a separate `80 kg` label. The new coach/fighter browser
 journeys and all six coach/admin/athlete navigation cases pass.
+
+## Compact coach dashboard
+
+Coach Plans uses a current-plan card with a weekly progress bar/percentage,
+modified/skipped tiles, compact latest result and paired Preview/Progress actions.
+Active is green, Pending amber, and other states neutral. Refresh is an accessible
+icon button; Create New Plan sits below the cards. A nonempty, fully completed
+week shows “All sessions complete this week”; skipped or unrecorded sessions do
+not. No Active/Pending/Draft filters are introduced yet. Icons are MIT Heroicons
+assets with their license retained under `web/public/icons/coach/`.

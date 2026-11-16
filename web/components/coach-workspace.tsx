@@ -337,7 +337,7 @@ function Fighters({ token, fighterId, view }: { token: string; fighterId?: strin
             ← All fighters
           </Link>
         ) : (
-          <h1>{view === "fighters" ? "Your fighters" : view === "plans" ? "Plans" : view === "log" ? "Log Session" : "Your corner. In focus."}</h1>
+          <h1>{view === "fighters" ? "Your fighters" : view === "plans" ? "Fighter Plans" : view === "log" ? "Log Session" : "Your corner. In focus."}</h1>
         )}
         {view !== "plans" && loggingFighters.length ? (
           <LogTraining
