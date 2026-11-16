@@ -28,13 +28,22 @@ export function customPlanInput(plan: PlanLike, fresh = false): CustomPlanInput 
 }
 
 export type ShareResult = { fighterId: string; plan?: CoachPlan | CustomPlan; error?: true };
+export type ShareAttempts = Map<string, { requestId: string; input: CustomPlanInput; copy?: CustomPlan }>;
 
 /** Gives each fighter their own copy of the plan; assigns it too unless `assign` is false. One failure never blocks the others. */
-export async function sharePlanWithFighters(token: string, plan: PlanLike, fighterIds: string[], assign: boolean): Promise<ShareResult[]> {
+export async function sharePlanWithFighters(token: string, plan: PlanLike, fighterIds: string[], assign: boolean, attempts: ShareAttempts): Promise<ShareResult[]> {
   return Promise.all(fighterIds.map(async fighterId => {
     try {
-      const copy = await saveCustomPlan(token, customPlanInput(plan, true), undefined, fighterId, crypto.randomUUID());
-      return { fighterId, plan: assign ? await assignCoachPlan(token, fighterId, copy.id) : copy };
+      let attempt = attempts.get(fighterId);
+      if (!attempt) {
+        attempt = { requestId: crypto.randomUUID(), input: customPlanInput(plan, true) };
+        attempts.set(fighterId, attempt);
+      }
+      // Keep both the idempotency key and payload if the creation response is lost.
+      attempt.copy ??= await saveCustomPlan(token, attempt.input, undefined, fighterId, attempt.requestId);
+      const sent = assign ? await assignCoachPlan(token, fighterId, attempt.copy.id) : attempt.copy;
+      attempts.delete(fighterId);
+      return { fighterId, plan: sent };
     } catch {
       return { fighterId, error: true as const };
     }

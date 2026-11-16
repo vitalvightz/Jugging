@@ -1,15 +1,15 @@
 "use client";
 import { DiscoveryHint } from "@/components/once-hint";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CoachPlan, CoachPlannedSession } from "@/lib/api-schema.generated";
 import { weekStart, dayOffset, humanize, type Fighter } from "@/lib/coach";
-import { sharePlanWithFighters } from "@/lib/custom-plan-share";
+import { sharePlanWithFighters, type ShareAttempts } from "@/lib/custom-plan-share";
 import { deleteCoachPlan, assignCoachPlan, listCoachPlans, getFighterPlan } from "@/lib/api";
 import { CustomPlanBuilder } from "./custom-plan-builder";
 import { AssignedPlanPreview } from "./assigned-plan-preview";
 import { StatusIcon } from "./record-icons";
-import { formatAppDate } from "@/lib/date-format";
+import { formatAppDate, formatAppDateRange } from "@/lib/date-format";
 import styles from "./coach-workspace.module.css";
 
 function PlanIcon({ name }: { name: "arrow-path" | "eye" | "chart-bar" | "plus" | "calendar-days" }) {
@@ -120,16 +120,24 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
 }
 
 /** Gives other fighters their own copy of this plan, without touching the original. */
-function SharePlan({ token, plan, others }: { token: string; plan: CoachPlan; others: Fighter[] }) {
+export function SharePlan({ token, plan, others }: { token: string; plan: CoachPlan; others: Fighter[] }) {
   const [open, setOpen] = useState(false);
   const [chosen, setChosen] = useState<string[]>([]);
   const [assign, setAssign] = useState(!plan.incomplete);
   const [pending, setPending] = useState(false);
   const [status, setStatus] = useState("");
+  const attempts = useRef<ShareAttempts>(new Map());
+  const sending = useRef(false);
+  const dateRange = plan.schedule_mode === "dated" ? formatAppDateRange(plan.start_date, plan.end_date) : null;
+  const expiredFor = others.filter(row => chosen.includes(row.id) && plan.schedule_mode === "dated" && plan.end_date && plan.end_date < row.today);
+  const expiredWarning = expiredFor.length ? `Expired schedule: ${dateRange}. These dates are in the past for ${expiredFor.map(row => row.name).join(", ")}. The copy keeps its original dates.` : "";
   const name = (id: string) => others.find(row => row.id === id)?.name ?? "fighter";
   async function send() {
+    if (sending.current) return;
+    if (expiredWarning && !window.confirm(`${expiredWarning}\nSend this copy anyway?`)) return;
+    sending.current = true;
     setPending(true); setStatus("");
-    const results = await sharePlanWithFighters(token, plan, chosen, assign && !plan.incomplete);
+    const results = await sharePlanWithFighters(token, plan, chosen, assign && !plan.incomplete, attempts.current);
     const failedIds = results.filter(row => row.error).map(row => row.fighterId);
     const sent = results.filter(row => !row.error).map(row => name(row.fighterId));
     const failed = failedIds.map(name);
@@ -137,10 +145,13 @@ function SharePlan({ token, plan, others }: { token: string; plan: CoachPlan; ot
     setChosen(failedIds);
     if (!failed.length) setOpen(false);
     setPending(false);
+    sending.current = false;
   }
   return <div className={styles.planShare}>
-    {!open ? <button type="button" className={styles.planShareToggle} onClick={() => { setOpen(true); setStatus(""); }}>Send to other fighters</button> : <fieldset className={styles.planSharePanel}>
+    {!open ? <button type="button" className={styles.planShareToggle} onClick={() => { setOpen(true); setStatus(""); }}>Send to other fighters</button> : <fieldset className={styles.planSharePanel} disabled={pending}>
       <legend>Send a copy to</legend>
+      {dateRange ? <p className={styles.planActionNote}>Original dates: {dateRange}. Copies keep these dates.</p> : null}
+      {expiredWarning ? <p role="alert" className={styles.error}>{expiredWarning}</p> : null}
       <div className={styles.planShareList}>{others.map(row => <label key={row.id}><input type="checkbox" checked={chosen.includes(row.id)} onChange={event => setChosen(event.target.checked ? [...chosen, row.id] : chosen.filter(id => id !== row.id))} />{row.name}</label>)}</div>
       <label className={styles.planShareAssign}><input type="checkbox" checked={assign && !plan.incomplete} disabled={plan.incomplete} onChange={event => setAssign(event.target.checked)} />{plan.incomplete ? "Saves as draft until the plan is complete" : "Assign now (fighters accept it)"}</label>
       <div className={styles.planShareActions}>
