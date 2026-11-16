@@ -10,6 +10,7 @@ from api.models import ExerciseLogActual
 
 
 class SessionDetailBlock(BaseModel):
+    feedback_ref: str | None = None
     name: str
     kind: Literal["exercise", "rehab", "guidance"] = "exercise"
     # manual: an exercise the athlete recorded on their own manual session. It
@@ -26,6 +27,7 @@ class SessionDetailBlock(BaseModel):
 
 
 class SessionDetailSparring(BaseModel):
+    id: str | None = None
     intensity: str
     rounds_completed: int
     round_seconds: int | None = None
@@ -47,6 +49,8 @@ class SessionDetailRun(BaseModel):
 
 
 class SessionDetails(BaseModel):
+    coach_feedback_allowed: bool = False
+    athlete_id: str | None = None
     session: TrainingHistorySession
     blocks: list[SessionDetailBlock] = Field(default_factory=list)
     prescription_source: Literal["snapshot", "exercise_logs", "unavailable", "manual"]

@@ -69,6 +69,7 @@ REQUIRED_TABLES: tuple[str, ...] = (
     "exercise_logs",
     "external_training_sessions",
     "coach_connections",
+    "coach_feedback",
     # Optional exercise results on a manual session and the athlete's private
     # movement names (PUT /api/training/sessions/{id}/exercises/{entry_id}).
     "manual_exercise_entries",
@@ -543,6 +544,7 @@ REQUIRED_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "sparring_log_requests": ("athlete_id", "client_request_id", "sparring_log_id", "created_at"),
     "exercise_logs": REQUIRED_EXERCISE_LOGS_COLUMNS,
     "external_training_sessions": REQUIRED_EXTERNAL_TRAINING_COLUMNS,
+    "coach_feedback": ("id", "athlete_id", "coach_id", "coach_name", "source", "target_id", "exercise_ref", "note", "created_at", "updated_at"),
     # Coach routes must not deploy before the consent migration is present.
     "coach_connections": ("id", "coach_id", "athlete_id", "status", "share_recovery",
                           "share_injuries", "share_weight", "allow_session_logging"),
@@ -819,6 +821,7 @@ RLS_REQUIRED_TABLES: tuple[str, ...] = (
     "exercise_logs",
     "external_training_sessions",
     "coach_connections",
+    "coach_feedback",
     "training_focus_inferences",
     "training_focus_call_budget",
     "xp_accounts",

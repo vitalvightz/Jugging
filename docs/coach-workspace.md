@@ -156,3 +156,26 @@ Missing, unshared or stale check-ins never create a concern.
 Invitations are in-app only; there is no email or push notification. A coach
 can hold 250 pending or accepted connections. Programme editing, messaging and
 long-term analytics are out of scope. Coach screens use English copy.
+
+## Coach feedback and profile details
+
+Sparring summaries count the reports displayed for the selected week. Rounds,
+report count and hard reports come from that same list. Intensity, head contact
+and a rocked warning are separate signals.
+
+`20261116024150_coach_feedback.sql` adds separate coach-authored feedback and
+extends the existing permission-checked fighter projection. Feedback never
+updates athlete notes. Only the author can update it through the authenticated
+RPC; accepted connections, approved roles, health consent and target ownership
+are rechecked in PostgreSQL. Athletes retain received feedback after disconnect
+or coach deletion. No chats, threads or notifications are added. Legacy exercises
+without a stable block identity use session-level feedback instead.
+
+The projection returns derived age, existing fighting styles, stance and record,
+plus the latest completed training occurrence (including older records). Full date
+of birth stays in the database. Missing fields are omitted in the UI. Deleted,
+future, skipped and day-credit records do not become the latest training event.
+Camp Timeline requires a meaningful current schedule and fight date.
+
+Apply the new migration before deploying. It has only been tested locally;
+production data and schema have not been changed for this PR.

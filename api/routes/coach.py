@@ -192,6 +192,7 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
         details = session_details(store, athlete_id, source, str(entry_id),
                                   health_consent_granted=fighter.share_injuries)
         session = {"history_editable": False, "takeaway": "", "notes": None, "modification_reason": None}
+        can_feedback = fighter.health_consent
         message = details.message
         blocks = details.blocks
         if not fighter.share_injuries:
@@ -200,9 +201,12 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
             blocks = [block for block in blocks if not _names_health(block.name)]
             message = None if blocks else MISSING_DETAILS
             row = store.get_session_completion_by_id(athlete_id, str(entry_id)) if source == "unlxck" else None
+            if source == "unlxck" and (row is None or _is_health_session(row)):
+                can_feedback = False
             if (row and _is_health_session(row)) or _names_health(details.session.title):
                 session.update(title=MASKED_TITLE, session_type=None)
         return details.model_copy(update={
+            "coach_feedback_allowed": can_feedback,
             "session": details.session.model_copy(update=session),
             "blocks": [block.model_copy(update={"notes": None}) for block in blocks],
             "sparring": details.sparring.model_copy(update={"notes": None}) if details.sparring else None,

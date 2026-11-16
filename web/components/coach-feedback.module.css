@@ -1,0 +1,7 @@
+.feedback { margin-top: 12px; font-size: 13px; }
+.feedback small { color: var(--text-muted); }
+.feedback p { margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.feedback:empty { display: none; }
+.feedback form { display: flex; flex-wrap: wrap; gap: 8px; }
+.feedback label { width: 100%; }
+.feedback textarea { display: block; width: 100%; min-height: 90px; margin-top: 6px; }

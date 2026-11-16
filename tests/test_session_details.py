@@ -312,3 +312,12 @@ def test_a_run_carries_every_run_through_its_week_not_just_a_history_page():
 
     boxing = add("2026-11-02", activity="boxing")
     assert client.get(f"/api/training/history/external/{boxing['id']}", headers=auth).json()["runs"] is None
+
+
+def test_feedback_identity_uses_occurrence_and_block_ids_not_exercise_names():
+    row = occurrence([block("squat-1", display_name="Squat"), block("squat-2", display_name="Squat")])
+    detail = read(store_for(row), row)
+    assert detail.athlete_id == ATHLETE and detail.session.id == row["id"]
+    assert [entry.feedback_ref for entry in detail.blocks] == ["squat-1", "squat-2"]
+    legacy = occurrence([{"display_name": "Squat", "block_type": "strength"}])
+    assert read(store_for(legacy), legacy).blocks[0].feedback_ref is None
