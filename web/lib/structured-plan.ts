@@ -2033,6 +2033,27 @@ export function classifySessionlessDay(
   return { kind: "rest", title: "Rest day", tag: null, coachLed: false, converted: false };
 }
 
+/** A plan day that is genuinely just rest — no sessions, classified as rest,
+ * and no day-card context worth expanding — so it can render as a compact
+ * non-interactive rest row identical to the synthesized gap rows. */
+export function isPlainRestDay(day: StructuredDay): boolean {
+  if (getSessions(day).length > 0 || getPriorityMicrodose(day) || classifySessionlessDay(day).kind !== "rest") {
+    return false;
+  }
+  const card = day.today_card;
+  // Neutral calendar placeholders use the same compact row as a camp gap.
+  // A prescribed recovery day or coach-owned contact keeps its full context.
+  const neutral = PLAIN_REST_HEADLINE_RE.test(cleanText(card?.headline) ?? "");
+  return !(
+    (!neutral && cleanText(card?.headline)) ||
+    cleanText(card?.coach_led_contact) ||
+    cleanText(card?.primary_warning) ||
+    cleanText(card?.nutrition_summary) ||
+    cleanText(card?.weight_cut_warning) ||
+    (!neutral && getSessionCoachingLines(card?.mindset_anchor).length > 0)
+  );
+}
+
 function isDeclaredLightCombatOnlyDay(day: StructuredDay | null | undefined): boolean {
   const roles = Array.isArray(day?.planning_day_role_keys) ? day.planning_day_role_keys : [];
   return roles.includes("light_combat_day") && !roles.includes("hard_sparring_day");
