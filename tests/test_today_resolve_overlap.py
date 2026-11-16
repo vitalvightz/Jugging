@@ -21,7 +21,7 @@ from api.services import today_readiness_boundary as boundary
 from api.services.active_plan import ActivePlanResolution
 from api.services.today_reads import _BuildReadCache
 from support import FakeStore
-from test_today_read_amplification import ATHLETE, NOW, PLAN, _store_with_camp, _store_with_intake_injury
+from test_today_read_amplification import ATHLETE, PLAN, _store_with_camp, _store_with_intake_injury
 from test_today_read_prefetch import _view, _with_open_flags
 
 DAY = "2026-06-03"

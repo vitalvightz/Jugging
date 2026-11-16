@@ -39,13 +39,22 @@ export function duplicateCalendarWeek<T extends CalendarSession>(sessions: T[], 
   if ([...counts.values()].some(n => n > 28)) throw new Error('A week can contain at most 28 sessions.');
   return result;
 }
-/** Copies a session onto each target date, enforcing the plan range and the 28-per-week cap. */
-export function copySessionToDays<T extends CalendarSession>(sessions: T[], id: string, days: string[], start: string, end: string, limit: number): T[] {
-  const source = sessions.find(s => s.id === id);
-  if (!source) throw new Error('That session no longer exists.');
+/** Copies sessions onto each target date, enforcing the plan range, plan size and the 28-per-week cap. */
+export function copySessionsToDays<T extends CalendarSession>(sessions: T[], sources: T[], days: string[], start: string, end: string, limit: number): T[] {
+  if (!sources.length) throw new Error('That session no longer exists.');
   const targets = days.filter(day => day >= start && day <= end);
   if (!targets.length) throw new Error('Choose a date inside this plan.');
-  const result = [...sessions, ...targets.map(day => copyCalendarSession(source, day))];
+  return withinCaps([...sessions, ...targets.flatMap(day => sources.map(source => copyCalendarSession(source, day)))], limit);
+}
+export function copySessionToDays<T extends CalendarSession>(sessions: T[], id: string, days: string[], start: string, end: string, limit: number): T[] {
+  return copySessionsToDays(sessions, sessions.filter(s => s.id === id), days, start, end, limit);
+}
+/** Moves sessions to one date, keeping their order. */
+export function moveSessionsToDay<T extends CalendarSession>(sessions: T[], ids: string[], day: string, start: string, end: string): T[] {
+  if (day < start || day > end) throw new Error('Choose a date inside this plan.');
+  return withinCaps(sessions.map(s => ids.includes(s.id) ? { ...s, scheduled_date: day, weekday: calendarWeekday(day) } : s), Infinity);
+}
+function withinCaps<T extends CalendarSession>(result: T[], limit: number): T[] {
   if (result.length > limit) throw new Error(`A plan can hold at most ${limit} sessions.`);
   const counts = new Map<string, number>();
   for (const s of result) if (s.scheduled_date) { const week = calendarMonday(s.scheduled_date); counts.set(week, (counts.get(week) ?? 0) + 1); }

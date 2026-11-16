@@ -434,6 +434,13 @@
 .copyBanner .copyDone { border-color: #bf2446; background: #84152d; }
 .calendarPaste { width: 100%; min-height: 28px; margin-top: 5px; padding: 4px 2px; border: 1px dashed #bf2446; border-radius: 6px; background: transparent; color: #f5c3cd; font: inherit; font-size: 10px; font-weight: 600; cursor: copy; }
 .calendarPaste:hover { background: #2c1720; }
+.dayActions { display: flex; flex-wrap: wrap; gap: 6px; }
+.dayActions button:disabled { opacity: .4; cursor: not-allowed; }
+.calendarPaste:disabled { opacity: .3; cursor: default; }
+.copyToRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+.copyToRow > button { min-height: 44px; }
+.copyToRow > p { grid-column: 1 / -1; margin: 0; color: var(--text-secondary); font-size: 12px; }
+.copyToRow > p:empty { display: none; }
 .calendarFooter { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
 .calendarFooter span { max-width: 32ch; color: var(--text-secondary); font-size: 11px; line-height: 1.6; }
 .selectedCalendarDay { margin: 12px 0 0; font-size: 12px; color: var(--text-secondary); }
@@ -468,6 +475,8 @@
   .copyBanner > div { flex: 1 1 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .calendarPaste { flex-basis: 100%; min-height: 24px; font-size: 9px; }
   .calendarFooter span { display: none; }
+  .dayActions { flex: 1 1 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .copyBanner > div[data-move] { grid-template-columns: minmax(0, 1fr); }
   /* Month view on phones: coloured indicators + counts; names show for the selected date below. */
   .calendarGrid[data-view="month"] .calendarDate { display: flex; flex-wrap: wrap; align-content: flex-start; min-height: 64px; padding: 2px; }
   .calendarGrid[data-view="month"] .dateSelect { flex-basis: 100%; min-height: 36px; padding: 3px; }
