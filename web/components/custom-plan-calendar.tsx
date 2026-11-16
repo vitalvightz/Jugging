@@ -24,6 +24,8 @@ export function CustomPlanCalendar({ sessions, start, end, selected, onSelect, o
   const monthEnd = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
   const last = view === 'week' ? addCalendarDays(first, 6) : addCalendarDays(calendarMonday(`${month}-${monthEnd}`), 6);
   const selectedInView = selected >= first && selected <= last;
+  const selectedSessions = sessions.filter(s => s.scheduled_date === selected && s.session_type !== 'rest');
+  const showSelectedDay = selectedInView && (!readOnly || selectedSessions.length > 0);
   const dates: string[] = [];
   for (let day = first; day <= last; day = addCalendarDays(day, 1)) dates.push(day);
   function navigate(direction: number) {
@@ -74,9 +76,9 @@ export function CustomPlanCalendar({ sessions, start, end, selected, onSelect, o
       {onStartCopying ? <><button type="button" disabled={!selectedIds.length} onClick={() => onStartCopying(selectedIds)}>Copy day</button>
       <button type="button" disabled={!selectedIds.length} onClick={() => onStartCopying(selectedIds, true)}>Move day</button></> : null}
       <button type="button" onClick={onDuplicateWeek}>Duplicate week</button></div></div> : null}
-    {selectedInView ? <p className={styles.selectedCalendarDay}>{formatAppDate(selected)}{selected === fightDay ? ' · Fight day' : ''}</p> : null}
-    {(view === 'month' || readOnly) && selectedInView ? <ul className={styles.selectedDaySessions} aria-label="Sessions on selected day">
-      {sessions.filter(s => s.scheduled_date === selected).map(s => <li key={s.id} data-type={s.session_type}>{s.name}<small>{s.exercises.length} {s.exercises.length === 1 ? 'exercise' : 'exercises'}</small></li>)}
+    {showSelectedDay ? <p className={styles.selectedCalendarDay}>{formatAppDate(selected)}{selected === fightDay ? ' · Fight day' : ''}</p> : null}
+    {(view === 'month' || readOnly) && showSelectedDay ? <ul className={styles.selectedDaySessions} aria-label="Sessions on selected day">
+      {selectedSessions.map(s => <li key={s.id} data-type={s.session_type}>{s.name}<small>{s.exercises.length} {s.exercises.length === 1 ? 'exercise' : 'exercises'}</small></li>)}
     </ul> : null}
   </section>;
 }
