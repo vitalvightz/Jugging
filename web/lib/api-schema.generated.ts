@@ -341,8 +341,18 @@ export type ClinicalReviewLifecycleRequest = {
   reason: string;
 };
 
+export type CoachCutAssessment = {
+  weight_cut_status: "behind" | "none" | "on_target" | "on_track" | "too_aggressive";
+  weight_cut_risk_band: string;
+  days_until_fight: number | null;
+  kg_to_target: number | null;
+  weight_cut_behind_kg: number | null;
+};
+
 export type CoachFighterWeight = {
   shared: boolean;
+  cut_assessment: CoachCutAssessment | null;
+  current_weight_recorded_at: string | null;
   entries: NutritionBodyweightLogEntry[];
   current_weight_kg: number | null;
   target_weight_kg: number | null;
@@ -393,6 +403,15 @@ export type CoachMessagePushRequest = {
   body: string;
   url?: string;
   urgent?: boolean;
+};
+
+export type CoachPlannedSession = {
+  id: string;
+  plan_id: string;
+  day: string;
+  title: string;
+  type: string;
+  blocks: SessionDetailBlock[];
 };
 
 export type CommandView = {

@@ -198,3 +198,44 @@ test("conflicting readings on one date retain their order and are clearly labell
   ]);
   assert.deepEqual(coachCheckInValues(day.readings).map(value => value.label), ["Sleep: Okay", "Body: Normal", "Earlier sleep: Good"]);
 });
+
+import { coachConcerns, coachCutStatus } from "./coach";
+import type { CoachFighterWeight } from "./api-schema.generated";
+const riskWeight: CoachFighterWeight = { shared: true, entries: [], current_weight_kg: 80, target_weight_kg: 70, current_weight_recorded_at: "2026-11-15", rolling_7_day_average_weight: null, weekly_pace_kg: null,
+  cut_assessment: { weight_cut_status: "too_aggressive", weight_cut_risk_band: "severe", kg_to_target: 10, weight_cut_behind_kg: null, days_until_fight: 3 } };
+test("severe canonical cut assessment stays red even with old inputs and near-target progress", () => {
+  const result = coachCutStatus({ ...riskWeight, current_weight_kg: 70.1, current_weight_recorded_at: "2026-09-01" }, blank.today);
+  assert.equal(result?.tone, "red"); assert.equal(result?.label, "Cut too aggressive");
+});
+test("missing and old weight data cannot say on track", () => {
+  const weight = { ...riskWeight, cut_assessment: { ...riskWeight.cut_assessment!, weight_cut_status: "on_track" as const } };
+  assert.equal(coachCutStatus({ ...weight, current_weight_recorded_at: null }, blank.today)?.label, "Unknown");
+  assert.equal(coachCutStatus({ ...weight, current_weight_recorded_at: "2026-10-01" }, blank.today)?.label, "Unknown");
+  assert.equal(coachCutStatus({ ...weight, shared: false }, blank.today), null);
+  assert.equal(coachCutStatus({ ...weight, cut_assessment: null }, blank.today), null);
+});
+test("concerns sort severity first then weight, contact, injury and recovery", () => {
+  const f: Fighter = { ...blank, share_weight: true, share_injuries: true, share_recovery: true,
+    injuries: [{ id: "mild", body_area: "arm", severity: "mild", status: "open", updated_at: blank.today }, { id: "severe", body_area: "leg", severity: "severe", status: "open", updated_at: blank.today }],
+    sparring_reports: [{ id: "rocked", day: "2026-11-12", rounds: 3, intensity: "technical", round_seconds: 180, head_contact: "light", rocked: true }],
+    recovery: [{ day: blank.today, source: "today", sleep: "good", body: "normal" }, { day: "2026-11-12", source: "today", sleep: "poor" }] };
+  const concerns = coachConcerns(f, riskWeight);
+  assert.deepEqual(concerns.map(c => [c.category, c.tone]), [["weight", "concern"], ["contact", "concern"], ["injury", "concern"], ["recovery", "concern"], ["injury", "caution"]]);
+  assert.ok(concerns.every(c => c.reason && c.section));
+  assert.deepEqual(coachConcerns({ ...f, share_weight: false, share_injuries: false, share_recovery: false }, riskWeight), []);
+});
+test("hard intensity alone is not a contact warning and normal data hides attention", () => {
+  const f: Fighter = { ...blank, share_recovery: true, share_injuries: true, recovery: [{ day: blank.today, sleep: "good", body: "normal", source: "today" }], sparring_reports: [{ id: "hard", day: blank.today, rounds: 3, intensity: "hard", round_seconds: 180, head_contact: "none", rocked: false }] };
+  assert.deepEqual(coachConcerns(f, null), []);
+  assert.equal(coachConcerns({ ...f, recovery: [] }, null)[0].tone, "unknown");
+});
+test("severity outranks category and adherence requires an explicitly skipped planned session", () => {
+  const f: Fighter = { ...blank, share_weight: true, share_injuries: true,
+    schedule: [{ id: "scheduled", day: "2026-11-14", type: "strength_power", title: "Strength" }],
+    sessions: [{ id: "skipped", day: "2026-11-14", session_id: "scheduled", plan_id: "plan", source: "unlxck", type: "strength_power", status: "skipped", recorded_at: "2026-11-14" }],
+    sparring_reports: [{ id: "contact", day: blank.today, rounds: 3, intensity: "light", round_seconds: 180, head_contact: "heavy", rocked: false }],
+  };
+  const amber = { ...riskWeight, cut_assessment: { ...riskWeight.cut_assessment!, weight_cut_status: "behind" as const } };
+  assert.deepEqual(coachConcerns(f, amber).map(c => c.category), ["contact", "weight", "adherence"]);
+  assert.ok(!coachConcerns({ ...f, sessions: [] }, amber).some(c => c.category === "adherence"));
+});

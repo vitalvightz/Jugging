@@ -23,13 +23,17 @@ from pydantic import BaseModel, Field
 from api.compliance import evaluate_profile_compliance
 from api.contracts.external_training import ExternalTrainingCreate, TrainingHistoryResponse, TrainingHistorySession
 from api.contracts.manual_exercises import ManualExerciseEntry, ManualExerciseListResponse, PerformedExerciseInput
-from api.contracts.session_details import SessionDetails
+from api.contracts.session_details import SessionDetails, SessionDetailBlock
+from api.contracts.training_day import current_training_day
+from api.routes.nutrition import _active_plan_fight_date
+from api.services.active_plan import resolve_active_plan
+from api.services.open_plan_timeline import project_open_structured_plan
 from api.models import NutritionBodyweightLogEntry, ProfileRecord
 from api.nutrition_workspace import build_nutrition_workspace
 from api.plan_mappers import _map_profile_row
 from api.routes.today import _saved_history_session, history_sessions
 from api.services.manual_exercises import delete_session_exercise, list_session_exercises, save_session_exercise
-from api.services.session_details import MISSING_DETAILS, session_details
+from api.services.session_details import MISSING_DETAILS, session_details, _exercise
 from api.services.training_history import create_external_training
 from api.store import AppStore
 
@@ -56,8 +60,28 @@ class ConnectedFighter:
     allow_session_logging: bool
 
 
+class CoachCutAssessment(BaseModel):
+    # Only the athlete's authoritative cut fields, never private readiness flags.
+    weight_cut_status: Literal["none", "on_target", "on_track", "behind", "too_aggressive"]
+    weight_cut_risk_band: str
+    days_until_fight: int | None = None
+    kg_to_target: float | None = None
+    weight_cut_behind_kg: float | None = None
+
+
+class CoachPlannedSession(BaseModel):
+    id: str
+    plan_id: str
+    day: str
+    title: str
+    type: str
+    blocks: list[SessionDetailBlock] = Field(default_factory=list)
+
+
 class CoachFighterWeight(BaseModel):
     shared: bool
+    cut_assessment: CoachCutAssessment | None = None
+    current_weight_recorded_at: str | None = None
     entries: list[NutritionBodyweightLogEntry] = Field(default_factory=list)
     # The camp's current weight: the newest weigh-in unless Camp Setup holds a later one.
     current_weight_kg: float | None = None
@@ -234,9 +258,13 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
             return CoachFighterWeight(shared=False)
         athlete = fighter.profile
         workspace = build_nutrition_workspace(profile=athlete,
-                                              latest_intake_row=store.get_latest_intake(athlete.athlete_id))
+                                              latest_intake_row=store.get_latest_intake(athlete.athlete_id),
+                                              active_plan_fight_date=_active_plan_fight_date(store, athlete))
         return CoachFighterWeight(
             shared=True,
+            cut_assessment=None if athlete.is_minor else CoachCutAssessment.model_validate(
+                workspace.derived.model_dump()),
+            current_weight_recorded_at=workspace.shared_camp_context.current_weight_recorded_at,
             entries=[entry.model_copy(update={"notes": None})
                      for entry in workspace.nutrition_monitoring.daily_bodyweight_log],
             current_weight_kg=workspace.shared_camp_context.current_weight_kg,
@@ -245,5 +273,45 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
             rolling_7_day_average_weight=workspace.derived.rolling_7_day_average_weight,
             weekly_pace_kg=workspace.derived.weekly_pace_kg,
         )
+
+    @router.get("/api/coach/fighters/{athlete_id}/training/plan", response_model=list[CoachPlannedSession])
+    def fighter_plan(fighter: ConnectedFighter = Depends(connected_fighter),
+                     store: AppStore = Depends(get_store)):
+        athlete = fighter.profile
+        today = current_training_day(athlete_timezone=athlete.athlete_timezone)
+        plan = resolve_active_plan(store, athlete.athlete_id, current_training_day=today).plan
+        if not plan:
+            return []
+        structured = plan.get("structured_plan")
+        if not isinstance(structured, Mapping):
+            return []
+        projected, _ = project_open_structured_plan(plan, structured, current_training_day=today.isoformat())
+        result = {}
+        for week in projected.get("weeks") or []:
+            for day in week.get("days") or []:
+                iso = str(day.get("date") or "")[:10]
+                if iso < today.isoformat():
+                    continue
+                try:
+                    date.fromisoformat(iso)
+                except ValueError:
+                    continue
+                for session in day.get("sessions") or []:
+                    session_id = str(session.get("session_id") or "")
+                    if not session_id:
+                        continue
+                    blocks = [b for b in session.get("blocks") or [] if isinstance(b, Mapping)]
+                    health = (session.get("session_type") in HEALTH_SESSION_TYPES
+                              or _names_health(session.get("title"))
+                              or any(b.get("block_type") == "rehab" for b in blocks))
+                    if not fighter.share_injuries and health:
+                        continue
+                    safe_blocks = [_exercise(b, None, False) for b in blocks
+                                   if fighter.share_injuries or not _names_health(b.get("display_name"))]
+                    result[(iso, session_id)] = CoachPlannedSession(
+                        id=session_id, plan_id=str(plan["id"]), day=iso,
+                        title=str(session.get("title") or "Programme session"),
+                        type=str(session.get("session_type") or "training"), blocks=safe_blocks)
+        return sorted(result.values(), key=lambda row: (row.day, row.id))
 
     return router

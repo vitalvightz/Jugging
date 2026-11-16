@@ -18,6 +18,7 @@ import { LogTraining } from "@/components/log-training";
 import { useAppSession } from "@/components/auth-provider";
 import {
   SessionDetails,
+  TrainingBlock,
   SessionRow,
   type SessionDetailsCache,
 } from "@/components/session-details";
@@ -25,14 +26,17 @@ import { Skeleton } from "@/components/skeleton";
 import { WeightTrendChart } from "@/components/weight-trend-chart";
 import {
   getFighterHistory,
+  getFighterPlan,
   getFighterSessionDetails,
   getFighterWeight,
   type getSessionDetails,
 } from "@/lib/api";
-import type { CoachFighterWeight } from "@/lib/api-schema.generated";
+import type { CoachFighterWeight, CoachPlannedSession } from "@/lib/api-schema.generated";
 import { isSafeAvatarImageUrl } from "@/lib/avatar-image-url";
 import {
   coachRpc,
+  coachConcerns,
+  coachCutStatus,
   groupCoachCheckIns,
   coachCheckInValues,
   coachRecoveryTone,
@@ -511,7 +515,7 @@ function CoachDashboard({ fighters, rosterOnly = false }: { fighters: Fighter[];
                     {s.attention
                       ? "Needs attention"
                       : s.recovery === "No concern reported"
-                        ? "On track"
+                        ? "Recovery normal"
                         : s.recovery}
                   </span>
                 }
@@ -581,8 +585,8 @@ function Avatar({ fighter }: { fighter: Fighter }) {
   );
 }
 
-function FoldableSection({ title, children }: { title: string; children: ReactNode }) {
-  return <section className={`${styles.panel} ${styles.fold}`}><details open>
+function FoldableSection({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
+  return <section id={id} className={`${styles.panel} ${styles.fold}`}><details open>
     <summary className={styles.foldTitle}><h2>{title}</h2><span aria-hidden="true">⌄</span></summary>
     <div className={styles.foldContent}>{children}</div>
   </details></section>;
@@ -598,6 +602,19 @@ function FighterOverview({
   historyKey: number;
 }) {
   const summary = fighterSummary(f);
+  const [weightResult, setWeightResult] = useState<{ key: string; weight: CoachFighterWeight | null; failed: boolean } | null>(null);
+  const weightKey = `${f.id}:${f.share_weight}:${token}`;
+  const weight = weightResult?.key === weightKey && f.share_weight ? weightResult.weight : null;
+  const weightFailed = weightResult?.key === weightKey && weightResult.failed;
+  useEffect(() => {
+    if (!f.share_weight) { setWeightResult(null); return; }
+    let active = true;
+    getFighterWeight(token, f.id).then(weight => { if (active) setWeightResult({ key: weightKey, weight, failed: false }); })
+      .catch(() => { if (active) setWeightResult({ key: weightKey, weight: null, failed: true }); });
+    return () => { active = false; };
+  }, [token, f, weightKey]);
+  const [allConcerns, setAllConcerns] = useState(false);
+  const concerns = coachConcerns(f, weight);
   const sharingKey = `${f.share_weight}:${f.share_recovery}:${f.share_injuries}:${f.allow_session_logging}`;
   const [allSparring, setAllSparring] = useState(false);
   const [allCheckIns, setAllCheckIns] = useState(false);
@@ -641,13 +658,14 @@ function FighterOverview({
           ),
         )
       : null;
-  const checkIns = groupCoachCheckIns(f.share_recovery ? f.recovery ?? [] : []);
+  const checkIns = groupCoachCheckIns(f.share_recovery ? (f.recovery ?? []).filter(row => row.day <= f.today) : []);
   const latest = checkIns[0];
   const latestSleep = latest?.readings.find(row => row.sleep != null || row.sleep_quality != null);
   const latestBody = latest?.readings.find(row => row.body != null || row.readiness != null);
-  const sleepTone = coachRecoveryTone(latestSleep?.sleep ? "sleep" : "sleep_quality", latestSleep?.sleep ?? latestSleep?.sleep_quality);
-  const bodyTone = coachRecoveryTone("readiness", latestBody?.body ?? latestBody?.readiness);
-  const warnings = coachCheckInValues(latest?.readings ?? []).filter(value => value.tone === "caution" || value.tone === "concern");
+  const recoveryRecent = Boolean(latest && latest.day >= dayOffset(f.today, -6));
+  const sleepTone = !recoveryRecent ? "unknown" : coachRecoveryTone(latestSleep?.sleep ? "sleep" : "sleep_quality", latestSleep?.sleep ?? latestSleep?.sleep_quality);
+  const bodyTone = !recoveryRecent ? "unknown" : coachRecoveryTone("readiness", latestBody?.body ?? latestBody?.readiness);
+  const warnings = coachCheckInValues(recoveryRecent ? latest?.readings ?? [] : []).filter(value => value.tone === "caution" || value.tone === "concern");
   const injuries = f.share_injuries ? f.injuries ?? [] : [];
   const injuryTone = injuries.some(injury => injury.severity === "severe") ? "concern" : injuries.some(injury => ["mild", "moderate"].includes(injury.severity)) ? "caution" : "unknown";
   const unknown = f.share_recovery ? "Not recorded" : "Not shared";
@@ -702,6 +720,22 @@ function FighterOverview({
           </div> : null}
         </div>
       </section>
+      {concerns.length ? <section className={`${styles.panel} ${styles.attentionPanel}`} aria-label="Needs attention">
+        <h2>Needs attention</h2>
+        <ul>{(allConcerns ? concerns : concerns.slice(0, 3)).map(concern => <li key={concern.id} data-recovery-tone={concern.tone}>
+          <a href={`#${concern.section}`} onClick={() => {
+            if (concern.section === "sparring") {
+              const report = f.sparring_reports?.find(report => `contact:${report.id}` === concern.id);
+              if (report) { setWeek(weekStart(report.day)); setAllSparring(true); }
+            }
+            if (concern.section === "recovery") setAllCheckIns(true);
+            const target = document.getElementById(concern.section);
+            const details = target?.querySelector("details");
+            if (details) details.open = true;
+          }}><span>{concern.reason}</span><span aria-hidden="true">›</span></a>
+        </li>)}</ul>
+        {concerns.length > 3 ? <button type="button" className="ghost-button" aria-expanded={allConcerns} onClick={() => setAllConcerns(!allConcerns)}>{allConcerns ? "Show fewer" : "View all"}</button> : null}
+      </section> : null}
       <FoldableSection title="Weekly performance"><section aria-label="Weekly performance">
         <div className={styles.sectionHeading}>
           <h2>Weekly performance</h2>
@@ -752,7 +786,7 @@ function FighterOverview({
         </div>
       </section>
       </FoldableSection>
-      <FoldableSection title="Sparring">{reports.length ? (
+      <FoldableSection id="sparring" title="Sparring">{reports.length ? (
         <section className={styles.panel}>
           <div className={styles.sectionHeading}>
             <h2>Sparring</h2>
@@ -789,14 +823,16 @@ function FighterOverview({
       {/* A new key when sharing changes drops everything these loaded
           (weigh-ins, session rows, cached session records, an open record
           sheet) and reloads it under the new permissions. */}
-      <FoldableSection title="Fight weight"><FightWeight key={`weight:${sharingKey}`} token={token} fighter={f} /></FoldableSection>
-      <FoldableSection title="Training history"><TrainingHistory
-        key={`history:${sharingKey}:${historyKey}`}
+      <FoldableSection id="fight-weight" title="Fight weight"><FightWeight key={`weight:${sharingKey}`} fighter={f} weight={weight} failed={Boolean(weightFailed)} /></FoldableSection>
+      <FoldableSection id="training-history" title="Training history"><TrainingHistory
+        key={`history:${sharingKey}:${historyKey}:${f.plan_id}:${f.today}`}
         token={token}
         athleteId={f.id}
         today={f.today}
+        fightDate={f.fight_date}
+        sport={f.sport}
       /></FoldableSection>
-      <FoldableSection title="Recovery"><section className={styles.panel}>
+      <FoldableSection id="recovery" title="Recovery"><section className={styles.panel}>
         <div className={styles.sectionHeading}><h2>Recovery</h2>{latest ? <small className={styles.muted}>Latest check-in · {formatAppDate(latest.day)}</small> : null}</div>
         {injuries.length ? <div className={styles.recoveryPriority}>
           <h3>Open injuries · {injuries.length}</h3>
@@ -810,8 +846,8 @@ function FighterOverview({
           {warnings.map(value => <p key={value.label} data-recovery-tone={value.tone}>{value.label}</p>)}
         </div> : f.share_recovery && sleepTone === "good" && bodyTone === "good" ? <p data-recovery-tone="good">Recovery check-in: No new concerns</p> : null}
         <div className={`${styles.tiles} ${styles.recoveryTiles}`}>
-          <div><span>Sleep</span><strong data-recovery-tone={sleepTone}>{latestSleep?.sleep ? humanize(latestSleep.sleep) : latestSleep?.sleep_quality != null ? `${latestSleep.sleep_quality}/5` : unknown}</strong></div>
-          <div><span>Readiness</span><strong data-recovery-tone={bodyTone}>{latestBody?.body ? humanize(latestBody.body) : latestBody?.readiness != null ? `${latestBody.readiness}/5` : unknown}</strong></div>
+          <div><span>Sleep</span><strong data-recovery-tone={sleepTone}>{latest && !recoveryRecent ? "Unknown · Older check-in" : latestSleep?.sleep ? humanize(latestSleep.sleep) : latestSleep?.sleep_quality != null ? `${latestSleep.sleep_quality}/5` : unknown}</strong></div>
+          <div><span>Readiness</span><strong data-recovery-tone={bodyTone}>{latest && !recoveryRecent ? "Unknown · Older check-in" : latestBody?.body ? humanize(latestBody.body) : latestBody?.readiness != null ? `${latestBody.readiness}/5` : unknown}</strong></div>
         </div>
         {f.share_recovery ? <>
           <h3>Recent check-ins</h3>
@@ -849,11 +885,19 @@ function TrainingHistory({
   token,
   athleteId,
   today,
+  fightDate,
+  sport,
 }: {
+  fightDate: string | null;
+  sport: string | null;
   today: string;
   token: string;
   athleteId: string;
 }) {
+  const [planned, setPlanned] = useState<CoachPlannedSession[]>([]);
+  const [planError, setPlanError] = useState(false);
+  const [openPlan, setOpenPlan] = useState<string | null>(null);
+  const [openBlock, setOpenBlock] = useState<number | null>(null);
   const [view, setView] = useState<"calendar" | "list">("calendar");
   const [month, setMonth] = useState(today.slice(0, 7));
   const [day, setDay] = useState(today);
@@ -896,6 +940,13 @@ function TrainingHistory({
       active = false;
     };
   }, [token, athleteId, attempt, fail]);
+  useEffect(() => {
+    let active = true;
+    setPlanned([]); setPlanError(false);
+    getFighterPlan(token, athleteId).then(plan => { if (active) setPlanned(plan); })
+      .catch(() => { if (active) { setPlanned([]); setPlanError(true); } });
+    return () => { active = false; };
+  }, [token, athleteId, attempt]);
   async function more() {
     if (rows && next && visible + HISTORY_STEP > completedRows.length) {
       setBusy(true);
@@ -928,6 +979,10 @@ function TrainingHistory({
     return () => { active = false; };
   }, [view, month, rows, next, token, athleteId, fail]);
   const completedRows = (rows ?? []).filter(row => (row.status === "done" || row.status === "modified") && row.completion_origin !== "day_credit" && row.training_day <= today && !(row as TrainingHistorySession & { deleted_at?: unknown }).deleted_at);
+  const futureRows = [...new Map(planned.filter(session => session.day >= today && !(rows ?? []).some(row =>
+    row.plan_id === session.plan_id && row.session_id === session.id && row.training_day === session.day
+      && ["done", "modified", "skipped"].includes(row.status))).map(session => [`${session.plan_id}:${session.day}:${session.id}`, session])).values()];
+  const dayPlans = futureRows.filter(session => session.day === day);
   const shown = view === "list" ? completedRows.slice(0, visible) : completedRows.filter(row => row.training_day === day);
   const first = new Date(`${month}-01T12:00:00Z`);
   const offset = (first.getUTCDay() + 6) % 7;
@@ -946,7 +1001,7 @@ function TrainingHistory({
           <strong>{first.toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" })}</strong>
           <div className={styles.actions}><button type="button" className={styles.pill} aria-label="Previous month" onClick={() => changeMonth(-1)}>‹</button>
             <button type="button" className={styles.pill} onClick={() => { setMonth(today.slice(0, 7)); setDay(today); }}>Today</button>
-            <button type="button" className={styles.pill} aria-label="Next month" disabled={month >= today.slice(0, 7)} onClick={() => changeMonth(1)}>›</button></div>
+            <button type="button" className={styles.pill} aria-label="Next month" onClick={() => changeMonth(1)}>›</button></div>
         </div>
         <div className={styles.trainingCalendar} role="group" aria-label="Training calendar">
           {CALENDAR_WEEKDAYS.map(label => <small key={label}>{label.slice(0, 1)}</small>)}
@@ -954,15 +1009,24 @@ function TrainingHistory({
           {Array.from({ length: count }, (_, index) => {
             const iso = `${month}-${String(index + 1).padStart(2, "0")}`;
             const sessions = completedRows.filter(row => row.training_day === iso);
-            return <button type="button" key={iso} aria-label={`${formatAppDate(iso)}: ${sessions.length} completed sessions`} aria-pressed={day === iso} aria-current={iso === today ? "date" : undefined} onClick={() => setDay(iso)}>
-              {index + 1}<span className={styles.calendarDots}>{sessions.map(row => <i key={`${row.source}:${row.id}`} data-training-tone={trainingTone(row)} aria-label={trainingTone(row)} />)}</span>
+            const plans = futureRows.filter(row => row.day === iso);
+            const fight = iso === fightDate;
+            return <button type="button" key={iso} aria-label={`${formatAppDate(iso)}: ${sessions.length} completed sessions${plans.length ? `, ${plans.length} planned` : ""}${fight ? ", Fight day" : ""}`} aria-pressed={day === iso} aria-current={iso === today ? "date" : undefined} onClick={() => setDay(iso)}>
+              {index + 1}<span className={styles.calendarDots}>{sessions.map(row => <i key={`${row.source}:${row.id}`} data-training-tone={trainingTone(row)} aria-label={trainingTone(row)} />)}{plans.map(row => <i key={`plan:${row.id}`} data-training-tone="planned" aria-label="Planned" />)}{fight ? <b className={styles.fightMarker} aria-label="Fight day">◆</b> : null}</span>
             </button>;
           })}
         </div>
-        <div className={styles.calendarLegend}>{["strength", "sparring", "rehab", "modified", "training"].map(tone => <span key={tone}><i data-training-tone={tone} />{humanize(tone)}</span>)}</div>
+        <div className={styles.calendarLegend}>{["strength", "sparring", "rehab", "modified", "training", "planned"].map(tone => <span key={tone}><i data-training-tone={tone} />{humanize(tone)}</span>)}</div>
+        <small className={styles.muted}>◆ Fight day</small>
+        {planError ? <p role="status" className={styles.muted}>Upcoming plan unavailable.</p> : null}
         {busy ? <p role="status" className={styles.muted}>Loading earlier sessions…</p> : null}
         <h3>{formatAppDate(day)}</h3>
-        {!busy && !shown.length ? <p className={styles.empty}>No completed sessions recorded for this day.</p> : null}
+        {day === fightDate ? <div className={styles.plannedSession}><strong>◆ Fight day</strong><p>{[sport ? humanize(sport) : null, formatAppDate(fightDate)].filter(Boolean).join(" · ")}</p></div> : null}
+        {dayPlans.map(session => <article key={`${session.plan_id}:${session.id}`} className={styles.plannedSession}>
+          <button type="button" className={styles.plannedToggle} aria-expanded={openPlan === session.id} onClick={() => { setOpenPlan(openPlan === session.id ? null : session.id); setOpenBlock(null); }}><strong>{session.title}</strong><span>Planned ⌄</span></button>
+          {openPlan === session.id ? session.blocks.length ? <ol>{session.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} open={openBlock === index} onToggle={() => setOpenBlock(openBlock === index ? null : index)} compact numbered={false} viewer="coach" planned />)}</ol> : <p className={styles.muted}>Exercise details unavailable.</p> : null}
+        </article>)}
+        {!busy && !shown.length && !dayPlans.length && day !== fightDate ? <p className={styles.empty}>No sessions recorded or planned for this day.</p> : null}
       </> : null}
       {error ? (
         <div className={styles.error} role="alert">
@@ -1049,37 +1113,15 @@ const RANGES: { value: BodyweightRange; label: string }[] = [
   { value: "30D", label: "30 days" },
   { value: "All", label: "All" },
 ];
-const WEIGH_INS = 7;
+const WEIGH_INS = 3;
 
 // The athlete's own weigh-ins and target, shown as recorded. Progress only:
 // nothing here suggests how to make weight.
-function FightWeight({
-  token,
-  fighter: f,
-}: {
-  token: string;
-  fighter: Fighter;
-}) {
-  const [weight, setWeight] = useState<CoachFighterWeight | null>(null);
-  const [failed, setFailed] = useState(false);
+function FightWeight({ fighter: f, weight, failed }: { fighter: Fighter; weight: CoachFighterWeight | null; failed: boolean }) {
   const [range, setRange] = useState<BodyweightRange | null>(null);
   const [picked, setPicked] = useState<number | null>(null);
   const [showAll, setShowAll] = useState(false);
-  useEffect(() => {
-    let active = true;
-    getFighterWeight(token, f.id)
-      .then((next) => {
-        if (active) setWeight(next);
-      })
-      .catch(() => {
-        if (!active) return;
-        setWeight(null);
-        setFailed(true);
-      });
-    return () => {
-      active = false;
-    };
-  }, [token, f.id]);
+  const cut = f.share_weight ? coachCutStatus(weight, f.today) : null;
   const entries = weight?.entries ?? [];
   const logged = getBodyweightEntriesWithIndex(entries).filter(
     (entry) => entry.date <= f.today,
@@ -1106,7 +1148,7 @@ function FightWeight({
           </span>
         ) : null}
       </div>
-      {failed ? (
+      {!f.share_weight ? <p className={styles.empty}>Not shared.</p> : failed ? (
         <p className={styles.empty}>Unable to load weight.</p>
       ) : !weight ? (
         <Loading />
@@ -1116,7 +1158,10 @@ function FightWeight({
         <p className={styles.empty}>No weight logged yet.</p>
       ) : (
         <>
-          <div className={styles.tiles}>
+          {cut ? <div className={styles.cutStatus} data-recovery-tone={cut.tone === "red" ? "concern" : cut.tone === "amber" ? "caution" : cut.tone === "green" ? "good" : "unknown"}>
+            <small>Weight-cut safety</small><strong>{cut.label}</strong><p>{cut.detail}</p>{weight.current_weight_recorded_at ? <small>Weight recorded · {formatAppDate(weight.current_weight_recorded_at.slice(0, 10))}</small> : null}
+          </div> : null}
+          <div className={`${styles.tiles} ${styles.weightTiles}`}>
             {[
               ["Current", formatWeight(current)],
               ["Target", target === null ? "Not set" : formatWeight(target)],
@@ -1125,7 +1170,7 @@ function FightWeight({
                 : [
                     [
                       gap === 0
-                        ? "On target"
+                        ? "At target weight"
                         : gap > 0
                           ? "Above target"
                           : "Under target",
@@ -1154,7 +1199,7 @@ function FightWeight({
             ))}
           </div>
           {logged.length ? (
-            <div className={weightStyles.trendCard}>
+            <div className={`${weightStyles.trendCard} ${styles.compactWeight}`}>
               <div className={styles.sectionHeading}>
                 <span className={styles.muted}>
                   {selected
@@ -1229,7 +1274,7 @@ function FightWeight({
               type="button"
               onClick={() => setShowAll(!showAll)}
             >
-              {showAll ? "Show fewer" : `Show all ${logged.length} weigh-ins`}
+              {showAll ? "Show fewer" : `View all ${logged.length} weigh-ins`}
             </button>
           ) : null}
         </>

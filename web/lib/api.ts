@@ -8,7 +8,7 @@ import {
   reportNetworkFailure,
 } from "@/lib/connectivity";
 import type { ExternalTrainingFields, TrainingHistoryPage, TrainingHistorySession } from "@/lib/training-history";
-import type { CoachFighterWeight, SessionDetails, ExerciseLibraryResponse, ExercisePerformancesResponse } from "@/lib/api-schema.generated";
+import type { CoachPlannedSession, CoachFighterWeight, SessionDetails, ExerciseLibraryResponse, ExercisePerformancesResponse } from "@/lib/api-schema.generated";
 import type { ManualExerciseEntry, ManualExerciseListResponse, PerformedExerciseInput } from "@/lib/api-schema.generated";
 import type { LibraryFeaturedResponse, LibraryPreview, LibrarySearchResponse } from "@/lib/api-schema.generated";
 import type { CustomDoseSuggestion, CustomPlan, CustomPlanInput } from "@/lib/api-schema.generated";
@@ -611,6 +611,10 @@ export function getFighterSessionDetails(token: string, athleteId: string, sourc
 /** A session a coach records for a connected fighter. It lands in the fighter's History, attributed to the coach. */
 export function logFighterTraining(token: string, athleteId: string, body: ExternalTrainingFields & { client_request_id: string; training_day?: string }): Promise<TrainingHistorySession> {
   return readJson(`${fighterPath(athleteId)}/training/sessions`, { method: "POST", token, body: JSON.stringify(body) });
+}
+
+export function getFighterPlan(token: string, athleteId: string): Promise<CoachPlannedSession[]> {
+  return readJson(`${fighterPath(athleteId)}/training/plan`, { token });
 }
 
 export function getFighterWeight(token: string, athleteId: string): Promise<CoachFighterWeight> {
