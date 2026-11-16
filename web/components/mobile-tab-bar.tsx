@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useAppSession } from "@/components/auth-provider";
 import { useGenerationStatus } from "@/components/generation-status-provider";
 import { HistoryHint } from "@/components/history-hint";
-import { BOTTOM_NAV_ITEMS, showsMobileTabBar } from "@/lib/beta-navigation";
+import { BOTTOM_NAV_ITEMS, showsMobileTabBar, COACH_NAV_ITEMS, isCoachWorkspace } from "@/lib/beta-navigation";
 
 const TAB_ICONS: Record<string, ReactNode> = {
   "/": (
@@ -114,7 +114,9 @@ export function MobileTabBar() {
   }
 
   // Coaches navigate from the side menu; the tabs are athlete destinations.
-  const isHidden = !isReady || me?.profile.role === "coach" || !showsMobileTabBar(pathname, Boolean(session));
+  const coachWorkspace = isCoachWorkspace(pathname, me?.profile.role);
+  const tabs = coachWorkspace ? COACH_NAV_ITEMS.slice(0, 4) : BOTTOM_NAV_ITEMS;
+  const isHidden = !isReady || !showsMobileTabBar(pathname, Boolean(session), coachWorkspace);
 
   useEffect(() => {
     const { documentElement } = document;
@@ -226,9 +228,9 @@ export function MobileTabBar() {
   }
 
   return (
-    <nav ref={barRef} className="mobile-tab-bar" aria-label={t("primary")}>
-      {BOTTOM_NAV_ITEMS.map((tab) => {
-        const active = pendingHref ? pendingHref === tab.href : isTabActive(pathname, tab.href);
+    <nav ref={barRef} className="mobile-tab-bar" style={coachWorkspace ? { gridTemplateColumns: "repeat(4, 1fr)" } : undefined} aria-label={coachWorkspace ? "Coach navigation" : t("primary")}>
+      {tabs.map((tab) => {
+        const active = pendingHref ? pendingHref === tab.href : (tab.href === "/coach" ? pathname === "/coach" : isTabActive(pathname, tab.href));
         return (
           <Link
             key={tab.href}
@@ -244,18 +246,18 @@ export function MobileTabBar() {
             }}
           >
             <span className="mobile-tab-bar-icon" aria-hidden="true">
-              {TAB_ICONS[tab.href]}
+              {TAB_ICONS[tab.href] ?? TAB_ICONS[["/", "/today", "/plans", "/history"][tabs.indexOf(tab)]]}
             </span>
             <span className="mobile-tab-bar-label">
-              {t(TAB_LABEL_KEYS[tab.href as keyof typeof TAB_LABEL_KEYS])}
+              {coachWorkspace ? tab.label : t(TAB_LABEL_KEYS[tab.href as keyof typeof TAB_LABEL_KEYS])}
             </span>
           </Link>
         );
       })}
       {/* Anchored over the History tab; a sibling, since a button can't sit in a link. */}
-      <span className="mobile-tab-bar-hint-anchor" style={{ left: `${((BOTTOM_NAV_ITEMS.findIndex((tab) => tab.href === "/history") + 0.5) / BOTTOM_NAV_ITEMS.length) * 100}%` }}>
+      {!coachWorkspace ? <span className="mobile-tab-bar-hint-anchor" style={{ left: `${((BOTTOM_NAV_ITEMS.findIndex((tab) => tab.href === "/history") + 0.5) / BOTTOM_NAV_ITEMS.length) * 100}%` }}>
         <HistoryHint className="once-hint once-hint-above" />
-      </span>
+      </span> : null}
     </nav>
   );
 }

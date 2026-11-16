@@ -66,7 +66,7 @@ type Props = {
   historyMode?: boolean; accessToken: string | null; entry?: TrainingHistorySession; repeatEntry?: TrainingHistorySession; recent?: boolean; history?: TrainingHistorySession[]; quickSession?: { activity: TrainingActivity; sport?: TrainingSport | null; session_type?: TrainingSessionType | null; duration_minutes: number; title: string; effort?: TrainingEffort | null }; onSaved?: (row: TrainingHistorySession) => void; onSparringReported?: () => void; variant?: "compact" | "tile" | "primary";
   /** Preselect a date for a new session; editing keeps the original record date. */
   initialTrainingDay?: string;
-  /** With `entry`: open its edit sheet at once, with no trigger button, and report when it closes. */
+  /** Open the logger on arrival; editing hides the trigger and reports when it closes. */
   autoOpen?: boolean; onClosed?: () => void };
 
 export function LogTraining(props: Props) {
@@ -263,7 +263,7 @@ function LogTrainingContent({ fighters, accessToken, entry, repeatEntry, recent 
   const onClosedRef = useRef(onClosed);
   useEffect(() => { onClosedRef.current = onClosed; }, [onClosed]);
   useEffect(() => {
-    if (!autoOpen || !entry || autoStarted.current) return;
+    if (!autoOpen || autoStarted.current) return;
     autoStarted.current = true;
     startEdit(entry);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
@@ -439,7 +439,7 @@ function LogTrainingContent({ fighters, accessToken, entry, repeatEntry, recent 
         {repeatEntry ? "Repeat" : <><span><strong>Repeat last session</strong><span className="muted" id={`${fieldId}-recent`}>{trainingLabel(repeatSource)} · {repeatSource.duration_minutes} min</span></span><svg className={styles.chevron} viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 5 7 7-7 7" /></svg></>}
       </button> : null}
       </Collapse>
-      {repeatEntry || autoOpen ? null : entry ? <button className={historyMode ? "history-session-delete" : styles.editButton} type="button" onClick={() => startEdit(entry)} aria-haspopup="dialog" aria-label={`Edit ${trainingTitle(entry)}`} title="Edit session">
+      {repeatEntry || (autoOpen && entry) ? null : entry ? <button className={historyMode ? "history-session-delete" : styles.editButton} type="button" onClick={() => startEdit(entry)} aria-haspopup="dialog" aria-label={`Edit ${trainingTitle(entry)}`} title="Edit session">
         {historyMode ? "Edit" : null}<svg className="ex-log-edit-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M4 20h4L18.5 9.5a2.12 2.12 0 0 0-3-3L5 17v3Z" /><path d="m14.5 7.5 3 3" /></svg>
       </button> :
         <button className={historyMode ? "history-add-session" : variant === "primary" ? `cta ${styles.primary}` : variant === "tile" ? `${tileStyles.tile} ${tileStyles.log}` : styles.actionRow} type="button" onClick={() => startEdit()} aria-haspopup="dialog" aria-label={initialTrainingDay ? "Add Session" : "Log session"}>

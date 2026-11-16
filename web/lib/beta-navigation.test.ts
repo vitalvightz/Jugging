@@ -74,3 +74,12 @@ test("isStandaloneNutritionPath matches the workspace and its sub-pages only", (
   assert.equal(isStandaloneNutritionPath("/"), false);
   assert.equal(isStandaloneNutritionPath("/plans/abc#nutrition"), false);
 });
+
+
+test("coach tabs keep authentication and consent gates free of navigation", () => {
+  assert.equal(showsMobileTabBar("/coach/fighters", true, true), true);
+  for (const path of ["/login", "/signup", "/consent", "/private-trial", "/admin"]) {
+    assert.equal(showsMobileTabBar(path, true, true), false);
+  }
+  assert.equal(showsMobileTabBar("/coach", false, true), false);
+});

@@ -65,9 +65,11 @@ import weightStyles from "./weight-tracker.module.css";
 export function CoachWorkspace({
   fighterId,
   connectionsOnly = false,
+  view = "overview",
 }: {
   fighterId?: string;
   connectionsOnly?: boolean;
+  view?: "overview" | "fighters" | "plans" | "log";
 }) {
   const { session, me, isMeHydrated } = useAppSession();
   const coach = me?.profile.role === "coach" || me?.profile.role === "admin";
@@ -87,6 +89,7 @@ export function CoachWorkspace({
             key={`${session.user_id}:${session.access_token}:${fighterId}`}
             token={session.access_token}
             fighterId={fighterId}
+            view={view}
           />
         )}
       </div>
@@ -303,7 +306,7 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
   );
 }
 
-function Fighters({ token, fighterId }: { token: string; fighterId?: string }) {
+function Fighters({ token, fighterId, view }: { token: string; fighterId?: string; view: string }) {
   const fetcher = useCallback(
     () =>
       coachRpc<Fighter[]>(token, "coach_fighters", {
@@ -323,11 +326,12 @@ function Fighters({ token, fighterId }: { token: string; fighterId?: string }) {
             ← All fighters
           </Link>
         ) : (
-          <h1>Your corner. In focus.</h1>
+          <h1>{view === "fighters" ? "Your fighters" : view === "plans" ? "Plans" : view === "log" ? "Log Session" : "Your corner. In focus."}</h1>
         )}
-        {loggingFighters.length ? (
+        {view !== "plans" && loggingFighters.length ? (
           <LogTraining
             accessToken={token}
+            autoOpen={view === "log"}
             variant="primary"
             fighters={loggingFighters.map((f) => ({
               id: f.id,
@@ -342,10 +346,11 @@ function Fighters({ token, fighterId }: { token: string; fighterId?: string }) {
           />
         ) : null}
       </div>
+      {view === "plans" ? <p className={styles.empty}>Plan assignment is coming soon.</p> : view === "log" && fighters && !loggingFighters.length ? <p className={styles.empty}>No fighters have authorised session logging.</p> : null}
       {fighterId ? <h1 className={styles.srOnly}>Fighter overview</h1> : null}
       <LoadState error={error} loading={!fighters} retry={reload} />
       {!fighters ? null : !fighterId ? (
-        <CoachDashboard fighters={fighters} />
+        view === "plans" || view === "log" ? null : <CoachDashboard fighters={fighters} rosterOnly={view === "fighters"} />
       ) : fighters[0] ? (
         <FighterOverview
           fighter={fighters[0]}
@@ -362,7 +367,7 @@ function Fighters({ token, fighterId }: { token: string; fighterId?: string }) {
   );
 }
 
-function CoachDashboard({ fighters }: { fighters: Fighter[] }) {
+function CoachDashboard({ fighters, rosterOnly = false }: { fighters: Fighter[]; rosterOnly?: boolean }) {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const rows = fighters.map((fighter) => ({
@@ -384,6 +389,7 @@ function CoachDashboard({ fighters }: { fighters: Fighter[] }) {
   );
   return (
     <>
+      {!rosterOnly ? <>
       <section className={styles.metrics} aria-label="Roster summary">
         {(
           [
@@ -442,6 +448,7 @@ function CoachDashboard({ fighters }: { fighters: Fighter[] }) {
           </ul>
         </section>
       ) : null}
+      </> : null}
       <section className={styles.panel}>
         <div className={styles.sectionHeading}>
           <h2>Your fighters</h2>
@@ -456,7 +463,7 @@ function CoachDashboard({ fighters }: { fighters: Fighter[] }) {
                 Search
               </button>
             ) : null}
-            <Link className={styles.pill} href="/settings/coach-access">
+            <Link className={styles.pill} href="/coach/invitations">
               Invite
             </Link>
           </div>

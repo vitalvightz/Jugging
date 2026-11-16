@@ -743,3 +743,43 @@ test("session logging is hidden without authorised fighters", async ({ page, bas
   await expect(page.getByRole("heading", { name: "Training history" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Log session" })).toHaveCount(0);
 });
+
+for (const role of ["coach", "admin", "athlete"]) {
+  for (const width of [390, 1440]) {
+    test(`${role} workspace navigation at ${width}px`, async ({ page, baseURL }) => {
+      await fixture(page, baseURL!, role);
+      await page.setViewportSize({ width, height: 1000 });
+      await page.goto(role === "athlete" ? "/settings" : "/coach/fighters");
+      if (role === "athlete") {
+        await expect(page.locator('.mobile-tab-bar a[href="/today"]')).toHaveCount(1);
+        await expect(page.getByRole("navigation", { name: "Coach navigation" })).toHaveCount(0);
+        return;
+      }
+      await page.reload();
+      const sidebar = page.locator('#app-sidebar');
+      if (width < 720) {
+        await expect(page.getByRole("navigation", { name: "Coach navigation" })).toBeVisible();
+        await expect(page.locator('.mobile-tab-bar a')).toHaveText(["Overview", "Fighters", "Plans", "Log Session"]);
+        await page.getByRole("button", { name: "Open navigation", exact: true }).click();
+      }
+      await expect(sidebar.getByRole("link", { name: "Invitations", exact: true })).toBeVisible();
+      await expect(sidebar.locator('a[href="/today"]')).toHaveCount(0);
+      await sidebar.getByRole("link", { name: /^Plans/ }).click();
+      await expect(page.getByText("Plan assignment is coming soon.")).toBeVisible();
+      await page.goto('/coach/log');
+      await expect(page.getByRole('dialog', { name: 'Log session' })).toBeVisible();
+      await page.goto('/coach/settings');
+      await page.getByRole("link", { name: "Coach access", exact: true }).click();
+      await expect(page).toHaveURL(/\/coach\/invitations$/);
+      await expect(page.getByRole("heading", { name: "Coach access" })).toBeVisible();
+      await page.screenshot({ path: `test-results/coach-nav-${role}-${width}.png`, fullPage: true });
+      await expect(page.locator('#app-sidebar a[href="/coach/fighters"]')).toHaveCount(1);
+      if (role === "admin") {
+        if (width < 720) await page.getByRole("button", { name: "Open navigation", exact: true }).click();
+        await sidebar.getByRole("link", { name: "Switch Workspace" }).click();
+        await expect(page).toHaveURL(/\/admin$/);
+        await expect(sidebar.locator('a[href="/today"]')).toHaveCount(1);
+      }
+    });
+  }
+}
