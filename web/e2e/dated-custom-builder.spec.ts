@@ -41,11 +41,14 @@ for (const role of ['athlete', 'coach']) for (const width of [390, 1440]) {
     await session.getByLabel('Session name', { exact: true }).fill('Technical day A');
     await session.getByRole('button', { name: 'Add session', exact: true }).click();
     await page.getByRole('button', { name: 'Copy session', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Copy session', exact: true })).toHaveCount(2);
+    await page.getByRole('button', { name: 'Paste on 2026-11-18', exact: true }).click();
+    await page.getByRole('button', { name: 'Done', exact: true }).click();
+    const calendarSessions = page.getByRole('button', { name: /^Open Technical day A on/ });
+    await expect(calendarSessions).toHaveCount(2);
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Copy session', exact: true })).toHaveCount(1);
+    await expect(calendarSessions).toHaveCount(1);
     await page.getByRole('button', { name: 'Redo', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Copy session', exact: true })).toHaveCount(2);
+    await expect(calendarSessions).toHaveCount(2);
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
     await page.getByRole('button', { name: 'Edit session 1', exact: true }).click();
     const editor = page.getByRole('dialog');

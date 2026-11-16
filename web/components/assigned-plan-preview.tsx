@@ -1,5 +1,6 @@
 import type { CustomPlan } from "@/lib/api-schema.generated";
 import { doseSummary } from "@/lib/custom-plan-dose";
+import { formatAppDate } from "@/lib/date-format";
 import styles from "./coach-workspace.module.css";
 
 export function AssignedPlanPreview({ plan }: { plan: CustomPlan }) {
@@ -7,7 +8,7 @@ export function AssignedPlanPreview({ plan }: { plan: CustomPlan }) {
     const count = session.exercises.length;
     return <section key={session.id} className={styles.planPreviewDay}>
       <header className={styles.planPreviewHead}>
-        <h3><span>{session.scheduled_date ?? session.weekday ?? "Day not set"}</span> · {session.name}</h3>
+        <h3><span>{session.scheduled_date ? formatAppDate(session.scheduled_date) : session.weekday ?? "Day not set"}</span> · {session.name}</h3>
         {count ? <span className={styles.planPreviewCount}>{count} {count === 1 ? "exercise" : "exercises"}</span> : null}
       </header>
       {!count ? <p className={styles.planPreviewEmpty}>{session.session_type === "rest" ? "Rest day" : "Coach-led session"}</p> : <ol className={styles.planPreviewList}>{session.exercises.map(exercise => {

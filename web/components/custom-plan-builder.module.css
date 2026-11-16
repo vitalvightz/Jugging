@@ -424,6 +424,16 @@
 .calendarSession strong { overflow: hidden; text-overflow: ellipsis; font-size: 10px; font-weight: 550; }
 .calendarSession small { font-size: 9px; color: #b5aab3; overflow-wrap: anywhere; }
 .calendarAdd { width: 100%; min-height: 36px; margin-top: 5px; padding: 5px 2px; border: 0; background: transparent; color: var(--text-secondary); font-size: 9px; cursor: pointer; }
+.copyBanner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid #6a2637; border-radius: 10px; background: #221319; }
+.copyBanner p { display: grid; gap: 2px; margin: 0; min-width: 0; font-size: 12px; }
+.copyBanner p strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.copyBanner p span { color: var(--text-secondary); font-size: 11px; }
+.copyBanner > div { display: flex; gap: 6px; }
+.copyBanner button { min-height: 36px; padding: 6px 12px; border: 1px solid var(--border-default); border-radius: 8px; background: var(--bg-input); color: var(--text-primary); font: inherit; font-size: 12px; cursor: pointer; }
+.copyBanner button:disabled { opacity: .4; cursor: not-allowed; }
+.copyBanner .copyDone { border-color: #bf2446; background: #84152d; }
+.calendarPaste { width: 100%; min-height: 28px; margin-top: 5px; padding: 4px 2px; border: 1px dashed #bf2446; border-radius: 6px; background: transparent; color: #f5c3cd; font: inherit; font-size: 10px; font-weight: 600; cursor: copy; }
+.calendarPaste:hover { background: #2c1720; }
 .calendarFooter { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
 .calendarFooter span { max-width: 32ch; color: var(--text-secondary); font-size: 11px; line-height: 1.6; }
 .selectedCalendarDay { margin: 12px 0 0; font-size: 12px; color: var(--text-secondary); }
@@ -455,6 +465,9 @@
   .dateSelect small { font-size: 8px; }
   .calendarToolbar { gap: 8px; }
   .calendarToolbar > strong { order: 3; flex-basis: 100%; font-size: 11px; }
+  .copyBanner > div { flex: 1 1 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .calendarPaste { flex-basis: 100%; min-height: 24px; font-size: 9px; }
+  .calendarFooter span { display: none; }
   /* Month view on phones: coloured indicators + counts; names show for the selected date below. */
   .calendarGrid[data-view="month"] .calendarDate { display: flex; flex-wrap: wrap; align-content: flex-start; min-height: 64px; padding: 2px; }
   .calendarGrid[data-view="month"] .dateSelect { flex-basis: 100%; min-height: 36px; padding: 3px; }
