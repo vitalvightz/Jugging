@@ -1423,6 +1423,7 @@ for (const width of [390, 1440]) {
     const schedule = page.getByRole('region', { name: 'Fight camp schedule', exact: true });
     const calendar = schedule.getByRole('region', { name: 'Plan calendar', exact: true });
     await expect(calendar).toBeVisible();
+    await expect(calendar.getByText('Fight day · Sat 12 Dec 2026')).toBeVisible();
     await expect(calendar.getByRole('button', { name: 'Week', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect(calendar.getByRole('button', { name: 'View Hard Sparring on Mon 16 Nov 2026', exact: true })).toBeVisible();
     await expect(calendar).not.toContainText('Unrelated session');
@@ -1436,6 +1437,8 @@ for (const width of [390, 1440]) {
     await expect(calendar.getByRole('button', { name: 'Month', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await calendar.getByRole('button', { name: 'Next calendar period', exact: true }).click();
     await calendar.getByRole('button', { name: 'View Strength & Power on Tue 01 Dec 2026', exact: true }).click();
+    await expect(calendar.locator('[data-fight-day="true"]')).toHaveCount(1);
+    await expect(calendar.locator('[data-fight-day="true"]').getByText('Fight day')).toBeVisible();
     await expect(calendar.getByRole('list', { name: 'Sessions on selected day' })).toContainText('Strength & Power');
     await expect(calendar.getByRole('button', { name: 'Next calendar period', exact: true })).toBeDisabled();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
