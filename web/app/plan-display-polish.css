@@ -499,7 +499,7 @@
 .sp-active-notes .sp-plan-notes-text .sp-collapse-title { font-size: 0.95rem; font-weight: 650; }
 .sp-plan-notes-static { cursor: default; }
 .sp-mental-duration { margin: 0; color: var(--text-secondary); font-size: 0.85rem; }
-.cm-cal-cell.cm-cal-fight-day {
+.cm-cal-cell.cm-cal-fight-day, .custom-plan-fight-day[data-fight-day="true"].custom-plan-fight-day {
   outline: 2px solid var(--brand-red);
   outline-offset: -2px;
   background: var(--brand-red-soft);
