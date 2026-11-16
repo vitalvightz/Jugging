@@ -1405,7 +1405,10 @@ for (const width of [390, 1440]) {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await fixture(page, baseURL!);
     await page.route('**/api/coach/fighters/*/plans**', route => route.fulfill({ json: [{
-      id: 'calendar-plan', name: 'Fight camp', kind: 'self_directed', sessions: [], incomplete: false,
+      id: 'calendar-plan', name: 'Fight camp', kind: 'self_directed', sessions: [
+        { id: 'off-17', name: 'Off day', scheduled_date: '2026-11-17', session_type: 'rest', exercises: [] },
+        { id: 'recovery-19', name: 'Recovery day', scheduled_date: '2026-11-19', session_type: 'recovery', exercises: [] },
+      ], incomplete: false,
       schedule_mode: 'dated', start_date: '2026-11-16', end_date: '2026-12-06',
       assignment_status: 'active', published_plan_id: 'test-plan', fighter_id: fighterId,
       created_at: '2026-11-16T12:00:00Z', updated_at: '2026-11-16T12:00:00Z',
@@ -1425,6 +1428,10 @@ for (const width of [390, 1440]) {
     await expect(calendar).toBeVisible();
     await expect(calendar.getByText('Fight day · Sat 12 Dec 2026')).toBeVisible();
     await expect(calendar.getByRole('button', { name: 'Select Tue 17 Nov 2026' })).toHaveCount(0);
+    await expect(calendar.locator('[data-rest="true"]')).toContainText('Off');
+    await expect(calendar).toContainText('Recovery');
+    await expect(calendar).toContainText('No session planned');
+    await expect(calendar.locator('[data-rest="true"]')).toHaveCount(1);
     await expect(calendar.getByRole('button', { name: 'Week', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect(calendar.getByRole('button', { name: 'View Hard Sparring on Mon 16 Nov 2026', exact: true })).toBeVisible();
     await expect(calendar).not.toContainText('Unrelated session');
@@ -1441,6 +1448,7 @@ for (const width of [390, 1440]) {
     await expect(calendar.locator('[data-fight-day="true"]')).toHaveCount(1);
     await expect(calendar.locator('[data-fight-day="true"]').getByText('Fight day')).toBeVisible();
     await expect(calendar.locator('[data-fight-day="true"]').getByRole('button')).toHaveCount(0);
+    await expect(calendar.locator('[data-outside="true"]')).not.toContainText('Rest');
     await expect(calendar.getByRole('list', { name: 'Sessions on selected day' })).toContainText('Strength & Power');
     await expect(calendar.getByRole('button', { name: 'Next calendar period', exact: true })).toBeDisabled();
     await calendar.getByRole('button', { name: 'Week', exact: true }).click();
