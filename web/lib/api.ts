@@ -1828,6 +1828,10 @@ export function listCoachPlans(token: string, fighterId: string, signal?: AbortS
 export function deleteCoachPlan(token: string, fighterId: string, id: string) {
   return requestVoid(`${coachPlansPath(fighterId)}/${encodeURIComponent(id)}`, { token, method: "DELETE" });
 }
+/** Takes back a sent plan the fighter has not answered; it becomes a draft again. */
+export function retractCoachPlan(token: string, fighterId: string, id: string) {
+  return readJson<CoachPlan>(`${coachPlansPath(fighterId)}/${encodeURIComponent(id)}/retract`, { token, method: "POST" });
+}
 export function assignCoachPlan(token: string, fighterId: string, id: string) {
   return readJson<CoachPlan>(`${coachPlansPath(fighterId)}/${encodeURIComponent(id)}/assign`, { token, method: "POST" });
 }

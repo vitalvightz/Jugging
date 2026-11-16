@@ -12,6 +12,26 @@ assignment date and complete prescription. Preview exposes Activate and Decline.
 The existing plan-switch dialog asks whether to pause or replace an overlapping
 active plan. Sending a plan never publishes it or changes the active pointer.
 
+## Retracting and removing sent plans
+
+`20261116190000_coach_plan_retract.sql` adds two actions to `coach_plan_command`
+and one column, `coach_removed_at`.
+
+- **Retract** (pending only): the plan becomes an unsent draft again and leaves the
+  fighter's list. It can be edited, re-sent or deleted. Any inert compiled copy left
+  by an interrupted acceptance is deleted, so a later send cannot reuse stale content.
+  An accepted or declined plan cannot be retracted.
+- **Remove from list** (declined or superseded): sets `coach_removed_at`, which hides
+  the row from the coach only. Consent timestamps, the fighter's view and the
+  fighter's own published plan are untouched.
+- **Active plans** can be neither retracted nor removed by the coach. The fighter
+  consented to that plan and their History hangs off it; the coach sends a revised
+  plan and the fighter chooses to switch.
+
+Both actions take the same fighter-profile lock as accept and decline, so a retract
+racing an acceptance resolves to exactly one of them. Apply this migration before
+deploying the backend: the coach plan list filters on the new column.
+
 ## Storage and consent
 
 `20261116145410_coach_plan_assignments.sql` extends `custom_training_plans`:

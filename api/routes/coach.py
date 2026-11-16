@@ -198,12 +198,36 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
         return assignment_view(store, updated)
 
     @router.delete('/api/coach/fighters/{athlete_id}/plans/{plan_id}', status_code=204)
-    def delete_coach_draft(row=Depends(authored_plan), fighter: ConnectedFighter = Depends(connected_fighter),
-                           store: AppStore = Depends(get_store)):
-        # Sent plans are the fighter's record; only unsent drafts can be removed.
-        if row.get('assigned_at') or not store.delete_coach_draft(fighter.coach.athlete_id, fighter.profile.athlete_id, str(row['id'])):
-            raise HTTPException(409, 'Only unsent drafts can be deleted.')
+    def delete_coach_plan(row=Depends(authored_plan), fighter: ConnectedFighter = Depends(connected_fighter),
+                          store: AppStore = Depends(get_store)):
+        """Take a plan out of the coach's list.
+
+        An unsent draft is deleted. A declined or superseded assignment is only
+        hidden from the coach: the fighter's consent record and their own plan
+        are theirs and stay. A pending plan is retracted first, and a plan the
+        fighter is training on cannot be removed by the coach at all.
+        """
+        coach_id, fighter_id = fighter.coach.athlete_id, fighter.profile.athlete_id
+        status = assignment_view(store, row)['assignment_status']
+        if status == 'pending':
+            raise HTTPException(409, 'Retract this plan before deleting it.')
+        if status == 'active':
+            raise HTTPException(409, "This fighter is training on this plan. Send a revised plan instead.")
+        if status == 'draft':
+            if not store.delete_coach_draft(coach_id, fighter_id, str(row['id'])):
+                raise HTTPException(409, 'This plan was sent. Refresh and try again.')
+        else:
+            store.coach_plan_command(coach_id, fighter_id, row['id'], 'remove')
         return Response(status_code=204)
+
+    @router.post('/api/coach/fighters/{athlete_id}/plans/{plan_id}/retract', response_model=CoachPlan)
+    def retract_coach_plan(row=Depends(authored_plan), fighter: ConnectedFighter = Depends(connected_fighter),
+                           store: AppStore = Depends(get_store)):
+        """Take back a sent plan the fighter has not answered; it becomes a draft again."""
+        if row.get('accepted_at') or row.get('declined_at'):
+            raise HTTPException(409, 'The fighter has already answered this plan.')
+        updated = store.coach_plan_command(fighter.coach.athlete_id, fighter.profile.athlete_id, row['id'], 'retract')
+        return assignment_view(store, updated)
 
     @router.post('/api/coach/fighters/{athlete_id}/plans/{plan_id}/assign', response_model=CoachPlan)
     def assign_coach_plan(row=Depends(authored_plan), fighter: ConnectedFighter = Depends(connected_fighter),

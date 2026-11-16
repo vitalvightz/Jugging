@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CoachPlan, CoachPlannedSession } from "@/lib/api-schema.generated";
 import { weekStart, dayOffset, humanize, type Fighter } from "@/lib/coach";
 import { sharePlanWithFighters, type ShareAttempts } from "@/lib/custom-plan-share";
-import { deleteCoachPlan, assignCoachPlan, listCoachPlans, getFighterPlan } from "@/lib/api";
+import { deleteCoachPlan, assignCoachPlan, listCoachPlans, getFighterPlan, retractCoachPlan } from "@/lib/api";
 import { CustomPlanCalendar } from "./custom-plan-calendar";
 import { CustomPlanBuilder } from "./custom-plan-builder";
 import { AssignedPlanPreview } from "./assigned-plan-preview";
@@ -105,7 +105,7 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
       {scheduleOpen === plan.id ? <AssignedSchedule plan={plan} schedule={schedule} today={fighter.today} fightDate={fighter.fight_date} /> : null}
       {preview === plan.id ? <AssignedPlanPreview plan={plan} /> : null}
       {plan.assignment_status === "draft" && plan.incomplete ? <p className={styles.planActionNote}>Finish schedule and doses to assign.</p> : null}
-      {others.length || plan.assignment_status === "draft" ? <div className={styles.planLinks}>
+      {others.length || plan.assignment_status !== "active" ? <div className={styles.planLinks}>
         {others.length ? <SharePlan token={token} plan={plan} others={others} /> : null}
         {plan.assignment_status === "draft" ? <button type="button" className={`${styles.planShareToggle} ${styles.planDeleteLink}`} disabled={pending} onClick={async () => {
           if (!window.confirm(`Delete "${plan.name}"? This can't be undone.`)) return;
@@ -114,6 +114,22 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
           catch { setError("Couldn't delete. It may have been sent already; refresh."); }
           finally { setPending(false); }
         }}>Delete draft</button> : null}
+        {/* Unanswered: the coach can take it back. Nothing has reached the fighter's training yet. */}
+        {plan.assignment_status === "pending" ? <button type="button" className={`${styles.planShareToggle} ${styles.planDeleteLink}`} disabled={pending} onClick={async () => {
+          if (!window.confirm(`Retract "${plan.name}"? ${fighter.name || "The fighter"} will no longer see it, and it goes back to your drafts.`)) return;
+          setPending(true); setError("");
+          try { const draft = await retractCoachPlan(token, fighter.id, plan.id); setPlans(rows => rows?.map(row => row.id === draft.id ? draft : row)); }
+          catch { setError("Couldn't retract. The fighter may have already answered; refresh."); }
+          finally { setPending(false); }
+        }}>Retract plan</button> : null}
+        {/* Answered and no longer in use: cleared from this list only. The fighter keeps their record. */}
+        {plan.assignment_status === "declined" || plan.assignment_status === "superseded" ? <button type="button" className={`${styles.planShareToggle} ${styles.planDeleteLink}`} disabled={pending} onClick={async () => {
+          if (!window.confirm(`Remove "${plan.name}" from your list? ${fighter.name || "The fighter"} keeps their own copy and history.`)) return;
+          setPending(true); setError("");
+          try { await deleteCoachPlan(token, fighter.id, plan.id); setPlans(rows => rows?.filter(row => row.id !== plan.id)); }
+          catch { setError("Couldn't remove. Refresh and try again."); }
+          finally { setPending(false); }
+        }}>Remove from list</button> : null}
       </div> : null}
     </article>)}
     <button type="button" className={styles.newPlanAction} onClick={() => { setEditing(""); }}><PlanIcon name="plus" />Create New Plan</button>

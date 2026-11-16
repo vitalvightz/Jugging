@@ -1462,3 +1462,72 @@ for (const width of [390, 1440]) {
     await calendar.screenshot({ path: `/tmp/assigned-schedule-${width}.png` });
   });
 }
+
+test('a coach retracts a pending plan and clears answered ones, but not the active plan', async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 390, height: 1400 });
+  await fixture(page, baseURL!);
+  const base = { kind: 'self_directed', incomplete: false, fighter_id: fighterId, coach_name: 'Test Coach', published_plan_id: null,
+    created_at: '2026-11-15T12:00:00Z', updated_at: '2026-11-15T12:00:00Z', assigned_at: '2026-11-15T12:00:00Z', sessions: [] };
+  let rows = [{ ...base, id: 'sent-plan', name: 'Sent plan', assignment_status: 'pending' },
+    { ...base, id: 'declined-plan', name: 'Declined plan', assignment_status: 'declined' },
+    { ...base, id: 'old-plan', name: 'Old plan', assignment_status: 'superseded', published_plan_id: 'old-published' },
+    { ...base, id: 'live-plan', name: 'Live plan', assignment_status: 'active', published_plan_id: 'test-plan' }];
+  const calls: string[] = [];
+  await page.route('**/api/coach/fighters/*/plans**', route => {
+    const url = new URL(route.request().url()), method = route.request().method();
+    if (url.pathname.endsWith('/retract')) {
+      calls.push('retract sent-plan');
+      rows = rows.map(row => row.id === 'sent-plan' ? { ...row, assignment_status: 'draft', assigned_at: null as unknown as string } : row);
+      return route.fulfill({ json: rows.find(row => row.id === 'sent-plan') });
+    }
+    if (method === 'DELETE') { calls.push(`delete ${url.pathname.split('/').pop()}`); return route.fulfill({ status: 204 }); }
+    return route.fulfill({ json: rows });
+  });
+  await page.goto('/coach/plans');
+  // The plan the fighter is training on offers neither.
+  const live = page.getByRole('article', { name: 'Live plan' });
+  await expect(live).toBeVisible();
+  await expect(live.getByRole('button', { name: /Retract|Remove from list|Delete/ })).toHaveCount(0);
+  // Dismissing the confirmation changes nothing.
+  const sent = page.getByRole('article', { name: 'Sent plan' });
+  page.once('dialog', dialog => dialog.dismiss());
+  await sent.getByRole('button', { name: 'Retract plan', exact: true }).click();
+  expect(calls).toEqual([]);
+  page.once('dialog', dialog => { expect(dialog.message()).toContain('goes back to your drafts'); return dialog.accept(); });
+  await sent.getByRole('button', { name: 'Retract plan', exact: true }).click();
+  // Retracted: it is a draft again, editable and deletable.
+  await expect(sent.getByRole('button', { name: 'Edit draft', exact: true })).toBeVisible();
+  await expect(sent.getByRole('button', { name: 'Delete draft', exact: true })).toBeVisible();
+  await expect(sent.getByRole('button', { name: 'Retract plan' })).toHaveCount(0);
+  for (const name of ['Declined plan', 'Old plan']) {
+    page.once('dialog', dialog => { expect(dialog.message()).toContain('keeps their own copy'); return dialog.accept(); });
+    await page.getByRole('article', { name }).getByRole('button', { name: 'Remove from list', exact: true }).click();
+    await expect(page.getByRole('article', { name })).toHaveCount(0);
+  }
+  expect(calls).toEqual(['retract sent-plan', 'delete declined-plan', 'delete old-plan']);
+  await expect(live).toBeVisible();
+});
+
+for (const width of [390, 1440]) {
+  test(`upcoming fights open the fighter's calendar in place (${width}px)`, async ({ page, baseURL }) => {
+    await page.setViewportSize({ width, height: 1200 });
+    await fixture(page, baseURL!);
+    await page.goto('/coach');
+    const fights = page.locator('section', { has: page.getByRole('heading', { name: 'Upcoming fights' }) });
+    await expect(fights).toBeVisible();
+    await expect(fights.getByRole('group', { name: 'Training calendar' })).toHaveCount(0);
+    const toggle = fights.getByRole('button', { name: "Show Test Fighter's calendar", exact: true });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await toggle.click();
+    await expect(fights.getByRole('group', { name: 'Training calendar' })).toBeVisible();
+    // Still on the overview, and the row still links to the fighter.
+    await expect(page).toHaveURL(/\/coach$/);
+    await expect(fights.getByRole('link', { name: /Test Fighter/ })).toHaveAttribute('href', `/coach/fighters/${fighterId}`);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const a11y = await new AxeBuilder({ page }).include('section:has(h2:text-is("Upcoming fights"))').analyze().catch(() => null);
+    if (a11y) expect(a11y.violations).toEqual([]);
+    if (process.env.COACH_SCREENSHOTS) await page.screenshot({ path: `${process.env.COACH_SCREENSHOTS}/fight-calendar-${width}.png`, fullPage: true });
+    await fights.getByRole('button', { name: "Hide Test Fighter's calendar", exact: true }).click();
+    await expect(fights.getByRole('group', { name: 'Training calendar' })).toHaveCount(0);
+  });
+}

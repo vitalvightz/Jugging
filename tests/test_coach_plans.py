@@ -38,8 +38,22 @@ def plans(camp):  # noqa: F811 - pytest fixture injection
                 raise HTTPException(409)
             row.update(deepcopy(fields))
         if action == 'assign':
-            row.setdefault('assigned_at', datetime.now(timezone.utc).isoformat())
+            if not row.get('assigned_at'):
+                row['assigned_at'] = datetime.now(timezone.utc).isoformat()
             row['coach_name'] = 'Coach Sam'
+        if action == 'retract':
+            if row.get('accepted_at') or row.get('declined_at'):
+                raise HTTPException(409)
+            for plan_id, plan in list(store.plans.items()):
+                if plan.get('status') == 'review_required' and (plan.get('planning_brief') or {}).get('coach_assignment_id') == identity:
+                    del store.plans[plan_id]
+            row.update(assigned_at=None, coach_name=None)
+        if action == 'remove':
+            answered = row.get('accepted_at') or row.get('declined_at')
+            active = row.get('accepted_at') and row.get('published_plan_id') and store.get_active_plan_id(fighter) == row['published_plan_id']
+            if not answered or active:
+                raise HTTPException(409)
+            row.setdefault('coach_removed_at', datetime.now(timezone.utc).isoformat())
         return deepcopy(row)
     def respond(actor, identity, action, **kw):
         row = store.custom_plans[identity]
@@ -64,7 +78,8 @@ def plans(camp):  # noqa: F811 - pytest fixture injection
         return True
     store.coach_plan_command = command
     store.respond_coach_plan = respond
-    store.list_coach_plans = lambda actor, fighter: [deepcopy(r) for r in store.custom_plans.values() if r['athlete_id'] == actor and r.get('fighter_id') == fighter]
+    store.list_coach_plans = lambda actor, fighter: [deepcopy(r) for r in store.custom_plans.values()
+                                                     if r['athlete_id'] == actor and r.get('fighter_id') == fighter and not r.get('coach_removed_at')]
     store.list_plan_assignments = lambda fighter: [deepcopy(r) for r in store.custom_plans.values() if r.get('fighter_id') == fighter and r.get('assigned_at')]
     return client, store, connection
 
@@ -255,3 +270,74 @@ def test_coach_deletes_only_unsent_drafts(plans):
     other, _ = create(client)
     assert client.delete(f"{BASE}/plans/{other['id']}", headers=AS_FIGHTER).status_code in (403, 404)
     assert other['id'] in store.custom_plans
+
+
+def test_coach_retracts_a_pending_plan_back_to_an_editable_draft(plans):
+    client, store, _ = plans
+    sent = send(client, create(client)[0])
+    assert [row['id'] for row in client.get(ASSIGNMENTS, headers=AS_FIGHTER).json()] == [sent['id']]
+    response = client.post(f"{BASE}/plans/{sent['id']}/retract", headers=AS_COACH)
+    assert response.status_code == 200, response.text
+    assert response.json()['assignment_status'] == 'draft' and response.json()['assigned_at'] is None
+    # Gone from the fighter's list, and it can no longer be accepted or declined.
+    assert client.get(ASSIGNMENTS, headers=AS_FIGHTER).json() == []
+    assert client.post(f"{ASSIGNMENTS}/{sent['id']}/activate", headers=AS_FIGHTER, json={}).status_code in (404, 409)
+    assert client.post(f"{ASSIGNMENTS}/{sent['id']}/decline", headers=AS_FIGHTER).status_code in (404, 409)
+    assert store.get_active_plan_id(FIGHTER) is None
+    # A retry is harmless; the draft is editable, deletable and can be sent again.
+    assert client.post(f"{BASE}/plans/{sent['id']}/retract", headers=AS_COACH).status_code == 200
+    assert client.put(f"{BASE}/plans/{sent['id']}", headers=AS_COACH, json=body()).status_code == 200
+    assert send(client, sent)['assignment_status'] == 'pending'
+    assert client.post(f"{BASE}/plans/{sent['id']}/retract", headers=AS_COACH).status_code == 200
+    assert client.delete(f"{BASE}/plans/{sent['id']}", headers=AS_COACH).status_code == 204
+    assert sent['id'] not in store.custom_plans
+
+
+def test_an_answered_plan_cannot_be_retracted(plans):
+    client, store, _ = plans
+    accepted = send(client, create(client)[0])
+    assert client.post(f"{ASSIGNMENTS}/{accepted['id']}/activate", headers=AS_FIGHTER, json={}).status_code == 200
+    declined = send(client, create(client)[0])
+    assert client.post(f"{ASSIGNMENTS}/{declined['id']}/decline", headers=AS_FIGHTER).status_code == 200
+    for row in (accepted, declined):
+        assert client.post(f"{BASE}/plans/{row['id']}/retract", headers=AS_COACH).status_code == 409
+        assert store.custom_plans[row['id']]['assigned_at']
+    # The fighter keeps the plan they accepted.
+    assert store.get_active_plan_id(FIGHTER) == store.custom_plans[accepted['id']]['published_plan_id']
+    # Only the coach who wrote it, with a live connection, can retract.
+    pending = send(client, create(client)[0])
+    assert client.post(f"{BASE}/plans/{pending['id']}/retract", headers=AS_FIGHTER).status_code in (403, 404)
+    assert store.custom_plans[pending['id']]['assigned_at']
+
+
+def test_coach_removes_answered_plans_from_their_list_but_never_the_active_one(plans):
+    client, store, _ = plans
+    first = send(client, create(client)[0])
+    assert client.post(f"{ASSIGNMENTS}/{first['id']}/activate", headers=AS_FIGHTER, json={}).status_code == 200
+    declined = send(client, create(client)[0])
+    assert client.post(f"{ASSIGNMENTS}/{declined['id']}/decline", headers=AS_FIGHTER).status_code == 200
+    pending = send(client, create(client)[0])
+
+    def coach_list():
+        return {row['id']: row['assignment_status'] for row in client.get(f"{BASE}/plans", headers=AS_COACH).json()}
+
+    assert coach_list() == {first['id']: 'active', declined['id']: 'declined', pending['id']: 'pending'}
+    # The plan the fighter is training on, and one they have not answered, stay.
+    assert client.delete(f"{BASE}/plans/{first['id']}", headers=AS_COACH).status_code == 409
+    assert client.delete(f"{BASE}/plans/{pending['id']}", headers=AS_COACH).status_code == 409
+    active_before = store.get_active_plan_id(FIGHTER)
+    # A declined plan leaves the coach's list; the fighter's record is untouched.
+    assert client.delete(f"{BASE}/plans/{declined['id']}", headers=AS_COACH).status_code == 204
+    assert declined['id'] not in coach_list() and store.custom_plans[declined['id']]['declined_at']
+    assert declined['id'] in [row['id'] for row in client.get(ASSIGNMENTS, headers=AS_FIGHTER).json()]
+    assert client.delete(f"{BASE}/plans/{declined['id']}", headers=AS_COACH).status_code == 404
+    # Once the fighter moves to another plan, the old one is superseded and removable.
+    second = send(client, create(client)[0])
+    assert client.post(f"{ASSIGNMENTS}/{second['id']}/activate", headers=AS_FIGHTER, json={'overlap_action': 'replace'}).status_code == 200
+    assert coach_list()[first['id']] == 'superseded'
+    assert client.delete(f"{BASE}/plans/{first['id']}", headers=AS_COACH).status_code == 204
+    assert first['id'] not in coach_list()
+    row = store.custom_plans[first['id']]
+    assert row['accepted_at'] and row['published_plan_id'] in store.plans
+    assert store.get_active_plan_id(FIGHTER) != active_before
+    assert store.get_active_plan_id(FIGHTER) == store.custom_plans[second['id']]['published_plan_id']

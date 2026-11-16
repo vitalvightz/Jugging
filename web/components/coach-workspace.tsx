@@ -412,6 +412,7 @@ function CoachDashboard({ token, fighters, rosterOnly = false }: { token: string
       weightPending: eligible && !result,
     };
   });
+  const [calendarFor, setCalendarFor] = useState<string | null>(null);
   const pending = rows.some(row => row.weightPending);
   const attention = rows.filter(row => row.concerns.length).sort((a, b) => compareCoachConcerns(a.concerns[0], b.concerns[0]));
   const upcoming = rows
@@ -483,6 +484,18 @@ function CoachDashboard({ token, fighters, rosterOnly = false }: { token: string
                   </span>
                 }
                 detail={`${humanize(f.sport)} · ${formatAppDate(f.fight_date!)}`}
+                below={<div className={styles.fightCalendar}>
+                  <button type="button" className={styles.pill} aria-expanded={calendarFor === f.id}
+                    aria-label={`${calendarFor === f.id ? "Hide" : "Show"} ${f.name || "fighter"}'s calendar`}
+                    onClick={() => setCalendarFor(calendarFor === f.id ? null : f.id)}>
+                    {calendarFor === f.id ? "Hide calendar" : "Calendar"}
+                  </button>
+                  {/* The fighter's own calendar: done, planned and fight day, under the same sharing rules. */}
+                  {calendarFor === f.id ? <TrainingHistory
+                    key={`fight-calendar:${f.id}:${f.connection_id}:${f.plan_id}:${f.today}`}
+                    token={token} athleteId={f.id} today={f.today} fightDate={f.fight_date} sport={f.sport}
+                  /> : null}
+                </div>}
               />
             ))}
           </ul>
@@ -558,12 +571,15 @@ function FighterRow({
   detail,
   extra,
   end,
+  below,
 }: {
   fighter: Fighter;
   lead: ReactNode;
   detail: ReactNode;
   extra?: ReactNode;
   end?: ReactNode;
+  /** Shown under the row, outside its link (e.g. an expandable calendar). */
+  below?: ReactNode;
 }) {
   return (
     <li>
@@ -576,6 +592,7 @@ function FighterRow({
         </span>
         {end}
       </Link>
+      {below}
     </li>
   );
 }
