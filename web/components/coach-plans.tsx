@@ -6,6 +6,7 @@ import type { CoachPlan, CoachPlannedSession } from "@/lib/api-schema.generated"
 import { weekStart, dayOffset, humanize, type Fighter } from "@/lib/coach";
 import { sharePlanWithFighters, type ShareAttempts } from "@/lib/custom-plan-share";
 import { deleteCoachPlan, assignCoachPlan, listCoachPlans, getFighterPlan } from "@/lib/api";
+import { CustomPlanCalendar } from "./custom-plan-calendar";
 import { CustomPlanBuilder } from "./custom-plan-builder";
 import { AssignedPlanPreview } from "./assigned-plan-preview";
 import { StatusIcon } from "./record-icons";
@@ -101,7 +102,7 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
           }} aria-label="Assign to fighter"><span className={styles.mobilePlanText}>Assign</span><span className={styles.desktopPlanText}>Assign to fighter</span></button>
         </> : null}
       </div>
-      {scheduleOpen === plan.id ? <section className={styles.planSchedule} aria-label={`${plan.name} schedule`}><h3>Training schedule</h3>{!schedule ? <p role="status">Loading schedule…</p> : schedule.filter(row => row.plan_id === plan.published_plan_id).length ? <ul>{schedule.filter(row => row.plan_id === plan.published_plan_id).map(row => <li key={`${row.day}:${row.id}`}><span>{formatAppDate(row.day)}</span><strong>{row.title}</strong></li>)}</ul> : <p>No sessions scheduled.</p>}</section> : null}
+      {scheduleOpen === plan.id ? <AssignedSchedule plan={plan} schedule={schedule} today={fighter.today} /> : null}
       {preview === plan.id ? <AssignedPlanPreview plan={plan} /> : null}
       {plan.assignment_status === "draft" && plan.incomplete ? <p className={styles.planActionNote}>Finish schedule and doses to assign.</p> : null}
       {others.length || plan.assignment_status === "draft" ? <div className={styles.planLinks}>
@@ -117,6 +118,24 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
     </article>)}
     <button type="button" className={styles.newPlanAction} onClick={() => { setEditing(""); }}><PlanIcon name="plus" />Create New Plan</button>
   </>;
+}
+
+/** Reuse the builder calendar with the athlete's published dates and no editing actions. */
+export function AssignedSchedule({ plan, schedule, today }: { plan: CoachPlan; schedule?: CoachPlannedSession[]; today: string }) {
+  const rows = schedule?.filter(row => row.plan_id === plan.published_plan_id);
+  const dates = rows?.map(row => row.day).sort();
+  const start = plan.start_date ?? dates?.[0] ?? today;
+  const end = plan.end_date ?? dates?.at(-1) ?? start;
+  const [selected, setSelected] = useState(today < start ? start : today > end ? end : today);
+  const sessions = rows?.map(row => ({
+    id: `${row.day}:${row.id}`, name: row.title, scheduled_date: row.day,
+    session_type: row.type, exercises: row.blocks.filter(block => block.kind === "exercise").map(() => ({})),
+  })) ?? [];
+  return <section className={styles.planSchedule} aria-label={`${plan.name} schedule`}>
+    <h3>Training schedule</h3>
+    {!schedule ? <p role="status">Loading schedule…</p> : !rows?.length ? <p>No sessions scheduled.</p> :
+      <CustomPlanCalendar sessions={sessions} start={start} end={end} selected={selected < start ? start : selected > end ? end : selected} onSelect={setSelected} readOnly />}
+  </section>;
 }
 
 /** Gives other fighters their own copy of this plan, without touching the original. */

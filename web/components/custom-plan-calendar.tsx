@@ -5,9 +5,10 @@ import { formatAppDate } from '@/lib/date-format';
 import styles from './custom-plan-builder.module.css';
 
 type Session = { id: string; name: string; scheduled_date?: string | null; session_type?: string; exercises: { incomplete?: boolean }[] };
-export function CustomPlanCalendar({ sessions, start, end, selected, onSelect, onAdd, onMove, onOpen, onDuplicateWeek, onCopy, onMoveMany, copying, onStartCopying, onStopCopying }: {
+export function CustomPlanCalendar({ sessions, start, end, selected, onSelect, onAdd, onMove, onOpen, onDuplicateWeek, onCopy, onMoveMany, copying, onStartCopying, onStopCopying, readOnly = false }: {
   sessions: Session[]; start: string; end: string; selected: string; onSelect: (day: string) => void;
-  onAdd: (day: string) => void; onMove: (id: string, day: string) => void; onOpen: (id: string) => void; onDuplicateWeek: () => void;
+  readOnly?: boolean;
+  onAdd?: (day: string) => void; onMove?: (id: string, day: string) => void; onOpen?: (id: string) => void; onDuplicateWeek?: () => void;
   onCopy?: (ids: string[], days: string[]) => void; onMoveMany?: (ids: string[], day: string) => void;
   copying?: { ids: string[]; move?: boolean; sessions: Session[] }; onStartCopying?: (ids: string[], move?: boolean) => void; onStopCopying?: () => void;
 }) {
@@ -27,7 +28,7 @@ export function CustomPlanCalendar({ sessions, start, end, selected, onSelect, o
   const label = copying ? (copying.sessions.length === 1 ? copying.sessions[0].name : `${copying.sessions.length} sessions`) : '';
   const from = copying?.sessions[0]?.scheduled_date ?? undefined;
   const selectedIds = sessions.filter(s => s.scheduled_date === selected).map(s => s.id);
-  return <section className={styles.datedCalendar} aria-label="Plan calendar">
+  return <section className={styles.datedCalendar} aria-label="Plan calendar" data-readonly={readOnly}>
     <div className={styles.calendarToolbar}>
       <div role="group" aria-label="Calendar view">{(['week', 'month'] as const).map(mode => <button type="button" key={mode} aria-pressed={view === mode} onClick={() => { setView(mode); }}>{mode === 'week' ? 'Week' : 'Month'}</button>)}</div>
       <strong>{view === 'week' ? `${formatAppDate(first)} – ${formatAppDate(last)}` : new Date(`${month}-01T12:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</strong>
@@ -47,21 +48,21 @@ export function CustomPlanCalendar({ sessions, start, end, selected, onSelect, o
         const outside = day < start || day > end;
         const daily = sessions.filter(s => s.scheduled_date === day);
         return <div key={day} className={styles.calendarDate} data-selected={selected === day} data-outside={outside}
-          onDragOver={event => { if (!outside) event.preventDefault(); }} onDrop={event => { event.preventDefault(); if (!outside) { const id = event.dataTransfer.getData('text/plain'); if (!sessions.some(s => s.id === id)) return; if ((event.altKey || event.ctrlKey || event.metaKey) && onCopy) onCopy([id], [day]); else onMove(id, day); } }}>
+          onDragOver={event => { if (!readOnly && !outside) event.preventDefault(); }} onDrop={event => { event.preventDefault(); if (!readOnly && !outside) { const id = event.dataTransfer.getData('text/plain'); if (!sessions.some(s => s.id === id)) return; if ((event.altKey || event.ctrlKey || event.metaKey) && onCopy) onCopy([id], [day]); else onMove?.(id, day); } }}>
           <button type="button" className={styles.dateSelect} disabled={outside} aria-pressed={selected === day} aria-label={`Select ${formatAppDate(day)}`} onClick={() => { onSelect(day); }}><span>{day.slice(8).replace(/^0/, '')}</span><small>{daily.length ? `${daily.length} ${daily.length === 1 ? 'session' : 'sessions'}` : 'Rest'}</small></button>
-          {daily.map(session => <button type="button" key={session.id} className={styles.calendarSession} data-type={session.session_type} draggable
-            onDragStart={event => { event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData('text/plain', session.id); }} onClick={() => { onSelect(day); onOpen(session.id); }} aria-label={`Open ${session.name} on ${formatAppDate(day)}`}><strong>{session.name}</strong><small>{session.exercises.length} {session.exercises.length === 1 ? 'exercise' : 'exercises'}{session.exercises.some(e => e.incomplete) ? ' · Finish dose' : ''}</small></button>)}
-          {!outside && copying?.sessions.length && onCopy ? (copying.move ? <button type="button" className={styles.calendarPaste} aria-label={`Move to ${day}`} disabled={day === from} onClick={() => onMoveMany?.(copying.ids, day)}>Move here</button> : <button type="button" className={styles.calendarPaste} aria-label={`Paste on ${day}`} onClick={() => onCopy(copying.ids, [day])}>Paste</button>)
-            : !outside ? <button type="button" className={styles.calendarAdd} aria-label={`Add session on ${day}`} onClick={() => { onSelect(day); onAdd(day); }}>Add session</button> : null}
+          {daily.map(session => <button type="button" key={session.id} className={styles.calendarSession} data-type={session.session_type} draggable={!readOnly}
+            onDragStart={event => { event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData('text/plain', session.id); }} onClick={() => { onSelect(day); onOpen?.(session.id); }} aria-label={`${readOnly ? 'View' : 'Open'} ${session.name} on ${formatAppDate(day)}`}><strong>{session.name}</strong><small>{session.exercises.length} {session.exercises.length === 1 ? 'exercise' : 'exercises'}{session.exercises.some(e => e.incomplete) ? ' · Finish dose' : ''}</small></button>)}
+          {!readOnly && !outside && copying?.sessions.length && onCopy ? (copying.move ? <button type="button" className={styles.calendarPaste} aria-label={`Move to ${day}`} disabled={day === from} onClick={() => onMoveMany?.(copying.ids, day)}>Move here</button> : <button type="button" className={styles.calendarPaste} aria-label={`Paste on ${day}`} onClick={() => onCopy(copying.ids, [day])}>Paste</button>)
+            : !readOnly && !outside ? <button type="button" className={styles.calendarAdd} aria-label={`Add session on ${day}`} onClick={() => { onSelect(day); onAdd?.(day); }}>Add session</button> : null}
         </div>;
       })}
     </div>
-    <div className={styles.calendarFooter}><span>Drag to move. Hold Alt while dropping to copy.</span><div className={styles.dayActions} role="group" aria-label="Selected day actions">
+    {!readOnly ? <div className={styles.calendarFooter}><span>Drag to move. Hold Alt while dropping to copy.</span><div className={styles.dayActions} role="group" aria-label="Selected day actions">
       {onStartCopying ? <><button type="button" disabled={!selectedIds.length} onClick={() => onStartCopying(selectedIds)}>Copy day</button>
       <button type="button" disabled={!selectedIds.length} onClick={() => onStartCopying(selectedIds, true)}>Move day</button></> : null}
-      <button type="button" onClick={onDuplicateWeek}>Duplicate week</button></div></div>
+      <button type="button" onClick={onDuplicateWeek}>Duplicate week</button></div></div> : null}
     <p className={styles.selectedCalendarDay}>{formatAppDate(selected)}</p>
-    {view === 'month' ? <ul className={styles.selectedDaySessions} aria-label="Sessions on selected day">
+    {view === 'month' || readOnly ? <ul className={styles.selectedDaySessions} aria-label="Sessions on selected day">
       {sessions.filter(s => s.scheduled_date === selected).map(s => <li key={s.id} data-type={s.session_type}>{s.name}<small>{s.exercises.length} {s.exercises.length === 1 ? 'exercise' : 'exercises'}</small></li>)}
     </ul> : null}
   </section>;

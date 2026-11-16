@@ -1397,3 +1397,51 @@ test('a coach deletes an unsent draft after confirming', async ({ page, baseURL 
   await expect(page.getByRole('article', { name: 'Old draft' })).toHaveCount(0);
   expect(deleted).toEqual(['draft-plan']);
 });
+
+for (const width of [390, 1440]) {
+  test(`assigned schedule uses the builder calendar without editing at ${width}px`, async ({ page, baseURL }) => {
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await fixture(page, baseURL!);
+    await page.route('**/api/coach/fighters/*/plans**', route => route.fulfill({ json: [{
+      id: 'calendar-plan', name: 'Fight camp', kind: 'self_directed', sessions: [], incomplete: false,
+      schedule_mode: 'dated', start_date: '2026-11-16', end_date: '2026-12-13',
+      assignment_status: 'active', published_plan_id: 'test-plan', fighter_id: fighterId,
+      created_at: '2026-11-16T12:00:00Z', updated_at: '2026-11-16T12:00:00Z',
+    }] }));
+    await page.route('**/api/coach/fighters/*/training/plan**', route => route.fulfill({ json: [
+      { id: 'spar', plan_id: 'test-plan', day: '2026-11-16', title: 'Hard Sparring', type: 'sparring', blocks: [] },
+      { id: 'spar', plan_id: 'test-plan', day: '2026-11-23', title: 'Light Technical', type: 'skill', blocks: [] },
+      { id: 'strength', plan_id: 'test-plan', day: '2026-12-01', title: 'Strength & Power', type: 'strength_power', blocks: [] },
+      { id: 'other', plan_id: 'another-plan', day: '2026-11-16', title: 'Unrelated session', type: 'skill', blocks: [] },
+    ] }));
+    await page.goto('/coach/plans');
+    await expect(page).toHaveURL(/\/coach\/plans$/);
+    await page.getByRole('button', { name: 'View Schedule', exact: true }).click();
+    await page.setViewportSize({ width, height: 1000 });
+    const schedule = page.getByRole('region', { name: 'Fight camp schedule', exact: true });
+    const calendar = schedule.getByRole('region', { name: 'Plan calendar', exact: true });
+    await expect(calendar).toBeVisible();
+    await expect(calendar.getByRole('button', { name: 'Week', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(calendar.getByRole('button', { name: 'View Hard Sparring on Mon 16 Nov 2026', exact: true })).toBeVisible();
+    await expect(calendar).not.toContainText('Unrelated session');
+    await expect(calendar.getByRole('button', { name: /Add session|Copy|Move|Duplicate|Paste/ })).toHaveCount(0);
+    await expect(calendar.locator('[draggable="true"]')).toHaveCount(0);
+    await calendar.getByRole('button', { name: 'Next calendar period', exact: true }).click();
+    await expect(calendar.getByRole('button', { name: 'View Light Technical on Mon 23 Nov 2026', exact: true })).toBeVisible();
+    await calendar.getByRole('button', { name: 'View Light Technical on Mon 23 Nov 2026', exact: true }).click();
+    await expect(calendar.getByRole('list', { name: 'Sessions on selected day' })).toContainText('Light Technical');
+    await calendar.getByRole('button', { name: 'Month', exact: true }).click();
+    await expect(calendar.getByRole('button', { name: 'Month', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await calendar.getByRole('button', { name: 'Next calendar period', exact: true }).click();
+    await calendar.getByRole('button', { name: 'View Strength & Power on Tue 01 Dec 2026', exact: true }).click();
+    await expect(calendar.getByRole('list', { name: 'Sessions on selected day' })).toContainText('Strength & Power');
+    await expect(calendar.getByRole('button', { name: 'Next calendar period', exact: true })).toBeDisabled();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const a11y = await new AxeBuilder({ page }).include('[aria-label="Fight camp schedule"]').analyze();
+    expect(a11y.violations).toEqual([]);
+    expect(errors).toEqual([]);
+    await calendar.screenshot({ path: `/tmp/assigned-schedule-${width}.png` });
+  });
+}
