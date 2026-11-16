@@ -614,7 +614,7 @@ function FighterOverview({
     return () => { active = false; };
   }, [token, f, weightKey]);
   const [allConcerns, setAllConcerns] = useState(false);
-  const concerns = coachConcerns(f, weight);
+  const concerns = coachConcerns(f, weight, Boolean(weightFailed));
   const sharingKey = `${f.share_weight}:${f.share_recovery}:${f.share_injuries}:${f.allow_session_logging}`;
   const [allSparring, setAllSparring] = useState(false);
   const [allCheckIns, setAllCheckIns] = useState(false);

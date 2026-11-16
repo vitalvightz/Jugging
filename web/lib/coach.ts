@@ -275,13 +275,15 @@ export function coachCutStatus(weight: import("./api-schema.generated").CoachFig
   return status ?? { label: "Unknown", tone: "unknown" as const, detail: "Fight date, current weight or target is missing." };
 }
 
-export function coachConcerns(f: Fighter, weight: import("./api-schema.generated").CoachFighterWeight | null): CoachConcern[] {
+export function coachConcerns(f: Fighter, weight: import("./api-schema.generated").CoachFighterWeight | null, weightFailed = false): CoachConcern[] {
   const concerns: CoachConcern[] = [];
-  const cut = f.share_weight ? coachCutStatus(weight, f.today) : null;
+  const canAssessWeight = f.share_weight && (f.age == null || f.age >= 18);
+  const cut = canAssessWeight ? coachCutStatus(weight, f.today) : null;
+  if (canAssessWeight && weightFailed) concerns.push({ id: "weight:unavailable", category: "weight", tone: "unknown", reason: "Weight status unavailable", section: "fight-weight" });
   if (cut && cut.tone !== "green") concerns.push({ id: "weight", category: "weight", tone: cut.tone === "red" ? "concern" : cut.tone === "amber" ? "caution" : "unknown", reason: cut.tone === "unknown" ? `Weight-cut safety unknown · ${cut.detail}` : `${cut.label}${weight?.cut_assessment?.days_until_fight != null ? ` · ${weight.cut_assessment.days_until_fight} days to fight` : ""}`, section: "fight-weight" });
   if (f.share_injuries) {
     for (const report of f.sparring_reports ?? []) {
-      if (report.day > f.today || !(report.rocked || report.head_contact === "heavy")) continue;
+      if (report.day < dayOffset(f.today, -6) || report.day > f.today || !(report.rocked || report.head_contact === "heavy")) continue;
       concerns.push({ id: `contact:${report.id}`, category: "contact", tone: "concern", reason: `${report.day} · ${report.rocked ? "Athlete reported being rocked" : "Heavy head contact reported"}`, section: "sparring" });
     }
     for (const injury of f.injuries ?? []) {

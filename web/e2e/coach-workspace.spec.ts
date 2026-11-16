@@ -1109,3 +1109,40 @@ test("mobile weight keeps recent weigh-ins compact with full history available",
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await section.screenshot({ path: "/tmp/coach-weight-mobile.png" });
 });
+
+for (const age of [25, 17]) {
+  test(`failed weight request shows authorised availability without a minor cut alert at age ${age}`, async ({ page, baseURL }) => {
+    await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, age, share_recovery: false, share_injuries: false }]);
+    await page.route("**/api/coach/fighters/*/weight", route => route.fulfill({ status: 503, json: { detail: "Unavailable" } }));
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.goto(`/coach/fighters/${fighterId}`);
+    await expect(page.locator('#fight-weight').getByText("Unable to load weight.", { exact: true })).toBeVisible();
+    const attention = page.getByRole("region", { name: "Needs attention" });
+    if (age < 18) {
+      await expect(attention).toHaveCount(0);
+    } else {
+      await expect(attention.getByRole("listitem")).toHaveAttribute("data-recovery-tone", "unknown");
+      await page.locator('#fight-weight > details > summary').click();
+      await attention.getByRole("link", { name: /Weight status unavailable/ }).click();
+      await expect(page.locator('#fight-weight > details')).toHaveAttribute("open", "");
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}
+
+test("old contact reports stay in sparring history while only recent concerns need attention", async ({ page, baseURL }) => {
+  const report = { id: "recent", day: "2026-11-14", intensity: "technical", rounds: 3, round_seconds: 180, head_contact: "heavy", rocked: true };
+  await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, share_recovery: false, share_injuries: true, share_weight: false,
+    sparring_reports: [{ ...report, id: "normal", day: fighter.today, head_contact: "none", rocked: false }, report, { ...report, id: "old", day: "2026-11-01" }],
+  }]);
+  await page.goto(`/coach/fighters/${fighterId}`);
+  const attention = page.getByRole("region", { name: "Needs attention" });
+  await expect(attention.getByRole("listitem")).toHaveCount(1);
+  await expect(attention).toContainText("2026-11-14");
+  await expect(attention).not.toContainText("2026-11-01");
+  await page.getByRole("button", { name: "Previous week", exact: true }).click();
+  await page.getByRole("button", { name: "Previous week", exact: true }).click();
+  await expect(page.locator('#sparring').getByText("Sun 01 Nov 2026", { exact: true })).toBeVisible();
+  await expect(page.locator('#sparring').getByText(/Athlete reported being rocked/)).toBeVisible();
+  await expect(attention.getByRole("listitem")).toHaveCount(1);
+});

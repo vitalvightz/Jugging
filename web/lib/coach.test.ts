@@ -239,3 +239,26 @@ test("severity outranks category and adherence requires an explicitly skipped pl
   assert.deepEqual(coachConcerns(f, amber).map(c => c.category), ["contact", "weight", "adherence"]);
   assert.ok(!coachConcerns({ ...f, sessions: [] }, amber).some(c => c.category === "adherence"));
 });
+
+test("current contact alerts use the existing seven-day window without hiding a recent warning behind a normal report", () => {
+  const report = { id: "recent", day: "2026-11-09", rounds: 3, intensity: "technical", round_seconds: 180, head_contact: "heavy", rocked: true };
+  const f: Fighter = { ...blank, share_injuries: true, sparring_reports: [
+    { ...report, id: "normal", day: blank.today, head_contact: "none", rocked: false },
+    report,
+    { ...report, id: "old", day: "2026-11-08" },
+    { ...report, id: "future", day: "2026-11-16" },
+  ] };
+  assert.deepEqual(coachConcerns(f, null).map(concern => concern.id), ["contact:recent"]);
+  assert.equal(f.sparring_reports?.length, 4); // Keep all reports available to History.
+});
+
+test("failed authorised weight reads produce a grey linked status, but loading and unshared/minor data do not", () => {
+  const f: Fighter = { ...blank, age: 25, share_weight: true };
+  assert.deepEqual(coachConcerns(f, null, true), [{ id: "weight:unavailable", category: "weight", tone: "unknown", reason: "Weight status unavailable", section: "fight-weight" }]);
+  assert.deepEqual(coachConcerns(f, null), []);
+  assert.deepEqual(coachConcerns({ ...f, share_weight: false }, null, true), []);
+  assert.deepEqual(coachConcerns({ ...f, age: 17 }, null, true), []);
+  assert.deepEqual(coachConcerns({ ...f, age: 17 }, riskWeight), []);
+  assert.equal(coachConcerns({ ...f, age: 18 }, null, true)[0]?.tone, "unknown");
+  assert.equal(coachConcerns({ ...f, age: undefined }, null, true)[0]?.reason, "Weight status unavailable");
+});
