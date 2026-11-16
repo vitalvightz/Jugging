@@ -26,7 +26,7 @@ export const entries: LibraryEntry[] = ["Medicine Ball Hook Throw", "Standing Ca
   log_format: null,
 }));
 
-export async function setup(page: Page, baseURL: string, role = "athlete", fightDate?: string) {
+export async function setup(page: Page, baseURL: string, role = "athlete", fightDate?: string, latestPlanFightDate?: string | null) {
   await isolateFromNetwork(page, baseURL);
   await page.route("https://fonts.googleapis.com/**", (route) => route.fulfill({ contentType: "text/css", body: "" }));
   // These journeys drive the plan's day list; the Plan page itself opens on the
@@ -225,7 +225,11 @@ export async function setup(page: Page, baseURL: string, role = "athlete", fight
           private_trial_ack_at: "2026-01-01T12:00:00Z",
         },
         plan_count: 0,
-        latest_plan: null,
+        latest_plan: latestPlanFightDate === undefined ? null : {
+          plan_id: 'latest-plan', athlete_id: athlete, full_name: 'Carlos', plan_name: 'Latest plan',
+          fight_date: latestPlanFightDate ?? '', technical_style: ['boxing'],
+          created_at: '2026-11-15T12:00:00Z', status: 'ready', activation_state: 'eligible',
+        },
         latest_intake: fightDate ? { fight_date: fightDate, no_scheduled_fight: false, athlete: {} } : null,
         username_rate_limit: {},
       });
