@@ -110,6 +110,11 @@ for (const width of [320, 390, 1280, 1600]) {
     await expect(exercises.last()).toContainText("80 kg");
     await expect(exercises.last()).toContainText("rest 120s");
     await expect(page.getByText("Monday", { exact: true })).toBeVisible();
+    const calendarBounds = await page.getByRole("group", { name: "Weekly training calendar", exact: true }).boundingBox();
+    const sessionBounds = await page.getByRole("region", { name: "Session 1", exact: true }).boundingBox();
+    const addSessionBounds = await page.getByRole("button", { name: "Add another session on Monday", exact: true }).boundingBox();
+    expect(sessionBounds!.y - (calendarBounds!.y + calendarBounds!.height)).toBeGreaterThanOrEqual(16);
+    expect(addSessionBounds!.y - (sessionBounds!.y + sessionBounds!.height)).toBeGreaterThanOrEqual(12);
     await page.getByRole("button", { name: "Edit dose for My bag rounds" }).click();
     await expect(page.getByLabel("Work duration", { exact: true })).toHaveValue("5");
     await page.getByLabel("Exercise name").fill("My renamed rounds");

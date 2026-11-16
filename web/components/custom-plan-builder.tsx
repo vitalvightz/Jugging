@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { formatAppDate, formatAppDateRange } from "@/lib/date-format";
+import { customPlanInput } from "@/lib/custom-plan-share";
 import { trackProductEvent, productEventIdentity, deleteCustomPlan, getCommunityExercise, getCustomDoseSuggestion, getCustomPlan, getExerciseLibrary, getTrainingLibraryEntry, publishCustomPlan, saveCustomPlan } from "@/lib/api";
 import type { MeResponse, StructuredBlock } from "@/lib/types";
 import { ExerciseRow } from "./structured-plan-renderer";
@@ -651,41 +652,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
     try {
       const saved = await saveCustomPlan(
         accessToken,
-        {
-          name: draft.name,
-          schedule_mode: draft.schedule_mode ?? "weekly", start_date: draft.start_date ?? null, end_date: draft.end_date ?? null,
-          sessions: draft.sessions.map((s) => ({
-            id: s.id,
-            name: s.name,
-            weekday: s.weekday, scheduled_date: s.scheduled_date ?? null,
-            session_type: s.session_type ?? "mixed",
-            exercises: s.exercises.map((e) =>
-              e.origin === "manual"
-                ? {
-                    id: e.id,
-                    origin: e.origin,
-                    name: e.name,
-                    equipment: e.equipment,
-                    exercise_type: e.exercise_type,
-                    notes: e.notes,
-                    media_id: e.media_id,
-                    community_id: e.community_id,
-                    community_revision_id: e.community_revision_id,
-                    dose: e.dose,
-                    coaching_cues: e.coaching_cues,
-                    stop_rules: e.stop_rules,
-                  }
-                : {
-                    id: e.id,
-                    origin: "catalogue" as const,
-                    catalogue_id: e.catalogue_id,
-                    dose: e.dose,
-                    coaching_cues: e.coaching_cues,
-                    stop_rules: e.stop_rules,
-                  },
-            ),
-          })),
-        },
+        customPlanInput(draft),
         draft.id,
         coachFighterId,
         requestId.current,
@@ -800,7 +767,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
             <label>Schedule<select aria-label="Schedule mode" value={draft.schedule_mode ?? 'weekly'} onChange={event => selectScheduleMode(event.target.value as 'weekly' | 'dated')}><option value="dated">Calendar</option><option value="weekly">Weekly</option></select></label>
             {isDated ? <><label>Start date<input type="date" value={startInput ?? draft.start_date!} onChange={event => setStartInput(event.target.value)} onBlur={() => { const next = startInput; setStartInput(undefined); if (next && next !== draft.start_date) resizeDates(next, Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!) + 86400000) / 604800000)); }} /></label><label>Weeks<input aria-label="Plan duration in weeks" type="number" min={1} max={12} value={Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!) + 86400000) / 604800000)} onChange={event => resizeDates(draft.start_date!, Number(event.target.value))} /></label></> : null}
           </div>
-          <div className={isDated ? styles.calendarEditorLayout : undefined}>
+          <div className={isDated ? styles.calendarEditorLayout : styles.weeklyEditorLayout}>
           <div>
           {isDated ? <CustomPlanCalendar sessions={draft.sessions} start={draft.start_date!} end={draft.end_date!} selected={selectedDate} onSelect={setSelectedDate} onAdd={addDatedSession} onMove={moveSession} onCopy={(ids, days) => copyTo(draft.sessions.filter(s => ids.includes(s.id)), days)} onMoveMany={moveTo} copying={copying ? { ...copying, sessions: draft.sessions.filter(s => copying.ids.includes(s.id)) } : undefined} onStartCopying={(ids, move) => setCopying({ ids, move })} onStopCopying={() => setCopying(null)}
             onOpen={id => openSession(draft.sessions.find(s => s.id === id)!)} onDuplicateWeek={() => { try { change(current => ({ ...current, sessions: duplicateCalendarWeek(current.sessions, selectedDate, current.start_date!, current.end_date!) })); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to copy week.'); } }} /> : <div className={styles.calendar} role="group" aria-label="Weekly training calendar">
@@ -817,7 +784,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
             })}
           </div>}
           </div>
-          <div>
+          <div className={styles.sessionPanel}>
           <div className={styles.dayView}>
             {daySessions.length ? daySessions.map(renderSession) : (
               <div className={styles.emptyDay}>

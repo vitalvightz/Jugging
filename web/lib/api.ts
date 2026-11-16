@@ -1825,6 +1825,9 @@ function coachPlansPath(fighterId: string) { return `/api/coach/fighters/${encod
 export function listCoachPlans(token: string, fighterId: string, signal?: AbortSignal) {
   return readJson<CoachPlan[]>(coachPlansPath(fighterId), { token, signal });
 }
+export function deleteCoachPlan(token: string, fighterId: string, id: string) {
+  return requestVoid(`${coachPlansPath(fighterId)}/${encodeURIComponent(id)}`, { token, method: "DELETE" });
+}
 export function assignCoachPlan(token: string, fighterId: string, id: string) {
   return readJson<CoachPlan>(`${coachPlansPath(fighterId)}/${encodeURIComponent(id)}/assign`, { token, method: "POST" });
 }

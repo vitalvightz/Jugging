@@ -1334,3 +1334,66 @@ test('desktop plan filters keep pending assignments accessible and separate draf
   await expect(page.getByRole('article')).toHaveCount(4);
   await expect(filters.getByRole('button', { name: 'All Plans', exact: true })).toHaveAttribute('aria-pressed', 'true');
 });
+
+test('a coach sends an assigned plan to other fighters as independent copies', async ({ page, baseURL }) => {
+  const jayId = "00000000-0000-4000-8000-000000000004", kaiId = "00000000-0000-4000-8000-000000000005";
+  await page.setViewportSize({ width: 390, height: 1000 });
+  await fixture(page, baseURL!, "coach", false, {}, [
+    { ...fighter, name: "Michael" },
+    { ...fighter, id: jayId, connection_id: "jay-connection", name: "Jay" },
+    { ...fighter, id: kaiId, connection_id: "kai-connection", name: "Kai" },
+  ]);
+  const source = { id: 'source-plan', name: 'Fight camp', kind: 'self_directed', incomplete: false, fighter_id: fighterId, assignment_status: 'pending',
+    coach_name: 'Test Coach', assigned_at: '2026-11-15T12:00:00Z', published_plan_id: null, created_at: '2026-11-15T12:00:00Z', updated_at: '2026-11-15T12:00:00Z',
+    schedule_mode: 'weekly', start_date: null, end_date: null,
+    sessions: [{ id: 'session-a', name: 'Strength', weekday: 'Monday', scheduled_date: null, session_type: 'strength_power', exercises: [] }] };
+  const created: { fighter: string; body: { name: string; sessions: { id: string }[] } }[] = [];
+  const assigned: string[] = [];
+  await page.route('**/api/coach/fighters/*/plans**', route => {
+    const url = new URL(route.request().url()), target = url.pathname.split('/')[4];
+    if (url.pathname.endsWith('/assign')) { assigned.push(target); return route.fulfill({ json: { ...source, id: `copy-${target}`, fighter_id: target } }); }
+    if (route.request().method() === 'POST') {
+      created.push({ fighter: target, body: route.request().postDataJSON() });
+      return route.fulfill({ status: 201, json: { ...source, id: `copy-${target}`, fighter_id: target, assignment_status: 'draft' } });
+    }
+    return route.fulfill({ json: target === fighterId ? [source] : [] });
+  });
+  await page.goto('/coach/plans');
+  const card = page.getByRole('article', { name: 'Fight camp', exact: true });
+  await card.getByRole('button', { name: 'Send to other fighters', exact: true }).click();
+  const panel = card.getByRole('group', { name: 'Send a copy to' });
+  await expect(panel.getByLabel('Michael')).toHaveCount(0);
+  await panel.getByLabel('Jay', { exact: true }).check();
+  await panel.getByLabel('Kai', { exact: true }).check();
+  await panel.getByRole('button', { name: 'Send to 2', exact: true }).click();
+  await expect(card.getByRole('status')).toHaveText('Assigned to Jay, Kai.');
+  expect(created.map(row => row.fighter).sort()).toEqual([jayId, kaiId]);
+  expect(assigned.sort()).toEqual([jayId, kaiId]);
+  expect(created.every(row => row.body.name === 'Fight camp' && row.body.sessions[0].id !== 'session-a')).toBe(true);
+  const a11y = await new AxeBuilder({ page }).include('[aria-label="Fight camp"]').analyze();
+  expect(a11y.violations).toEqual([]);
+});
+
+test('a coach deletes an unsent draft after confirming', async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 390, height: 1000 });
+  await fixture(page, baseURL!);
+  const base = { kind: 'self_directed', incomplete: false, fighter_id: fighterId, coach_name: 'Test Coach', published_plan_id: null,
+    created_at: '2026-11-15T12:00:00Z', updated_at: '2026-11-15T12:00:00Z', sessions: [] };
+  const rows = [{ ...base, id: 'draft-plan', name: 'Old draft', assignment_status: 'draft', assigned_at: null },
+    { ...base, id: 'sent-plan', name: 'Sent plan', assignment_status: 'pending', assigned_at: '2026-11-15T12:00:00Z' }];
+  const deleted: string[] = [];
+  await page.route('**/api/coach/fighters/*/plans**', route => {
+    if (route.request().method() === 'DELETE') { deleted.push(new URL(route.request().url()).pathname.split('/').pop()!); return route.fulfill({ status: 204 }); }
+    return route.fulfill({ json: rows });
+  });
+  await page.goto('/coach/plans');
+  await expect(page.getByRole('article', { name: 'Sent plan' }).getByRole('button', { name: 'Delete draft' })).toHaveCount(0);
+  page.once('dialog', dialog => dialog.dismiss());
+  await page.getByRole('article', { name: 'Old draft' }).getByRole('button', { name: 'Delete draft', exact: true }).click();
+  await expect(page.getByRole('article', { name: 'Old draft' })).toBeVisible();
+  expect(deleted).toEqual([]);
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('article', { name: 'Old draft' }).getByRole('button', { name: 'Delete draft', exact: true }).click();
+  await expect(page.getByRole('article', { name: 'Old draft' })).toHaveCount(0);
+  expect(deleted).toEqual(['draft-plan']);
+});

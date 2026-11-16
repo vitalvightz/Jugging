@@ -4792,6 +4792,13 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
         except PostgrestAPIError as exc:
             raise HTTPException(409, "Plan unavailable or connection changed. Refresh and try again.") from exc
 
+    def delete_coach_draft(self, coach_id: str, fighter_id: str, plan_id: str) -> bool:
+        # Only never-sent drafts: the assigned_at filter makes a concurrent send win.
+        response = (self.client.table("custom_training_plans").delete()
+                    .eq("athlete_id", coach_id).eq("fighter_id", fighter_id).eq("id", plan_id)
+                    .is_("assigned_at", "null").execute())
+        return bool(getattr(response, "data", None))
+
     def list_coach_plans(self, coach_id: str, fighter_id: str) -> list[dict[str, Any]]:
         return self.client.table("custom_training_plans").select("*").eq("athlete_id", coach_id).eq("fighter_id", fighter_id).order("updated_at", desc=True).execute().data or []
 

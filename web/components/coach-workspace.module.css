@@ -701,3 +701,26 @@
   .multiplePlanFilters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
   .planFilters button { min-width: 0; padding: 9px 4px; font-size: 11px; white-space: nowrap; }
 }
+
+/* Send a plan to other fighters: a quiet link that expands into a checklist. */
+.planLinks { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: center; gap: 4px 16px; margin-top: 12px; }
+.planLinks > .planShare:has(.planSharePanel) { flex-basis: 100%; }
+.planShare { text-align: center; }
+.planDeleteLink { color: #e2738a; }
+.planDeleteLink:hover { color: #ff8fa5; }
+:global(html[data-theme="light"]) .planDeleteLink { color: #b3122f; }
+.planShareToggle { min-height: 36px; padding: 6px 10px; border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: 12px; font-weight: 550; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.planShareToggle:hover { color: var(--text-primary); }
+.planSharePanel { display: grid; gap: 12px; margin: 0; padding: 14px; border: 1px solid #292c32; border-radius: 12px; background: #131519; text-align: left; }
+.planSharePanel legend { padding: 0 4px; color: var(--text-secondary); font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
+.planShareList { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.planShareList label, .planShareAssign { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border: 1px solid #292c32; border-radius: 10px; font-size: 13px; cursor: pointer; }
+.planShareList label:has(input:checked) { border-color: #bf2446; background: #221319; }
+.planShareAssign { border: 0; padding: 0; min-height: 32px; color: var(--text-secondary); font-size: 12px; }
+.planShareList input, .planShareAssign input { width: 18px; height: 18px; margin: 0; accent-color: #ca1032; }
+.planShareActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.planShareActions > button { min-height: 44px; margin: 0; }
+.planShareStatus { margin: 8px 0 0; color: var(--text-secondary); font-size: 12px; }
+:global(html[data-theme="light"]) .planSharePanel { background: var(--bg-surface); border-color: var(--border-default); }
+:global(html[data-theme="light"]) .planShareList label { border-color: var(--border-default); }
+:global(html[data-theme="light"]) .planShareList label:has(input:checked) { background: #fbe9ed; border-color: #d82a4b; }

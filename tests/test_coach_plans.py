@@ -209,3 +209,18 @@ def test_interrupted_consent_leaves_an_inert_plan_and_retry_reuses_it(plans):
     result = client.post(f"{ASSIGNMENTS}/{row['id']}/activate", headers=AS_FIGHTER, json={})
     assert result.status_code == 200, result.text
     assert result.json()['plan_id'] == plan['id'] and len(store.plans) == 1
+
+
+def test_coach_deletes_only_unsent_drafts(plans):
+    client, store, _ = plans
+    draft, _ = create(client)
+    response = client.delete(f"{BASE}/plans/{draft['id']}", headers=AS_COACH)
+    assert response.status_code == 204, response.text
+    assert draft['id'] not in store.custom_plans
+    assert client.delete(f"{BASE}/plans/{draft['id']}", headers=AS_COACH).status_code == 404
+    sent = send(client, create(client)[0])
+    assert client.delete(f"{BASE}/plans/{sent['id']}", headers=AS_COACH).status_code == 409
+    assert sent['id'] in store.custom_plans
+    other, _ = create(client)
+    assert client.delete(f"{BASE}/plans/{other['id']}", headers=AS_FIGHTER).status_code in (403, 404)
+    assert other['id'] in store.custom_plans

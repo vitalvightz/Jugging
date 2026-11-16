@@ -33,6 +33,15 @@ for (const role of ['athlete', 'coach']) for (const width of [390, 1440]) {
       await page.getByRole('button', { name: 'Create New Plan', exact: true }).click();
     } else await page.goto('/plans/custom');
     await expect(page.getByRole('region', { name: 'Plan calendar', exact: true })).toBeVisible();
+    const calendarBounds = await page.getByRole('region', { name: 'Plan calendar', exact: true }).boundingBox();
+    const restBounds = await page.getByRole('heading', { name: 'Rest day', exact: true }).locator('..').boundingBox();
+    if (width >= 1100) {
+      expect(calendarBounds!.width / restBounds!.width).toBeGreaterThan(1.8);
+      expect(restBounds!.x - calendarBounds!.x - calendarBounds!.width).toBeGreaterThanOrEqual(16);
+    } else {
+      expect(restBounds!.y - calendarBounds!.y - calendarBounds!.height).toBeGreaterThanOrEqual(16);
+    }
+    await page.screenshot({ path: test.info().outputPath(`dated-empty-${role}-${width}.png`), fullPage: true });
     await page.getByLabel('Plan name', { exact: true }).fill(`Dated ${role} block`);
     await page.getByLabel('Start date', { exact: true }).fill('2026-11-16');
     await page.getByRole('button', { name: width <= 600 ? 'Add session on Monday' : 'Add session on 2026-11-16', exact: true }).click();
@@ -87,7 +96,7 @@ for (const role of ['athlete', 'coach']) for (const width of [390, 1440]) {
     const a11y = await new AxeBuilder({ page }).include('[aria-label="Custom training plan builder"]').analyze();
     expect(a11y.violations).toEqual([]);
     await page.mouse.move(0, 0);
-    await page.screenshot({ path: `test-results/dated-builder-${role}-${width}.png`, fullPage: false });
+    await page.screenshot({ path: test.info().outputPath(`dated-builder-${role}-${width}.png`), fullPage: false });
     await page.getByRole('button', { name: 'Save draft', exact: true }).click();
     if (role === 'coach') await expect(builder.getByText(/Draft saved/)).toBeVisible();
     else await expect(page).toHaveURL(/plan=/);

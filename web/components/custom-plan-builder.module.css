@@ -205,7 +205,7 @@
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.sessionActions { display: flex; gap: 8px; flex: 0 0 auto; }
+.sessionActions { display: flex; flex-wrap: wrap; gap: 8px; flex: 0 1 auto; }
 
 /* Who can see a self-made exercise, stated before the share action. */
 .visibility { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--border-default); border-radius: 12px; }
@@ -225,7 +225,7 @@
 }
 
 /* Seven tiles on one row at every width; the selected day drives the single-day view below. */
-.calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: clamp(4px, 1vw, 8px); }
 .dayTile {
   display: grid;
   justify-items: center;
@@ -277,7 +277,7 @@
 /* Labelled add actions: a bare plus icon read as decoration, not as "add a session". */
 .addSession { gap: 8px; font-weight: 600; }
 .addSession svg, .deleteButton svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.emptyDay .addSession { width: auto; margin-top: 4px; }
+.emptyDay .addSession { width: auto; margin-top: 4px; min-height: 44px; padding: 0 14px; font-size: 14px; }
 .deleteButton:hover, .deleteButton:focus-visible { color: var(--danger-ink); border-color: var(--danger-ink); }
 .dangerButton { color: var(--danger-ink); }
 .weekday[data-attention="true"] { color: var(--progress-gold); }
@@ -403,6 +403,9 @@
 .scheduleSettings { display: grid; grid-template-columns: 2fr 1.4fr .6fr; gap: 12px; }
 .editor select { min-height: 44px; width: 100%; padding: 10px; color: var(--text-primary); background: var(--bg-input); border: 1px solid var(--border-default); border-radius: var(--radius-btn); font: inherit; }
 .calendarEditorLayout { display: grid; gap: 20px; min-width: 0; align-items: start; }
+.weeklyEditorLayout { display: grid; gap: 20px; min-width: 0; }
+.sessionPanel { display: grid; gap: 16px; min-width: 0; }
+.sessionPanel > .addSession { justify-self: start; }
 .calendarEditorLayout > div { min-width: 0; }
 .datedCalendar { min-width: 0; padding: 16px; background: var(--bg-panel); border: 1px solid var(--border-default); border-radius: 16px; }
 .calendarToolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; margin-bottom: 16px; }
@@ -455,9 +458,10 @@
 .quickControls button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--border-default); border-radius: 7px; background: var(--bg-input); color: var(--text-secondary); font-size: 11px; }
 .quickDose { padding: 14px; border: 1px solid var(--border-default); border-radius: 10px; background: var(--bg-panel); }
 @media (min-width: 1100px) {
-  .calendarEditorLayout { grid-template-columns: minmax(0, 1.3fr) minmax(340px, 1fr); }
+  .calendarEditorLayout { grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); }
   .calendarEditorLayout > div:first-child { position: sticky; top: 24px; }
   .calendarEditorLayout .dayView { grid-template-columns: minmax(0, 1fr); }
+  .calendarEditorLayout .emptyDay { padding: 20px 12px; }
 }
 @media (max-width: 600px) {
   .scheduleSettings { grid-template-columns: 2fr 1fr; }
