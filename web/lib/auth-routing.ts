@@ -46,9 +46,7 @@ export function getAuthenticatedLandingHref(me: MeResponse | null, next?: string
     return "/admin";
   }
 
-  // Coach and gym_owner are not live yet. No account currently holds these
-  // roles, but route defensively to the protected "Coming soon" pages so they
-  // never land in the athlete intake/dashboard flow if one is ever assigned.
+  // Role-specific workspaces keep coaches and gym owners out of athlete intake.
   if (me?.profile.role === "coach") {
     return "/coach";
   }

@@ -1,0 +1,780 @@
+.workspace {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 8px 0 28px;
+  max-width: 1100px;
+  margin-inline: auto;
+}
+.header,
+.profileHeader,
+.sectionHeading,
+.identity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.header {
+  margin-bottom: 2px;
+}
+.header h1 {
+  font-size: clamp(24px, 2.8vw, 34px);
+  font-weight: 650;
+  letter-spacing: -0.045em;
+  line-height: 1.15;
+  margin: 8px 0;
+}
+.header p {
+  margin: 0;
+}
+.header :global(.kicker) {
+  font-size: 10px;
+}
+.profileHeader {
+  flex-direction: row-reverse;
+}
+.profileHeader > div:first-child :global(.kicker) {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.profileHeader .actions {
+  flex: 1;
+}
+.profileHeader .actions :global(.ghost-button) {
+  padding: 5px 0;
+  background: none;
+  border: 0;
+  min-height: 32px;
+  font-size: 12px;
+}
+.profileHeader .actions :global(.ghost-button):last-child {
+  margin-left: auto;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.workspace :global(.ghost-button),
+.workspace :global(.cta) {
+  font-size: 12px;
+  min-height: 36px;
+  padding: 8px 14px;
+  border-radius: 9px;
+}
+.workspace :global(.kicker) {
+  color: #ee7b8b;
+}
+.workspace :global(.muted),
+.muted {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.metrics,
+.performance {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.metric {
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  background: var(--bg-panel);
+  padding: 16px 18px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+}
+.metric > span,
+.eyebrow {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.09em;
+  margin: 0 0 5px;
+}
+.metric strong {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.metric small {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.performance .metric {
+  gap: 7px;
+  padding: 15px 18px;
+}
+.performance .metric strong {
+  font-size: 25px;
+}
+.panel {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border-default);
+  border-radius: 15px;
+  background: var(--bg-panel);
+}
+.workspace h2 {
+  font-size: 16px;
+  line-height: 1.3;
+  letter-spacing: -0.025em;
+  font-weight: 600;
+  margin: 0;
+}
+.workspace h3 {
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: 600;
+  margin: 0;
+}
+.sectionHeading {
+  margin-bottom: 12px;
+  gap: 10px;
+}
+.sectionHeading h2 {
+  margin: 0;
+}
+.eyebrow {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+.panel > .sectionHeading > div > .eyebrow {
+  color: #ee7b8b;
+}
+.flag,
+.status,
+.pill {
+  font-size: 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+  background: transparent;
+  color: var(--text-secondary);
+  line-height: 1.3;
+}
+.flag {
+  color: #ff9eaa;
+  border-color: #67363f;
+  background: #341b22;
+}
+.concern {
+  color: #ff879a !important;
+}
+.positive {
+  color: #83ddb2;
+  font-size: 12px;
+}
+.roster {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.roster > li + li {
+  border-top: 1px solid var(--border-default);
+}
+.rowLink {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  text-decoration: none;
+  color: inherit;
+  min-width: 0;
+  border-radius: 5px;
+}
+.rowLink:hover {
+  background: var(--bg-surface);
+}
+.roster > li:last-child > .rowLink {
+  padding-bottom: 2px;
+}
+.roster > li:first-child > .rowLink {
+  padding-top: 4px;
+}
+.rowCopy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  flex: 1;
+}
+.rowCopy > strong {
+  font-size: 14px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+.rowCopy > small {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.rowEnd {
+  color: var(--text-muted);
+}
+.rowEnd svg {
+  width: 14px;
+  height: 14px;
+}
+.rosterState {
+  display: grid;
+  gap: 6px;
+  font-size: 10px;
+  text-align: right;
+  max-width: 110px;
+}
+.rosterState small {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.signal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: #ff879a;
+  background: #302029;
+  flex-shrink: 0;
+}
+.countdown {
+  background: var(--bg-surface-alt);
+  border-radius: 10px;
+  min-width: 44px;
+  padding: 10px 8px;
+  display: grid;
+  gap: 3px;
+  text-align: center;
+}
+.countdown strong {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1;
+}
+.countdown small {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: 0 0 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface-alt);
+  font-size: 12px;
+  font-weight: 600;
+}
+.search {
+  display: block;
+  margin: 4px 0 8px;
+}
+.search input,
+.invite input {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 11px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-input);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+}
+.empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 12px 0 4px;
+  line-height: 1.5;
+}
+.empty strong {
+  color: var(--text-primary);
+  font-size: 14px;
+}
+.empty p {
+  margin-bottom: 0;
+}
+.method {
+  margin-top: 13px;
+  border-top: 1px solid var(--border-default);
+  padding-top: 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.method summary,
+.sessionDetails summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.method p {
+  font-size: 11px;
+  line-height: 1.6;
+}
+.footnote {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  margin: 6px 0 0;
+}
+.quietIcon {
+  color: var(--text-muted);
+  display: flex;
+}
+.identity {
+  justify-content: flex-start;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-default);
+  margin-bottom: 16px;
+}
+.identity h2 {
+  font-size: 19px;
+}
+.identity > .concern {
+  margin-left: auto;
+}
+.campGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+}
+.campGrid > div {
+  min-width: 0;
+}
+.campGrid strong {
+  font-size: 14px;
+  line-height: 1.4;
+}
+.campGrid small {
+  display: block;
+  font-size: 11px;
+  margin-top: 5px;
+}
+.bigNumber {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 30px;
+  line-height: 1;
+  margin: 7px 0;
+}
+.bigNumber small {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.workspace progress {
+  display: block;
+  width: 100%;
+  height: 5px;
+  border: 0;
+  border-radius: 99px;
+  overflow: hidden;
+  appearance: none;
+  background: var(--border-default);
+  margin: 10px 0;
+}
+.workspace progress::-webkit-progress-bar {
+  background: var(--border-default);
+  border-radius: 99px;
+}
+.workspace progress::-webkit-progress-value {
+  background: var(--brand-red);
+  border-radius: 99px;
+}
+.workspace progress::-moz-progress-bar {
+  background: var(--brand-red);
+}
+.workspace .strengthProgress::-webkit-progress-value {
+  background: #83ddb2;
+}
+.workspace .strengthProgress::-moz-progress-bar {
+  background: #83ddb2;
+}
+.weekControls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.weekControls button {
+  cursor: pointer;
+  min-height: 30px;
+  padding: 5px 10px;
+  font: inherit;
+  color: var(--text-secondary);
+}
+.weekControls button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.performance {
+  margin-top: 10px;
+}
+.activity {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.activity > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-default);
+  padding: 13px 0;
+  font-size: 12px;
+}
+.activity > li:last-child {
+  border-bottom: 0;
+}
+.activity strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.activity small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 10px;
+  margin-top: 5px;
+}
+.activity > li > span {
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.sessionDetails {
+  margin-top: 10px;
+}
+.sessionDetails > summary {
+  text-align: center;
+  list-style: none;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  padding: 5px 12px;
+}
+.sessionDetails[open] > summary {
+  margin-bottom: 12px;
+}
+.sessionDetails h3 {
+  margin: 16px 0 3px;
+}
+.recoveryTiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  border-top: 1px solid var(--border-default);
+  padding-top: 14px;
+  margin-top: 14px;
+}
+.recoveryTiles > div {
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--bg-surface-alt);
+  min-width: 0;
+}
+.recoveryTiles span {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  display: block;
+  margin-bottom: 5px;
+}
+.recoveryTiles strong {
+  font-size: 12px;
+  line-height: 1.3;
+  display: block;
+}
+.subsection {
+  padding: 14px 0 0;
+  margin-top: 14px;
+  border-top: 1px solid var(--border-default);
+}
+.subsection .sectionHeading {
+  margin-bottom: 5px;
+}
+.manageSummary {
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+.invite {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  margin: 18px 0 12px;
+}
+.invite label {
+  display: grid;
+  gap: 7px;
+  flex: 1;
+  font-size: 12px;
+}
+.connectionList {
+  display: grid;
+  gap: 10px;
+}
+.connection {
+  border-top: 1px solid var(--border-default);
+  padding: 16px 0 0;
+  margin-top: 10px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.connection p {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.consent {
+  padding: 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  flex-basis: 100%;
+  display: grid;
+  gap: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.consent label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.consent input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--brand-red);
+  flex-shrink: 0;
+}
+.workspace :is(button, a, input, summary):focus-visible {
+  outline: 2px solid #ee7b8b;
+  outline-offset: 3px;
+}
+.srOnly {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+:global(html[data-theme="light"]) .workspace :global(.kicker),
+:global(html[data-theme="light"]) .eyebrow,
+:global(html[data-theme="light"]) .concern {
+  color: #a11029 !important;
+}
+:global(html[data-theme="light"]) .flag {
+  color: #8b1827;
+  background: #fff0f1;
+  border-color: #d7a1a8;
+}
+@media (max-width: 700px) {
+  .workspace {
+    gap: 12px;
+  }
+  .header {
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .header h1 {
+    font-size: 25px;
+  }
+  .header :global(.kicker) {
+    display: none;
+  }
+  .header .actions {
+    padding-top: 2px;
+  }
+  .header .actions button {
+    min-height: 30px;
+    padding: 5px 9px;
+    font-size: 10px;
+  }
+  .metrics,
+  .performance {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .metric {
+    padding: 13px 15px;
+    gap: 6px;
+  }
+  .metric strong {
+    font-size: 27px;
+  }
+  .metric > span {
+    font-size: 9px;
+  }
+  .metric small {
+    font-size: 10px;
+  }
+  .panel {
+    padding: 15px;
+    border-radius: 14px;
+  }
+  .panel h2,
+  .workspace h2 {
+    font-size: 15px;
+  }
+  .rosterState {
+    max-width: 83px;
+    font-size: 9px;
+  }
+  .rosterState small {
+    font-size: 9px;
+  }
+  .rowCopy > strong {
+    font-size: 13px;
+  }
+  .rowCopy > small {
+    font-size: 10px;
+  }
+  .rowLink {
+    gap: 10px;
+    padding: 13px 0;
+  }
+  .workspace .header p {
+    font-size: 11px;
+  }
+  .weekControls {
+    gap: 4px;
+    font-size: 9px;
+  }
+  .weekControls button {
+    font-size: 9px;
+    padding: 4px 7px;
+  }
+  .campGrid {
+    gap: 18px;
+  }
+  .campGrid small {
+    font-size: 10px;
+  }
+  .performance .metric {
+    padding: 12px 14px;
+  }
+  .performance .metric strong {
+    font-size: 23px;
+  }
+  .performance .metric small {
+    font-size: 10px;
+  }
+  .invite {
+    flex-wrap: wrap;
+  }
+  .invite label {
+    flex-basis: 100%;
+  }
+  .invite button {
+    width: 100%;
+  }
+  .recoveryTiles > div {
+    padding: 9px 7px;
+  }
+  .recoveryTiles strong {
+    font-size: 11px;
+  }
+  .recoveryTiles span {
+    font-size: 8px;
+  }
+  .activity > li {
+    flex-wrap: wrap;
+  }
+  .profileHeader .actions :global(.ghost-button) {
+    font-size: 11px;
+  }
+}
+.workspace {
+  width: 100%;
+}
+.profileHeader .actions {
+  flex-wrap: nowrap;
+}
+.profileHeader .actions :global(.ghost-button) {
+  min-width: 0;
+  width: auto;
+}
+.header .actions :global(.cta),
+.header .actions :global(.ghost-button) {
+  min-width: 0;
+  width: auto;
+}
+@media (max-width: 700px) {
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 9px;
+  }
+  .header h1 {
+    font-size: 24px;
+    margin: 0 0 7px;
+  }
+  .header .actions {
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+  }
+  .header .actions :global(.cta) {
+    padding: 6px 12px;
+  }
+  .profileHeader > div:first-child :global(.kicker) {
+    letter-spacing: 0.08em;
+    font-size: 9px;
+    white-space: nowrap;
+  }
+  .identity {
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+  }
+  .identity h2 {
+    font-size: 16px;
+  }
+  .campGrid .bigNumber {
+    font-size: 27px;
+  }
+  .performance .metric {
+    padding: 11px 13px;
+    gap: 5px;
+  }
+  .performance .metric strong {
+    font-size: 22px;
+  }
+  .activity > li {
+    padding: 10px 0;
+  }
+  .activity strong {
+    font-size: 12px;
+  }
+  .activity > li > span {
+    font-size: 10px;
+  }
+  .sectionHeading {
+    margin-bottom: 9px;
+  }
+  .recoveryTiles {
+    padding-top: 12px;
+    margin-top: 12px;
+  }
+  .subsection {
+    padding-top: 12px;
+    margin-top: 12px;
+  }
+}

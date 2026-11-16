@@ -49,7 +49,7 @@ const TAB_BAR_HIDDEN_ROUTES = new Set<string>([
 // in place of the sidebar) belongs on this route. Admin keeps its sidebar.
 export function showsMobileTabBar(pathname: string, signedIn: boolean): boolean {
   const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
-  return signedIn && !isAdminRoute && !TAB_BAR_HIDDEN_ROUTES.has(pathname);
+  return signedIn && !isAdminRoute && !pathname.startsWith("/coach") && !TAB_BAR_HIDDEN_ROUTES.has(pathname);
 }
 
 export function isStandaloneNutritionPath(path: string): boolean {

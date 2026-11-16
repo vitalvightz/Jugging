@@ -1611,6 +1611,7 @@ export default function SettingsPage() {
             {/* Account controls that the phone avatar button leads here for. */}
             <div className="sidebar-user-actions settings-quick-account">
               <LanguageSwitcher placement="inline" />
+              <Link href="/settings/coach-access" className="ghost-button">Coach access</Link>
               {shouldShowAdminPanelLink(me?.profile.role) ? (
                 <Link href="/admin" className="ghost-button">{tNav("adminPanel")}</Link>
               ) : null}
