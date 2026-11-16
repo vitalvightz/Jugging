@@ -420,6 +420,7 @@
 .calendarDate[data-selected="true"] { border-color: #d82a4b; background: #221319; }
 .calendarDate[data-outside="true"] { opacity: .3; }
 .dateSelect { display: grid; gap: 4px; width: 100%; min-height: 44px; padding: 5px; border: 0; background: transparent; color: var(--text-primary); text-align: left; cursor: pointer; }
+.datedCalendar[data-readonly="true"] .dateSelect:not(button) { cursor: default; }
 .dateSelect > span { font-size: 15px; font-weight: 600; }
 .dateSelect small { color: var(--text-secondary); font-size: 9px; }
 /* Match the training history key in cards, selected-day rows and mobile dots. */
