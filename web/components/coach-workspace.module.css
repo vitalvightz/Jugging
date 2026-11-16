@@ -701,3 +701,40 @@
   .multiplePlanFilters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
   .planFilters button { min-width: 0; padding: 9px 4px; font-size: 11px; white-space: nowrap; }
 }
+
+/* Light theme: plans dashboard, plan preview and assignment actions. */
+:global(html[data-theme="light"]) .coachPlanCard,
+:global(html[data-theme="light"]) .planPreviewDay,
+:global(html[data-theme="light"]) .plansSelectorRow .fighterSelector select { background: var(--bg-panel); border-color: var(--border-default); color: var(--text-primary); }
+:global(html[data-theme="light"]) .coachPlanCard .planCardHeader h2 { color: var(--text-primary); }
+:global(html[data-theme="light"]) .planPreviewDay { background: var(--bg-surface); }
+:global(html[data-theme="light"]) .planPreviewHead,
+:global(html[data-theme="light"]) .planPreviewList > li,
+:global(html[data-theme="light"]) .planProgress,
+:global(html[data-theme="light"]) .planSchedule { border-color: var(--border-default); }
+:global(html[data-theme="light"]) .planStatus,
+:global(html[data-theme="light"]) .planPreviewCount { background: var(--bg-surface-alt); color: var(--text-secondary); }
+:global(html[data-theme="light"]) .planStatus[data-assignment-status="active"],
+:global(html[data-theme="light"]) .completionPercentage { background: #e3f5ec; color: #17734a; }
+:global(html[data-theme="light"]) .planStatus[data-assignment-status="pending"] { background: #fbf0d9; color: #865400; }
+:global(html[data-theme="light"]) .planCardActions > button,
+:global(html[data-theme="light"]) .planCardActions > a,
+:global(html[data-theme="light"]) .planFilters button,
+:global(html[data-theme="light"]) .planRefresh:hover { background: var(--bg-surface-alt); border-color: var(--border-default); color: var(--text-primary); }
+:global(html[data-theme="light"]) .planCardActions > button:hover,
+:global(html[data-theme="light"]) .planCardActions > a:hover { background: var(--bg-stat); border-color: var(--text-muted); }
+:global(html[data-theme="light"]) .planCardActions > .planPrimaryAction,
+:global(html[data-theme="light"]) .planFilters button[aria-pressed="true"] { background: #ca1032; border-color: #ca1032; color: #fff; }
+:global(html[data-theme="light"]) .planIcon { filter: none; opacity: .75; }
+:global(html[data-theme="light"]) .planCardActions > .planPrimaryAction .planIcon { filter: invert(1); }
+:global(html[data-theme="light"]) .newPlanAction { background: #fbe9ed; border-color: #e7b3bf; color: #8a1027; }
+:global(html[data-theme="light"]) .newPlanAction .planIcon { filter: none; }
+:global(html[data-theme="light"]) .newPlanAction:hover { background: #f7dce2; }
+:global(html[data-theme="light"]) .completionStats > div,
+:global(html[data-theme="light"]) .planWeekSummary { background: var(--bg-surface-alt); border-color: var(--border-default); }
+:global(html[data-theme="light"]) .completionStats dt,
+:global(html[data-theme="light"]) .planWeekSummary .planLatest,
+:global(html[data-theme="light"]) .completionHeading > strong > span { color: var(--text-secondary); }
+:global(html[data-theme="light"]) .planCalendarIcon { background: #fbe9ed; border-color: #e7b3bf; }
+:global(html[data-theme="light"]) .planCalendarIcon .planIcon { filter: none; }
+:global(html[data-theme="light"]) .planEmpty { border-color: var(--border-default); }

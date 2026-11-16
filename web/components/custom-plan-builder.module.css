@@ -451,7 +451,14 @@
   .selectedDaySessions li[data-type="recovery"], .selectedDaySessions li[data-type="rest"] { border-left-color: #70b7ad; }
   .selectedDaySessions small { color: var(--text-secondary); font-size: 11px; font-weight: 400; }
 }
-.quickControls { display: flex; gap: 8px; flex-wrap: wrap; padding: 6px 0; }
+.quickControls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 6px 0; }
+.quickControls button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.quickControls button:disabled { opacity: .4; }
+/* Consistent vertical rhythm between the day picker/calendar, session cards and the add-session action. */
+.editorStack { display: grid; gap: 16px; min-width: 0; }
+.editorStack > div, .calendarEditorLayout > div { display: grid; gap: 16px; align-content: start; min-width: 0; }
+.scheduleSettings > label { min-width: 0; }
+.scheduleSettings input, .scheduleSettings select { display: block; width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
 .quickControls button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--border-default); border-radius: 7px; background: var(--bg-input); color: var(--text-secondary); font-size: 11px; }
 .quickDose { padding: 14px; border: 1px solid var(--border-default); border-radius: 10px; background: var(--bg-panel); }
 @media (min-width: 1100px) {
@@ -460,7 +467,7 @@
   .calendarEditorLayout .dayView { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 600px) {
-  .scheduleSettings { grid-template-columns: 2fr 1fr; }
+  .scheduleSettings { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
   .scheduleSettings > label:first-child { grid-column: 1 / -1; }
   .datedCalendar { padding: 10px; }
   .calendarGrid { gap: 2px; }
@@ -488,3 +495,14 @@
   .historyToolbar span { flex-basis: 100%; margin: 0; }
   .sessionActions { flex-wrap: wrap; }
 }
+
+/* Light theme: dated calendar and copy mode. */
+:global(html[data-theme="light"]) .calendarDate[data-selected="true"],
+:global(html[data-theme="light"]) .copyBanner { background: #fbe9ed; border-color: #d82a4b; }
+:global(html[data-theme="light"]) .calendarSession { background: #fdf3f5; border-color: #ecc6cf; border-left-color: #d82a4b; }
+:global(html[data-theme="light"]) .calendarSession[data-type="recovery"], :global(html[data-theme="light"]) .calendarSession[data-type="rest"] { border-left-color: #3f9488; }
+:global(html[data-theme="light"]) .calendarSession small { color: var(--text-secondary); }
+:global(html[data-theme="light"]) .calendarToolbar button[aria-pressed="true"],
+:global(html[data-theme="light"]) .copyBanner .copyDone { background: #ca1032; border-color: #ca1032; color: #fff; }
+:global(html[data-theme="light"]) .calendarPaste { color: #a2102b; }
+:global(html[data-theme="light"]) .calendarPaste:hover { background: #fbe9ed; }
