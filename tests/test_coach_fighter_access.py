@@ -34,7 +34,7 @@ def camp():
         client.app.state.auth_service.users_by_token[token] = user
     grant_default_compliance(store, FIGHTER)
     connection = {"id": str(uuid4()), "coach_id": COACH, "athlete_id": FIGHTER, "status": "accepted",
-                  "share_recovery": True, "share_injuries": True}
+                  "share_recovery": True, "share_injuries": True, "share_weight": True}
     store.coach_connections.append(connection)
     return client, store, connection
 
@@ -104,7 +104,7 @@ def test_unshared_health_detail_stays_hidden(camp, withhold):
     store.sparring_logs.append({"id": str(uuid4()), "athlete_id": FIGHTER, "external_session_id": spar["id"],
         "training_day": DAY, "intensity": "hard", "rounds_completed": 6, "head_contact": "heavy", "rocked": True})
     if withhold == "connection":
-        connection.update(share_recovery=False, share_injuries=False)
+        connection.update(share_recovery=False, share_injuries=False, share_weight=False)
     else:
         store.record_compliance_acceptance(FIGHTER, health_data_consent=False)
 
@@ -247,3 +247,58 @@ def test_a_coach_can_only_change_sessions_they_recorded(camp):
     # The athlete keeps full control of it.
     assert client.delete(f"/api/training/sessions/{mine}", headers=AS_FIGHTER).status_code == 204
     assert client.put(**squat(mine)).status_code == 404
+
+
+def test_a_connection_accepted_before_weight_sharing_does_not_expose_weight(camp):
+    client, store, connection = camp
+    # Accepted under the earlier wording: recovery and injuries, never weight.
+    connection.pop("share_weight")
+    assert client.get(BASE + "/weight", headers=AS_COACH).json()["shared"] is False
+    connection["share_weight"] = False
+    assert client.get(BASE + "/weight", headers=AS_COACH).json()["shared"] is False
+    # Recovery and injury sharing are unaffected; training is still shared.
+    assert client.get(BASE + "/training/history", headers=AS_COACH).status_code == 200
+    connection["share_weight"] = True
+    assert client.get(BASE + "/weight", headers=AS_COACH).json()["shared"] is True
+    store.record_compliance_acceptance(FIGHTER, health_data_consent=False)
+    assert client.get(BASE + "/weight", headers=AS_COACH).json()["shared"] is False
+
+
+def mixed(session_id, title, blocks):
+    row = session(title, "strength_power", session_id=session_id)
+    row["prescription_snapshot"]["session"].update(session_id=session_id, blocks=blocks)
+    return row
+
+
+SQUAT = {"block_id": "squat", "block_type": "strength", "display_name": "Squat", "sets": 4, "reps": 6}
+
+
+@pytest.mark.parametrize("shared", [False, True])
+def test_mixed_rehab_sessions_reveal_no_injury_detail_unless_shared(camp, shared):
+    client, store, connection = camp
+    connection["share_injuries"] = shared
+    titled = store.upsert_session_completion(FIGHTER, mixed("s1", "Knee Rehab + Strength", [SQUAT]))
+    carrying = store.upsert_session_completion(FIGHTER, mixed("s2", "Lower Body", [
+        SQUAT, {"block_id": "knee", "block_type": "rehab", "display_name": "Knee isometric hold", "sets": 3}]))
+    named = store.upsert_session_completion(FIGHTER, mixed("s3", "Lower Body B", [
+        SQUAT, {"block_id": "band", "block_type": "strength", "display_name": "Hamstring strain prehab", "sets": 2}]))
+    plain = store.upsert_session_completion(FIGHTER, mixed("s4", "Power Day", [SQUAT]))
+
+    history = client.get(BASE + "/training/history", headers=AS_COACH)
+    titles = {row["id"]: row["title"] for row in history.json()["sessions"]}
+    for row, title in ((titled, "Knee Rehab + Strength"), (carrying, "Lower Body"), (named, "Lower Body B")):
+        details = client.get(f"{BASE}/training/history/unlxck/{row['id']}", headers=AS_COACH)
+        names = [block["name"] for block in details.json()["blocks"]]
+        if shared:
+            assert titles[row["id"]] == title and details.json()["session"]["title"] == title
+        else:
+            assert "Squat" in names, "the training work itself stays visible"
+            for text in (history.text, details.text):
+                for word in ("Knee", "Rehab", "rehab", "strain", "prehab", "Hamstring"):
+                    assert word not in text
+    if not shared:
+        assert titles[titled["id"]] == titles[carrying["id"]] == "Programme session"
+    else:
+        named_details = client.get(f"{BASE}/training/history/unlxck/{named['id']}", headers=AS_COACH).json()
+        assert "Hamstring strain prehab" in [block["name"] for block in named_details["blocks"]]
+    assert titles[plain["id"]] == "Power Day"

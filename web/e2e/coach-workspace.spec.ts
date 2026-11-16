@@ -30,6 +30,7 @@ const fighter: Fighter = {
   plan_name: "Fight preparation",
   share_recovery: true,
   share_injuries: false,
+  share_weight: true,
   schedule: [
     {
       day: "2026-11-09",
@@ -170,6 +171,7 @@ async function fixture(
   baseURL: string,
   role = "coach",
   empty = false,
+  athleteConnection: Partial<Connection> = {},
   roster: Fighter[] = [fighter],
 ) {
   await setup(page, baseURL, role);
@@ -182,6 +184,7 @@ async function fixture(
         {
           ...connection,
           status: role === "coach" || role === "admin" ? "accepted" : "pending",
+          ...athleteConnection,
         },
       ];
   const actions: Record<string, unknown>[] = [];
@@ -194,8 +197,15 @@ async function fixture(
         rows = [];
         connections = [];
       }
-      if (body.p_action === "accept")
-        connections = connections.map((c) => ({ ...c, status: "accepted" }));
+      if (body.p_action === "accept" || body.p_action === "consent")
+        connections = connections.map((c) => ({
+          ...c,
+          status: "accepted",
+          share_recovery: body.p_recovery,
+          share_injuries: body.p_injuries,
+          share_weight: body.p_weight,
+          health_consent: c.health_consent ?? true,
+        }));
       if (body.p_action === "invite")
         connections = [
           { ...connection, invited_email: body.p_email, status: "pending" },
@@ -243,7 +253,9 @@ async function fixture(
       return route.fulfill({ json: { entries: [] } });
     return route.fulfill({
       json: path.endsWith("/weight")
-        ? weight
+        ? rows[0].share_weight
+          ? weight
+          : { ...weight, shared: false, entries: [] }
         : path.endsWith("/training/history")
           ? {
               sessions: [
@@ -261,6 +273,10 @@ async function fixture(
     revoke: () => {
       rows = [];
       connections = [];
+    },
+    // The athlete changes what they share; the coach sees it on next refresh.
+    share: (sharing: Partial<Fighter>) => {
+      rows = rows.map((f) => ({ ...f, ...sharing }));
     },
   };
 }
@@ -443,7 +459,13 @@ test("athlete accepts with one tap, then disconnects", async ({
     p_action: "accept",
     p_recovery: true,
     p_injuries: true,
+    p_weight: true,
   });
+  await expect(
+    page.getByText(
+      "Connected · Sharing training, weight, recovery and injuries",
+    ),
+  ).toBeVisible();
   await page.screenshot({
     path: info.outputPath("coach-connected-mobile.png"),
     fullPage: true,
@@ -465,6 +487,7 @@ test("athlete declines an invitation without sharing anything", async ({
       p_action: "decline",
       p_recovery: false,
       p_injuries: false,
+      p_weight: false,
     }),
   ]);
 });
@@ -473,7 +496,7 @@ test("coach logs a session for a chosen fighter, then from a profile", async ({
   baseURL,
 }, info) => {
   const secondId = "00000000-0000-4000-8000-000000000004";
-  const state = await fixture(page, baseURL!, "coach", false, [
+  const state = await fixture(page, baseURL!, "coach", false, {}, [
     fighter,
     { ...fighter, id: secondId, name: "Second Fighter", recovery: [] },
   ]);
@@ -542,6 +565,86 @@ test("coach logs a session for a chosen fighter, then from a profile", async ({
     path: info.outputPath("coach-logged-history.png"),
     fullPage: true,
   });
+});
+
+test("a connection accepted before weight sharing asks before sharing weight", async ({
+  page,
+  baseURL,
+}) => {
+  const state = await fixture(page, baseURL!, "athlete", false, {
+    status: "accepted",
+    share_recovery: true,
+    share_injuries: false,
+    share_weight: false,
+    health_consent: true,
+  });
+  await page.goto("/settings/coach-access");
+  await expect(
+    page.getByText("Connected · Sharing training and recovery", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Not sharing weight and injuries."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Share weight and injuries" }).click();
+  await expect(
+    page.getByText(
+      "Connected · Sharing training, weight, recovery and injuries",
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Share / })).toHaveCount(0);
+  expect(state.actions).toEqual([
+    expect.objectContaining({
+      p_action: "consent",
+      p_recovery: true,
+      p_injuries: true,
+      p_weight: true,
+    }),
+  ]);
+});
+test("withdrawn health consent shows only training as shared", async ({
+  page,
+  baseURL,
+}) => {
+  await fixture(page, baseURL!, "athlete", false, {
+    status: "accepted",
+    share_recovery: true,
+    share_injuries: true,
+    share_weight: true,
+    health_consent: false,
+  });
+  await page.goto("/settings/coach-access");
+  await expect(
+    page.getByText("Connected · Sharing training", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Weight, recovery and injuries paused while health-data consent is off.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Share / })).toHaveCount(0);
+});
+test("withdrawn sharing clears loaded weight and session records", async ({
+  page,
+  baseURL,
+}) => {
+  const state = await fixture(page, baseURL!);
+  await page.goto(`/coach/fighters/${fighterId}`);
+  const fightWeight = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Fight weight" }) });
+  await expect(fightWeight).toContainText("73.6 kg");
+  await page
+    .getByRole("button", { name: /View Strength & power details/ })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("Trap bar deadlift");
+  state.share({ share_weight: false, share_recovery: false });
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(fightWeight).toContainText("Not shared.");
+  await expect(fightWeight).not.toContainText("73.6");
+  // The open record closes; the history reloads under the new permissions.
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 test("lost sharing clears fighter overview on refresh", async ({
   page,

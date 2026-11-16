@@ -52,9 +52,11 @@ for table in ('profiles','plans','daily_checkins','session_logs','today_checkins
 bootstrap += (root / 'supabase/migrations/20261116001139_coach_workspace.sql').read_text()
 bootstrap += (root / 'supabase/migrations/20261116001150_coach_signup_invitations.sql').read_text()
 bootstrap += (root / 'supabase/migrations/20261116003447_coach_self_signup.sql').read_text()
+bootstrap += (root / 'supabase/migrations/20261116030000_coach_weight_consent.sql').read_text()
 bootstrap += (root / 'tests/coach_workspace_permissions.sql').read_text()
 bootstrap += (root / 'tests/coach_signup_invitations.sql').read_text()
 bootstrap += (root / 'tests/coach_self_signup.sql').read_text()
+bootstrap += (root / 'tests/coach_weight_consent.sql').read_text()
 bootstrap += '\nrollback;\n'
 sql(bootstrap)
 print('Coach migration and PostgreSQL permission assertions passed (rolled back).')

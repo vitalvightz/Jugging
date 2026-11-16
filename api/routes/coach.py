@@ -10,6 +10,7 @@ can never change a record the athlete, or another coach, entered.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Literal, Mapping
@@ -35,6 +36,10 @@ from api.store import AppStore
 HEALTH_SESSION_TYPES = {"rehab", "recovery"}
 PRIVATE_TEXT = ("notes", "takeaway", "modification_reason")
 MASKED_TITLE = "Programme session"
+# Words that name injury or rehab work. Kept in step with
+# coach_private.health_session in the coach weight-consent migration.
+HEALTH_WORDS = re.compile(r"\b(rehab|prehab|injur|physio|pain|recover|sore|strain|sprain|tendon|tendin|concuss)",
+                          re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -46,6 +51,8 @@ class ConnectedFighter:
     # Each is the connection's choice and the athlete's own health consent.
     share_recovery: bool
     share_injuries: bool
+    # Weight is its own choice; connections accepted before it existed lack it.
+    share_weight: bool
 
 
 class CoachFighterWeight(BaseModel):
@@ -58,12 +65,25 @@ class CoachFighterWeight(BaseModel):
     weekly_pace_kg: float | None = None
 
 
+def _names_health(text: Any) -> bool:
+    return isinstance(text, str) and HEALTH_WORDS.search(text) is not None
+
+
 def _is_health_session(row: Mapping[str, Any]) -> bool:
-    """A plan session that is rehab or recovery, or whose type is unknown."""
+    """A plan session that could reveal injury work to a coach without injury sharing.
+
+    Rehab and recovery sessions, sessions whose type is unknown, and mixed
+    sessions: one carrying a rehab block, or titled for the injury work
+    ("Knee Rehab + Strength") while typed as strength.
+    """
     if row.get("source") == "external":
         return False
     session = _saved_history_session(row)
-    return session is None or session.get("session_type") in HEALTH_SESSION_TYPES
+    if session is None or session.get("session_type") in HEALTH_SESSION_TYPES:
+        return True
+    blocks = session.get("blocks") if isinstance(session.get("blocks"), list) else []
+    return (_names_health(row.get("title")) or _names_health(session.get("title"))
+            or any(isinstance(block, Mapping) and block.get("block_type") == "rehab" for block in blocks))
 
 
 def _coach_row(row: Mapping[str, Any], fighter: ConnectedFighter) -> dict[str, Any]:
@@ -73,6 +93,7 @@ def _coach_row(row: Mapping[str, Any], fighter: ConnectedFighter) -> dict[str, A
         safe.pop("pain_after", None)
         if _is_health_session(row):
             safe["title"] = MASKED_TITLE
+            safe["session_type"] = None
     return safe
 
 
@@ -96,7 +117,8 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
             raise HTTPException(status_code=404, detail="Fighter not found.")
         health = evaluate_profile_compliance(athlete).health_consent_granted
         return ConnectedFighter(athlete, coach, health, health and connection.get("share_recovery") is True,
-                                health and connection.get("share_injuries") is True)
+                                health and connection.get("share_injuries") is True,
+                                health and connection.get("share_weight") is True)
 
     def writable_fighter(fighter: ConnectedFighter = Depends(connected_fighter)) -> ConnectedFighter:
         # The athlete's own logging needs this consent too; a coach cannot
@@ -163,15 +185,18 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
                                   health_consent_granted=fighter.share_injuries)
         session = {"history_editable": False, "takeaway": "", "notes": None, "modification_reason": None}
         message = details.message
+        blocks = details.blocks
         if not fighter.share_injuries:
-            # Neither the title nor the notice may reveal unshared rehab work.
-            message = None if details.blocks else MISSING_DETAILS
+            # Neither the title, an exercise name nor the notice may reveal
+            # unshared rehab work, including inside a mixed strength session.
+            blocks = [block for block in blocks if not _names_health(block.name)]
+            message = None if blocks else MISSING_DETAILS
             row = store.get_session_completion_by_id(athlete_id, str(entry_id)) if source == "unlxck" else None
-            if row and _is_health_session(row):
-                session["title"] = MASKED_TITLE
+            if (row and _is_health_session(row)) or _names_health(details.session.title):
+                session.update(title=MASKED_TITLE, session_type=None)
         return details.model_copy(update={
             "session": details.session.model_copy(update=session),
-            "blocks": [block.model_copy(update={"notes": None}) for block in details.blocks],
+            "blocks": [block.model_copy(update={"notes": None}) for block in blocks],
             "sparring": details.sparring.model_copy(update={"notes": None}) if details.sparring else None,
             "message": message,
         })
@@ -179,7 +204,7 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
     @router.get("/api/coach/fighters/{athlete_id}/weight", response_model=CoachFighterWeight)
     def fighter_weight(fighter: ConnectedFighter = Depends(connected_fighter),
                        store: AppStore = Depends(get_store)):
-        if not fighter.share_recovery:
+        if not fighter.share_weight:
             return CoachFighterWeight(shared=False)
         athlete = fighter.profile
         workspace = build_nutrition_workspace(profile=athlete,
