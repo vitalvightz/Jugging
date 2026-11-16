@@ -136,9 +136,9 @@ test("rest and off days across published plans use one non-expandable row", () =
       customPlanId={customPlanId} today={new Date("2026-11-16T12:00:00")} />);
     assert.equal(countOccurrences(html, "cm-rest-day"), 2);
     assert.equal(countOccurrences(html, "cm-day-summary"), 1);
-    assert.match(html, />Rest<\\/span>/);
-    assert.match(html, />Off<\\/span>/);
-    assert.doesNotMatch(html, /Rest day\\.<\\/p>/);
+    assert.match(html, />Rest<\/span>/);
+    assert.match(html, />Off<\/span>/);
+    assert.doesNotMatch(html, /Rest day\.<\/p>/);
   }
 });
 
