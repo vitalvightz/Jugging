@@ -68,6 +68,7 @@ REQUIRED_TABLES: tuple[str, ...] = (
     # in-session log would otherwise fail on every save.
     "exercise_logs",
     "external_training_sessions",
+    "coach_connections",
     # Optional exercise results on a manual session and the athlete's private
     # movement names (PUT /api/training/sessions/{id}/exercises/{entry_id}).
     "manual_exercise_entries",
@@ -413,6 +414,7 @@ REQUIRED_EXTERNAL_TRAINING_COLUMNS: tuple[str, ...] = (
     "id", "athlete_id", "client_request_id", "request_fingerprint", "training_day",
     "activity", "sport", "session_type", "duration_minutes", "effort", "takeaway", "distance_value", "distance_unit", "duration_seconds", "run_type",
     "deleted_at", "created_at", "updated_at",
+    "logged_by_coach_id", "logged_by_coach_name",
 )
 
 REQUIRED_MANUAL_EXERCISE_ENTRIES_COLUMNS: tuple[str, ...] = (
@@ -541,6 +543,9 @@ REQUIRED_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "sparring_log_requests": ("athlete_id", "client_request_id", "sparring_log_id", "created_at"),
     "exercise_logs": REQUIRED_EXERCISE_LOGS_COLUMNS,
     "external_training_sessions": REQUIRED_EXTERNAL_TRAINING_COLUMNS,
+    # Coach routes must not deploy before the consent migration is present.
+    "coach_connections": ("id", "coach_id", "athlete_id", "status", "share_recovery",
+                          "share_injuries", "share_weight", "allow_session_logging"),
     # Inferred focus from existing notes (api/services/training_focus_inference.py).
     "training_focus_inferences": ("id", "athlete_id", "source_kind", "source_id", "training_day", "source_revision",
                                   "status", "reason", "focus", "scope", "category", "sport", "exercise_targets",
@@ -813,6 +818,7 @@ RLS_REQUIRED_TABLES: tuple[str, ...] = (
     "sparring_log_requests",
     "exercise_logs",
     "external_training_sessions",
+    "coach_connections",
     "training_focus_inferences",
     "training_focus_call_budget",
     "xp_accounts",
