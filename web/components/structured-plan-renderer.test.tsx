@@ -127,14 +127,16 @@ test("rest and off days across published plans use one non-expandable row", () =
         today_card: { headline: "Rest day", mindset_anchor: { focus_cue: "", reset_cue: "", intent: "" } } },
       { date: "2026-11-17", weekday: "Tue", day_type: "moderate", sessions: [],
         today_card: { headline: "Off day" } },
-      { date: "2026-11-18", weekday: "Wed", day_type: "moderate", sessions: [
+      { date: "2026-11-18", weekday: "Wed", day_type: "rest", sessions: [],
+        today_card: { headline: "Off / Rest" } },
+      { date: "2026-11-19", weekday: "Thu", day_type: "moderate", sessions: [
         { session_id: "training", title: "Technical", session_type: "skill", blocks: [] },
       ] },
     ] }] };
   for (const customPlanId of [undefined, "custom-1"]) {
     const html = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} openOngoing
       customPlanId={customPlanId} today={new Date("2026-11-16T12:00:00")} />);
-    assert.equal(countOccurrences(html, "cm-rest-day"), 2);
+    assert.equal(countOccurrences(html, "cm-rest-day"), 3);
     assert.equal(countOccurrences(html, "cm-day-summary"), 1);
     assert.match(html, />Rest<\/span>/);
     assert.match(html, />Off<\/span>/);
