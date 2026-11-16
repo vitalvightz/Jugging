@@ -376,6 +376,7 @@ for (const width of [1440, 390, 320]) {
     const trainingHistory = page
       .locator("section")
       .filter({ has: page.getByRole("heading", { name: "Training history" }) });
+    await trainingHistory.getByRole("button", { name: "List", exact: true }).click();
     await expect(trainingHistory.getByRole("listitem")).toHaveCount(10);
     await trainingHistory
       .getByRole("button", { name: "Show earlier sessions" })
@@ -400,13 +401,13 @@ for (const width of [1440, 390, 320]) {
     await expect(record).toHaveCount(0);
 
     // Recovery: the last seven days, with older check-ins on request.
-    await expect(page.getByText("Sleep: poor · Body: flat")).toBeVisible();
-    await expect(page.getByText("Readiness: 4/5")).toBeHidden();
+    await expect(page.getByText("Sleep: Poor", { exact: true }).last()).toBeVisible();
+    await expect(page.getByText("Body: Flat", { exact: true }).last()).toBeVisible();
+    await expect(page.getByText("Readiness: 4/5")).toBeVisible();
     await page.screenshot({
       path: info.outputPath(`coach-fighter-compact-${width}.png`),
       fullPage: true,
     });
-    await page.getByText("Older check-ins (1)", { exact: true }).click();
     await expect(page.getByText("Readiness: 4/5")).toBeVisible();
     expect(
       await page.evaluate(
@@ -656,6 +657,7 @@ test("withdrawn sharing clears loaded weight and session records", async ({
     .locator("section")
     .filter({ has: page.getByRole("heading", { name: "Fight weight" }) });
   await expect(fightWeight).toContainText("73.6 kg");
+  await page.getByRole("button", { name: "List", exact: true }).click();
   await page
     .getByRole("button", { name: /View Strength & power details/ })
     .click();
@@ -664,6 +666,9 @@ test("withdrawn sharing clears loaded weight and session records", async ({
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(fightWeight).toContainText("Not shared.");
   await expect(fightWeight).not.toContainText("73.6");
+  const recoveryPanel = page.locator("section").filter({ has: page.getByRole("heading", { name: "Recovery", exact: true }) });
+  await expect(recoveryPanel.getByText("Recovery check-ins: Not shared", { exact: true })).toBeVisible();
+  await expect(recoveryPanel.getByText("Sleep: Poor", { exact: true })).toHaveCount(0);
   // The open record closes; the history reloads under the new permissions.
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
@@ -718,6 +723,7 @@ test("coach reopens exercises on their own saved session", async ({ page, baseUR
     source: "external", activity: "strength", title: "Strength", logged_by_coach: true,
     logged_by_coach_name: "Test Coach", coach_exercises_editable: true });
   await page.goto(`/coach/fighters/${fighterId}`);
+  await page.getByRole("button", { name: "List", exact: true }).click();
   await page.getByRole("listitem").filter({ hasText: "Logged by coach Test Coach" }).getByRole("button").click();
   const request = page.waitForRequest(req => req.url().endsWith(`/api/coach/fighters/${fighterId}/training/sessions/00000000-0000-4000-8000-0000000000c9/exercises`));
   await page.getByRole("button", { name: "Edit exercises" }).click();
@@ -779,7 +785,7 @@ for (const role of ["coach", "admin", "athlete"]) {
         await expect(page.locator('.mobile-tab-bar a')).toHaveText(["Overview", "Fighters", "Plans", "Log Session"]);
         await page.getByRole("button", { name: "Open navigation", exact: true }).click();
       }
-      await expect(sidebar.getByRole("link", { name: "Invitations", exact: true })).toBeVisible();
+      await expect(sidebar.locator('a[href="/coach/invitations"]')).toBeVisible();
       await expect(sidebar.locator('a[href="/today"]')).toHaveCount(0);
       await sidebar.getByRole("link", { name: /^Plans/ }).click();
       await expect(page.getByText("Plan assignment is coming soon.")).toBeVisible();
@@ -822,6 +828,7 @@ test("sparring totals use displayed reports and coach feedback stays attached to
   await expect(sparring.getByText("Keep your guard up.", { exact: true })).toBeVisible();
   expect(state.feedback[0]).toMatchObject({ source: "sparring", target_id: "report-hard", exercise_ref: "" });
   await page.screenshot({ path: "test-results/coach-sparring-feedback-mobile.png", fullPage: true });
+  await page.getByRole("button", { name: "List", exact: true }).click();
   await page.getByRole("listitem").filter({ hasText: "Strength & power" }).getByRole("button").first().click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "Coach note", exact: true }).first().click();
@@ -865,7 +872,7 @@ for (const width of [320, 1440]) {
       } else {
         await expect(page.getByText(/years|Last training|Orthodox/)).toHaveCount(0);
       }
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await page.screenshot({ path: `test-results/coach-profile-${populated}-${width}.png`, fullPage: true });
     });
   }
@@ -881,4 +888,116 @@ test("sparring stays visible when the selected week has no reports", async ({ pa
   await page.getByRole("button", { name: "Next week" }).click();
   await expect(page.getByText("No sparring reports this week", { exact: true })).toHaveCount(0);
   await expect(page.getByText("6 rounds", { exact: true })).toBeVisible();
+});
+
+for (const width of [320, 1440]) {
+  test(`coach calendar loads older months and opens distinct records at ${width}px`, async ({ page, baseURL }) => {
+    await fixture(page, baseURL!);
+    const row = { ...strengthSession, source: "external" as const, status: "done" as const, activity: "strength" as const,
+      training_day: "2026-11-12", training_category: "strength" as const };
+    const records = [
+      { ...row, id: "a", title: "Strength A" }, { ...row, id: "b", title: "Strength B" },
+      { ...row, id: "rehab", title: "Rehab", activity: null, training_category: "rehab" as const },
+      { ...row, id: "modified", title: "Adjusted strength", status: "modified" as const },
+    ];
+    const cursors: (string | null)[] = [];
+    await page.route("**/api/coach/fighters/**/training/history**", route => {
+      const url = new URL(route.request().url());
+      if (!url.pathname.endsWith("/history")) {
+        const session = records.find(row => row.id === url.pathname.split("/").at(-1));
+        return route.fulfill({ json: { ...details, session: session ?? strengthSession } });
+      }
+      const cursor = url.searchParams.get("before_day"); cursors.push(cursor);
+      return route.fulfill({ json: cursor === null ? {
+        sessions: [...records, records[0], { ...row, id: "skip", training_day: "2026-11-10", status: "skipped" },
+          { ...row, id: "deleted", deleted_at: "2026-11-13" }, { ...row, id: "future", training_day: "2026-11-20" }], next_before_day: "2026-11-10",
+      } : cursor === "2026-11-10" ? {
+        sessions: [{ ...row, id: "oct30", training_day: "2026-10-30", title: "October strength" }], next_before_day: "2026-10-30",
+      } : { sessions: [{ ...row, id: "oct2", training_day: "2026-10-02", title: "Older strength" }], next_before_day: null } });
+    });
+    await page.setViewportSize({ width, height: 1100 });
+    await page.goto(`/coach/fighters/${fighterId}`);
+    const history = page.locator("section").filter({ has: page.getByRole("heading", { name: "Training history", exact: true }) });
+    await expect(history.getByRole("button", { name: "Calendar", exact: true })).toHaveAttribute("aria-pressed", "true");
+    const day = history.getByRole("button", { name: /12 Nov 2026: 4 completed sessions/ });
+    await day.click();
+    await expect(history.getByRole("listitem")).toHaveCount(4);
+    await expect(day.locator('[data-training-tone="strength"]')).toHaveCount(2);
+    await expect(day.locator('[data-training-tone="rehab"]')).toHaveCount(1);
+    await expect(day.locator('[data-training-tone="modified"]')).toHaveCount(1);
+    await history.getByRole("button", { name: /View Strength A details/ }).click();
+    await expect(page.getByRole("dialog").getByRole("heading", { name: "Strength A", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Close session details" }).click();
+    await history.getByRole("button", { name: "Previous month" }).click();
+    await expect(history.getByText("October 2026", { exact: true })).toBeVisible();
+    await history.getByRole("button", { name: /2 Oct 2026: 1 completed sessions/ }).click();
+    await expect(history.getByRole("listitem")).toHaveCount(1);
+    await expect(history.getByText("Older strength", { exact: true })).toBeVisible();
+    await history.getByRole("button", { name: "Next month" }).click();
+    await expect(history.getByText("November 2026", { exact: true })).toBeVisible();
+    await history.getByRole("button", { name: "Today", exact: true }).click();
+    await expect(history.getByText("No completed sessions recorded for this day.")).toBeVisible();
+    await history.getByRole("button", { name: "List", exact: true }).click();
+    await expect(history.getByRole("listitem")).toHaveCount(6);
+    await expect(page).toHaveURL(new RegExp(`/coach/fighters/${fighterId}$`));
+    expect(cursors).toEqual([null, "2026-11-10", "2026-10-30"]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await history.getByRole("button", { name: "Calendar", exact: true }).click();
+    await history.getByRole("button", { name: /12 Nov 2026: 4 completed sessions/ }).click();
+    await page.screenshot({ path: `test-results/coach-training-calendar-${width}.png`, fullPage: true });
+  });
+}
+
+test("recovery merges dates, distinguishes mild injury from normal check-in, and limits recent reports", async ({ page, baseURL }) => {
+  await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, share_injuries: true,
+    technical_style: ["Boxing", "distance_striker"],
+    injuries: [{ id: "injury", body_area: "Left bicep", severity: "mild", status: "open", updated_at: "2026-11-15" }],
+    recovery: [
+      { day: "2026-11-15", source: "today", sleep: "good", body: "normal", recorded_at: "2026-11-15T12:00:00Z" },
+      { day: "2026-11-15", source: "daily", readiness: 4, fatigue: 2, sleep_quality: 4, recorded_at: "2026-11-15T10:00:00Z" },
+      { day: "2026-11-14", source: "today", sleep: "poor", body: "flat" },
+      { day: "2026-11-13", source: "today", sleep: "okay", body: "normal" },
+      { day: "2026-11-12", source: "today", sleep: "good", body: "normal" },
+    ],
+    sparring_reports: [15, 14, 13, 12].map(day => ({ id: `report-${day}`, day: `2026-11-${day}`, intensity: "light", rounds: 2, round_seconds: 180, head_contact: "none", rocked: false })),
+  }]);
+  await page.setViewportSize({ width: 390, height: 1100 });
+  await page.goto(`/coach/fighters/${fighterId}`);
+  const recovery = page.locator("section").filter({ has: page.getByRole("heading", { name: "Recovery", exact: true }) });
+  await expect(recovery.getByText("Recovery check-in: No new concerns", { exact: true })).toBeVisible();
+  await expect(recovery.getByText("Mild · Open", { exact: true })).toHaveAttribute("data-recovery-tone", "caution");
+  await expect(recovery.getByText("Sleep: Poor", { exact: true })).toHaveAttribute("data-recovery-tone", "concern");
+  await expect(recovery.getByText("Body: Flat", { exact: true })).toHaveAttribute("data-recovery-tone", "caution");
+  // One injury row plus three unique check-in dates, with both sources retained.
+  await expect(recovery.getByRole("listitem")).toHaveCount(4);
+  await expect(recovery.getByText("Readiness: 4/5", { exact: true })).toBeVisible();
+  await expect(recovery.getByText("Fatigue: 2/5", { exact: true })).toBeVisible();
+  await recovery.getByRole("button", { name: "View all check-ins" }).click();
+  await expect(recovery.getByRole("listitem")).toHaveCount(5);
+  const sparring = page.locator("section").filter({ has: page.getByRole("heading", { name: "Sparring", exact: true }) });
+  await expect(sparring.getByRole("listitem")).toHaveCount(3);
+  await sparring.getByRole("button", { name: "View all reports" }).click();
+  await expect(sparring.getByRole("listitem")).toHaveCount(4);
+  const identity = page.locator('section').filter({ has: page.getByRole("heading", { name: "Test Fighter", exact: true }) });
+  await expect(identity.getByText("Boxing", { exact: true })).toHaveCount(1);
+  await expect(identity.getByText("Distance striker", { exact: true })).toBeVisible();
+  await page.screenshot({ path: "test-results/coach-recovery-grouped-mobile.png", fullPage: true });
+});
+
+test("missing recovery stays grey and skipped sessions do not populate either history view", async ({ page, baseURL }) => {
+  await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, share_recovery: true, recovery: [], injuries: null }]);
+  await page.route("**/api/coach/fighters/**/training/history?**", route => route.fulfill({ json: {
+    sessions: [{ ...strengthSession, status: "skipped" }], next_before_day: null,
+  } }));
+  await page.goto(`/coach/fighters/${fighterId}`);
+  const recovery = page.locator("section").filter({ has: page.getByRole("heading", { name: "Recovery", exact: true }) });
+  await expect(recovery.getByText("Not recorded", { exact: true })).toHaveCount(2);
+  await expect(recovery.locator('strong[data-recovery-tone="unknown"]')).toHaveCount(2);
+  await expect(recovery.getByText("No check-ins recorded.", { exact: true })).toBeVisible();
+  await expect(recovery.getByText("Recovery check-in: No new concerns", { exact: true })).toHaveCount(0);
+  const history = page.locator("section").filter({ has: page.getByRole("heading", { name: "Training history", exact: true }) });
+  await expect(history.locator('[data-training-tone]')).toHaveCount(5); // Legend only; no training dots.
+  await expect(history.getByRole("listitem")).toHaveCount(0);
+  await history.getByRole("button", { name: "List", exact: true }).click();
+  await expect(history.getByText("No completed sessions recorded yet.", { exact: true })).toBeVisible();
 });

@@ -350,6 +350,42 @@ export type CoachFighterWeight = {
   weekly_pace_kg: number | null;
 };
 
+export type CoachHistoryResponse = {
+  sessions: CoachHistorySession[];
+  next_before_day: string | null;
+};
+
+export type CoachHistorySession = {
+  session_id: string | null;
+  completion_origin: "day_credit" | "reported" | null;
+  id: string;
+  source: "external" | "unlxck";
+  training_day: string;
+  status: "done" | "modified" | "skipped";
+  title: string;
+  activity: "boxing" | "conditioning" | "other" | "roadwork" | "sparring" | "strength" | null;
+  sport: "bjj" | "boxing" | "kickboxing" | "mma" | "muay_thai" | "wrestling" | null;
+  session_type: "bag" | "clinch" | "drilling" | "grappling" | "integrated" | "live" | "pads" | "positional" | "rolling" | "shadowboxing" | "sparring" | "striking" | "technical" | "wrestling" | null;
+  duration_minutes: number | null;
+  distance_value: number | null;
+  distance_unit: "km" | "miles" | null;
+  duration_seconds: number | null;
+  run_type: "easy" | "intervals" | "long" | "race" | "sprints" | "tempo" | null;
+  effort: "easy" | "hard" | "moderate" | null;
+  plan_id: string | null;
+  session_rpe: number | null;
+  pain_after: number | null;
+  modification_reason: string | null;
+  notes: string | null;
+  takeaway: string;
+  exercise_count: number | null;
+  history_editable: boolean;
+  coach_exercises_editable: boolean;
+  logged_by_coach: boolean;
+  logged_by_coach_name: string | null;
+  training_category: "rehab" | "sparring" | "strength" | "training";
+};
+
 export type CoachMessagePushRequest = {
   athlete_id: string;
   message_id: string;
