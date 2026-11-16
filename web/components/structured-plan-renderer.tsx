@@ -10,7 +10,7 @@ import {
   compactTimeUnits,
   readableExerciseMetrics,
   classifySessionlessDay,
-  PLAIN_REST_HEADLINE_RE,
+  isPlainRestDay,
   isZeroLoadSupportSession,
   isCompactPlanSupportSession,
   mentalSessionCategory,
@@ -2062,27 +2062,6 @@ export function buildDayTimeline(days: StructuredDay[], enabled: boolean): Timel
     timeline.push({ kind: "day", day, index });
   });
   return timeline;
-}
-
-/** A plan day that is genuinely just rest — no sessions, classified as rest,
- * and no day-card context worth expanding — so it can render as a compact
- * non-interactive rest row identical to the synthesized gap rows. */
-function isPlainRestDay(day: StructuredDay): boolean {
-  if (getSessions(day).length > 0 || getPriorityMicrodose(day) || classifySessionlessDay(day).kind !== "rest") {
-    return false;
-  }
-  const card = day.today_card;
-  // Neutral calendar placeholders use the same compact row as a camp gap.
-  // A prescribed recovery day or coach-owned contact keeps its full context.
-  const neutral = PLAIN_REST_HEADLINE_RE.test(cleanText(card?.headline) ?? "");
-  return !(
-    (!neutral && cleanText(card?.headline)) ||
-    cleanText(card?.coach_led_contact) ||
-    cleanText(card?.primary_warning) ||
-    cleanText(card?.nutrition_summary) ||
-    cleanText(card?.weight_cut_warning) ||
-    (!neutral && getSessionCoachingLines(card?.mindset_anchor).length > 0)
-  );
 }
 
 /** Widest countdown at which an unprogrammed day is deliberate taper rest.
