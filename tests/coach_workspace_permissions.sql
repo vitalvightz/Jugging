@@ -12,19 +12,19 @@ insert into public.profiles(id,email,role,full_name,health_data_consent)
 update public.profiles set email='different-profile@test.invalid' where id='00000000-0000-4000-8000-000000000003';
 update public.profiles set email='athlete@test.invalid' where id='00000000-0000-4000-8000-000000000004';
 insert into public.plans(id,athlete_id,plan_name,fight_date,structured_plan) values
- ('10000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000003','Test camp',current_date+20,
+ ('10000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000003','Test camp',((now() at time zone 'UTC') - interval '4 hours')::date+20,
  '{"plan_metadata":{"sport":"boxing"},"athlete_context":{"injury":"SECRET MEDICAL"},"weeks":[{"days":[{"date":"2026-11-15","sessions":[{"session_id":"s1","session_type":"strength_power","title":"Strength","blocks":[{"notes":"SECRET MEDICAL"}]}]}]}]}');
 update public.profiles set active_plan_id='10000000-0000-4000-8000-000000000001' where id='00000000-0000-4000-8000-000000000003';
 insert into public.session_completions(athlete_id,plan_id,session_id,training_day,status,completion_origin,notes) values
- ('00000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000001','s1',current_date,'done','reported','SECRET MEDICAL'),
- ('00000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000001','s2',current_date,'done','day_credit','');
+ ('00000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000001','s1',((now() at time zone 'UTC') - interval '4 hours')::date,'done','reported','SECRET MEDICAL'),
+ ('00000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000001','s2',((now() at time zone 'UTC') - interval '4 hours')::date,'done','day_credit','');
 insert into public.daily_checkins(athlete_id,checkin_date,readiness,fatigue,soreness,sleep_quality,notes) values
- ('00000000-0000-4000-8000-000000000003',current_date,2,4,3,2,'SECRET MEDICAL');
+ ('00000000-0000-4000-8000-000000000003',((now() at time zone 'UTC') - interval '4 hours')::date,2,4,3,2,'SECRET MEDICAL');
 insert into public.injury_flags(athlete_id,body_area,description) values
  ('00000000-0000-4000-8000-000000000003','Knee','SECRET MEDICAL');
 
 insert into public.sparring_logs(athlete_id,training_day,source,intensity,rounds_completed,head_contact,rocked,notes) values
- ('00000000-0000-4000-8000-000000000003',current_date,'free','hard',3,'heavy',true,'SECRET MEDICAL');
+ ('00000000-0000-4000-8000-000000000003',((now() at time zone 'UTC') - interval '4 hours')::date,'free','hard',3,'heavy',true,'SECRET MEDICAL');
 
 create function pg_temp.assert_ok(value boolean, message text) returns void language plpgsql as $$
 begin if value is distinct from true then raise exception 'FAILED: %',message; end if; raise notice 'PASS: %',message; end $$;
