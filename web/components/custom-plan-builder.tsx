@@ -116,10 +116,12 @@ function PencilIcon() {
     </svg>
   );
 }
-export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessionDate, onboarding = null, coachFighterId, onCoachClose, initialPlan, athleteTimezone }: { athleteTimezone?: string; initialPlan?: CustomPlan; onCoachClose?: () => void; coachFighterId?: string; accessToken: string; planId?: string; addSessionDay?: string | null; addSessionDate?: string | null; onboarding?: MeResponse | null }) {
+export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessionDate, onboarding = null, coachFighterId, onCoachClose, initialPlan, athleteTimezone, fightDate }: { fightDate?: string | null; athleteTimezone?: string; initialPlan?: CustomPlan; onCoachClose?: () => void; coachFighterId?: string; accessToken: string; planId?: string; addSessionDay?: string | null; addSessionDate?: string | null; onboarding?: MeResponse | null }) {
   const router = useRouter();
   const requestId = useRef(crypto.randomUUID());
   const savedPlansHref = coachFighterId ? "/coach/plans" : "/plans#custom-plans";
+  const fighterDate = fightDate ?? (onboarding?.latest_intake ? (onboarding.latest_intake.no_scheduled_fight ? null : onboarding.latest_intake.fight_date) : onboarding?.latest_plan?.fight_date);
+  const scheduledFightDate = /^\d{4}-\d{2}-\d{2}$/.test(fighterDate ?? '') ? fighterDate : null;
   const fadeNavigate = useFadeNavigate();
   const [draft, setDraft] = useState<Draft>(() => {
     if (initialPlan) return orderedDraft({ ...initialPlan, id: undefined, name: `${initialPlan.name} revision`.slice(0, 100) });
@@ -769,8 +771,8 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
           </div>
           <div className={isDated ? styles.calendarEditorLayout : styles.weeklyEditorLayout}>
           <div>
-          {isDated ? <CustomPlanCalendar sessions={draft.sessions} start={draft.start_date!} end={draft.end_date!} selected={selectedDate} onSelect={setSelectedDate} onAdd={addDatedSession} onMove={moveSession} onCopy={(ids, days) => copyTo(draft.sessions.filter(s => ids.includes(s.id)), days)} onMoveMany={moveTo} copying={copying ? { ...copying, sessions: draft.sessions.filter(s => copying.ids.includes(s.id)) } : undefined} onStartCopying={(ids, move) => setCopying({ ids, move })} onStopCopying={() => setCopying(null)}
-            onOpen={id => openSession(draft.sessions.find(s => s.id === id)!)} onDuplicateWeek={() => { try { change(current => ({ ...current, sessions: duplicateCalendarWeek(current.sessions, selectedDate, current.start_date!, current.end_date!) })); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to copy week.'); } }} /> : <div className={styles.calendar} role="group" aria-label="Weekly training calendar">
+          {isDated ? <CustomPlanCalendar fightDate={scheduledFightDate} sessions={draft.sessions} start={draft.start_date!} end={draft.end_date!} selected={selectedDate} onSelect={setSelectedDate} onAdd={addDatedSession} onMove={moveSession} onCopy={(ids, days) => copyTo(draft.sessions.filter(s => ids.includes(s.id)), days)} onMoveMany={moveTo} copying={copying ? { ...copying, sessions: draft.sessions.filter(s => copying.ids.includes(s.id)) } : undefined} onStartCopying={(ids, move) => setCopying({ ids, move })} onStopCopying={() => setCopying(null)}
+            onOpen={id => openSession(draft.sessions.find(s => s.id === id)!)} onDuplicateWeek={() => { try { change(current => ({ ...current, sessions: duplicateCalendarWeek(current.sessions, selectedDate, current.start_date!, current.end_date!) })); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to copy week.'); } }} /> : <>{scheduledFightDate ? <p className={styles.calendarFightDate}>Fight day · {formatAppDate(scheduledFightDate)}</p> : null}<div className={styles.calendar} role="group" aria-label="Weekly training calendar">
             {weekdays.map(day => {
               const sessions = draft.sessions.filter(s => s.weekday === day);
               const label = sessions.length ? sessions.map(s => s.name).join(" / ") : "Rest";
@@ -782,7 +784,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
                   data-attention={sessions.some(s => issueSessions.has(s.id)) ? "true" : undefined} aria-hidden="true" />
               </button>;
             })}
-          </div>}
+          </div></>}
           </div>
           <div className={styles.sessionPanel}>
           <div className={styles.dayView}>
