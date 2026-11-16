@@ -1,4 +1,5 @@
 "use client";
+import { CoachFeedback } from "./coach-feedback";
 
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -332,7 +333,8 @@ export function unreportedSparringSessions(sessions: TrainingHistorySession[], l
   });
 }
 
-function SparringRows({ history, sessions, token, onSaved, hasMore }: {
+function SparringRows({ history, sessions, token, onSaved, hasMore, athleteId }: {
+  athleteId: string;
   history: SparringLogHistoryResponse; sessions: TrainingHistorySession[]; token: string | null;
   onSaved: (log: SparringLogRecord) => void; hasMore: boolean;
 }) {
@@ -452,6 +454,7 @@ function SparringRows({ history, sessions, token, onSaved, hasMore }: {
                   <span key={item}>{item}</span>
                 ))}
               </div>
+              {token ? <CoachFeedback token={token} athleteId={athleteId} source="sparring" targetId={row.id} /> : null}
               {row.rocked || row.head_contact === "heavy" || difference ? (
                 <Chips
                   chips={[
@@ -872,7 +875,7 @@ function HistoryContent() {
         exercises.rows && token ? <ExerciseLibrary library={exercises.rows} token={token} cache={exerciseHistoryCache} /> : <ListSkeleton />
       ) : tab === "sparring" ? (
         sparring.rows ? <>
-          <SparringRows history={sparring.rows} sessions={sessions.rows ?? []} token={token} onSaved={onSparringSaved} hasMore={sessionCursor !== null} />
+          <SparringRows athleteId={userId!} history={sparring.rows} sessions={sessions.rows ?? []} token={token} onSaved={onSparringSaved} hasMore={sessionCursor !== null} />
           {moreSessionsError ? <p className="error-banner" role="alert">{moreSessionsError}</p> : null}
           {sessionCursor !== null ? <button type="button" className="secondary-button" disabled={loadingMoreSessions}
             onClick={() => void loadMoreSessions()}>

@@ -18,6 +18,7 @@ const connection: Connection = {
   status: "accepted",
 };
 const fighter: Fighter = {
+  can_leave_feedback: true,
   allow_session_logging: true,
   id: fighterId,
   connection_id: connection.id,
@@ -119,6 +120,8 @@ const history: TrainingHistorySession[] = [
   })),
 ];
 const details: SessionDetails = {
+  coach_feedback_allowed: true,
+  athlete_id: fighterId,
   session: strengthSession as SessionDetails["session"],
   prescription_source: "snapshot",
   message: null,
@@ -126,6 +129,7 @@ const details: SessionDetails = {
   runs: null,
   blocks: [
     {
+      feedback_ref: "deadlift",
       name: "Trap bar deadlift",
       kind: "exercise",
       source: "plan",
@@ -188,10 +192,21 @@ async function fixture(
           ...athleteConnection,
         },
       ];
+  const feedback: { id: string; coach_name: string; note: string; exercise_ref: string; target_id: string; source: string; updated_at: string }[] = [];
+  await page.route("**/rest/v1/coach_feedback?**", route => {
+    const params = new URL(route.request().url()).searchParams;
+    return route.fulfill({ json: feedback.filter(note => ["source", "target_id", "exercise_ref"].every(key => params.get(key) === `eq.${note[key as "source"]}`)) });
+  });
   const actions: Record<string, unknown>[] = [];
   await page.route("**/rest/v1/rpc/**", async (route) => {
     const name = new URL(route.request().url()).pathname.split("/").at(-1);
     const body = route.request().postDataJSON();
+    if (name === "save_coach_feedback") {
+      const before = feedback.find(note => note.source === body.p_source && note.target_id === body.p_target_id && note.exercise_ref === body.p_exercise_ref);
+      if (before) before.note = body.p_note;
+      else feedback.push({ id: `feedback-${feedback.length}`, coach_name: "Test Coach", source: body.p_source, target_id: body.p_target_id, exercise_ref: body.p_exercise_ref, note: body.p_note, updated_at: "2026-11-16T10:00:00Z" });
+      return route.fulfill({ json: "saved" });
+    }
     if (name === "coach_connection_command") {
       actions.push(body);
       if (["revoke", "remove", "decline"].includes(body.p_action)) {
@@ -272,6 +287,7 @@ async function fixture(
   });
   return {
     actions,
+    feedback,
     logged,
     revoke: () => {
       rows = [];
@@ -343,7 +359,8 @@ for (const width of [1440, 390, 320]) {
     await expect(strength).toContainText("—");
     await page.getByRole("button", { name: "Next week" }).click();
     await expect(strength).toContainText("1/1");
-    await expect(page.getByText("6 rounds · technical")).toBeVisible();
+    await expect(page.getByText("6 rounds", { exact: true })).toBeVisible();
+    await expect(page.getByText("Technical", { exact: true })).toBeVisible();
 
     // Fight weight: the athlete's own weigh-ins and target.
     const fightWeight = page
@@ -780,6 +797,76 @@ for (const role of ["coach", "admin", "athlete"]) {
         await expect(page).toHaveURL(/\/admin$/);
         await expect(sidebar.locator('a[href="/today"]')).toHaveCount(1);
       }
+    });
+  }
+}
+
+
+test("sparring totals use displayed reports and coach feedback stays attached to its record", async ({ page, baseURL }) => {
+  const state = await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, share_injuries: true,
+    sparring_reports: [
+      { id: "report-hard", day: "2026-11-15", intensity: "hard", rounds: 5, round_seconds: 180, head_contact: "light", rocked: false },
+      { id: "report-technical", day: "2026-11-14", intensity: "technical", rounds: 7, round_seconds: 180, head_contact: "heavy", rocked: true },
+    ],
+  }]);
+  await page.setViewportSize({ width: 390, height: 1100 });
+  await page.goto(`/coach/fighters/${fighterId}`);
+  const sparring = page.locator("section").filter({ has: page.getByRole("heading", { name: "Sparring", exact: true }) });
+  await expect(sparring.getByText("2 reports", { exact: true })).toBeVisible();
+  await expect(sparring.getByText("12", { exact: true })).toBeVisible();
+  await expect(sparring.getByText("Heavy head contact", { exact: false })).toBeVisible();
+  await expect(sparring.getByText("Athlete reported being rocked", { exact: false })).toBeVisible();
+  await sparring.getByRole("button", { name: "Coach note", exact: true }).first().click();
+  await sparring.getByRole("textbox", { name: "Coach note" }).fill("Keep your guard up.");
+  await sparring.getByRole("button", { name: "Save note" }).click();
+  await expect(sparring.getByText("Keep your guard up.", { exact: true })).toBeVisible();
+  expect(state.feedback[0]).toMatchObject({ source: "sparring", target_id: "report-hard", exercise_ref: "" });
+  await page.screenshot({ path: "test-results/coach-sparring-feedback-mobile.png", fullPage: true });
+  await page.getByRole("listitem").filter({ hasText: "Strength & power" }).getByRole("button").first().click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Coach note", exact: true }).first().click();
+  await dialog.getByRole("textbox", { name: "Coach note" }).fill("Good session today.");
+  await dialog.getByRole("button", { name: "Save note" }).click();
+  await expect(dialog.getByText("Good session today.", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Trap bar deadlift", exact: true }).click();
+  await dialog.getByRole("button", { name: "Coach note", exact: true }).click();
+  await dialog.getByRole("textbox", { name: "Coach note" }).fill("Control the descent.");
+  await dialog.getByRole("button", { name: "Save note" }).click();
+  await expect(dialog.getByText("Control the descent.", { exact: true })).toBeVisible();
+  expect(state.feedback).toHaveLength(3);
+  expect(state.feedback[2]).toMatchObject({ source: "unlxck", exercise_ref: "deadlift" });
+});
+
+for (const width of [320, 1440]) {
+  for (const populated of [false, true]) {
+    test(`fighter profile details populated=${populated} at ${width}px`, async ({ page, baseURL }) => {
+      await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter,
+        age: populated ? 27 : null, record: populated ? "4-1-0" : null,
+        technical_style: populated ? ["pressure_fighter"] : [], tactical_style: populated ? ["counter_puncher"] : [],
+        stance: populated ? "orthodox" : null, sport: populated ? "boxing" : null,
+        last_training: populated ? { day: "2026-11-14", activity: "boxing" } : null,
+        sessions: populated ? fighter.sessions : [], schedule: [],
+      }]);
+      await page.setViewportSize({ width, height: 1000 });
+      await page.goto('/coach/fighters');
+      await expect(page.getByRole("heading", { name: "Your fighters" }).first()).toBeVisible();
+      if (populated) {
+        await expect(page.getByText(/Boxing · 27 years · 4-1-0/)).toBeVisible();
+        await expect(page.getByText(/Last trained/)).toBeVisible();
+      } else {
+        await expect(page.getByText(/Last trained/)).toHaveCount(0);
+      }
+      await page.goto(`/coach/fighters/${fighterId}`);
+      await expect(page.getByText("Camp timeline", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Next fight", { exact: true })).toBeVisible();
+      if (populated) {
+        await expect(page.getByText(/Pressure fighter · Counter puncher · Orthodox/)).toBeVisible();
+        await expect(page.getByText(/Last training · Boxing/)).toBeVisible();
+      } else {
+        await expect(page.getByText(/years|Last training|Orthodox/)).toHaveCount(0);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.screenshot({ path: `test-results/coach-profile-${populated}-${width}.png`, fullPage: true });
     });
   }
 }

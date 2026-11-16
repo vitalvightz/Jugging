@@ -13,6 +13,7 @@ import {
 import { createPortal } from "react-dom";
 import { RequireAuth } from "@/components/auth-guard";
 import { ManualExerciseLogger } from "@/components/manual-exercise-logger";
+import { CoachFeedback } from "./coach-feedback";
 import { LogTraining } from "@/components/log-training";
 import { useAppSession } from "@/components/auth-provider";
 import {
@@ -491,7 +492,8 @@ function CoachDashboard({ fighters, rosterOnly = false }: { fighters: Fighter[];
                 key={f.id}
                 fighter={f}
                 lead={<Avatar fighter={f} />}
-                detail={`${humanize(f.sport)} · ${s.weekSessions} sessions`}
+                detail={[f.sport ? humanize(f.sport) : null, f.age != null ? `${f.age} years` : null, f.record, `${s.weekSessions} sessions`].filter(Boolean).join(" · ")}
+                extra={f.last_training ? `Last trained ${formatAppDate(f.last_training.day)}` : undefined}
                 end={
                   <span
                     className={
@@ -522,11 +524,13 @@ function FighterRow({
   fighter: f,
   lead,
   detail,
+  extra,
   end,
 }: {
   fighter: Fighter;
   lead: ReactNode;
   detail: ReactNode;
+  extra?: ReactNode;
   end?: ReactNode;
 }) {
   return (
@@ -535,7 +539,8 @@ function FighterRow({
         {lead}
         <span className={styles.rowCopy}>
           <strong>{f.name || "Fighter"}</strong>
-          <small>{detail}</small>
+          {detail ? <small>{detail}</small> : null}
+          {extra ? <small>{extra}</small> : null}
         </span>
         {end}
       </Link>
@@ -602,18 +607,6 @@ function FighterOverview({
         completed(c),
     ),
   ).length;
-  const sparring = done.filter(
-    (s) =>
-      s.type === "sparring" ||
-      f.schedule.some(
-        (p) =>
-          p.type === "sparring" &&
-          p.id === s.session_id &&
-          p.day === s.day &&
-          f.plan_id === s.plan_id,
-      ),
-  );
-  const sparringRpe = sparring.find((s) => s.rpe)?.rpe;
   const reports =
     f.sparring_reports?.filter((s) => s.day >= week && s.day <= end) ?? [];
   const rpe = done.flatMap((s) =>
@@ -622,7 +615,7 @@ function FighterOverview({
   const minutes = done.reduce((total, s) => total + (s.duration ?? 0), 0);
   const campStart = f.schedule.map((s) => s.day).sort()[0];
   const campProgress =
-    campStart && f.fight_date && f.fight_date > campStart
+    campStart && campStart <= f.today && f.fight_date && f.fight_date >= f.today && f.fight_date > campStart
       ? Math.max(
           0,
           Math.min(
@@ -647,10 +640,11 @@ function FighterOverview({
           <Avatar fighter={f} />
           <div className={styles.rowCopy}>
             <h2>{f.name || "Fighter"}</h2>
-            <small>
-              {humanize(f.sport)}
-              {f.plan_name ? ` · ${f.plan_name}` : ""}
-            </small>
+            {[f.sport ? humanize(f.sport) : null, f.age != null ? `${f.age} years` : null, f.record].filter(Boolean).length ?
+              <small>{[f.sport ? humanize(f.sport) : null, f.age != null ? `${f.age} years` : null, f.record].filter(Boolean).join(" · ")}</small> : null}
+            {[...(f.technical_style ?? []), ...(f.tactical_style ?? []), f.stance].filter(Boolean).length ?
+              <small>{[...(f.technical_style ?? []), ...(f.tactical_style ?? []), f.stance].filter(Boolean).map(value => humanize(value)).join(" · ")}</small> : null}
+            {f.last_training ? <small>Last training · {humanize(f.last_training.activity)} · {formatAppDate(f.last_training.day)}</small> : null}
             {summary.attention ? (
               <small className={styles.concern}>{summary.attention}</small>
             ) : null}
@@ -675,7 +669,7 @@ function FighterOverview({
                 : "Not scheduled"}
             </small>
           </div>
-          <div>
+          {campProgress !== null ? <div>
             <p className={styles.eyebrow}>Camp timeline</p>
             <strong>
               {campProgress !== null ? `${campProgress}% elapsed` : "—"}
@@ -687,7 +681,7 @@ function FighterOverview({
                 max={100}
               />
             ) : null}
-          </div>
+          </div> : null}
         </div>
       </section>
       <section aria-label="Weekly performance">
@@ -744,21 +738,23 @@ function FighterOverview({
           <div className={styles.sectionHeading}>
             <h2>Sparring</h2>
             <span className={styles.muted}>
-              {sparring.length} {sparring.length === 1 ? "session" : "sessions"}
-              {sparringRpe ? ` · RPE ${sparringRpe}` : ""}
+              {reports.length} {reports.length === 1 ? "report" : "reports"}
             </span>
           </div>
-          <ul className={styles.activity}>
-            {reports.map((s) => (
+          <p className={styles.muted}>Recent sparring activity</p>
+          <div className={styles.sparringStats}>
+            <div><strong>{reports.reduce((sum, report) => sum + report.rounds, 0)}</strong><small>Rounds</small></div>
+            <div><strong>{reports.length}</strong><small>Reports</small></div>
+            <div><strong>{reports.filter(report => report.intensity === "hard").length}</strong><small>Hard</small></div>
+          </div>
+          <ul className={styles.sparringReports}>
+            {[...reports].sort((a, b) => b.day.localeCompare(a.day)).map((s) => (
               <li key={s.id}>
-                <strong>{formatAppDate(s.day)}</strong>
-                <span>
-                  {s.rounds} rounds · {s.intensity}
-                  {s.head_contact !== null
-                    ? ` · Head contact: ${s.head_contact}`
-                    : ""}
-                  {s.rocked ? " · Rocked reported" : ""}
-                </span>
+                <div className={styles.sectionHeading}><strong>{formatAppDate(s.day)}</strong>
+                  <span className={styles.intensity} data-intensity={s.intensity}>{s.intensity === "medium" ? "Moderate" : humanize(s.intensity)}</span></div>
+                <p>{s.rounds} rounds{s.head_contact != null ? ` · ${s.head_contact === "none" ? "No head contact" : `${humanize(s.head_contact)} head contact`}` : ""}</p>
+                {s.rocked ? <p className={styles.rocked} role="note">⚠ Athlete reported being rocked</p> : null}
+                <CoachFeedback key={`${sharingKey}:${s.id}`} token={token} athleteId={f.id} source="sparring" targetId={s.id} editable={f.can_leave_feedback === true} />
               </li>
             ))}
           </ul>

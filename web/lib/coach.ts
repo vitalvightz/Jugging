@@ -36,6 +36,13 @@ export type Recovery = {
   source: string;
 };
 export type Fighter = {
+  can_leave_feedback?: boolean;
+  age?: number | null;
+  technical_style?: string[];
+  tactical_style?: string[];
+  stance?: string | null;
+  record?: string | null;
+  last_training?: { day: string; activity: string } | null;
   id: string;
   connection_id: string;
   name: string;

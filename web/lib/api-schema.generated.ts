@@ -2449,6 +2449,7 @@ export type SessionCompletionResponse = {
 };
 
 export type SessionDetailBlock = {
+  feedback_ref: string | null;
   name: string;
   kind: "exercise" | "guidance" | "rehab";
   source: "manual" | "plan";
@@ -2475,6 +2476,7 @@ export type SessionDetailRun = {
 };
 
 export type SessionDetailSparring = {
+  id: string | null;
   intensity: string;
   rounds_completed: number;
   round_seconds: number | null;
@@ -2484,6 +2486,8 @@ export type SessionDetailSparring = {
 };
 
 export type SessionDetails = {
+  coach_feedback_allowed: boolean;
+  athlete_id: string | null;
   session: TrainingHistorySession;
   blocks: SessionDetailBlock[];
   prescription_source: "exercise_logs" | "manual" | "snapshot" | "unavailable";

@@ -88,6 +88,7 @@ def _exercise(block, log, consent):
             # Corrupt legacy actuals do not turn into a prescription confirmation.
             log = None
     return SessionDetailBlock(
+        feedback_ref=block.get("block_id") or (log.get("block_id") if log else None),
         name=_text(block.get("display_name")) or "Training block",
         prescribed=_prescribed(block), actual=actual,
         status=log.get("status") if log and log.get("status") in {"as_prescribed", "modified", "skipped"} else None,
@@ -99,7 +100,7 @@ def _exercise(block, log, consent):
 
 def _manual_block(row, consent):
     """Only what the athlete entered; no prescription to compare against."""
-    return SessionDetailBlock(name=_text(row.get("display_name")) or "Exercise", source="manual",
+    return SessionDetailBlock(feedback_ref=str(row["id"]) if row.get("id") else None, name=_text(row.get("display_name")) or "Exercise", source="manual",
         format=row.get("measurement_format"), actual=entry_actual(row) or ExerciseLogActual(),
         notes=(_text(row.get("notes")) or None) if consent else None)
 
@@ -161,7 +162,7 @@ def session_details(store, athlete_id, source, entry_id, *, health_consent_grant
                    and not entry.get("deleted_at")]
         summary = _summary({**occurrence, "exercise_count": len(entries)}, source, occurrence["title"], consent)
         runs = _run_history(store, athlete_id, str(row["training_day"])) if row.get("activity") == "roadwork" else None
-        return SessionDetails(session=summary, blocks=[_manual_block(entry, consent) for entry in entries],
+        return SessionDetails(athlete_id=athlete_id, session=summary, blocks=[_manual_block(entry, consent) for entry in entries],
                               prescription_source="manual", sparring=safe_sparring, runs=runs)
 
     session = _snapshot_session(row)
@@ -209,7 +210,7 @@ def session_details(store, athlete_id, source, entry_id, *, health_consent_grant
                 text = " ".join(_text(item) for item in instructions if isinstance(item, str)) if isinstance(instructions, list) else _text(instructions)
                 if text or block.get("notes"):
                     prescribed["prescription_text"] = text or _text(block["notes"])
-            result.append(SessionDetailBlock(name=_text(block.get("display_name")) or "Rehab guidance",
+            result.append(SessionDetailBlock(feedback_ref=block.get("block_id"), name=_text(block.get("display_name")) or "Rehab guidance",
                 kind="guidance" if guidance else "rehab", prescribed=prescribed,
                 status="skipped" if row["status"] == "skipped" else performance if performance in {"done_as_shown", "changed", "stopped", "skipped"} else None,
                 completed_dose=dose, responses=[event.response for event in evidence]))
@@ -220,7 +221,7 @@ def session_details(store, athlete_id, source, entry_id, *, health_consent_grant
     if session is None:
         result = [_exercise(_map(log.get("prescribed")), log, consent) for log in indexed.values()
                   if _map(log.get("prescribed")).get("block_type") != "rehab"]
-    return SessionDetails(session=_summary(row, source, session.get("title") if session else None, consent),
+    return SessionDetails(athlete_id=athlete_id, session=_summary(row, source, session.get("title") if session else None, consent),
         blocks=result, prescription_source="snapshot" if session else "exercise_logs" if result else "unavailable",
         message=("Health details are hidden while health-data consent is off." if not consent and any(b.get("block_type") == "rehab" for b in blocks)
                  else None if result else MISSING_DETAILS))

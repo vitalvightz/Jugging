@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type ReactNode, type CSSProperties } from "react";
+import { CoachFeedback } from "./coach-feedback";
 import { getSessionDetails } from "@/lib/api";
 import type { SessionDetailBlock, SessionDetailRun, SessionDetails as Details } from "@/lib/api-schema.generated";
 import { formatAppDate } from "@/lib/date-format";
@@ -140,7 +141,8 @@ function TrainingBlockBody({ block, context, viewer, byCoach }: { block: Session
 }
 
 /** A collapsible record card: name, dose and the weight in gold; the full record expands on request. */
-export function TrainingBlock({ block, index, heading, recordId, open, onToggle, numbered = true, compact = false, viewer, byCoach }: {
+export function TrainingBlock({ block, index, heading, recordId, open, onToggle, numbered = true, compact = false, viewer, byCoach, feedback }: {
+  feedback?: ReactNode;
   block: SessionDetailBlock; index: number; heading?: string; recordId?: string; open: boolean; onToggle: () => void; numbered?: boolean; compact?: boolean;
   viewer?: Viewer;
   /** The session was entered by a coach, so its exercises were not "added by you". */
@@ -157,7 +159,7 @@ export function TrainingBlock({ block, index, heading, recordId, open, onToggle,
       <div className={styles.blockSide}>{load ? <strong className={styles.weight}>{load}</strong> : null}
         <span className={styles.status} data-status={recordStatus(block.status, block.source === "manual")}><StatusIcon status={recordStatus(block.status, block.source === "manual")} />{label}</span></div>
       <span className={styles.chevron} aria-hidden="true">›</span></div>
-    {open ? <div id={body} className={styles.blockBody}><TrainingBlockBody block={block} context={context} viewer={viewer} byCoach={byCoach} /></div> : null}
+    {open ? <div id={body} className={styles.blockBody}><TrainingBlockBody block={block} context={context} viewer={viewer} byCoach={byCoach} />{feedback}</div> : null}
   </li>;
 }
 
@@ -382,6 +384,7 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
       <AutoHeight swapKey={details ? "loaded" : error ? "error" : "loading"} swapMotion="fade">
         {!details && !error ? <SessionRecordSkeleton /> : null}
         {error ? <div role="alert"><p>Unable to load session details. Try again.</p><button type="button" className="secondary-button" onClick={() => { setError(false); setAttempt(value => value + 1); }}>Retry</button></div> : null}
+        {details?.athlete_id && record ? <CoachFeedback token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} editable={viewer === "coach" && details.coach_feedback_allowed} /> : null}
         {details && record && run ? <div className={styles.recordContent}>
           <RunRecord run={run} history={details.runs ?? null} onEditRun={onEditRun ? () => onEditRun(run) : undefined} viewer={viewer} />
           {details.blocks.length || onEditExercises ? <section className={styles.section}>
@@ -389,6 +392,7 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
               {onEditExercises ? <button type="button" className={styles.manualAction} aria-haspopup="dialog"
                 onClick={() => onEditExercises(run)}>{details.blocks.length ? "Edit exercises" : "Add exercises"}</button> : null}</div>
             <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} numbered={false} compact viewer={viewer} byCoach={facts.logged_by_coach}
+              feedback={details.athlete_id && block.feedback_ref ? <CoachFeedback key={`${row.id}:${block.feedback_ref}`} token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} exerciseRef={block.feedback_ref} editable={viewer === "coach" && details.coach_feedback_allowed} /> : undefined}
               open={expanded.has(index)} onToggle={() => setOpen(new Set(expanded.has(index) ? [...expanded].filter(item => item !== index) : [...expanded, index]))} />)}</ol>
           </section> : null}
           {record.notes || record.takeaway ? <section className={styles.section}><h3>Notes</h3>
@@ -403,12 +407,14 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
                 onClick={() => onEditExercises({ ...row, ...record })}>{details.blocks.length ? "Edit exercises" : "Add exercises"}</button> : null}</div>
             {details.prescription_source === "exercise_logs" ? <p className={styles.quiet}>Saved exercise logs only. Full prescription and block order unavailable.</p> : null}
             {details.blocks.length ? <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} numbered={false} compact viewer={viewer} byCoach={facts.logged_by_coach}
+              feedback={details.athlete_id && block.feedback_ref ? <CoachFeedback key={`${row.id}:${block.feedback_ref}`} token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} exerciseRef={block.feedback_ref} editable={viewer === "coach" && details.coach_feedback_allowed} /> : undefined}
               open={expanded.has(index)} onToggle={() => setOpen(new Set(expanded.has(index) ? [...expanded].filter(item => item !== index) : [...expanded, index]))} />)}</ol>
               : record.source === "external" ? <p className={styles.quiet}>No exercises recorded.</p> : null}
           </section>
           {details.sparring ? <section className={styles.section}><h3>Sparring report</h3><p>{details.sparring.rounds_completed} rounds{details.sparring.round_seconds != null ? ` · ${details.sparring.round_seconds} sec` : ""} · {details.sparring.intensity}</p>
             {details.sparring.head_contact ? <p>Head contact: {details.sparring.head_contact}</p> : null}
             {details.sparring.rocked != null ? <p>Rocked: {details.sparring.rocked ? "Yes" : "No"}</p> : null}
+            {details.sparring.id && details.athlete_id ? <CoachFeedback token={token} athleteId={details.athlete_id} source="sparring" targetId={details.sparring.id} editable={viewer === "coach" && details.coach_feedback_allowed} /> : null}
             {details.sparring.notes ? <p className={styles.note}>{details.sparring.notes}</p> : null}</section> : null}
           {details.message ? <p className={styles.quiet}>{details.message}</p> : null}
           {record.notes || record.modification_reason || record.takeaway ? <section className={styles.section}><h3>Notes</h3>
