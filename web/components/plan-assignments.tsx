@@ -31,7 +31,7 @@ export function PlanAssignments({ token, onActivated }: { token: string; onActiv
       if (action === "activate") onActivated();
     } catch (reason) {
       if (action === "activate" && isActivePlanOverlapError(reason)) setOverlap(plan);
-      else setError("Unable to update assignment. Refresh and try again; the connection may have ended.");
+      else setError("Couldn't update. Refresh; the connection may have ended.");
     } finally { setPending(false); }
   }
   if (!rows.length && !error) return null;
@@ -42,18 +42,20 @@ export function PlanAssignments({ token, onActivated }: { token: string; onActiv
     {rows.map(plan => <article key={plan.id} className={styles.panel}>
       <div className={styles.pageHead}><h3>{plan.name}</h3><span>{plan.assignment_status[0].toUpperCase() + plan.assignment_status.slice(1)}</span></div>
       <p>{plan.coach_name || "Your coach"} · Assigned {plan.assigned_at ? formatAppDate(plan.assigned_at) : ""}</p>
-      <button className="ghost-button" type="button" aria-expanded={preview === plan.id} onClick={() => setPreview(preview === plan.id ? null : plan.id)}>Preview Plan</button>
+      <div className={styles.assignmentActions}>
+        <button className="ghost-button" type="button" aria-expanded={preview === plan.id} onClick={() => setPreview(preview === plan.id ? null : plan.id)}>Preview Plan</button>
+        {plan.published_plan_id ? <Link className="ghost-button" href={`/plans/${plan.published_plan_id}`}>View training plan</Link> : null}
+      </div>
       {preview === plan.id ? <>
         <AssignedPlanPreview plan={plan} />
         {plan.assignment_status === "pending" ? <>
-          <p>Your current plan stays active until you choose to switch.</p>
-          <div className={styles.actions}>
-            <button type="button" className="cta" disabled={pending} onClick={() => void respond(plan, "activate")}>Activate plan</button>
+          <p className={styles.assignmentNote}>Your current plan stays active until you switch.</p>
+          <div className={styles.assignmentActions}>
             <button type="button" className="ghost-button" disabled={pending} onClick={() => void respond(plan, "decline")}>Decline</button>
+            <button type="button" className="cta" disabled={pending} onClick={() => void respond(plan, "activate")}>Activate plan</button>
           </div>
         </> : null}
       </> : null}
-      {plan.published_plan_id ? <Link href={`/plans/${plan.published_plan_id}`}>View training plan</Link> : null}
     </article>)}
     {overlap ? <PlanSwitchDialog plan={{ plan_name: overlap.name }} isPending={pending} errorMessage={error} onCancel={() => setOverlap(null)} onConfirm={choice => respond(overlap, "activate", choice)} /> : null}
   </section>;

@@ -117,8 +117,11 @@ class ReadOnlyTimedStore:
         return timed
 
     def reset(self):
-        self.calls.clear(); self.ms.clear(); self.main_thread_calls.clear()
-        self.timeline.clear(); self.t0 = time.perf_counter()
+        self.calls.clear()
+        self.ms.clear()
+        self.main_thread_calls.clear()
+        self.timeline.clear()
+        self.t0 = time.perf_counter()
 
     def timeline_rows(self) -> list[str]:
         """Each store call in start order: offset, duration, method (no arguments)."""

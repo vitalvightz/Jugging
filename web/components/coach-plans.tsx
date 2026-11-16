@@ -25,7 +25,7 @@ export function CoachPlans({ token, fighters }: { token: string; fighters: Fight
   const fighter = fighters.find(row => row.id === selected);
   return <section className={styles.plansDashboard} aria-label="Fighter plans dashboard">
     <header className={styles.plansPageHeader}>
-      <div><h1><span className={styles.desktopPlanText}>Plans</span><span className={styles.mobilePlanText}>Fighter Plans</span></h1><p className={styles.desktopPlanText}>Build, assign and track training plans for your fighters.</p></div>
+      <div><h1><span className={styles.desktopPlanText}>Plans</span><span className={styles.mobilePlanText}>Fighter Plans</span></h1><p className={styles.desktopPlanText}>Build, assign and track fighter plans.</p></div>
       <button type="button" className={styles.planRefresh} aria-label="Refresh plans" title="Refresh plans" disabled={editorOpen} onClick={() => setRefresh(n => n + 1)}><PlanIcon name="arrow-path" /></button>
     </header>
     <div className={styles.plansSelectorRow}>
@@ -37,7 +37,7 @@ export function CoachPlans({ token, fighters }: { token: string; fighters: Fight
       </label>
       {fighter && !editorOpen ? <button type="button" className={styles.desktopCreatePlan} aria-label="Create New Plan" onClick={() => setEditing("")}><PlanIcon name="plus" />Create Plan</button> : null}
     </div>
-    {!fighters.length ? <p className={styles.empty}>Connect with a fighter before creating a plan.</p> : null}
+    {!fighters.length ? <p className={styles.empty}>Connect a fighter to create a plan.</p> : null}
     {fighter ? <FighterPlans key={`${token}:${fighter.connection_id}`} token={token} fighter={fighter} refresh={refresh} editing={editing} setEditing={setEditing} /> : null}
   </section>;
 }
@@ -54,13 +54,13 @@ function FighterPlans({ token, fighter, refresh, editing, setEditing }: { token:
   useEffect(() => {
     const controller = new AbortController();
     listCoachPlans(token, fighter.id, controller.signal).then(rows => { if (!controller.signal.aborted) { setPlans(rows); setError(""); } })
-      .catch(() => { if (!controller.signal.aborted) setError("Plans unavailable. Retry to check your connection."); });
+      .catch(() => { if (!controller.signal.aborted) setError("Plans unavailable."); });
     return () => controller.abort();
   }, [token, fighter, attempt, refresh]);
   useEffect(() => {
     let active = true;
     getFighterPlan(token, fighter.id, true).then(rows => { if (active) setSchedule(rows); })
-      .catch(() => { if (active) { setSchedule(undefined); setError("Training progress unavailable. Retry to refresh."); } });
+      .catch(() => { if (active) { setSchedule(undefined); setError("Progress unavailable."); } });
     return () => { active = false; };
   }, [token, fighter, attempt, refresh]);
   if (editing !== null) return <CustomPlanBuilder accessToken={token} coachFighterId={fighter.id} athleteTimezone={fighter.timezone} initialPlan={editing.startsWith("revision:") ? plans?.find(plan => plan.id === editing.slice(9)) : undefined} planId={editing.startsWith("revision:") ? undefined : editing || undefined} onCoachClose={() => { setEditing(null); setAttempt(n => n + 1); }} />;
@@ -76,6 +76,8 @@ function FighterPlans({ token, fighter, refresh, editing, setEditing }: { token:
     {!plans && !error ? <p role="status">Loading plans…</p> : null}
     {plans?.length === 0 ? <div className={styles.planEmpty}><h2>No plans yet</h2><p>Create a draft for {fighter.name}, then send it for their review.</p></div> : null}
     {Boolean(plans?.length) && !visible?.length ? <p className={styles.empty}>No plans in this view.</p> : null}
+    {visible?.some(plan => plan.assignment_status !== "draft") ? <DiscoveryHint id="coach-plan-revise" text="Want to change it? Tap Revise." /> : null}
+    {visible?.some(plan => plan.assignment_status === "draft") ? <DiscoveryHint id="coach-plan-draft" text="This is a draft. Tap Assign when it's ready." /> : null}
     {visible?.map(plan => <article key={plan.id} className={styles.coachPlanCard} aria-label={plan.name}>
       <header className={styles.planCardHeader}>
         <span className={styles.planCalendarIcon}><PlanIcon name="calendar-days" /></span>
@@ -84,34 +86,30 @@ function FighterPlans({ token, fighter, refresh, editing, setEditing }: { token:
       </header>
       {plan.assignment_status === "active" ? <AssignedProgress plan={plan} fighter={fighter} schedule={schedule} /> : null}
       <div className={styles.planCardActions}>
-        <button type="button" aria-expanded={preview === plan.id} onClick={() => setPreview(preview === plan.id ? null : plan.id)}><PlanIcon name="eye" />Preview Plan</button>
+        <button type="button" aria-label="Preview Plan" aria-expanded={preview === plan.id} onClick={() => setPreview(preview === plan.id ? null : plan.id)}><PlanIcon name="eye" /><span className={styles.mobilePlanText}>Preview</span><span className={styles.desktopPlanText}>Preview Plan</span></button>
         {plan.published_plan_id ? <Link href={`/coach/fighters/${fighter.id}#training-history`}><PlanIcon name="chart-bar" /><span className={styles.mobilePlanText}>Progress</span><span className={styles.desktopPlanText}>View Fighter Progress</span></Link> : null}
         {plan.assignment_status === "active" ? <button className={styles.desktopScheduleAction} type="button" aria-expanded={scheduleOpen === plan.id} onClick={() => setScheduleOpen(scheduleOpen === plan.id ? null : plan.id)}><PlanIcon name="calendar-days" />View Schedule</button> : null}
+        {plan.assignment_status !== "draft" ? <button type="button" aria-label="Create revised draft" onClick={() => setEditing(`revision:${plan.id}`)}><span className={styles.mobilePlanText}>Revise</span><span className={styles.desktopPlanText}>Create revised draft</span></button> : null}
+        {plan.assignment_status === "draft" ? <>
+          <button type="button" onClick={() => { setEditing(plan.id); }}>Edit draft</button>
+          <button type="button" className={styles.planPrimaryAction} disabled={pending || plan.incomplete} onClick={async () => {
+            setPending(true); setError("");
+            try { const sent = await assignCoachPlan(token, fighter.id, plan.id); setPlans(rows => rows?.map(row => row.id === sent.id ? sent : row)); }
+            catch { setError("Couldn't assign. Check the fighter is still connected."); }
+            finally { setPending(false); }
+          }} aria-label="Assign to fighter"><span className={styles.mobilePlanText}>Assign</span><span className={styles.desktopPlanText}>Assign to fighter</span></button>
+        </> : null}
       </div>
-      {scheduleOpen === plan.id ? <section className={styles.planSchedule} aria-label={`${plan.name} schedule`}><h3>Training schedule</h3>{!schedule ? <p role="status">Loading schedule…</p> : schedule.filter(row => row.plan_id === plan.published_plan_id).length ? <ul>{schedule.filter(row => row.plan_id === plan.published_plan_id).map(row => <li key={`${row.day}:${row.id}`}><span>{formatAppDate(row.day)}</span><strong>{row.title}</strong></li>)}</ul> : <p>No scheduled sessions available.</p>}</section> : null}
+      {scheduleOpen === plan.id ? <section className={styles.planSchedule} aria-label={`${plan.name} schedule`}><h3>Training schedule</h3>{!schedule ? <p role="status">Loading schedule…</p> : schedule.filter(row => row.plan_id === plan.published_plan_id).length ? <ul>{schedule.filter(row => row.plan_id === plan.published_plan_id).map(row => <li key={`${row.day}:${row.id}`}><span>{formatAppDate(row.day)}</span><strong>{row.title}</strong></li>)}</ul> : <p>No sessions scheduled.</p>}</section> : null}
       {preview === plan.id ? <AssignedPlanPreview plan={plan} /> : null}
-      {plan.assignment_status !== "draft" ? <>
-        <DiscoveryHint id="coach-plan-revise" text="Want to change it? Tap Create revised draft." />
-        <button type="button" className="ghost-button" onClick={() => setEditing(`revision:${plan.id}`)}>Create revised draft</button>
-      </> : null}
-      {plan.assignment_status === "draft" ? <DiscoveryHint id="coach-plan-draft" text="This is a draft. Tap Assign when it's ready." /> : null}
-      {plan.assignment_status === "draft" ? <div className={styles.planDraftActions}>
-        <button type="button" className="ghost-button" onClick={() => { setEditing(plan.id); }}>Edit draft</button>
-        <button type="button" className="cta" disabled={pending || plan.incomplete} onClick={async () => {
-          setPending(true); setError("");
-          try { const sent = await assignCoachPlan(token, fighter.id, plan.id); setPlans(rows => rows?.map(row => row.id === sent.id ? sent : row)); }
-          catch { setError("Unable to assign plan. Refresh and check that the fighter is still connected."); }
-          finally { setPending(false); }
-        }}>Assign to fighter</button>
-        {plan.incomplete ? <p>Finish the schedule and exercise doses before assigning.</p> : null}
-      </div> : null}
+      {plan.assignment_status === "draft" && plan.incomplete ? <p className={styles.planActionNote}>Finish schedule and doses to assign.</p> : null}
     </article>)}
     <button type="button" className={styles.newPlanAction} onClick={() => { setEditing(""); }}><PlanIcon name="plus" />Create New Plan</button>
   </>;
 }
 
 export function AssignedProgress({ plan, fighter, schedule }: { plan: CoachPlan; fighter: Fighter; schedule: CoachPlannedSession[] | undefined }) {
-  if (!schedule) return <p role="status">Loading training progress…</p>;
+  if (!schedule) return <p role="status">Loading progress…</p>;
   const start = weekStart(fighter.today), end = dayOffset(start, 6);
   const planned = schedule.filter(row => row.plan_id === plan.published_plan_id && row.day >= start && row.day <= end);
   const logged = fighter.sessions.filter(row => row.plan_id === plan.published_plan_id);
@@ -123,7 +121,7 @@ export function AssignedProgress({ plan, fighter, schedule }: { plan: CoachPlan;
   const percentage = planned.length ? Math.round(completed / planned.length * 100) : 0;
   const allComplete = planned.length > 0 && completed === planned.length;
   const latest = logged[0];
-  const summary = allComplete ? "All sessions complete this week" : !planned.length ? "No sessions scheduled this week" : upcoming.length ? `${upcoming.length} upcoming ${upcoming.length === 1 ? "session" : "sessions"} this week` : skipped ? `${skipped} ${skipped === 1 ? "session" : "sessions"} skipped this week` : "Sessions still to record this week";
+  const summary = allComplete ? "All sessions complete this week" : !planned.length ? "No sessions scheduled this week" : upcoming.length ? `${upcoming.length} upcoming ${upcoming.length === 1 ? "session" : "sessions"} this week` : skipped ? `${skipped} ${skipped === 1 ? "session" : "sessions"} skipped this week` : "Sessions left to log this week";
   return <div className={styles.planProgress}>
     <div className={styles.completionMeter}><p className={styles.completionLabel}>Weekly completion</p>
     <div className={styles.completionHeading}><strong>{completed}<span> / {planned.length}</span></strong><span className={styles.completionPercentage}>{planned.length ? `${percentage}%` : "—"}</span></div>
@@ -133,7 +131,7 @@ export function AssignedProgress({ plan, fighter, schedule }: { plan: CoachPlan;
       <p>{allComplete ? <StatusIcon status="done" /> : null}<strong>{summary}</strong></p>
       <p className={styles.planLatest}>Latest: {latest ? `${formatAppDate(latest.day).split(" ").slice(1, 3).join(" ")} · ${humanize(latest.status)}${latest.rpe ? ` · RPE ${latest.rpe}` : ""}` : "No sessions recorded"}</p>
     </div>
-    {matching.some(row => row.log && ["modified", "skipped"].includes(row.log.status)) ? <details className={styles.planSessionDetails}><summary>Modified &amp; skipped sessions</summary><ul>{matching.filter(row => row.log && ["modified", "skipped"].includes(row.log.status)).map(({ session, log }) => <li key={`${session.day}:${session.id}`}>{formatAppDate(session.day)} · {session.title} · {humanize(log!.status)}</li>)}</ul></details> : null}
+    {matching.some(row => row.log && ["modified", "skipped"].includes(row.log.status)) ? <details className={styles.planSessionDetails}><summary>Modified &amp; skipped</summary><ul>{matching.filter(row => row.log && ["modified", "skipped"].includes(row.log.status)).map(({ session, log }) => <li key={`${session.day}:${session.id}`}>{formatAppDate(session.day)} · {session.title} · {humanize(log!.status)}</li>)}</ul></details> : null}
     {upcoming.length ? <ul className={styles.planUpcoming}>{upcoming.map(({ session }) => <li key={`${session.day}:${session.id}`}>{formatAppDate(session.day)} · {session.title}</li>)}</ul> : null}
   </div>;
 }
