@@ -138,3 +138,23 @@ for (const role of ['athlete', 'coach']) for (const width of [390, 1440]) {
     expect(errors).toEqual([]);
   });
 }
+
+for (const [latestPlanDate, expected] of [['2026-12-19', 'Sat 19 Dec 2026'], ['', null]] as const) {
+  test(`athlete builder uses latest saved plan fight date ${latestPlanDate || 'open camp'}`, async ({ page, baseURL }) => {
+    await page.clock.install({ time: new Date('2026-11-16T12:00:00Z') });
+    await setup(page, baseURL!, 'athlete', '2026-11-23', latestPlanDate);
+    await page.goto('/plans/custom');
+    const calendar = page.getByRole('region', { name: 'Plan calendar', exact: true });
+    await expect(calendar).toBeVisible();
+    if (!expected) {
+      await expect(calendar.getByText(/Fight day ·/)).toHaveCount(0);
+      return;
+    }
+    await expect(calendar.getByText(`Fight day · ${expected}`)).toBeVisible();
+    await expect(calendar.getByText('Fight day · Mon 23 Nov 2026')).toHaveCount(0);
+    await calendar.getByRole('button', { name: 'Month', exact: true }).click();
+    await calendar.getByRole('button', { name: 'Next calendar period', exact: true }).click();
+    await expect(calendar.locator('[data-fight-day="true"]')).toBeVisible();
+    await expect(calendar.getByRole('button', { name: 'Select Sat 19 Dec 2026 (Fight day)' })).toBeDisabled();
+  });
+}
