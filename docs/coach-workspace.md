@@ -163,7 +163,7 @@ Sparring summaries count the reports displayed for the selected week. Rounds,
 report count and hard reports come from that same list. Intensity, head contact
 and a rocked warning are separate signals.
 
-`20261116024150_coach_feedback.sql` adds separate coach-authored feedback and
+`20261116031516_coach_feedback.sql` adds separate coach-authored feedback and
 extends the existing permission-checked fighter projection. Feedback never
 updates athlete notes. Only the author can update it through the authenticated
 RPC; accepted connections, approved roles, health consent and target ownership
