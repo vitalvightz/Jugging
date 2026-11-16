@@ -53,8 +53,8 @@ for filename in (
     '20261116001150_coach_signup_invitations.sql',
     '20261116003447_coach_self_signup.sql',
     '20261116014514_coach_weight_consent.sql',
-    '20261116120000_coach_logged_sessions.sql',
-    '20261116120000_coach_logged_sessions.sql',  # Safe replay preserves records.
+    '20261116021019_coach_logged_sessions.sql',
+    '20261116021019_coach_logged_sessions.sql',  # Safe replay preserves records.
 ):
     bootstrap += (root / 'supabase/migrations' / filename).read_text() + '\n'
 bootstrap += 'grant all on all tables in schema public to service_role; grant all on all sequences in schema public to service_role;\n'

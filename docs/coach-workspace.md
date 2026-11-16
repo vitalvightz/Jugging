@@ -108,7 +108,7 @@ coach’s personal movements, past-session reuse or weight recommendations.
   explicit `allow_session_logging` and the athlete's own health-data consent (403 otherwise), as the athlete's own
   logging does.
 - The client request id makes a retry or double tap the same session.
-- `supabase/migrations/20261116120000_coach_logged_sessions.sql` adds
+- `supabase/migrations/20261116021019_coach_logged_sessions.sql` adds
   `allow_session_logging` (default false), `logged_by_coach_id` and
   `logged_by_coach_name` and keeps coach-recorded
   sessions out of XP: they are not recorded training days, their exercises are
