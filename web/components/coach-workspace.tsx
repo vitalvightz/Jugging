@@ -759,7 +759,12 @@ function FighterOverview({
             ))}
           </ul>
         </section>
-      ) : null}
+      ) : (
+        <section className={styles.panel}>
+          <h2>Sparring</h2>
+          <p className={styles.empty}>No sparring reports this week</p>
+        </section>
+      )}
       {/* A new key when sharing changes drops everything these loaded
           (weigh-ins, session rows, cached session records, an open record
           sheet) and reloads it under the new permissions. */}

@@ -870,3 +870,15 @@ for (const width of [320, 1440]) {
     });
   }
 }
+
+
+test("sparring stays visible when the selected week has no reports", async ({ page, baseURL }) => {
+  await fixture(page, baseURL!);
+  await page.goto(`/coach/fighters/${fighterId}`);
+  await page.getByRole("button", { name: "Previous week" }).click();
+  await expect(page.getByRole("heading", { name: "Sparring", exact: true })).toBeVisible();
+  await expect(page.getByText("No sparring reports this week", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Next week" }).click();
+  await expect(page.getByText("No sparring reports this week", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("6 rounds", { exact: true })).toBeVisible();
+});
