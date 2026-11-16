@@ -65,7 +65,7 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
       .catch(() => { if (active) { setSchedule(undefined); setError("Progress unavailable."); } });
     return () => { active = false; };
   }, [token, fighter, attempt, refresh]);
-  if (editing !== null) return <CustomPlanBuilder accessToken={token} coachFighterId={fighter.id} athleteTimezone={fighter.timezone} initialPlan={editing.startsWith("revision:") ? plans?.find(plan => plan.id === editing.slice(9)) : undefined} planId={editing.startsWith("revision:") ? undefined : editing || undefined} onCoachClose={() => { setEditing(null); setAttempt(n => n + 1); }} />;
+  if (editing !== null) return <CustomPlanBuilder accessToken={token} coachFighterId={fighter.id} athleteTimezone={fighter.timezone} fightDate={fighter.fight_date} initialPlan={editing.startsWith("revision:") ? plans?.find(plan => plan.id === editing.slice(9)) : undefined} planId={editing.startsWith("revision:") ? undefined : editing || undefined} onCoachClose={() => { setEditing(null); setAttempt(n => n + 1); }} />;
   // Put the current prescription first, retaining the saved order of other plans.
   const ordered = plans?.toSorted((a, b) => Number(b.assignment_status === "active") - Number(a.assignment_status === "active"));
   const past = (row: CoachPlan) => ["declined", "superseded"].includes(row.assignment_status);
@@ -102,7 +102,7 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
           }} aria-label="Assign to fighter"><span className={styles.mobilePlanText}>Assign</span><span className={styles.desktopPlanText}>Assign to fighter</span></button>
         </> : null}
       </div>
-      {scheduleOpen === plan.id ? <AssignedSchedule plan={plan} schedule={schedule} today={fighter.today} /> : null}
+      {scheduleOpen === plan.id ? <AssignedSchedule plan={plan} schedule={schedule} today={fighter.today} fightDate={fighter.fight_date} /> : null}
       {preview === plan.id ? <AssignedPlanPreview plan={plan} /> : null}
       {plan.assignment_status === "draft" && plan.incomplete ? <p className={styles.planActionNote}>Finish schedule and doses to assign.</p> : null}
       {others.length || plan.assignment_status === "draft" ? <div className={styles.planLinks}>
@@ -121,7 +121,7 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
 }
 
 /** Reuse the builder calendar with the athlete's published dates and no editing actions. */
-export function AssignedSchedule({ plan, schedule, today }: { plan: CoachPlan; schedule?: CoachPlannedSession[]; today: string }) {
+export function AssignedSchedule({ plan, schedule, today, fightDate }: { plan: CoachPlan; schedule?: CoachPlannedSession[]; today: string; fightDate?: string | null }) {
   const rows = schedule?.filter(row => row.plan_id === plan.published_plan_id);
   const dates = rows?.map(row => row.day).sort();
   const start = plan.start_date ?? dates?.[0] ?? today;
@@ -134,7 +134,7 @@ export function AssignedSchedule({ plan, schedule, today }: { plan: CoachPlan; s
   return <section className={styles.planSchedule} aria-label={`${plan.name} schedule`}>
     <h3>Training schedule</h3>
     {!schedule ? <p role="status">Loading schedule…</p> : !rows?.length ? <p>No sessions scheduled.</p> :
-      <CustomPlanCalendar sessions={sessions} start={start} end={end} selected={selected < start ? start : selected > end ? end : selected} onSelect={setSelected} readOnly />}
+      <CustomPlanCalendar fightDate={fightDate} sessions={sessions} start={start} end={end} selected={selected < start ? start : selected > end ? end : selected} onSelect={setSelected} readOnly />}
   </section>;
 }
 
