@@ -1,171 +1,119 @@
-# Coach workspace V1
+# Coach workspace
 
-The coach workspace lives inside the existing Next.js app, using the existing
-AuthProvider, Supabase project and verified user access tokens. No performance
-write endpoint is added. Athlete tracking, generation and owner-only policies
-are unchanged.
+A read-only coach view inside the existing Next.js app. It reuses the existing
+AuthProvider, Supabase project and user access tokens, and adds no write path
+to athlete training data.
 
-## Routes and navigation
+## Routes
 
-- `/coach`: coach metrics, searchable roster and invitations.
-- `/coach/fighters/[athleteId]`: read-only fighter overview.
-- `/settings/coach-access`: athlete invitation acceptance, optional sharing,
-  consent changes, decline and revocation. Linked from Settings so it is
-  reachable from the phone account button. Also available in side navigation.
+- `/coach`: roster summary, fighters needing attention, upcoming fights and the
+  searchable roster.
+- `/coach/fighters/[athleteId]`: one fighter: fight countdown, weekly
+  performance, sparring reports, fight weight, full training history with the
+  recorded exercises of each session, and recovery.
+- `/settings/coach-access`: coaches invite and remove athletes; athletes accept,
+  decline or disconnect. Athletes reach it from Settings.
 
-Coach is an existing protected `profiles.role`. V1 does not enable coach
-self-registration or self-promotion. An operator must provision an approved
-coach account through the trusted service-role/database administration path;
-`tools/manage_admin.py promote` grants **admin**, not coach, and must not be used
-for this purpose. No live roles are changed by this implementation.
+Coach is an existing protected `profiles.role`. There is no self-registration:
+an operator provisions approved coach accounts. Approved administrators can
+also coach through accepted connections without changing role.
 
-## Migration and security
+## Sharing and consent
 
-Apply `supabase/migrations/20261115232832_coach_workspace.sql` through the
-repository's normal Supabase migration release process before deploying the UI.
-It adds one table, `coach_connections`, with participant-only SELECT RLS and no
-browser INSERT/UPDATE/DELETE grants. Three public, security-invoker RPCs delegate
-to narrow private-schema functions with fixed search paths:
+An invitation shows the coach's name, one sentence saying what is shared, and
+Accept / Decline. Accepting shares training, weight, recovery and injury status
+together (`share_recovery` and `share_injuries` are both set). The athlete can
+disconnect at any time, which ends access on the coach's next read.
 
-- `coach_connections_list()` exposes the current actor's live connections.
-- `coach_connection_command(...)` validates invitations and each transition.
-- `coach_fighters(p_athlete_id)` projects accepted, authorised performance data.
+Safeguards that remain:
 
-Private functions deliberately use SECURITY DEFINER to read cross-athlete
-records without broadening their RLS. Every entry point checks the authenticated
-actor, approved profile, coach role or athlete identity as appropriate. The
-`coach_private` schema must stay outside PostgREST's exposed schemas. Anonymous
-execution is revoked. The frontend never receives service-role credentials.
+- Nothing about an athlete is returned before they accept. Invitations do not
+  reveal whether an account exists.
+- Acceptance requires the athlete's verified `auth.users.email`; editable
+  profile fields are never trusted.
+- Weight, recovery and injury data are returned only while the athlete's global
+  `health_data_consent` is on. Weight follows `share_recovery`; pain scores,
+  rehab work, head contact and rocked reports follow `share_injuries`. Without
+  it, rehab and recovery sessions appear as "Programme session".
+- Free-text notes, takeaways, medical narratives, raw plans, intake health
+  details, nutrition settings and birth dates are never returned.
+- Coach reads are GET-only. Nothing a coach opens can be edited.
+- `accepted_at` and the sharing flags record what was agreed and when.
 
-Invitations use a normalised email, do not check whether an account exists and
-return the same result for duplicate live invitations. Acceptance requires the
-recipient's current, verified `auth.users.email`, not editable profile fields.
-The athlete identity, coach identity and consent cannot be changed by direct
-browser writes. Mutations lock the connection row. A coach can cancel a pending
-invite or remove a fighter, but cannot accept or grant consent for them.
+## Database
 
-Training sharing is explicit in the acceptance button. Recovery and injury /
-contact safety are independent unchecked options. Global health consent must
-also remain enabled before health summaries can be returned. Free text notes,
-medical narratives, raw plans, intake health details, nutrition, birth dates,
-exercise blocks and credentials are never returned. Revocation/removal blocks
-the next database read immediately, independently of JWT refresh. Existing
-screens refresh on focus, manually and every 30 seconds while visible; previously
-received information cannot be recalled from a coach's device.
+`supabase/migrations/20261115232832_coach_workspace.sql` adds
+`coach_connections` (participant-only SELECT, no browser writes) and three
+security-invoker RPCs that delegate to `coach_private` functions:
 
-## Reused data and definitions
+- `coach_connections_list()`: the actor's pending and accepted connections.
+- `coach_connection_command(...)`: invite, accept, decline, revoke, remove.
+  Each transition is validated under a row lock. The `consent` action and the
+  two per-category parameters remain for compatibility; the app sends both as
+  true on accept and does not call `consent`.
+- `coach_fighters(p_athlete_id)`: the consent-aware projection of accepted
+  fighters.
 
-| Display | Existing sources / meaning |
+`coach_private` must stay outside PostgREST's exposed schemas.
+
+`20261116001001_coach_signup_invitations.sql` adds the service-only
+`coach_invitation_rules` table. An operator can list email domains for a coach;
+matching new signups receive a pending invitation. It never accepts on the
+athlete's behalf.
+
+## Training history and weight
+
+The fighter page reuses the athlete's own History and weight tracker rather
+than a second implementation. Three read-only API routes in
+`api/routes/coach.py` resolve the caller's accepted connection on every
+request, then call the same services the athlete's screens use:
+
+- `GET /api/coach/fighters/{id}/training/history`: the History page
+  (`history_sessions`), paged by `before_day`.
+- `GET /api/coach/fighters/{id}/training/history/{source}/{entry}`: one
+  session's record (`session_details`): exercises, sets, reps, load, RPE,
+  duration, runs and the sparring report.
+- `GET /api/coach/fighters/{id}/weight`: the athlete's weigh-ins, current and
+  target weight, 7-day average and weekly pace from the nutrition workspace.
+  Descriptive only; no cut guidance. Under-18s have no target.
+
+Without an accepted connection every route answers 404, so a coach cannot
+probe for accounts. In the browser the rows and the session sheet are the
+athlete History components (`SessionRow`, `SessionDetails`) and the chart is
+`WeightTrendChart`. These routes need the backend deployed with the frontend;
+they add no migration.
+
+## Definitions
+
+History covers the last 56 athlete-local training days (04:00 rollover, UTC for
+unknown timezones). Weeks start on Monday.
+
+| Display | Meaning |
 | --- | --- |
-| Identity | `profiles` name and avatar only |
-| Sport / fight | Active `plans`, falling back to latest `athlete_intakes` |
-| Training / S&C | `session_completions` and non-deleted `external_training_sessions`; minimal schedule metadata from active plan |
-| Sparring | Existing training occurrences plus `sparring_logs` round reports; reports do not create an additional session count |
-| Recovery | Optional `today_checkins` sleep/body and `daily_checkins` readiness/fatigue/sleep |
-| Injury flags | Optional open/monitoring `injury_flags`, limited to body area, severity, status and update date |
-| Camp progress | Percentage of the active camp timeline elapsed, explicitly labelled; never presented as training adherence |
+| Sessions | `done` and `modified` completions plus external sessions; `day_credit` excluded |
+| Active this week | A completed session or a sparring report with rounds since Monday |
+| Needs attention | An open injury flag, heavy head contact or a rocked report in the last 7 days, or a recent check-in with poor sleep, flat body, readiness ≤ 2, fatigue ≥ 4 or sleep quality ≤ 2 |
+| Fights in 30 days | Connected fighters with a fight date in the next 30 days |
+| S&C completed | Scheduled strength/conditioning sessions with a matching completion |
+| Camp timeline | Share of the active camp elapsed; not training adherence |
 
-History covers the most recent 56 athlete-local training days with the existing
-04:00 rollover, falling back to UTC for unknown timezones. Weeks start Monday.
-Completed counts include `done` and `modified`, exclude `day_credit`, and retain
-legacy NULL origins in line with existing training history. Explicit `skipped`
-rows display as skipped; absent logs are never classified as missed training.
-S&C progress requires actual scheduled strength/conditioning identities and
-matching plan/day completions. No inferred sessions or denominators are added.
-
-The dashboard’s Active this week count uses completed training occurrences or
-positive-round sparring reports since Monday in each athlete’s training week. Needs attention
-uses a recent explicit poor sleep/flat body, readiness <=2, fatigue >=4 or sleep
-quality <=2, open shared injury flags, or recent shared heavy-contact/rocked
-reports. Missing, unshared or stale check-ins do not create concern flags.
-Upcoming fights counts connected fighters with dates in the next 30 days,
-including their current training day. No production fixture data is included.
+Missing, unshared or stale check-ins never create a concern.
 
 ## Verification
 
-- `python tools/test_coach_workspace.py --container unlxck-coach-test` executes
-  the migration against real source table DDL in isolated PostgreSQL 17, then
-  rolls back all synthetic users and rows. The container must be disposable,
-  with a clean database and no pre-existing `anon`/`authenticated` roles.
-- `cd web && npm run typecheck && npm run build`
-- `cd web && npm run lint`
-- `cd web && npm run test:unit`
-- `cd web && npx playwright test e2e/coach-workspace.spec.ts` against a production
-  build with matching public env variables; Chromium must be installed. The
-  browser suite intercepts all external services and never writes live data.
+- `python tools/test_coach_workspace.py --container <name>` runs both migrations
+  and the permission assertions in a disposable PostgreSQL 17 container, then
+  rolls back.
+- `python -m pytest tests/test_coach_fighter_access.py`: connection checks,
+  revocation, private-note stripping, unshared health detail and read-only
+  behaviour of the coach API.
+- `cd web && npm run typecheck && npm run lint && npm run test:unit`
+- `cd web && npm run build && npx playwright test e2e/coach-workspace.spec.ts`
+  against a build with the placeholder public env values. The browser tests
+  intercept every external request.
 
-Browser tests cover desktop/mobile sizing, search, profile navigation, empty
-roster, invitations, acceptance with opt-in health sharing, consent withdrawal,
-revocation, loss of access, failures and WCAG accessibility (including contrast).
-Connected database catalog metadata was checked read-only for required columns
-and existing RLS. The migrations have been applied to the connected Supabase project.
+## Limits
 
-## V1 limits
-
-Invitations are in-app only: recipients sign in using the invited verified email
-and open Settings → Coach access. No email or push system is added. Coach roles
-are operator-provisioned. The roster permits 250 live invitations/connections per
-coach. Long-term history, custom-programme editing, messaging, analytics and
-programme generation are outside V1. Screens use English copy while retaining
-the existing app's locale and theme shell.
-
-## Files changed
-
-- `web/app/coach/page.tsx`, `web/app/coach/fighters/[athleteId]/page.tsx`,
-  `web/app/settings/coach-access/page.tsx`: entry routes.
-- `web/components/coach-workspace.tsx` and `.module.css`: compact coach dashboard,
-  attention list, upcoming fights, searchable roster, weekly performance,
-  recovery tiles, session details and connection controls.
-- `web/components/app-nav.tsx`, `web/app/settings/page.tsx`,
-  `web/lib/beta-navigation.ts`, `web/lib/auth-routing.ts`: existing navigation
-  integration and coach destination.
-- `web/lib/coach.ts`, `web/lib/coach.test.ts`: typed RPC adapter and count rules.
-- `supabase/migrations/20261115232832_coach_workspace.sql`: connection table,
-  indexes, RLS, permission transitions and consent-aware projections.
-- `tests/coach_workspace_permissions.sql`, `tools/test_coach_workspace.py`:
-  isolated PostgreSQL migration/permission tests.
-- `web/e2e/coach-workspace.spec.ts`: isolated browser flow and accessibility checks.
-- `docs/coach-workspace.md`, `design-qa.md`: rollout, limits and verification notes.
-
-## Validation results
-
-- Production build and TypeScript passed.
-- New coach components, helpers and browser tests pass ESLint with zero warnings.
-  Existing navigation/settings retain their pre-existing lint warnings.
-- PostgreSQL 17: 32 permission/projection assertions passed and rolled back.
-- Frontend affected-area regressions after rebasing onto latest Main: 26 passed.
-- Existing Python authentication, authorization, training history and consent
-  checks: 44 passed using test-only environment markers.
-- Chromium: seven flows passed across 1440, 390 and 320 CSS-pixel widths.
-- The full frontend unit run was interrupted after stalling in the existing
-  timer-provider tests: 458 passed, zero failed, 148 cancelled. This is not a
-  claim that the complete suite passed.
-
-The final UI follows the user's supplied dashboard/profile references. The dashboard follows the reference copy with two-line fighter rows. Counting
-explanations are omitted, search is expandable, and connection management lives
-in Coach access. Full consent wording remains available before sharing. The supplied screenshots' illustrative
-fighters and metric values are not copied into production.
-
-## Operator-configured signup invitations
-
-Approved administrators can also use the consent-bound coach workspace without
-changing their admin role or losing existing admin access. This does not grant
-access to unaccepted athlete performance records.
-
-`20261116001001_coach_signup_invitations.sql` adds a service-only
-`coach_invitation_rules` table and a private profile-insert trigger. An operator
-can configure exact Auth email domains for a coach. Only Auth accounts created
-on or after rule activation receive pending invitations; existing signups and
-lookalike domains are excluded. Profile email fields are not trusted. No athlete
-identity, training or health access is attached until the athlete accepts.
-Turning the rule off stops future invitations. Revoking an accepted connection
-does not automatically re-invite that athlete.
-
-Rule configuration and initial invitations are runtime operator data and are
-not hardcoded into this public repository. Tuta's domains are configured on the
-connected project. No email notifications or automatic acceptance are added.
-
-Follow-up verification: 43 isolated PostgreSQL assertions include future domain
-matching, unverified recipients, older accounts, spoofed profile emails,
-disabled rules, service-only configuration and admin coaching with acceptance
-and revocation. The sole administrator's existing role is preserved.
+Invitations are in-app only; there is no email or push notification. A coach
+can hold 250 pending or accepted connections. Programme editing, messaging and
+long-term analytics are out of scope. Coach screens use English copy.

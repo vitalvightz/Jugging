@@ -164,3 +164,27 @@ test("bests come from the server's complete run list, not the loaded History", a
     } finally { act(() => root.unmount()); container.remove(); globalThis.fetch = fetch; }
   }
 });
+
+test("a coach reads a fighter's record through their own loader, with no 'you' copy", async () => {
+  const manual: TrainingHistorySession = { ...row, id: "two", source: "external", title: "Boxing", activity: "boxing", plan_id: null, duration_minutes: 40, effort: "hard" };
+  const asked: string[] = [];
+  const load = async (token: string, source: string, id: string) => {
+    asked.push(`${token}:${source}:${id}`);
+    return { session: manual, prescription_source: "manual", blocks: [
+      { name: "Bag rounds", kind: "exercise", source: "manual", prescribed: {}, actual: { rounds: 6 }, status: null, responses: [] },
+    ] } as never;
+  };
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<SessionDetails row={manual} token="coach" cache={new Map()} viewer="coach" load={load} onDismiss={() => {}} />));
+    for (const button of container.querySelectorAll<HTMLButtonElement>("ol button[aria-expanded]")) await act(async () => button.click());
+    assert.deepEqual(asked, ["coach:external:two"]);
+    assert.match(container.textContent!, /Added by athlete/);
+    assert.match(container.textContent!, /Bag rounds/);
+    assert.doesNotMatch(container.textContent!, /by you/i);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});

@@ -275,6 +275,44 @@ def _session_history_title(
     return None
 
 
+def history_sessions(store: AppStore, athlete_id: str, *, limit: int, before_day: date | None = None,
+                     include_skipped: bool = False, manual_only: bool = False) -> dict[str, Any]:
+    """One History page for ``athlete_id``: titled sessions and the next cursor."""
+    # Pages hold whole training days, so a page can run past ``limit`` rows.
+    rows, next_before_day = training_history_page(
+        store, athlete_id, limit=limit, before_day=before_day.isoformat() if before_day else None,
+        include_skipped=include_skipped, manual_only=manual_only)
+    # The plans that titles come from and the manual-exercise counts depend
+    # only on this page's rows: read them in one concurrent wave instead of
+    # one plan after another and then the counts.
+    title_plan_ids = sorted({
+        str(row.get("plan_id") or "") for row in rows
+        if row["source"] != "external" and _saved_session_title(row) is None
+    } - {""})
+    external_ids = [str(row["id"]) for row in rows if row["source"] == "external"]
+    *title_plans, counts = run_reads_concurrently(
+        *(partial(_title_plan, store, athlete_id, plan_id) for plan_id in title_plan_ids),
+        lambda: store.count_manual_exercises(athlete_id, external_ids),
+    )
+    plans = dict(zip(title_plan_ids, title_plans))
+    for row in rows:
+        if row["source"] == "external":
+            continue
+        row["title"] = _history_title(store, athlete_id, row, plans) or "Unlxck session"
+        session = _saved_history_session(row)
+        if session and (session.get("session_type") == "sparring" or any(
+            isinstance(block, Mapping) and block.get("block_type") == "sparring"
+            for block in (session.get("blocks") if isinstance(session.get("blocks"), list) else [])
+        )):
+            row["activity"] = "sparring"
+        row["history_editable"] = bool(row.get("id")) and plan_completion_history_editable(row)
+        row["id"] = str(row.get("id") or row.get("session_id"))
+    for row in rows:
+        if row["source"] == "external":
+            row["exercise_count"] = counts.get(str(row["id"]), 0)
+    return {"sessions": rows, "next_before_day": next_before_day}
+
+
 def build_today_router(*, require_profile, get_store) -> APIRouter:
     router = APIRouter(tags=["today"])
 
@@ -349,39 +387,8 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
                               before_day: date | None = None,
                               profile: ProfileRecord = Depends(require_profile),
                               store: AppStore = Depends(get_store)):
-        # Pages hold whole training days, so a page can run past ``limit`` rows.
-        rows, next_before_day = training_history_page(
-            store, profile.athlete_id, limit=limit, before_day=before_day.isoformat() if before_day else None,
-            include_skipped=include_skipped, manual_only=manual_only)
-        # The plans that titles come from and the manual-exercise counts depend
-        # only on this page's rows: read them in one concurrent wave instead of
-        # one plan after another and then the counts.
-        title_plan_ids = sorted({
-            str(row.get("plan_id") or "") for row in rows
-            if row["source"] != "external" and _saved_session_title(row) is None
-        } - {""})
-        external_ids = [str(row["id"]) for row in rows if row["source"] == "external"]
-        *title_plans, counts = run_reads_concurrently(
-            *(partial(_title_plan, store, profile.athlete_id, plan_id) for plan_id in title_plan_ids),
-            lambda: store.count_manual_exercises(profile.athlete_id, external_ids),
-        )
-        plans = dict(zip(title_plan_ids, title_plans))
-        for row in rows:
-            if row["source"] == "external":
-                continue
-            row["title"] = _history_title(store, profile.athlete_id, row, plans) or "Unlxck session"
-            session = _saved_history_session(row)
-            if session and (session.get("session_type") == "sparring" or any(
-                isinstance(block, Mapping) and block.get("block_type") == "sparring"
-                for block in (session.get("blocks") if isinstance(session.get("blocks"), list) else [])
-            )):
-                row["activity"] = "sparring"
-            row["history_editable"] = bool(row.get("id")) and plan_completion_history_editable(row)
-            row["id"] = str(row.get("id") or row.get("session_id"))
-        for row in rows:
-            if row["source"] == "external":
-                row["exercise_count"] = counts.get(str(row["id"]), 0)
-        return {"sessions": rows, "next_before_day": next_before_day}
+        return history_sessions(store, profile.athlete_id, limit=limit, before_day=before_day,
+                                include_skipped=include_skipped, manual_only=manual_only)
 
     # Limited History changes to a finished plan session. Removing it marks the
     # session not done again, so streaks are recounted; earned XP is kept, as

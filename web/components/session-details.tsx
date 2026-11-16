@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState, type ReactNode, type CSSProperties 
 import { getSessionDetails } from "@/lib/api";
 import type { SessionDetailBlock, SessionDetailRun, SessionDetails as Details } from "@/lib/api-schema.generated";
 import { formatAppDate } from "@/lib/date-format";
-import { sessionStatusLabel } from "@/lib/history";
+import { sessionStatusLabel, sessionStatusTone } from "@/lib/history";
 import { EXERCISE_LOG_REASON_LABELS } from "@/lib/exercise-log";
 import type { ExerciseLogReason } from "@/lib/types";
 import { lockOverlayScroll } from "@/lib/overlay-scroll-lock";
@@ -19,11 +19,33 @@ import type { ExerciseSetResult } from "@/lib/types";
 import { useSheetExit } from "@/lib/use-sheet-exit";
 import { Skeleton } from "./skeleton";
 import { AutoHeight } from "./today/auto-height";
-import { formatRunTime } from "@/lib/run-time";
+import { formatRunTime, runSummary } from "@/lib/run-time";
 import { describeDistanceDelta, describePaceDelta, fromKm, fromKmPace, isRun, RUN_TYPE_LABELS, runInsights } from "@/lib/run-insights";
 import { RunBarChart, RunTrendChart } from "./run-trend-chart";
 import progress from "./training-progress.module.css";
 import summary from "./training-summary.module.css";
+
+/** A coach reads a connected fighter's record: the same record, with no "you" copy and nothing to edit. */
+type Viewer = "coach";
+
+/** One session in a History list: title, status and headline numbers. The whole row opens its details. */
+export function SessionRow({ row, onOpen }: { row: TrainingHistorySession; onOpen: () => void }) {
+  const title = trainingTitle(row)?.trim();
+  return <li className="history-row history-session-row" data-tone={sessionStatusTone(row.status)}>
+    <button type="button" className="history-session-open" aria-haspopup="dialog"
+      aria-label={`View ${title || "session"} details for ${formatAppDate(row.training_day)}`} onClick={onOpen} />
+    <div className="history-row-head">
+      <span className="history-row-title">{title || "Session"}</span>
+      <span className="badge history-status-badge" data-tone={sessionStatusTone(row.status)}>{sessionStatusLabel(row.status)}</span>
+    </div>
+    <div className="history-row-meta">
+      {runSummary(row) ? <span>{runSummary(row)}</span> : row.duration_minutes ? <span>{row.duration_minutes} min</span> : null}
+      {row.source === "external" && row.exercise_count ? <span>{row.exercise_count} exercise{row.exercise_count === 1 ? "" : "s"}</span> : null}
+      {row.session_rpe != null ? <span>RPE {row.session_rpe}/10</span> : null}
+    </div>
+    {row.takeaway?.trim() ? <p className="history-row-takeaway">{row.takeaway}</p> : null}
+  </li>;
+}
 
 /** The session's own status as an icon tone. */
 function sessionTone(status: string): RecordStatus {
@@ -60,14 +82,14 @@ function Comparison({ rows, label, title, bar = false }: { rows: ComparisonRow[]
   </section>;
 }
 
-function TrainingBlockBody({ block, context }: { block: SessionDetailBlock; context: string }) {
+function TrainingBlockBody({ block, context, viewer }: { block: SessionDetailBlock; context: string; viewer?: Viewer }) {
   const entries = Array.isArray(block.actual.set_entries) && block.actual.set_entries.length ? block.actual.set_entries as ExerciseSetResult[] : null;
   const sets = entries ? <SetResults entries={entries} completed={typeof block.actual.sets === "number" ? block.actual.sets : undefined} /> : null;
   const countOnly = countOnlySetSummary(block.actual);
   const notes = <>{block.reason ? <p className={styles.note}>{EXERCISE_LOG_REASON_LABELS[block.reason as ExerciseLogReason] || block.reason}</p> : null}
     {block.notes ? <blockquote className={styles.quote}>{block.notes}</blockquote> : null}</>;
   if (block.source === "manual") return <>
-    <p className={styles.outcome}>Logged training · added by you</p>
+    <p className={styles.outcome}>Logged training{viewer === "coach" ? "" : " · added by you"}</p>
     {countOnly ? <p className={styles.quiet}>{countOnly}</p> : detailMeasurements(block.actual).length
       ? <Comparison rows={comparisonRows({}, block.actual)} label={`Recorded: ${context}`} title="Recorded" /> : <p className={styles.quiet}>No measurements recorded.</p>}
     {countOnly ? null : sets}{notes}
@@ -112,8 +134,9 @@ function TrainingBlockBody({ block, context }: { block: SessionDetailBlock; cont
 }
 
 /** A collapsible record card: name, dose and the weight in gold; the full record expands on request. */
-export function TrainingBlock({ block, index, heading, recordId, open, onToggle, numbered = true, compact = false }: {
+export function TrainingBlock({ block, index, heading, recordId, open, onToggle, numbered = true, compact = false, viewer }: {
   block: SessionDetailBlock; index: number; heading?: string; recordId?: string; open: boolean; onToggle: () => void; numbered?: boolean; compact?: boolean;
+  viewer?: Viewer;
 }) {
   const body = useId();
   const context = heading ? `${block.name} · ${heading} · Record ${index + 1}` : block.name;
@@ -126,7 +149,7 @@ export function TrainingBlock({ block, index, heading, recordId, open, onToggle,
       <div className={styles.blockSide}>{load ? <strong className={styles.weight}>{load}</strong> : null}
         <span className={styles.status} data-status={recordStatus(block.status, block.source === "manual")}><StatusIcon status={recordStatus(block.status, block.source === "manual")} />{label}</span></div>
       <span className={styles.chevron} aria-hidden="true">›</span></div>
-    {open ? <div id={body} className={styles.blockBody}><TrainingBlockBody block={block} context={context} /></div> : null}
+    {open ? <div id={body} className={styles.blockBody}><TrainingBlockBody block={block} context={context} viewer={viewer} /></div> : null}
   </li>;
 }
 
@@ -156,11 +179,12 @@ const PACE_STEPS = [5, 10, 15, 30, 60, 120, 300, 600];
  * with distance as the headline and time, pace and speed beneath, then a
  * trend card to compare it with the athlete's other logged runs, and its week.
  */
-function RunRecord({ run, history, onEditRun }: {
+function RunRecord({ run, history, onEditRun, viewer }: {
   run: TrainingHistorySession;
   /** Every run the athlete logged through this run's week, from the server; null when it was not sent. */
   history: readonly SessionDetailRun[] | null;
   onEditRun?: () => void;
+  viewer?: Viewer;
 }) {
   // Bests and comparisons come only from the complete list the server sends,
   // never from a partly loaded History page.
@@ -215,7 +239,7 @@ function RunRecord({ run, history, onEditRun }: {
       <div className={summary.head}>
         <p className="history-summary-label">{distance ? "Distance" : "Time"}</p>
         {onEditRun && !missing.length ? <button type="button" className={`${progress.textButton} ${styles.runEdit}`} aria-haspopup="dialog" onClick={onEditRun}>Edit run</button>
-          : <span className={styles.runMeta}>Added by you</span>}
+          : <span className={styles.runMeta}>{viewer === "coach" ? "Added by athlete" : "Added by you"}</span>}
       </div>
       <div className={styles.runHeadline}>
         <strong>{distance ? Number(distance.toFixed(2)) : time ?? run.duration_minutes ?? "—"}</strong>
@@ -225,7 +249,7 @@ function RunRecord({ run, history, onEditRun }: {
       <dl className={`history-summary-stats ${summary.stats} ${styles.runTiles}`} style={{ "--stat-count": 3 } as CSSProperties}>
         {tiles.map(tile => <div key={tile.label}><dt>{tile.label}</dt><dd>{tile.value ?? "—"}{tile.value && tile.unit ? <small>{tile.unit}</small> : null}</dd></div>)}
       </dl>
-      {missing.length ? <div className={styles.runPrompt}>
+      {missing.length && viewer !== "coach" ? <div className={styles.runPrompt}>
         <p>Add your {missing.join(" and ")} to see pace, personal bests and trends.</p>
         {onEditRun ? <button type="button" className="secondary-button" aria-haspopup="dialog" onClick={onEditRun}>Add run details</button> : null}
       </div> : null}
@@ -267,17 +291,20 @@ function RunRecord({ run, history, onEditRun }: {
         <div><dt>Distance</dt><dd>{insights.week.distance > 0 ? <>{Number(insights.week.distance.toFixed(1))}<small>{unitShort}</small></> : "—"}</dd></div>
         <div><dt>Time</dt><dd>{insights.week.timed > 0 ? formatRunTime(insights.week.timed) : "—"}</dd></div>
       </dl>
-      <details className={progress.about}>
+      {viewer === "coach" ? null : <details className={progress.about}>
         <summary>About these numbers</summary>
         <p>Pace and speed use your exact time, so a run logged in whole minutes has no pace.</p>
         <p>Comparisons and bests count every run you have logged up to this one, so an old run keeps the bests it set at the time.</p>
-      </details>
+      </details>}
     </section> : null}
   </div>;
 }
 
-export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = true, onEditExercises, onEditRun, actions }: {
+export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = true, onEditExercises, onEditRun, actions, viewer, load = getSessionDetails }: {
   row: TrainingHistorySession; token: string; cache: SessionDetailsCache; onDismiss: () => void;
+  viewer?: Viewer;
+  /** Reads the record; a coach passes the read scoped to their connected fighter. */
+  load?: typeof getSessionDetails;
   /** A suspended parent sheet owns focus restoration during a modal handoff. */
   restoreFocus?: boolean;
   actions?: ReactNode;
@@ -307,7 +334,7 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
     const key = `${row.source}:${row.id}`;
     let request = cache.get(key);
     if (!request) {
-      request = getSessionDetails(token, row.source, row.id);
+      request = load(token, row.source, row.id);
       cache.set(key, request);
     }
     void request.then(result => { if (!cancelled) setDetails(result); }).catch(() => {
@@ -315,7 +342,7 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
       if (!cancelled) setError(true);
     });
     return () => { cancelled = true; };
-  }, [row.id, row.source, token, cache, attempt]);
+  }, [row.id, row.source, token, cache, attempt, load]);
   const record = details?.session;
   const [open, setOpen] = useState<ReadonlySet<number>>(() => new Set());
   const run = record && isRun(record) ? { ...row, ...record } : null;
@@ -325,7 +352,7 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
   const sport = facts.sport ? sportLabel(facts.sport) : null;
   const sessionType = facts.session_type ? sessionTypes(facts.sport).find(item => item.id === facts.session_type)?.label || facts.session_type.replaceAll("_", " ") : null;
   const metadata = [facts.duration_minutes != null ? `${facts.duration_minutes} min` : null, sessionEffort(facts),
-    facts.source === "external" ? "Added by you" : "UNLXCK",
+    facts.source === "external" ? viewer === "coach" ? "Added by athlete" : "Added by you" : "UNLXCK",
     ...[sport, sessionType].filter(value => value && !title.toLocaleLowerCase().includes(value.toLocaleLowerCase()))].filter(Boolean);
   return <dialog ref={dialog} className={`${styles.dialog} ${styles.journal}`} aria-labelledby={heading} data-closing={closing || undefined}
     onCancel={event => { if (event.target !== event.currentTarget) return; event.preventDefault(); dismiss(); }}
@@ -348,12 +375,12 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
         {!details && !error ? <SessionRecordSkeleton /> : null}
         {error ? <div role="alert"><p>Unable to load session details. Try again.</p><button type="button" className="secondary-button" onClick={() => { setError(false); setAttempt(value => value + 1); }}>Retry</button></div> : null}
         {details && record && run ? <div className={styles.recordContent}>
-          <RunRecord run={run} history={details.runs ?? null} onEditRun={onEditRun ? () => onEditRun(run) : undefined} />
+          <RunRecord run={run} history={details.runs ?? null} onEditRun={onEditRun ? () => onEditRun(run) : undefined} viewer={viewer} />
           {details.blocks.length || onEditExercises ? <section className={styles.section}>
             <div className={styles.manualHead}><h3>Drills & exercises</h3>
               {onEditExercises ? <button type="button" className={styles.manualAction} aria-haspopup="dialog"
                 onClick={() => onEditExercises(run)}>{details.blocks.length ? "Edit exercises" : "Add exercises"}</button> : null}</div>
-            <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} numbered={false} compact
+            <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} numbered={false} compact viewer={viewer}
               open={expanded.has(index)} onToggle={() => setOpen(new Set(expanded.has(index) ? [...expanded].filter(item => item !== index) : [...expanded, index]))} />)}</ol>
           </section> : null}
           {record.notes || record.takeaway ? <section className={styles.section}><h3>Notes</h3>
@@ -367,7 +394,7 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
               {record.source === "external" && onEditExercises && record.activity !== "sparring" ? <button type="button" className={styles.manualAction} aria-haspopup="dialog"
                 onClick={() => onEditExercises({ ...row, ...record })}>{details.blocks.length ? "Edit exercises" : "Add exercises"}</button> : null}</div>
             {details.prescription_source === "exercise_logs" ? <p className={styles.quiet}>Saved exercise logs only. Full prescription and block order unavailable.</p> : null}
-            {details.blocks.length ? <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} numbered={false} compact
+            {details.blocks.length ? <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} numbered={false} compact viewer={viewer}
               open={expanded.has(index)} onToggle={() => setOpen(new Set(expanded.has(index) ? [...expanded].filter(item => item !== index) : [...expanded, index]))} />)}</ol>
               : record.source === "external" ? <p className={styles.quiet}>No exercises recorded.</p> : null}
           </section>

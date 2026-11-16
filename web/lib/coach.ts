@@ -5,9 +5,6 @@ export type Connection = {
   invited_email: string;
   coach_name: string;
   status: "pending" | "accepted";
-  share_recovery: boolean;
-  share_injuries: boolean;
-  created_at: string;
 };
 export type CoachSession = {
   id: string;
@@ -91,8 +88,8 @@ export async function coachRpc<T>(
   if (!response.ok) {
     throw new Error(
       response.status === 401 || response.status === 403
-        ? "Access unavailable. Check your account and sharing permissions."
-        : "Could not load coach access. Please retry. If this continues, contact support.",
+        ? "Access unavailable."
+        : "Something went wrong. Please retry.",
     );
   }
   return response.json() as Promise<T>;
@@ -110,42 +107,46 @@ export function completed(session: CoachSession): boolean {
   return session.status === "done" || session.status === "modified";
 }
 export function fighterSummary(fighter: Fighter) {
+  const { today } = fighter;
+  const recent = dayOffset(today, -6);
+  const monday = weekStart(today);
   const latest = fighter.recovery?.[0];
-  const stale = latest && latest.day < dayOffset(fighter.today, -6);
+  const stale = latest && latest.day < recent;
+  const tired = latest?.body === "flat" || (latest?.fatigue ?? 0) >= 4;
+  const poorSleep = latest?.sleep === "poor";
   const recoveryConcern =
     latest &&
     !stale &&
-    (latest.sleep === "poor" ||
-      latest.body === "flat" ||
+    (poorSleep ||
+      tired ||
       (latest.readiness !== undefined && latest.readiness <= 2) ||
-      (latest.fatigue !== undefined && latest.fatigue >= 4) ||
       (latest.sleep_quality !== undefined && latest.sleep_quality <= 2));
-  const done = fighter.sessions.filter(completed);
+  const weekSessions = fighter.sessions.filter(
+    (s) => completed(s) && s.day >= monday && s.day <= today,
+  ).length;
   return {
-    weekSessions: done.filter(
-      (s) => s.day >= weekStart(fighter.today) && s.day <= fighter.today,
-    ).length,
+    weekSessions,
     active:
-      done.some(
-        (s) => s.day >= dayOffset(fighter.today, -6) && s.day <= fighter.today,
-      ) ||
+      weekSessions > 0 ||
       Boolean(
-        fighter.sparring_reports?.some(
-          (s) =>
-            s.rounds > 0 &&
-            s.day >= dayOffset(fighter.today, -6) &&
-            s.day <= fighter.today,
-        ),
+        fighter.sparring_reports?.some((s) => s.rounds > 0 && s.day >= monday),
       ),
-    attention: Boolean(
-      recoveryConcern ||
-      fighter.injuries?.length ||
-      fighter.sparring_reports?.some(
-        (s) =>
-          s.day >= dayOffset(fighter.today, -6) &&
-          (s.rocked || s.head_contact === "heavy"),
-      ),
-    ),
+    // The reason a coach should look at this fighter, or null.
+    attention: fighter.injuries?.length
+      ? `${fighter.injuries.length} open injury ${fighter.injuries.length === 1 ? "flag" : "flags"}`
+      : fighter.sparring_reports?.some(
+            (s) => s.day >= recent && (s.rocked || s.head_contact === "heavy"),
+          )
+        ? "Contact concern reported"
+        : !recoveryConcern
+          ? null
+          : poorSleep && latest.body === "flat"
+            ? "Poor sleep and fatigue reported"
+            : poorSleep
+              ? "Poor sleep reported"
+              : tired
+                ? "Fatigue reported"
+                : "Low recovery reported",
     recovery: !fighter.share_recovery
       ? "Not shared"
       : !latest
@@ -155,46 +156,11 @@ export function fighterSummary(fighter: Fighter) {
           : recoveryConcern
             ? "Recovery concern"
             : "No concern reported",
-    recoveryDay: latest?.day,
-    lastActivity: fighter.sessions
-      .map((s) => s.day)
-      .concat(
-        fighter.recovery?.map((r) => r.day) ?? [],
-        fighter.sparring_reports?.map((r) => r.day) ?? [],
-      )
-      .sort()
-      .at(-1),
-    upcoming: Boolean(
-      fighter.fight_date && fighter.fight_date >= fighter.today,
-    ),
+    upcoming: Boolean(fighter.fight_date && fighter.fight_date >= today),
   };
-}
-export function sessionLabel(fighter: Fighter, session: CoachSession): string {
-  return (
-    session.title ||
-    fighter.schedule.find(
-      (s) =>
-        s.id === session.session_id &&
-        s.day === session.day &&
-        fighter.plan_id === session.plan_id,
-    )?.title ||
-    (session.type === "programme"
-      ? "Programme session"
-      : humanize(session.type))
-  );
 }
 export function humanize(value: string | null | undefined): string {
   return value
     ? value.replaceAll("_", " ").replace(/^./, (s) => s.toUpperCase())
-    : "Not recorded";
-}
-export function formatDay(day: string | null | undefined): string {
-  return day
-    ? new Intl.DateTimeFormat("en-GB", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-        timeZone: "UTC",
-      }).format(new Date(`${day}T12:00:00Z`))
     : "Not recorded";
 }

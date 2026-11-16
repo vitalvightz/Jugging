@@ -2,6 +2,11 @@ import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { setup } from "./custom-plan-fixture";
 import type { Connection, Fighter } from "../lib/coach";
+import type {
+  CoachFighterWeight,
+  SessionDetails,
+} from "../lib/api-schema.generated";
+import type { TrainingHistorySession } from "../lib/training-history";
 const fighterId = "00000000-0000-4000-8000-000000000003";
 // Isolated test responses only. Never written to production.
 const connection: Connection = {
@@ -11,9 +16,6 @@ const connection: Connection = {
   invited_email: "fighter@example.invalid",
   coach_name: "Test Coach",
   status: "accepted",
-  share_recovery: true,
-  share_injuries: false,
-  created_at: "2026-11-15T12:00:00Z",
 };
 const fighter: Fighter = {
   id: fighterId,
@@ -68,8 +70,100 @@ const fighter: Fighter = {
   ],
   recovery: [
     { day: "2026-11-15", sleep: "poor", body: "flat", source: "today" },
+    {
+      day: "2026-10-20",
+      readiness: 4,
+      fatigue: 2,
+      sleep_quality: 4,
+      source: "daily",
+    },
   ],
   injuries: null,
+  sparring_reports: [
+    {
+      id: "report-1",
+      day: "2026-11-15",
+      intensity: "technical",
+      rounds: 6,
+      round_seconds: 180,
+      head_contact: null,
+      rocked: null,
+    },
+  ],
+};
+const strengthSession: TrainingHistorySession = {
+  id: "00000000-0000-4000-8000-0000000000a1",
+  session_id: "strength",
+  source: "unlxck",
+  completion_origin: "reported",
+  training_day: "2026-11-09",
+  status: "modified",
+  title: "Strength & power",
+  activity: null,
+  duration_minutes: 55,
+  effort: null,
+  plan_id: "test-plan",
+  session_rpe: 7,
+};
+const history: TrainingHistorySession[] = [
+  strengthSession,
+  // An older block, so the list has more than its first ten rows.
+  ...Array.from({ length: 11 }, (_, index) => ({
+    ...strengthSession,
+    id: `00000000-0000-4000-8000-0000000000b${index.toString(16)}`,
+    training_day: `2026-10-${String(25 - index).padStart(2, "0")}`,
+    status: "done" as const,
+    title: `Camp session ${index + 1}`,
+  })),
+];
+const details: SessionDetails = {
+  session: strengthSession as SessionDetails["session"],
+  prescription_source: "snapshot",
+  message: null,
+  sparring: null,
+  runs: null,
+  blocks: [
+    {
+      name: "Trap bar deadlift",
+      kind: "exercise",
+      source: "plan",
+      format: null,
+      prescribed: { sets: 4, reps: 6 },
+      actual: {
+        sets: 3,
+        reps: 5,
+        load: { value: 140, unit: "kg" },
+      } as SessionDetails["blocks"][number]["actual"],
+      status: "modified",
+      reason: "fatigue",
+      notes: null,
+      completed_dose: null,
+      responses: [],
+    },
+  ],
+};
+const weight: CoachFighterWeight = {
+  shared: true,
+  current_weight_kg: 73.6,
+  target_weight_kg: 70,
+  rolling_7_day_average_weight: 73.9,
+  weekly_pace_kg: -0.4,
+  entries: [
+    {
+      date: "2026-11-12",
+      weight_kg: 74.2,
+      time: "07:00",
+      is_fasted: true,
+      notes: null,
+    },
+    {
+      date: "2026-11-15",
+      weight_kg: 73.6,
+      time: null,
+      is_fasted: null,
+      notes: null,
+    },
+  ],
 };
 async function fixture(
   page: Page,
@@ -85,8 +179,6 @@ async function fixture(
         {
           ...connection,
           status: role === "coach" || role === "admin" ? "accepted" : "pending",
-          share_recovery: role === "coach" || role === "admin",
-          share_injuries: false,
         },
       ];
   const actions: Record<string, unknown>[] = [];
@@ -99,13 +191,12 @@ async function fixture(
         rows = [];
         connections = [];
       }
-      if (["accept", "consent"].includes(body.p_action))
-        connections = connections.map((c) => ({
-          ...c,
-          status: "accepted",
-          share_recovery: body.p_recovery,
-          share_injuries: body.p_injuries,
-        }));
+      if (body.p_action === "accept")
+        connections = connections.map((c) => ({ ...c, status: "accepted" }));
+      if (body.p_action === "invite")
+        connections = [
+          { ...connection, invited_email: body.p_email, status: "pending" },
+        ];
       return route.fulfill({ json: "test-connection" });
     }
     return route.fulfill({
@@ -116,6 +207,19 @@ async function fixture(
               ...f,
               schedule: body.p_athlete_id ? f.schedule : [],
             })),
+    });
+  });
+  // The coach API checks the connection on every read, like the RPC.
+  await page.route("**/api/coach/fighters/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (!rows.length || !path.includes(`/${fighterId}/`))
+      return route.fulfill({ status: 404, json: { detail: "not found" } });
+    return route.fulfill({
+      json: path.endsWith("/weight")
+        ? weight
+        : path.endsWith("/training/history")
+          ? { sessions: history, next_before_day: null }
+          : details,
     });
   });
   return {
@@ -145,7 +249,7 @@ for (const width of [1440, 390, 320]) {
     await expect(
       page
         .getByRole("link", { name: /Test Fighter.*sessions/ })
-        .getByText("Recovery concern"),
+        .getByText("Needs attention"),
     ).toBeVisible();
     expect(
       await page.evaluate(
@@ -165,9 +269,7 @@ for (const width of [1440, 390, 320]) {
         ["serious", "critical"].includes(v.impact ?? ""),
       ),
     ).toEqual([]);
-    await page
-      .getByRole("button", { name: "Search fighters", exact: true })
-      .click();
+    await page.getByRole("button", { name: "Search", exact: true }).click();
     await page.getByRole("searchbox").fill("does not exist");
     await expect(
       page.getByText("No fighters match this search."),
@@ -178,27 +280,64 @@ for (const width of [1440, 390, 320]) {
       page.getByRole("heading", { name: "Fighter overview" }),
     ).toBeVisible();
     await expect(
-      page.getByText("1 of 1 scheduled sessions completed"),
+      page.getByText("Poor sleep and fatigue reported"),
     ).toBeVisible();
+    const strength = page
+      .getByRole("article")
+      .filter({ hasText: "S&C completed" });
+    await expect(strength).toContainText("1/1");
     await page.getByRole("button", { name: "Previous week" }).click();
-    await expect(
-      page.getByText("No sessions recorded this week."),
-    ).toBeVisible();
+    await expect(strength).toContainText("—");
     await page.getByRole("button", { name: "Next week" }).click();
+    await expect(strength).toContainText("1/1");
+    await expect(page.getByText("6 rounds · technical")).toBeVisible();
+
+    // Fight weight: the athlete's own weigh-ins and target.
+    const fightWeight = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Fight weight" }) });
+    await expect(fightWeight).toContainText("73.6 kg");
+    await expect(fightWeight).toContainText("Above target");
+    await expect(fightWeight).toContainText("3.6 kg");
+    await expect(fightWeight).toContainText("Days to fight");
+    await expect(fightWeight.getByRole("slider")).toBeVisible();
+
+    // Training history opens the athlete's recorded session.
+    const trainingHistory = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Training history" }) });
+    await expect(trainingHistory.getByRole("listitem")).toHaveCount(10);
+    await trainingHistory
+      .getByRole("button", { name: "Show earlier sessions" })
+      .click();
+    await expect(trainingHistory.getByRole("listitem")).toHaveCount(12);
+    await page
+      .getByRole("button", { name: /View Strength & power details/ })
+      .click();
+    const record = page.getByRole("dialog");
     await expect(
-      page.getByText("1 of 1 scheduled sessions completed"),
+      record.getByRole("heading", { name: "Strength & power" }),
     ).toBeVisible();
+    await expect(record).toContainText("Trap bar deadlift");
+    await expect(record).toContainText("140 kg");
+    await expect(record).not.toContainText("by you");
     await expect(
-      page.getByRole("heading", { name: "Sparring & S&C" }),
-    ).toBeVisible();
+      record.getByRole("button", { name: /Edit|Delete/ }),
+    ).toHaveCount(0);
+    await record.getByRole("button", { name: "Trap bar deadlift" }).click();
+    await expect(record).toContainText("Reported vs prescribed");
+    await record.getByRole("button", { name: "Close session details" }).click();
+    await expect(record).toHaveCount(0);
+
+    // Recovery: the last seven days, with older check-ins on request.
+    await expect(page.getByText("Sleep: poor · Body: flat")).toBeVisible();
+    await expect(page.getByText("Readiness: 4/5")).toBeHidden();
     await page.screenshot({
       path: info.outputPath(`coach-fighter-compact-${width}.png`),
       fullPage: true,
     });
-    await page.getByText("Check-ins & sharing", { exact: true }).click();
-    await expect(
-      page.getByText("Injury information is not shared."),
-    ).toBeVisible();
+    await page.getByText("Older check-ins (1)", { exact: true }).click();
+    await expect(page.getByText("Readiness: 4/5")).toBeVisible();
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -231,48 +370,69 @@ test("empty roster and invitation", async ({ page, baseURL }) => {
   await page
     .getByRole("textbox", { name: "Athlete email" })
     .fill("fighter@example.invalid");
-  await page.getByRole("button", { name: "Invite athlete" }).click();
-  await expect(page.getByText(/Invitation saved/)).toBeVisible();
+  await page.getByRole("button", { name: "Invite", exact: true }).click();
+  await expect(page.getByText("fighter@example.invalid")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
   expect(state.actions[0].p_action).toBe("invite");
 });
-test("athlete accepts, changes consent, then revokes", async ({
+test("athlete accepts with one tap, then disconnects", async ({
   page,
   baseURL,
 }, info) => {
   const state = await fixture(page, baseURL!, "athlete");
   await page.setViewportSize({ width: 390, height: 1000 });
   await page.goto("/settings/coach-access");
+  await expect(page.getByText("Test Coach")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Accept & share training" }),
+    page.getByText(
+      "Accepting shares your training, weight, recovery and injury information",
+      { exact: false },
+    ),
   ).toBeVisible();
-  await expect(page.getByRole("checkbox").first()).not.toBeChecked();
-  await expect(page.getByRole("checkbox").last()).not.toBeChecked();
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
   await page.screenshot({
-    path: info.outputPath("coach-consent-mobile.png"),
+    path: info.outputPath("coach-invitation-mobile.png"),
     fullPage: true,
   });
-  await page.getByRole("checkbox").first().check();
-  await page.getByRole("button", { name: "Accept & share training" }).click();
-  await expect(
-    page.getByRole("button", { name: "Revoke all access" }),
-  ).toBeVisible();
+  const axe = await new AxeBuilder({ page })
+    .include("main")
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(
+    axe.violations.filter((v) =>
+      ["serious", "critical"].includes(v.impact ?? ""),
+    ),
+  ).toEqual([]);
+  await page.getByRole("button", { name: "Accept", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Disconnect" })).toBeVisible();
   expect(state.actions[0]).toMatchObject({
     p_action: "accept",
     p_recovery: true,
-    p_injuries: false,
+    p_injuries: true,
   });
-  await page.getByRole("checkbox").first().uncheck();
-  await page.getByRole("button", { name: "Save sharing" }).click();
-  await expect(
-    page.getByRole("button", { name: "Save sharing" }),
-  ).toBeDisabled();
-  expect(state.actions[1]).toMatchObject({
-    p_action: "consent",
-    p_recovery: false,
-    p_injuries: false,
+  await page.screenshot({
+    path: info.outputPath("coach-connected-mobile.png"),
+    fullPage: true,
   });
-  await page.getByRole("button", { name: "Revoke all access" }).click();
-  await expect(page.getByText("No coach requests yet.")).toBeVisible();
+  await page.getByRole("button", { name: "Disconnect" }).click();
+  await expect(page.getByText("No coach invitations yet.")).toBeVisible();
+  expect(state.actions[1]).toMatchObject({ p_action: "revoke" });
+});
+test("athlete declines an invitation without sharing anything", async ({
+  page,
+  baseURL,
+}) => {
+  const state = await fixture(page, baseURL!, "athlete");
+  await page.goto("/settings/coach-access");
+  await page.getByRole("button", { name: "Decline" }).click();
+  await expect(page.getByText("No coach invitations yet.")).toBeVisible();
+  expect(state.actions).toEqual([
+    expect.objectContaining({
+      p_action: "decline",
+      p_recovery: false,
+      p_injuries: false,
+    }),
+  ]);
 });
 test("lost sharing clears fighter overview on refresh", async ({
   page,
@@ -284,7 +444,7 @@ test("lost sharing clears fighter overview on refresh", async ({
     page.getByRole("heading", { name: "Test Fighter" }),
   ).toBeVisible();
   state.revoke();
-  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(
     page.getByRole("heading", { name: "Fighter unavailable" }),
   ).toBeVisible();

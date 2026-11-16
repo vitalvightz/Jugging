@@ -8,24 +8,55 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
-import { TileIcon } from "@/components/record-icons";
+import { createPortal } from "react-dom";
 import { RequireAuth } from "@/components/auth-guard";
 import { useAppSession } from "@/components/auth-provider";
+import {
+  SessionDetails,
+  SessionRow,
+  type SessionDetailsCache,
+} from "@/components/session-details";
+import { Skeleton } from "@/components/skeleton";
+import { WeightTrendChart } from "@/components/weight-trend-chart";
+import {
+  getFighterHistory,
+  getFighterSessionDetails,
+  getFighterWeight,
+  type getSessionDetails,
+} from "@/lib/api";
+import type { CoachFighterWeight } from "@/lib/api-schema.generated";
 import { isSafeAvatarImageUrl } from "@/lib/avatar-image-url";
 import {
   coachRpc,
   completed,
   dayOffset,
   fighterSummary,
-  formatDay,
   humanize,
-  sessionLabel,
   weekStart,
   type Connection,
   type Fighter,
 } from "@/lib/coach";
+import { formatAppDate } from "@/lib/date-format";
+import {
+  formatFastedState,
+  formatWeight,
+  formatWeightDelta,
+  getBodyweightEntriesWithIndex,
+  getBodyweightTrend,
+  getDefaultBodyweightRange,
+  getRangeStart,
+  getTargetGap,
+  type BodyweightRange,
+} from "@/lib/nutrition-bodyweight";
+import {
+  sortTrainingHistory,
+  type TrainingHistorySession,
+} from "@/lib/training-history";
 import styles from "./coach-workspace.module.css";
+import summary from "./training-summary.module.css";
+import weightStyles from "./weight-tracker.module.css";
 
 export function CoachWorkspace({
   fighterId,
@@ -35,263 +66,258 @@ export function CoachWorkspace({
   connectionsOnly?: boolean;
 }) {
   const { session, me, isMeHydrated } = useAppSession();
+  const coach = me?.profile.role === "coach" || me?.profile.role === "admin";
   return (
     <RequireAuth>
-      {isMeHydrated && session && me ? (
-        <Workspace
-          key={`${session.user_id}:${session.access_token}:${fighterId ?? "roster"}`}
-          token={session.access_token}
-          coach={me.profile.role === "coach" || me.profile.role === "admin"}
-          fighterId={fighterId}
-          connectionsOnly={connectionsOnly}
-        />
-      ) : (
-        <p role="status">Restoring your workspace…</p>
-      )}
+      <div className={styles.workspace}>
+        {!isMeHydrated || !session || !me ? (
+          <Loading />
+        ) : connectionsOnly || !coach ? (
+          <CoachAccess
+            key={`${session.user_id}:${session.access_token}`}
+            token={session.access_token}
+            coach={coach}
+          />
+        ) : (
+          <Fighters
+            key={`${session.user_id}:${session.access_token}:${fighterId}`}
+            token={session.access_token}
+            fighterId={fighterId}
+          />
+        )}
+      </div>
     </RequireAuth>
   );
 }
 
-function Workspace({
-  token,
-  coach,
-  fighterId,
-  connectionsOnly,
-}: {
-  token: string;
-  coach: boolean;
-  fighterId?: string;
-  connectionsOnly: boolean;
-}) {
-  const [fighters, setFighters] = useState<Fighter[]>([]);
-  const [connections, setConnections] = useState<Connection[]>([]);
-  const [query, setQuery] = useState("");
-  const [email, setEmail] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+// Reloads on focus and every 30 seconds, so access an athlete has ended drops
+// off the screen. A failed load clears the data instead of leaving it stale.
+function useLive<T>(fetcher: () => Promise<T>) {
+  const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const generation = useRef(0);
-  const load = useCallback(async () => {
-    const request = ++generation.current;
+  const latest = useRef(0);
+  const reload = useCallback(async () => {
+    const request = ++latest.current;
     try {
-      const [nextConnections, nextFighters] = await Promise.all([
-        coachRpc<Connection[]>(token, "coach_connections_list"),
-        coach && !connectionsOnly
-          ? coachRpc<Fighter[]>(token, "coach_fighters", {
-              p_athlete_id: fighterId ?? null,
-            })
-          : Promise.resolve([]),
-      ]);
-      if (request !== generation.current) return;
-      setConnections(nextConnections);
-      setFighters(nextFighters);
+      const next = await fetcher();
+      if (request !== latest.current) return;
+      setData(next);
       setError("");
     } catch (e) {
-      if (request !== generation.current) return;
-      setFighters([]);
-      setConnections([]);
-      setError(e instanceof Error ? e.message : "Unable to load workspace.");
-    } finally {
-      if (request === generation.current) setLoading(false);
+      if (request !== latest.current) return;
+      setData(null);
+      setError(e instanceof Error ? e.message : "Something went wrong.");
     }
-  }, [token, coach, fighterId, connectionsOnly]);
+  }, [fetcher]);
   useEffect(() => {
-    const lifecycle = generation;
-    const initialLoad = window.setTimeout(() => {
-      void load();
-    }, 0);
-    const onFocus = () => {
-      void load();
-    };
+    const requests = latest;
+    const onFocus = () => void reload();
+    const first = window.setTimeout(onFocus, 0);
     const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void load();
+      if (document.visibilityState === "visible") void reload();
     }, 30_000);
     window.addEventListener("focus", onFocus);
     return () => {
-      ++lifecycle.current;
-      window.clearTimeout(initialLoad);
+      ++requests.current;
+      window.clearTimeout(first);
       window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
     };
-  }, [load]);
-  async function command(
-    action: string,
-    id?: string,
-    recovery = false,
-    injuries = false,
-  ) {
+  }, [reload]);
+  return { data, error, setError, reload };
+}
+
+function LoadState({
+  error,
+  loading,
+  retry,
+}: {
+  error: string;
+  loading: boolean;
+  retry: () => void;
+}) {
+  return error ? (
+    <div className={styles.error} role="alert">
+      {error}
+      <button className="ghost-button" type="button" onClick={retry}>
+        Retry
+      </button>
+    </div>
+  ) : loading ? (
+    <Loading />
+  ) : null;
+}
+
+function Loading() {
+  return (
+    <div className={styles.loading} role="status" aria-label="Loading">
+      <Skeleton height={84} />
+      <Skeleton height={148} />
+      <Skeleton height={148} />
+    </div>
+  );
+}
+
+function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
+  const fetcher = useCallback(
+    () => coachRpc<Connection[]>(token, "coach_connections_list"),
+    [token],
+  );
+  const { data: connections, error, setError, reload } = useLive(fetcher);
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function command(action: string, id?: string) {
     if (busy) return;
-    ++generation.current;
     setBusy(true);
-    setError("");
-    setNotice("");
-    // Clear displayed performance while permissions may be changing.
-    setFighters([]);
     try {
       await coachRpc(token, "coach_connection_command", {
         p_action: action,
         p_id: id ?? null,
         p_email: action === "invite" ? email : null,
-        p_recovery: recovery,
-        p_injuries: injuries,
+        // Accepting shares training, weight, recovery and injury status together.
+        p_recovery: action === "accept",
+        p_injuries: action === "accept",
       });
       if (action === "invite") setEmail("");
-      setNotice(
-        action === "invite"
-          ? "Invitation saved. Awaiting acceptance."
-          : "Sharing updated.",
-      );
-      await load();
+      await reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Unable to update sharing.");
+      setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
       setBusy(false);
     }
   }
-  const fighter = fighters[0];
-  const showRoster = coach && !connectionsOnly && !fighterId;
   return (
-    <div className={styles.workspace}>
-      <header className={fighterId ? styles.profileHeader : styles.header}>
-        <div>
-          <p className={showRoster ? styles.srOnly : "kicker"}>
-            {fighterId
-              ? "Fighter overview"
-              : coach
-                ? "Coach workspace"
-                : "Permissions"}
-          </p>
-          <h1 className={fighterId ? styles.srOnly : undefined}>
-            {fighterId
-              ? "Fighter overview"
-              : connectionsOnly || !coach
-                ? "Coach access"
-                : "Your corner. In focus."}
-          </h1>
-          <p className={fighterId ? styles.srOnly : styles.muted}>
-            {coach
-              ? "Your team’s preparation at a glance."
-              : "Your training. Your choice."}
-          </p>
-        </div>
-        <div className={styles.actions}>
-          {fighterId ? (
-            <Link className="ghost-button" href="/coach">
-              ← All fighters
-            </Link>
-          ) : null}
-          {coach && connectionsOnly ? (
-            <Link className="ghost-button" href="/coach">
-              Coach workspace
-            </Link>
-          ) : null}
-          {!showRoster || error ? (
-            <button
-              className="ghost-button"
-              type="button"
-              disabled={busy || loading}
-              onClick={() => {
-                setLoading(true);
-                void load();
-              }}
-            >
-              Refresh
-            </button>
-          ) : null}
-        </div>
-      </header>
-      {error ? (
-        <div className="status-card" role="alert">
-          {error}
-        </div>
+    <>
+      {coach ? (
+        <Link className={styles.back} href="/coach">
+          ← Coach workspace
+        </Link>
       ) : null}
-      {notice ? <p role="status">{notice}</p> : null}
-      {loading ? <p role="status">Loading authorised records…</p> : null}
-      {!loading && !error && showRoster ? (
-        <CoachDashboard fighters={fighters} query={query} setQuery={setQuery} />
+      <h1>Coach access</h1>
+      {coach ? (
+        <form
+          className={styles.invite}
+          onSubmit={(event: FormEvent) => {
+            event.preventDefault();
+            void command("invite");
+          }}
+        >
+          <input
+            required
+            type="email"
+            maxLength={254}
+            aria-label="Athlete email"
+            placeholder="Athlete email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <button className="cta" disabled={busy}>
+            Invite
+          </button>
+        </form>
       ) : null}
-      {!loading && !error && fighterId ? (
-        fighter ? (
-          <FighterOverview fighter={fighter} />
-        ) : (
-          <section className={styles.panel}>
-            <h2>Fighter unavailable</h2>
-            <p>This fighter has not accepted access, or sharing has ended.</p>
-          </section>
-        )
+      <LoadState error={error} loading={!connections} retry={reload} />
+      {connections?.length === 0 ? (
+        <p className={styles.empty}>
+          {coach
+            ? "No invitations yet. Athletes accept in Settings → Coach access."
+            : "No coach invitations yet."}
+        </p>
       ) : null}
-      {!fighterId && !showRoster ? (
-        <details className={styles.panel} open={!coach || connectionsOnly}>
-          <summary className={styles.manageSummary}>
-            {coach ? "Manage connections" : "Your coaches"}
-          </summary>
-
-          {coach ? (
-            <form
-              className={styles.invite}
-              onSubmit={(event: FormEvent) => {
-                event.preventDefault();
-                void command("invite");
-              }}
-            >
-              <label>
-                Athlete email
-                <input
-                  required
-                  type="email"
-                  maxLength={254}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="fighter@example.com"
-                />
-              </label>
-              <button className="cta" disabled={busy || loading}>
-                Invite athlete
+      {connections?.map((c) => {
+        const pending = c.status === "pending";
+        const name = c.coach_name || "Your coach";
+        return (
+          <article className={styles.connection} key={c.id}>
+            <div className={styles.rowCopy}>
+              <strong>{coach ? c.invited_email : name}</strong>
+              <small>
+                {coach
+                  ? pending
+                    ? "Pending"
+                    : "Connected"
+                  : pending
+                    ? "Wants to connect as your coach. Accepting shares your training, weight, recovery and injury information. Disconnect anytime."
+                    : "Connected · Sharing training, weight, recovery and injuries"}
+              </small>
+            </div>
+            <div className={styles.actions}>
+              {!coach && pending ? (
+                <button
+                  className="cta"
+                  disabled={busy}
+                  onClick={() => void command("accept", c.id)}
+                >
+                  Accept
+                </button>
+              ) : null}
+              <button
+                className="ghost-button"
+                disabled={busy}
+                onClick={() =>
+                  void command(
+                    coach ? "remove" : pending ? "decline" : "revoke",
+                    c.id,
+                  )
+                }
+              >
+                {coach
+                  ? pending
+                    ? "Cancel"
+                    : "Remove"
+                  : pending
+                    ? "Decline"
+                    : "Disconnect"}
               </button>
-            </form>
-          ) : null}
-          <p className="muted">
-            {coach
-              ? "Athletes accept in Settings → Coach access."
-              : "Accepting shares your name, avatar, sport, fight date, programme schedule and recorded training. Recovery and injury status are separate, optional choices. Private notes and medical narratives are never shared."}
-          </p>
-          {!loading && connections.length === 0 ? (
-            <p>
-              No {coach ? "invitations or connections" : "coach requests"} yet.
-            </p>
-          ) : null}
-          <div className={styles.connectionList}>
-            {connections.map((c) => (
-              <ConnectionRow
-                key={`${c.id}:${c.share_recovery}:${c.share_injuries}`}
-                connection={c}
-                coach={coach}
-                busy={busy}
-                command={command}
-              />
-            ))}
-          </div>
-        </details>
-      ) : null}
-    </div>
+            </div>
+          </article>
+        );
+      })}
+    </>
   );
 }
 
-function CoachDashboard({
-  fighters,
-  query,
-  setQuery,
-}: {
-  fighters: Fighter[];
-  query: string;
-  setQuery: (value: string) => void;
-}) {
+function Fighters({ token, fighterId }: { token: string; fighterId?: string }) {
+  const fetcher = useCallback(
+    () =>
+      coachRpc<Fighter[]>(token, "coach_fighters", {
+        p_athlete_id: fighterId ?? null,
+      }),
+    [token, fighterId],
+  );
+  const { data: fighters, error, reload } = useLive(fetcher);
+  return (
+    <>
+      {fighterId ? (
+        <Link className={styles.back} href="/coach">
+          ← All fighters
+        </Link>
+      ) : null}
+      <h1 className={fighterId ? styles.srOnly : undefined}>
+        {fighterId ? "Fighter overview" : "Your corner. In focus."}
+      </h1>
+      <LoadState error={error} loading={!fighters} retry={reload} />
+      {!fighters ? null : !fighterId ? (
+        <CoachDashboard fighters={fighters} />
+      ) : fighters[0] ? (
+        <FighterOverview fighter={fighters[0]} token={token} />
+      ) : (
+        <section className={styles.panel}>
+          <h2>Fighter unavailable</h2>
+          <p className={styles.empty}>Not connected, or sharing has ended.</p>
+        </section>
+      )}
+    </>
+  );
+}
+
+function CoachDashboard({ fighters }: { fighters: Fighter[] }) {
+  const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const rows = fighters.map((fighter) => ({
     fighter,
     summary: fighterSummary(fighter),
   }));
-  const [searchOpen, setSearchOpen] = useState(false);
   const attention = rows.filter((row) => row.summary.attention);
   const upcoming = rows
     .filter(
@@ -308,180 +334,124 @@ function CoachDashboard({
   return (
     <>
       <section className={styles.metrics} aria-label="Roster summary">
-        {[
-          ["Total fighters", rows.length, "Connected athletes"],
+        {(
           [
-            "Active this week",
-            rows.filter(
-              (r) =>
-                r.summary.weekSessions > 0 ||
-                r.fighter.sparring_reports?.some(
-                  (s) => s.rounds > 0 && s.day >= weekStart(r.fighter.today),
-                ),
-            ).length,
-            "Completed training",
-          ],
-          ["Needs attention", attention.length, "Reported concerns"],
-          ["Upcoming fights", upcoming.length, "Next 30 days"],
-        ].map(([label, value, help]) => (
+            ["Fighters", rows.length],
+            ["Active this week", rows.filter((r) => r.summary.active).length],
+            ["Needs attention", attention.length],
+            ["Fights in 30 days", upcoming.length],
+          ] as const
+        ).map(([label, value]) => (
           <article className={styles.metric} key={label}>
             <span>{label}</span>
             <strong
               className={
-                label === "Needs attention" && Number(value) > 0
+                label === "Needs attention" && value
                   ? styles.concern
                   : undefined
               }
             >
               {value}
             </strong>
-            <small>{help}</small>
           </article>
         ))}
       </section>
-      <section className={styles.panel}>
-        <div className={styles.sectionHeading}>
-          <div>
-            <p className={styles.eyebrow}>Priority</p>
-            <h2>Needs attention</h2>
-          </div>
-          <span className={styles.flag}>
-            {attention.length} {attention.length === 1 ? "flag" : "flags"}
-          </span>
-        </div>
-        {attention.length ? (
+      {attention.length ? (
+        <section className={styles.panel}>
+          <h2>Needs attention</h2>
           <ul className={styles.roster}>
-            {attention.map(({ fighter: f }) => (
-              <li key={f.id}>
-                <Link
-                  href={`/coach/fighters/${f.id}`}
-                  className={styles.rowLink}
-                >
-                  <span className={styles.signal}>
-                    <TileIcon name="pain" />
-                  </span>
-                  <span className={styles.rowCopy}>
-                    <strong>{f.name || "Fighter"}</strong>
-                    <small>{attentionReason(f)}</small>
-                  </span>
-                  <span className={styles.rowEnd}>
-                    <TileIcon name="source" />
-                  </span>
-                </Link>
-              </li>
+            {attention.map(({ fighter: f, summary: s }) => (
+              <FighterRow
+                key={f.id}
+                fighter={f}
+                lead={<Avatar fighter={f} />}
+                detail={<span className={styles.concern}>{s.attention}</span>}
+              />
             ))}
           </ul>
-        ) : (
-          <p className={styles.empty}>No shared concerns reported.</p>
-        )}
-      </section>
-      <section className={styles.panel}>
-        <div className={styles.sectionHeading}>
-          <div>
-            <p className={styles.eyebrow}>Schedule</p>
-            <h2>Upcoming fights</h2>
-          </div>
-          <span className={styles.quietIcon}>
-            <TileIcon name="time" />
-          </span>
-        </div>
-        {upcoming.length ? (
+        </section>
+      ) : null}
+      {upcoming.length ? (
+        <section className={styles.panel}>
+          <h2>Upcoming fights</h2>
           <ul className={styles.roster}>
             {upcoming.map(({ fighter: f }) => (
-              <li key={f.id}>
-                <Link
-                  href={`/coach/fighters/${f.id}`}
-                  className={styles.rowLink}
-                >
+              <FighterRow
+                key={f.id}
+                fighter={f}
+                lead={
                   <span className={styles.countdown}>
                     <strong>{daysUntil(f.today, f.fight_date!)}</strong>
                     <small>days</small>
                   </span>
-                  <span className={styles.rowCopy}>
-                    <strong>{f.name || "Fighter"}</strong>
-                    <small>
-                      {humanize(f.sport)} · {formatDay(f.fight_date)}
-                    </small>
-                    {f.plan_name ? (
-                      <small className={styles.concern}>{f.plan_name}</small>
-                    ) : null}
-                  </span>
-                  <span className={styles.pill}>View</span>
-                </Link>
-              </li>
+                }
+                detail={`${humanize(f.sport)} · ${formatAppDate(f.fight_date!)}`}
+              />
             ))}
           </ul>
-        ) : (
-          <p className={styles.empty}>No upcoming fights.</p>
-        )}
-      </section>
+        </section>
+      ) : null}
       <section className={styles.panel}>
         <div className={styles.sectionHeading}>
           <h2>Your fighters</h2>
-          <div className={styles.rosterTools}>
-            <small className={styles.muted}>{rows.length} connected</small>
-            <button
-              className={styles.searchToggle}
-              aria-label="Search fighters"
-              aria-expanded={searchOpen}
-              onClick={() => setSearchOpen(!searchOpen)}
-            >
-              <TileIcon name="source" />
-            </button>
+          <div className={styles.actions}>
+            {rows.length ? (
+              <button
+                type="button"
+                className={styles.pill}
+                aria-expanded={searchOpen}
+                onClick={() => setSearchOpen(!searchOpen)}
+              >
+                Search
+              </button>
+            ) : null}
+            <Link className={styles.pill} href="/settings/coach-access">
+              Invite
+            </Link>
           </div>
         </div>
         {searchOpen ? (
-          <label className={styles.search}>
-            <span className={styles.srOnly}>Search fighters</span>
-            <input
-              type="search"
-              placeholder="Search name or sport"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </label>
+          <input
+            className={styles.search}
+            type="search"
+            aria-label="Search fighters"
+            placeholder="Search name or sport"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
         ) : null}
-        {!rows.length ? (
-          <div className={styles.empty}>
-            <strong>Your corner starts here.</strong>
-            <p>Invite a fighter to get started.</p>
-          </div>
-        ) : !visible.length ? (
-          <p className={styles.empty}>No fighters match this search.</p>
+        {!visible.length ? (
+          <p className={styles.empty}>
+            {rows.length
+              ? "No fighters match this search."
+              : "Your corner starts here. Invite a fighter to get started."}
+          </p>
         ) : (
           <ul className={styles.roster}>
             {visible.map(({ fighter: f, summary: s }) => (
-              <li key={f.id}>
-                <Link
-                  className={styles.rowLink}
-                  href={`/coach/fighters/${f.id}`}
-                >
-                  <Avatar fighter={f} />
-                  <span className={styles.rowCopy}>
-                    <strong>{f.name || "Fighter"}</strong>
-                    <small>
-                      {humanize(f.sport)} · {s.weekSessions} sessions
-                    </small>
-                  </span>
-                  <span className={styles.rosterState}>
-                    <span
-                      className={
-                        s.attention
-                          ? styles.concern
-                          : s.recovery === "No concern reported"
-                            ? styles.positive
-                            : styles.muted
-                      }
-                    >
-                      {s.attention
-                        ? "Recovery concern"
+              <FighterRow
+                key={f.id}
+                fighter={f}
+                lead={<Avatar fighter={f} />}
+                detail={`${humanize(f.sport)} · ${s.weekSessions} sessions`}
+                end={
+                  <span
+                    className={
+                      s.attention
+                        ? styles.concern
                         : s.recovery === "No concern reported"
-                          ? "On track"
-                          : s.recovery}
-                    </span>
+                          ? styles.positive
+                          : styles.muted
+                    }
+                  >
+                    {s.attention
+                      ? "Needs attention"
+                      : s.recovery === "No concern reported"
+                        ? "On track"
+                        : s.recovery}
                   </span>
-                </Link>
-              </li>
+                }
+              />
             ))}
           </ul>
         )}
@@ -489,29 +459,37 @@ function CoachDashboard({
     </>
   );
 }
+
+function FighterRow({
+  fighter: f,
+  lead,
+  detail,
+  end,
+}: {
+  fighter: Fighter;
+  lead: ReactNode;
+  detail: ReactNode;
+  end?: ReactNode;
+}) {
+  return (
+    <li>
+      <Link href={`/coach/fighters/${f.id}`} className={styles.rowLink}>
+        {lead}
+        <span className={styles.rowCopy}>
+          <strong>{f.name || "Fighter"}</strong>
+          <small>{detail}</small>
+        </span>
+        {end}
+      </Link>
+    </li>
+  );
+}
+
 function daysUntil(today: string, date: string) {
   return Math.max(
     0,
     Math.round((Date.parse(date) - Date.parse(today)) / 86400000),
   );
-}
-function attentionReason(f: Fighter): string {
-  if (f.injuries?.length)
-    return `${f.injuries.length} open injury ${f.injuries.length === 1 ? "flag" : "flags"}`;
-  if (
-    f.sparring_reports?.some(
-      (s) =>
-        s.day >= dayOffset(f.today, -6) &&
-        (s.rocked || s.head_contact === "heavy"),
-    )
-  )
-    return "Contact concern reported";
-  const r = f.recovery?.[0];
-  if (r?.sleep === "poor" && r.body === "flat")
-    return "Poor sleep and fatigue reported";
-  if (r?.sleep === "poor") return "Poor sleep reported";
-  if (r?.body === "flat" || (r?.fatigue ?? 0) >= 4) return "Fatigue reported";
-  return "Low recovery reported";
 }
 
 function Avatar({ fighter }: { fighter: Fighter }) {
@@ -535,119 +513,14 @@ function Avatar({ fighter }: { fighter: Fighter }) {
     </span>
   );
 }
-function ConnectionRow({
-  connection: c,
-  coach,
-  busy,
-  command,
-}: {
-  connection: Connection;
-  coach: boolean;
-  busy: boolean;
-  command: (
-    action: string,
-    id?: string,
-    recovery?: boolean,
-    injuries?: boolean,
-  ) => Promise<void>;
-}) {
-  const [recovery, setRecovery] = useState(c.share_recovery);
-  const [injuries, setInjuries] = useState(c.share_injuries);
-  return (
-    <article className={styles.connection}>
-      <div>
-        <strong>{coach ? c.invited_email : c.coach_name || "Coach"}</strong>
-        <p>
-          {humanize(c.status)}
-          {coach && c.status === "accepted"
-            ? ` · Recovery ${c.share_recovery ? "shared" : "private"} · Injury status ${c.share_injuries ? "shared" : "private"}`
-            : ""}
-        </p>
-      </div>
-      {coach ? (
-        <button
-          className="ghost-button"
-          disabled={busy}
-          onClick={() => void command("remove", c.id)}
-        >
-          {c.status === "pending" ? "Cancel invitation" : "Remove fighter"}
-        </button>
-      ) : (
-        <>
-          <fieldset disabled={busy} className={styles.consent}>
-            <legend>
-              Optional sharing with {c.coach_name || "this coach"}
-            </legend>
-            <label>
-              <input
-                type="checkbox"
-                checked={recovery}
-                onChange={(e) => setRecovery(e.target.checked)}
-              />{" "}
-              Recovery & readiness (sleep, fatigue and readiness check-ins)
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={injuries}
-                onChange={(e) => setInjuries(e.target.checked)}
-              />{" "}
-              Injury & contact safety (body area, severity, open flags and
-              sparring contact reports; no medical notes)
-            </label>
-          </fieldset>
-          <div className={styles.actions}>
-            {c.status === "pending" ? (
-              <>
-                <button
-                  className="cta"
-                  disabled={busy}
-                  onClick={() =>
-                    void command("accept", c.id, recovery, injuries)
-                  }
-                >
-                  Accept & share training
-                </button>
-                <button
-                  className="ghost-button"
-                  disabled={busy}
-                  onClick={() => void command("decline", c.id)}
-                >
-                  Decline
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  className="ghost-button"
-                  disabled={
-                    busy ||
-                    (recovery === c.share_recovery &&
-                      injuries === c.share_injuries)
-                  }
-                  onClick={() =>
-                    void command("consent", c.id, recovery, injuries)
-                  }
-                >
-                  Save sharing
-                </button>
-                <button
-                  className="ghost-button"
-                  disabled={busy}
-                  onClick={() => void command("revoke", c.id)}
-                >
-                  Revoke all access
-                </button>
-              </>
-            )}
-          </div>
-        </>
-      )}
-    </article>
-  );
-}
 
-function FighterOverview({ fighter: f }: { fighter: Fighter }) {
+function FighterOverview({
+  fighter: f,
+  token,
+}: {
+  fighter: Fighter;
+  token: string;
+}) {
   const summary = fighterSummary(f);
   const [week, setWeek] = useState(weekStart(f.today));
   const end = dayOffset(week, 6);
@@ -668,7 +541,7 @@ function FighterOverview({ fighter: f }: { fighter: Fighter }) {
         completed(c),
     ),
   ).length;
-  const sparring = weekly.filter(
+  const sparring = done.filter(
     (s) =>
       s.type === "sparring" ||
       f.schedule.some(
@@ -679,12 +552,12 @@ function FighterOverview({ fighter: f }: { fighter: Fighter }) {
           f.plan_id === s.plan_id,
       ),
   );
+  const sparringRpe = sparring.find((s) => s.rpe)?.rpe;
+  const reports =
+    f.sparring_reports?.filter((s) => s.day >= week && s.day <= end) ?? [];
   const rpe = done.flatMap((s) =>
     s.rpe !== null && s.rpe !== undefined ? [s.rpe] : [],
   );
-  const averageRpe = rpe.length
-    ? (rpe.reduce((a, b) => a + b, 0) / rpe.length).toFixed(1)
-    : "—";
   const minutes = done.reduce((total, s) => total + (s.duration ?? 0), 0);
   const campStart = f.schedule.map((s) => s.day).sort()[0];
   const campProgress =
@@ -702,8 +575,10 @@ function FighterOverview({ fighter: f }: { fighter: Fighter }) {
         )
       : null;
   const latest = f.recovery?.[0];
-  const reports =
-    f.sparring_reports?.filter((s) => s.day >= week && s.day <= end) ?? [];
+  const unknown = f.share_recovery ? "Not recorded" : "Not shared";
+  const weekAgo = dayOffset(f.today, -6);
+  const week7 = f.recovery?.filter((r) => r.day >= weekAgo) ?? [];
+  const older = f.recovery?.filter((r) => r.day < weekAgo) ?? [];
   return (
     <>
       <section className={styles.panel}>
@@ -715,30 +590,34 @@ function FighterOverview({ fighter: f }: { fighter: Fighter }) {
               {humanize(f.sport)}
               {f.plan_name ? ` · ${f.plan_name}` : ""}
             </small>
+            {summary.attention ? (
+              <small className={styles.concern}>{summary.attention}</small>
+            ) : null}
           </div>
-          {summary.attention ? (
-            <span className={styles.concern}>
-              <TileIcon name="pain" />
-            </span>
-          ) : null}
         </div>
         <div className={styles.campGrid}>
           <div>
             <p className={styles.eyebrow}>Next fight</p>
             <p className={styles.bigNumber}>
-              {summary.upcoming ? daysUntil(f.today, f.fight_date!) : "—"}
-              <small>{summary.upcoming ? "days" : "No date"}</small>
+              {summary.upcoming ? (
+                <>
+                  {daysUntil(f.today, f.fight_date!)}
+                  <small>days</small>
+                </>
+              ) : (
+                "—"
+              )}
             </p>
             <small className={styles.muted}>
-              {summary.upcoming ? formatDay(f.fight_date) : "Not scheduled"}
+              {summary.upcoming
+                ? formatAppDate(f.fight_date!)
+                : "Not scheduled"}
             </small>
           </div>
           <div>
             <p className={styles.eyebrow}>Camp timeline</p>
             <strong>
-              {campProgress !== null
-                ? `${campProgress}% elapsed`
-                : "Not available"}
+              {campProgress !== null ? `${campProgress}% elapsed` : "—"}
             </strong>
             {campProgress !== null ? (
               <progress
@@ -747,9 +626,6 @@ function FighterOverview({ fighter: f }: { fighter: Fighter }) {
                 max={100}
               />
             ) : null}
-            <small className={styles.muted}>
-              {f.plan_name || "No active programme"}
-            </small>
           </div>
         </div>
       </section>
@@ -767,7 +643,7 @@ function FighterOverview({ fighter: f }: { fighter: Fighter }) {
               Previous
             </button>
             <span>
-              {week === weekStart(f.today) ? "This week" : formatDay(week)}
+              {week === weekStart(f.today) ? "This week" : formatAppDate(week)}
             </span>
             <button
               type="button"
@@ -780,75 +656,70 @@ function FighterOverview({ fighter: f }: { fighter: Fighter }) {
             </button>
           </div>
         </div>
-        <div className={styles.performance}>
+        <div className={styles.metrics}>
           {[
-            [done.length, "Sessions completed"],
-            [averageRpe, "Average RPE"],
+            ["Sessions", done.length],
             [
-              strength.length ? `${strengthDone}/${strength.length}` : "—",
+              "Average RPE",
+              rpe.length
+                ? (rpe.reduce((a, b) => a + b, 0) / rpe.length).toFixed(1)
+                : "—",
+            ],
+            [
               "S&C completed",
+              strength.length ? `${strengthDone}/${strength.length}` : "—",
             ],
-            [
-              minutes || "—",
-              minutes ? "Recorded minutes" : "Minutes not recorded",
-            ],
-          ].map(([value, label]) => (
+            ["Minutes", minutes || "—"],
+          ].map(([label, value]) => (
             <article className={styles.metric} key={label}>
+              <span>{label}</span>
               <strong>{value}</strong>
-              <small>{label}</small>
             </article>
           ))}
         </div>
       </section>
+      {reports.length ? (
+        <section className={styles.panel}>
+          <div className={styles.sectionHeading}>
+            <h2>Sparring</h2>
+            <span className={styles.muted}>
+              {sparring.length} {sparring.length === 1 ? "session" : "sessions"}
+              {sparringRpe ? ` · RPE ${sparringRpe}` : ""}
+            </span>
+          </div>
+          <ul className={styles.activity}>
+            {reports.map((s) => (
+              <li key={s.id}>
+                <strong>{formatAppDate(s.day)}</strong>
+                <span>
+                  {s.rounds} rounds · {s.intensity}
+                  {s.head_contact !== null
+                    ? ` · Head contact: ${s.head_contact}`
+                    : ""}
+                  {s.rocked ? " · Rocked reported" : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      <FightWeight token={token} fighter={f} />
+      <TrainingHistory token={token} athleteId={f.id} />
       <section className={styles.panel}>
         <div className={styles.sectionHeading}>
-          <h2>Training history</h2>
-          <span className={styles.quietIcon}>
-            <TileIcon name="effort" />
+          <h2>Recovery</h2>
+          <span
+            className={
+              summary.recovery === "Recovery concern"
+                ? styles.concern
+                : styles.muted
+            }
+          >
+            {summary.recovery}
+            {latest ? ` · ${formatAppDate(latest.day)}` : ""}
           </span>
         </div>
-        <SessionList
-          fighter={f}
-          sessions={weekly.slice(0, 4)}
-          empty="No sessions recorded this week."
-        />
-        <details className={styles.sessionDetails}>
-          <summary>View session details</summary>
-          <p className={styles.footnote}>
-            {formatDay(week)} – {formatDay(end)}
-          </p>
-          <SessionList
-            fighter={f}
-            sessions={weekly}
-            empty="No recorded sessions."
-          />
-          <h3>Recent activity</h3>
-          <SessionList
-            fighter={f}
-            sessions={f.sessions.slice(0, 8)}
-            empty="No recent activity."
-          />
-        </details>
-      </section>
-      <section className={styles.panel}>
-        <div className={styles.sectionHeading}>
-          <h2>Recovery monitoring</h2>
-          <span className={styles.concern}>
-            <TileIcon name="source" />
-          </span>
-        </div>
-        <p className={styles.footnote}>
-          Latest check-in ·{" "}
-          {latest
-            ? formatDay(latest.day)
-            : f.share_recovery
-              ? "Not recorded"
-              : "Not shared"}
-        </p>
-        <p className={summary.attention ? styles.concern : styles.muted}>
-          {summary.attention ? "Recovery needs attention" : summary.recovery}
-        </p>
-        <div className={styles.recoveryTiles}>
+        <div className={styles.tiles}>
           {[
             [
               "Sleep",
@@ -856,9 +727,7 @@ function FighterOverview({ fighter: f }: { fighter: Fighter }) {
                 ? humanize(latest.sleep)
                 : latest?.sleep_quality
                   ? `${latest.sleep_quality}/5`
-                  : f.share_recovery
-                    ? "Not recorded"
-                    : "Not shared",
+                  : unknown,
             ],
             [
               "Readiness",
@@ -866,16 +735,14 @@ function FighterOverview({ fighter: f }: { fighter: Fighter }) {
                 ? humanize(latest.body)
                 : latest?.readiness
                   ? `${latest.readiness}/5`
-                  : f.share_recovery
-                    ? "Not recorded"
-                    : "Not shared",
+                  : unknown,
             ],
             [
               "Injuries",
               !f.share_injuries
                 ? "Not shared"
                 : f.injuries?.length
-                  ? `${f.injuries.length} open flags`
+                  ? `${f.injuries.length} open`
                   : "None reported",
             ],
           ].map(([label, value]) => (
@@ -885,138 +752,373 @@ function FighterOverview({ fighter: f }: { fighter: Fighter }) {
             </div>
           ))}
         </div>
-        <details className={styles.method}>
-          <summary>Check-ins & sharing</summary>
-          <p>Only authorised health data is visible.</p>
-          {!f.share_recovery ? (
-            <p>Recovery information is not shared.</p>
-          ) : (
-            <ul className={styles.activity}>
-              {f.recovery?.slice(0, 14).map((r, i) => (
-                <li key={`${r.day}:${i}`}>
-                  <strong>{formatDay(r.day)}</strong>
-                  <span>
-                    {r.sleep
-                      ? `Sleep: ${r.sleep} · Body: ${r.body}`
-                      : `Readiness: ${r.readiness}/5 · Fatigue: ${r.fatigue}/5`}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {!f.share_injuries ? (
-            <p>Injury information is not shared.</p>
-          ) : f.injuries?.length ? (
-            <ul className={styles.activity}>
-              {f.injuries.map((i) => (
-                <li key={i.id}>
-                  <strong>{humanize(i.body_area)}</strong>
-                  <span>
-                    {humanize(i.severity)} · {humanize(i.status)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>No open injury flags.</p>
-          )}
-        </details>
-      </section>
-      <section className={styles.panel}>
-        <h2>Sparring & S&C</h2>
-        <div className={styles.subsection}>
-          <div className={styles.sectionHeading}>
-            <h3>Sparring</h3>
-            <span className={styles.quietIcon}>
-              <TileIcon name="source" />
-            </span>
-          </div>
-          <p className={styles.footnote}>
-            {sparring.filter(completed).length} recorded{" "}
-            {sparring.length === 1 ? "session" : "sessions"}
-            {sparring.find((s) => s.rpe)
-              ? ` · Latest RPE ${sparring.find((s) => s.rpe)!.rpe}`
-              : ""}
-          </p>
-          {reports.length ? (
-            <details className={styles.method}>
-              <summary>Round reports</summary>
-              <ul className={styles.activity}>
-                {reports.map((s) => (
-                  <li key={s.id}>
-                    <strong>{formatDay(s.day)}</strong>
-                    <span>
-                      {s.rounds} rounds · {s.intensity}
-                      {s.head_contact !== null
-                        ? ` · Head contact: ${s.head_contact}`
-                        : ""}
-                      {s.rocked ? " · Rocked reported" : ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          ) : null}
-        </div>
-        <div className={styles.subsection}>
-          <div className={styles.sectionHeading}>
-            <h3>S&C programme</h3>
-            {strength.length ? (
-              <span className={styles.positive}>
-                {Math.round((strengthDone / strength.length) * 100)}%
-              </span>
+        {f.injuries?.length ? (
+          <ul className={styles.activity}>
+            {f.injuries.map((i) => (
+              <li key={i.id}>
+                <strong>{humanize(i.body_area)}</strong>
+                <span>
+                  {humanize(i.severity)} · {humanize(i.status)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {f.share_recovery ? (
+          <>
+            <h3>Last 7 days</h3>
+            {week7.length ? (
+              <CheckIns rows={week7} />
+            ) : (
+              <p className={styles.empty}>No check-ins in the last 7 days.</p>
+            )}
+            {older.length ? (
+              <details className={styles.more}>
+                <summary>Older check-ins ({older.length})</summary>
+                <CheckIns rows={older} />
+              </details>
             ) : null}
-          </div>
-          <p className={styles.footnote}>
-            {strength.length
-              ? `${strengthDone} of ${strength.length} scheduled sessions completed`
-              : "No S&C schedule this week"}
-          </p>
-          {strength.length ? (
-            <progress
-              className={styles.strengthProgress}
-              aria-label="S&C programme progress"
-              value={strengthDone}
-              max={strength.length}
-            />
-          ) : null}
-        </div>
+          </>
+        ) : null}
       </section>
     </>
   );
 }
 
-function SessionList({
-  fighter,
-  sessions,
-  empty,
-}: {
-  fighter: Fighter;
-  sessions: Fighter["sessions"];
-  empty: string;
-}) {
-  return sessions.length ? (
+function CheckIns({ rows }: { rows: NonNullable<Fighter["recovery"]> }) {
+  return (
     <ul className={styles.activity}>
-      {sessions.map((s) => (
-        <li key={s.id}>
-          <div>
-            <strong>{sessionLabel(fighter, s)}</strong>
-            <small>
-              {formatDay(s.day)} · {humanize(s.status)}
-            </small>
-          </div>
+      {rows.map((r, i) => (
+        <li key={`${r.day}:${i}`}>
+          <strong>{formatAppDate(r.day)}</strong>
           <span>
-            {s.duration ? `${s.duration} min · ` : ""}
-            {s.effort
-              ? `Intensity: ${s.effort}`
-              : s.rpe
-                ? `RPE ${s.rpe}`
-                : "RPE not recorded"}
+            {r.sleep
+              ? `Sleep: ${r.sleep} · Body: ${r.body}`
+              : `Readiness: ${r.readiness}/5 · Fatigue: ${r.fatigue}/5 · Sleep: ${r.sleep_quality}/5`}
           </span>
         </li>
       ))}
     </ul>
-  ) : (
-    <p className="muted">{empty}</p>
+  );
+}
+
+const HISTORY_STEP = 10;
+
+// The athlete's own History, read-only: the same rows and the same session
+// record, read through the coach endpoints that check the connection.
+function TrainingHistory({
+  token,
+  athleteId,
+}: {
+  token: string;
+  athleteId: string;
+}) {
+  const [rows, setRows] = useState<TrainingHistorySession[] | null>(null);
+  const [next, setNext] = useState<string | null>(null);
+  const [visible, setVisible] = useState(HISTORY_STEP);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [selected, setSelected] = useState<TrainingHistorySession | null>(null);
+  const [cache] = useState<SessionDetailsCache>(() => new Map());
+  const load = useCallback<typeof getSessionDetails>(
+    (accessToken, source, id) =>
+      getFighterSessionDetails(accessToken, athleteId, source, id),
+    [athleteId],
+  );
+  useEffect(() => {
+    let active = true;
+    getFighterHistory(token, athleteId)
+      .then((page) => {
+        if (!active) return;
+        setRows(sortTrainingHistory(page.sessions));
+        setNext(page.next_before_day ?? null);
+      })
+      .catch(() => {
+        if (active) setError(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [token, athleteId, attempt]);
+  async function more() {
+    if (rows && next && visible + HISTORY_STEP > rows.length) {
+      setBusy(true);
+      try {
+        const page = await getFighterHistory(token, athleteId, next);
+        setRows(sortTrainingHistory([...rows, ...page.sessions]));
+        setNext(page.next_before_day ?? null);
+      } catch {
+        setError(true);
+        return;
+      } finally {
+        setBusy(false);
+      }
+    }
+    setVisible(visible + HISTORY_STEP);
+  }
+  const shown = rows?.slice(0, visible) ?? [];
+  return (
+    <section className={styles.panel}>
+      <h2>Training history</h2>
+      {error ? (
+        <div className={styles.error} role="alert">
+          Unable to load training history.
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={() => {
+              setError(false);
+              setAttempt(attempt + 1);
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      ) : !rows ? (
+        <Loading />
+      ) : !rows.length ? (
+        <p className={styles.empty}>No sessions recorded yet.</p>
+      ) : null}
+      <div className={styles.history}>
+        {[...new Set(shown.map((row) => row.training_day))].map((day) => (
+          <section
+            className="history-day-group"
+            key={day}
+            aria-label={formatAppDate(day)}
+          >
+            <h3>{formatAppDate(day)}</h3>
+            <ul className="history-list">
+              {shown
+                .filter((row) => row.training_day === day)
+                .map((row) => (
+                  <SessionRow
+                    key={`${row.source}-${row.id}`}
+                    row={row}
+                    onOpen={() => setSelected(row)}
+                  />
+                ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+      {rows && !error && (visible < rows.length || next) ? (
+        <button
+          className={`ghost-button ${styles.showMore}`}
+          type="button"
+          disabled={busy}
+          onClick={() => void more()}
+        >
+          {busy ? "Loading…" : "Show earlier sessions"}
+        </button>
+      ) : null}
+      {/* Outside the workspace so its styles never reach the record sheet. */}
+      {selected
+        ? createPortal(
+            <SessionDetails
+              key={`${selected.source}:${selected.id}`}
+              row={selected}
+              token={token}
+              cache={cache}
+              viewer="coach"
+              load={load}
+              onDismiss={() => setSelected(null)}
+            />,
+            document.body,
+          )
+        : null}
+    </section>
+  );
+}
+
+const RANGES: { value: BodyweightRange; label: string }[] = [
+  { value: "7D", label: "7 days" },
+  { value: "30D", label: "30 days" },
+  { value: "All", label: "All" },
+];
+const WEIGH_INS = 7;
+
+// The athlete's own weigh-ins and target, shown as recorded. Progress only:
+// nothing here suggests how to make weight.
+function FightWeight({
+  token,
+  fighter: f,
+}: {
+  token: string;
+  fighter: Fighter;
+}) {
+  const [weight, setWeight] = useState<CoachFighterWeight | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [range, setRange] = useState<BodyweightRange | null>(null);
+  const [picked, setPicked] = useState<number | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => {
+    let active = true;
+    getFighterWeight(token, f.id)
+      .then((next) => {
+        if (active) setWeight(next);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [token, f.id]);
+  const entries = weight?.entries ?? [];
+  const logged = getBodyweightEntriesWithIndex(entries).filter(
+    (entry) => entry.date <= f.today,
+  );
+  const current = weight?.current_weight_kg ?? logged[0]?.weight_kg ?? null;
+  const target = weight?.target_weight_kg ?? null;
+  const gap = getTargetGap(current, target);
+  const activeRange = range ?? getDefaultBodyweightRange(entries, f.today);
+  const trend = getBodyweightTrend(entries, activeRange, f.today);
+  const selectedIndex =
+    picked !== null && picked < trend.length ? picked : trend.length - 1;
+  const selected = trend[selectedIndex];
+  const fightDays =
+    f.fight_date && f.fight_date >= f.today
+      ? daysUntil(f.today, f.fight_date)
+      : null;
+  return (
+    <section className={styles.panel}>
+      <div className={styles.sectionHeading}>
+        <h2>Fight weight</h2>
+        {logged[0] ? (
+          <span className={styles.muted}>
+            Last logged {formatAppDate(logged[0].date)}
+          </span>
+        ) : null}
+      </div>
+      {failed ? (
+        <p className={styles.empty}>Unable to load weight.</p>
+      ) : !weight ? (
+        <Loading />
+      ) : !weight.shared ? (
+        <p className={styles.empty}>Not shared.</p>
+      ) : current === null && target === null ? (
+        <p className={styles.empty}>No weight logged yet.</p>
+      ) : (
+        <>
+          <div className={styles.tiles}>
+            {[
+              ["Current", formatWeight(current)],
+              ["Target", target === null ? "Not set" : formatWeight(target)],
+              ...(gap === null
+                ? []
+                : [
+                    [
+                      gap === 0
+                        ? "On target"
+                        : gap > 0
+                          ? "Above target"
+                          : "Under target",
+                      formatWeight(Math.abs(gap)),
+                    ],
+                  ]),
+              ...(weight.rolling_7_day_average_weight != null
+                ? [
+                    [
+                      "7-day average",
+                      formatWeight(weight.rolling_7_day_average_weight),
+                    ],
+                  ]
+                : []),
+              ...(weight.weekly_pace_kg != null
+                ? [["Per week", formatWeightDelta(weight.weekly_pace_kg)]]
+                : []),
+              ...(fightDays === null
+                ? []
+                : [["Days to fight", String(fightDays)]]),
+            ].map(([label, value]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+          {logged.length ? (
+            <div className={weightStyles.trendCard}>
+              <div className={styles.sectionHeading}>
+                <span className={styles.muted}>
+                  {selected
+                    ? `${formatWeight(selected.weight_kg)} · ${formatAppDate(selected.date)}`
+                    : `No weights in the last ${activeRange === "7D" ? 7 : 30} days`}
+                </span>
+                <div
+                  className={`${summary.toggle} ${weightStyles.rangeToggle}`}
+                  role="group"
+                  aria-label="Weight range"
+                >
+                  {RANGES.map((item) => (
+                    <button
+                      key={item.value}
+                      type="button"
+                      aria-pressed={activeRange === item.value}
+                      onClick={() => {
+                        setRange(item.value);
+                        setPicked(null);
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {trend.length ? (
+                <WeightTrendChart
+                  trend={trend}
+                  rangeStart={getRangeStart(activeRange, f.today)}
+                  today={f.today}
+                  targetKg={target}
+                  selectedIndex={selectedIndex}
+                  onSelect={setPicked}
+                />
+              ) : null}
+            </div>
+          ) : null}
+          <ul className={styles.activity}>
+            {(showAll ? logged : logged.slice(0, WEIGH_INS)).map(
+              (entry, index) => {
+                const previous = logged[index + 1];
+                return (
+                  <li key={entry.sourceIndex}>
+                    <div>
+                      <strong>{formatAppDate(entry.date)}</strong>
+                      <small>
+                        {[
+                          entry.time,
+                          entry.is_fasted == null
+                            ? null
+                            : formatFastedState(entry.is_fasted),
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </small>
+                    </div>
+                    <span>
+                      <strong>{formatWeight(entry.weight_kg)}</strong>
+                      {previous
+                        ? ` ${formatWeightDelta(Math.round((entry.weight_kg - previous.weight_kg) * 10) / 10)}`
+                        : ""}
+                    </span>
+                  </li>
+                );
+              },
+            )}
+          </ul>
+          {logged.length > WEIGH_INS ? (
+            <button
+              className={`ghost-button ${styles.showMore}`}
+              type="button"
+              onClick={() => setShowAll(!showAll)}
+            >
+              {showAll ? "Show fewer" : `Show all ${logged.length} weigh-ins`}
+            </button>
+          ) : null}
+        </>
+      )}
+    </section>
   );
 }
