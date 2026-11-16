@@ -424,7 +424,7 @@
 .dateSelect small { color: var(--text-secondary); font-size: 9px; }
 /* Match the training history key in cards, selected-day rows and mobile dots. */
 .calendarSession, .selectedDaySessions li { --session-colour: var(--training-general); }
-.calendarSession[data-type="strength_power"], .selectedDaySessions li[data-type="strength_power"] { --session-colour: var(--training-strength); }
+.calendarSession[data-type="strength_power"], .calendarSession[data-type="conditioning"], .selectedDaySessions li[data-type="strength_power"], .selectedDaySessions li[data-type="conditioning"] { --session-colour: var(--training-strength); }
 .calendarSession[data-type="sparring"], .selectedDaySessions li[data-type="sparring"] { --session-colour: var(--training-sparring); }
 .calendarSession[data-type="recovery"], .selectedDaySessions li[data-type="recovery"] { --session-colour: var(--training-rehab); }
 .calendarSession { display: grid; gap: 5px; width: 100%; min-height: 44px; padding: 8px 5px; margin-top: 5px; border: 1px solid color-mix(in srgb, var(--session-colour) 30%, var(--border-default)); border-left: 3px solid var(--session-colour); border-radius: 6px; background: color-mix(in srgb, var(--session-colour) 8%, var(--bg-input)); color: var(--text-primary); text-align: left; cursor: grab; }
