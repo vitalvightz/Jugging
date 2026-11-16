@@ -14,7 +14,8 @@ from api.services.today_reads import run_reads_concurrently
 
 def external_occurrence(row: dict) -> dict:
     return {**row, "source": "external", "status": "done", "plan_id": None,
-            "session_id": f"external-{row['id']}", "title": training_title(row)}
+            "session_id": f"external-{row['id']}", "title": training_title(row),
+            "logged_by_coach": bool(row.get("logged_by_coach_id")) or row.get("logged_by_coach_name") is not None}
 
 
 def training_history(store, athlete_id: str, *, limit: int = 200, prescribed: list[dict] | None = None, external: list[dict] | None = None, include_skipped: bool = False) -> list[dict]:
@@ -93,24 +94,37 @@ def _combine(athlete_id: str, prescribed: list[dict], external: list[dict], incl
 
 
 def create_external_training(store, athlete_id: str, athlete_timezone: str | None,
-                             body: ExternalTrainingCreate, *, now: datetime | None = None) -> dict:
+                             body: ExternalTrainingCreate, *, now: datetime | None = None,
+                             logged_by_coach: tuple[str, str] | None = None) -> dict:
+    """Save a manual session on ``athlete_id``'s History.
+
+    ``logged_by_coach`` is the (id, name) of a connected coach entering it for
+    the athlete; the caller has already checked that connection. Such a session
+    is real training but not athlete-reported, so it earns no XP.
+    """
     now = now or datetime.now(timezone.utc)
     current_day = resolve_training_day_str(now, athlete_timezone=athlete_timezone)
     training_day = body.training_day.isoformat() if body.training_day else current_day
     if training_day > current_day:
-        raise HTTPException(422, "Training date cannot be after your current training day.")
+        raise HTTPException(422, "Training date cannot be after the fighter's current training day." if logged_by_coach
+                            else "Training date cannot be after your current training day.")
     # Preserve existing request fingerprints when the optional date, sport or
     # session type is omitted.
     fields = body.model_dump(mode="json", exclude={"client_request_id"}, exclude_none=True)
     fingerprint = hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
+    coach_id, coach_name = logged_by_coach or (None, None)
+    attribution = {"logged_by_coach_id": coach_id, "logged_by_coach_name": (coach_name or "").strip()[:120]} if coach_id else {}
     row = store.create_external_training_session(athlete_id, {
-        **fields, "client_request_id": str(body.client_request_id), "request_fingerprint": fingerprint,
+        **fields, **attribution, "client_request_id": str(body.client_request_id), "request_fingerprint": fingerprint,
         "training_day": training_day,
     })
     if row.get("deleted_at"):
         raise HTTPException(410, "This session was deleted. Log new work with a new request ID.")
-    if row["request_fingerprint"] != fingerprint:
+    # A replay must be the same session from the same author.
+    if row["request_fingerprint"] != fingerprint or (row.get("logged_by_coach_id") or None) != coach_id:
         raise HTTPException(409, "This request ID was already used for another session.")
+    if coach_id:
+        return external_occurrence(row)
     from api.services.tracking_xp import reconcile_training_xp
 
     reconcile_training_xp(store, athlete_id, manual_session_id=str(row["id"]), athlete_timezone=athlete_timezone)

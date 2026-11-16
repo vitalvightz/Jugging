@@ -12,6 +12,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { RequireAuth } from "@/components/auth-guard";
+import { LogTraining } from "@/components/log-training";
 import { useAppSession } from "@/components/auth-provider";
 import {
   SessionDetails,
@@ -286,21 +287,45 @@ function Fighters({ token, fighterId }: { token: string; fighterId?: string }) {
     [token, fighterId],
   );
   const { data: fighters, error, reload } = useLive(fetcher);
+  // Bumped when a session is logged, so the History list reads it at once.
+  const [logged, setLogged] = useState(0);
   return (
     <>
-      {fighterId ? (
-        <Link className={styles.back} href="/coach">
-          ← All fighters
-        </Link>
-      ) : null}
-      <h1 className={fighterId ? styles.srOnly : undefined}>
-        {fighterId ? "Fighter overview" : "Your corner. In focus."}
-      </h1>
+      <div className={styles.pageHead}>
+        {fighterId ? (
+          <Link className={styles.back} href="/coach">
+            ← All fighters
+          </Link>
+        ) : (
+          <h1>Your corner. In focus.</h1>
+        )}
+        {fighters?.length ? (
+          <LogTraining
+            accessToken={token}
+            variant="primary"
+            fighters={fighters.map((f) => ({
+              id: f.id,
+              name: f.name,
+              today: f.today,
+              sport: f.sport,
+            }))}
+            onSaved={() => {
+              setLogged((count) => count + 1);
+              void reload();
+            }}
+          />
+        ) : null}
+      </div>
+      {fighterId ? <h1 className={styles.srOnly}>Fighter overview</h1> : null}
       <LoadState error={error} loading={!fighters} retry={reload} />
       {!fighters ? null : !fighterId ? (
         <CoachDashboard fighters={fighters} />
       ) : fighters[0] ? (
-        <FighterOverview fighter={fighters[0]} token={token} />
+        <FighterOverview
+          fighter={fighters[0]}
+          token={token}
+          historyKey={logged}
+        />
       ) : (
         <section className={styles.panel}>
           <h2>Fighter unavailable</h2>
@@ -517,9 +542,11 @@ function Avatar({ fighter }: { fighter: Fighter }) {
 function FighterOverview({
   fighter: f,
   token,
+  historyKey,
 }: {
   fighter: Fighter;
   token: string;
+  historyKey: number;
 }) {
   const summary = fighterSummary(f);
   const [week, setWeek] = useState(weekStart(f.today));
@@ -704,7 +731,7 @@ function FighterOverview({
         </section>
       ) : null}
       <FightWeight token={token} fighter={f} />
-      <TrainingHistory token={token} athleteId={f.id} />
+      <TrainingHistory key={historyKey} token={token} athleteId={f.id} />
       <section className={styles.panel}>
         <div className={styles.sectionHeading}>
           <h2>Recovery</h2>

@@ -52,8 +52,10 @@ function PencilIcon() {
  * saved when added, so closing the sheet never loses a finished row. The
  * session itself, its workload and its other follow-ups are untouched.
  */
-export function ManualExerciseLogger({ token, session, reference, onClose }: {
+export function ManualExerciseLogger({ token, session, reference, onClose, fighterId }: {
   token: string; session: TrainingHistorySession;
+  /** A coach adding exercises to a session they recorded for this fighter. */
+  fighterId?: string;
   /** An earlier manual session whose exercise names may be reused (never its values). */
   reference?: TrainingHistorySession | null;
   onClose: (entries: ManualExerciseEntry[] | null) => void;
@@ -108,10 +110,10 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
 
   useEffect(() => {
     let cancelled = false;
-    listManualExercises(token, session.id).then(result => { if (!cancelled) { setEntries(result.entries); setLoadError(false); } })
+    listManualExercises(token, session.id, undefined, fighterId).then(result => { if (!cancelled) { setEntries(result.entries); setLoadError(false); } })
       .catch(() => { if (!cancelled) setLoadError(true); });
     return () => { cancelled = true; };
-  }, [token, session.id, attempt]);
+  }, [token, session.id, attempt, fighterId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -249,7 +251,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
     saving.current = true; setBusy(true); setError(null);
     try {
       const saved = await saveManualExercise(token, session.id, editor.entryId,
-        { exercise: picked.choice, format, actual, notes: editor.draft.notes.trim(), revision: editor.revision });
+        { exercise: picked.choice, format, actual, notes: editor.draft.notes.trim(), revision: editor.revision }, fighterId);
       const list = entries ?? [];
       const next = list.some(item => item.entry_id === saved.entry_id) ? list.map(item => item.entry_id === saved.entry_id ? saved : item) : [...list, saved];
       setEntries(next);
@@ -280,7 +282,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose }: {
     if (removing || !window.confirm(`Remove ${entry.name}?`)) return;
     setRemoving(entry.entry_id); setError(null);
     try {
-      await deleteManualExercise(token, session.id, entry.entry_id);
+      await deleteManualExercise(token, session.id, entry.entry_id, fighterId);
       setEntries(current => current?.filter(item => item.entry_id !== entry.entry_id) ?? null);
       if (editor.entryId === entry.entry_id) reset(false);
       setStatus(`${entry.name} removed.`);

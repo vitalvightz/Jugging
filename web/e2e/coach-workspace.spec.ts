@@ -170,9 +170,12 @@ async function fixture(
   baseURL: string,
   role = "coach",
   empty = false,
+  roster: Fighter[] = [fighter],
 ) {
   await setup(page, baseURL, role);
-  let rows = empty ? [] : [fighter];
+  let rows = empty ? [] : roster;
+  // Sessions the coach records, newest first, as the API would return them.
+  const logged: (TrainingHistorySession & { athlete: string })[] = [];
   let connections: Connection[] = empty
     ? []
     : [
@@ -203,27 +206,58 @@ async function fixture(
       json:
         name === "coach_connections_list"
           ? connections
-          : rows.map((f) => ({
-              ...f,
-              schedule: body.p_athlete_id ? f.schedule : [],
-            })),
+          : rows
+              .filter((f) => !body.p_athlete_id || f.id === body.p_athlete_id)
+              .map((f) => ({
+                ...f,
+                schedule: body.p_athlete_id ? f.schedule : [],
+              })),
     });
   });
   // The coach API checks the connection on every read, like the RPC.
   await page.route("**/api/coach/fighters/**", (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (!rows.length || !path.includes(`/${fighterId}/`))
+    const athlete = path.split("/")[4];
+    if (!rows.some((row) => row.id === athlete))
       return route.fulfill({ status: 404, json: { detail: "not found" } });
+    if (path.endsWith("/training/sessions")) {
+      const body = route.request().postDataJSON();
+      const row = {
+        ...strengthSession,
+        ...body,
+        id: `00000000-0000-4000-8000-0000000000c${logged.length}`,
+        source: "external" as const,
+        status: "done" as const,
+        title: "Pads",
+        training_day: "2026-11-15",
+        plan_id: null,
+        session_rpe: null,
+        logged_by_coach: true,
+        logged_by_coach_name: "Test Coach",
+        athlete,
+      };
+      logged.unshift(row);
+      return route.fulfill({ status: 201, json: row });
+    }
+    if (path.endsWith("/exercises"))
+      return route.fulfill({ json: { entries: [] } });
     return route.fulfill({
       json: path.endsWith("/weight")
         ? weight
         : path.endsWith("/training/history")
-          ? { sessions: history, next_before_day: null }
+          ? {
+              sessions: [
+                ...logged.filter((row) => row.athlete === athlete),
+                ...history,
+              ],
+              next_before_day: null,
+            }
           : details,
     });
   });
   return {
     actions,
+    logged,
     revoke: () => {
       rows = [];
       connections = [];
@@ -433,6 +467,81 @@ test("athlete declines an invitation without sharing anything", async ({
       p_injuries: false,
     }),
   ]);
+});
+test("coach logs a session for a chosen fighter, then from a profile", async ({
+  page,
+  baseURL,
+}, info) => {
+  const secondId = "00000000-0000-4000-8000-000000000004";
+  const state = await fixture(page, baseURL!, "coach", false, [
+    fighter,
+    { ...fighter, id: secondId, name: "Second Fighter", recovery: [] },
+  ]);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto("/coach");
+  await page.getByRole("button", { name: "Log session" }).click();
+  const sheet = page.getByRole("dialog", { name: "Log session" });
+  // The session cannot be saved until a connected fighter is chosen.
+  await expect(sheet.getByRole("combobox")).toHaveValue("");
+  await expect(sheet.getByRole("option")).toHaveText([
+    "Choose a fighter",
+    "Test Fighter",
+    "Second Fighter",
+  ]);
+  await sheet.getByRole("combobox").selectOption({ label: "Second Fighter" });
+  await sheet.getByRole("button", { name: "Pads", exact: true }).click();
+  await sheet.getByRole("button", { name: "60", exact: true }).click();
+  await sheet.getByRole("button", { name: "Hard", exact: true }).click();
+  await page.screenshot({ path: info.outputPath("coach-log-session.png") });
+  await sheet.getByRole("button", { name: "Save Session" }).click();
+  await expect(
+    page.getByText("saved to Second Fighter's History", { exact: false }),
+  ).toBeVisible();
+  expect(state.logged).toHaveLength(1);
+  expect(state.logged[0]).toMatchObject({
+    athlete: secondId,
+    activity: "boxing",
+    sport: "boxing",
+    session_type: "pads",
+    duration_minutes: 60,
+    effort: "hard",
+  });
+  // Exercises go on the session the coach just recorded.
+  const exercises = page.waitForRequest((request) =>
+    request
+      .url()
+      .endsWith(
+        `/api/coach/fighters/${secondId}/training/sessions/${state.logged[0].id}/exercises`,
+      ),
+  );
+  await page.getByRole("button", { name: "Add exercises" }).click();
+  await exercises;
+
+  // From a profile the fighter is already chosen, and History shows the credit.
+  await page.goto(`/coach/fighters/${fighterId}`);
+  await page.getByRole("button", { name: "Log session" }).click();
+  await expect(sheet.getByText("For Test Fighter")).toBeVisible();
+  await expect(sheet.getByRole("combobox")).toHaveCount(0);
+  await sheet.getByRole("button", { name: "Pads", exact: true }).click();
+  await sheet.getByRole("button", { name: "45", exact: true }).click();
+  await sheet.getByRole("button", { name: "Moderate", exact: true }).click();
+  await sheet.getByRole("button", { name: "Save Session" }).click();
+  await expect(
+    page.getByText("saved to Test Fighter's History", { exact: false }),
+  ).toBeVisible();
+  expect(state.logged[0]).toMatchObject({
+    athlete: fighterId,
+    effort: "moderate",
+  });
+  await expect(
+    page
+      .getByRole("listitem")
+      .filter({ hasText: "Logged by coach Test Coach" }),
+  ).toHaveCount(1);
+  await page.screenshot({
+    path: info.outputPath("coach-logged-history.png"),
+    fullPage: true,
+  });
 });
 test("lost sharing clears fighter overview on refresh", async ({
   page,

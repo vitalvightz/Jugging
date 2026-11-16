@@ -79,3 +79,7 @@
 @media (prefers-reduced-motion: reduce) {
   .dialog[open], .dialog[open]::backdrop, .dialog[data-closing], .dialog[data-closing]::backdrop { animation: none; }
 }
+
+/* Coach mode: the fighter picker, and the line confirming where the session was saved. */
+.customDuration select { flex: 1; min-width: 0; max-width: 260px; min-height: 44px; box-sizing: border-box; padding: 8px; border: 1px solid var(--border-default); border-radius: 8px; background: var(--bg-panel); color: var(--text-primary); font: inherit; font-size: 16px; color-scheme: dark; }
+.coachSaved { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin: 8px 0 0; font-size: 0.85rem; color: var(--text-secondary); }

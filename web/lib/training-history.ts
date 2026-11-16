@@ -48,6 +48,9 @@ export type TrainingHistorySession = {
   takeaway?: string;
   /** Live exercise entries on a manual session; null/absent when not counted. */
   exercise_count?: number | null;
+  /** A connected coach entered this manual session for the athlete. */
+  logged_by_coach?: boolean;
+  logged_by_coach_name?: string | null;
   /** A plan session History may edit (RPE, pain, notes) or remove. */
   history_editable?: boolean;
 };

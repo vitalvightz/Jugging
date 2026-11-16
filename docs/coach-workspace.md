@@ -38,7 +38,8 @@ Safeguards that remain:
   it, rehab and recovery sessions appear as "Programme session".
 - Free-text notes, takeaways, medical narratives, raw plans, intake health
   details, nutrition settings and birth dates are never returned.
-- Coach reads are GET-only. Nothing a coach opens can be edited.
+- A coach can never edit or delete a record the athlete, or another coach,
+  entered. The only writes are sessions the coach records (below).
 - `accepted_at` and the sharing flags record what was agreed and when.
 
 ## Database
@@ -84,6 +85,36 @@ athlete History components (`SessionRow`, `SessionDetails`) and the chart is
 `WeightTrendChart`. These routes need the backend deployed with the frontend;
 they add no migration.
 
+## Coach-recorded sessions
+
+"Log session" on the dashboard and on a fighter's profile opens the athlete's
+own `LogTraining` sheet in coach mode. From the dashboard the coach picks one
+of their connected fighters; from a profile that fighter is preselected. After
+saving, the coach can add exercises with the same `ManualExerciseLogger`.
+
+- `POST /api/coach/fighters/{id}/training/sessions` saves through
+  `create_external_training`, the athlete's own manual-session path, onto the
+  fighter's `external_training_sessions`. It appears in the fighter's History
+  and the coach overview as "Logged by coach <name>".
+- `GET`/`PUT`/`DELETE .../training/sessions/{entry}/exercises[/{exercise}]`
+  reuse the manual-exercise services, only on a session that same coach
+  recorded.
+- Every write resolves the accepted connection first (404 otherwise) and needs
+  the athlete's own health-data consent (403 otherwise), as the athlete's own
+  logging does.
+- The client request id makes a retry or double tap the same session.
+- `supabase/migrations/20261116120000_coach_logged_sessions.sql` adds
+  `logged_by_coach_id` and `logged_by_coach_name` and keeps coach-recorded
+  sessions out of XP: they are not recorded training days, their exercises are
+  not a first exercise result, and they cannot carry the manual-session award.
+  They do count as training load. Training and adherence streaks never read
+  manual sessions, so they are unchanged.
+
+Apply the migration before deploying: without the columns a coach's save fails,
+while athlete logging is unaffected. Not included: editing or deleting a
+recorded session from the coach side (the athlete can, from History), the
+sparring contact report, and takeaways, which stay the athlete's to give.
+
 ## Definitions
 
 History covers the last 56 athlete-local training days (04:00 rollover, UTC for
@@ -106,8 +137,9 @@ Missing, unshared or stale check-ins never create a concern.
   and the permission assertions in a disposable PostgreSQL 17 container, then
   rolls back.
 - `python -m pytest tests/test_coach_fighter_access.py`: connection checks,
-  revocation, private-note stripping, unshared health detail and read-only
-  behaviour of the coach API.
+  revocation, private-note stripping, unshared health detail, and for
+  coach-recorded sessions: write permissions, attribution, duplicate
+  submissions, no XP and no access to records the coach did not enter.
 - `cd web && npm run typecheck && npm run lint && npm run test:unit`
 - `cd web && npm run build && npx playwright test e2e/coach-workspace.spec.ts`
   against a build with the placeholder public env values. The browser tests

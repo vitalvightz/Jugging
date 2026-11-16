@@ -28,6 +28,11 @@ import summary from "./training-summary.module.css";
 /** A coach reads a connected fighter's record: the same record, with no "you" copy and nothing to edit. */
 type Viewer = "coach";
 
+/** Who entered a manual session, when it was not the athlete. */
+function coachCredit(row: { logged_by_coach?: boolean; logged_by_coach_name?: string | null }): string | null {
+  return row.logged_by_coach ? `Logged by coach${row.logged_by_coach_name ? ` ${row.logged_by_coach_name}` : ""}` : null;
+}
+
 /** One session in a History list: title, status and headline numbers. The whole row opens its details. */
 export function SessionRow({ row, onOpen }: { row: TrainingHistorySession; onOpen: () => void }) {
   const title = trainingTitle(row)?.trim();
@@ -42,6 +47,7 @@ export function SessionRow({ row, onOpen }: { row: TrainingHistorySession; onOpe
       {runSummary(row) ? <span>{runSummary(row)}</span> : row.duration_minutes ? <span>{row.duration_minutes} min</span> : null}
       {row.source === "external" && row.exercise_count ? <span>{row.exercise_count} exercise{row.exercise_count === 1 ? "" : "s"}</span> : null}
       {row.session_rpe != null ? <span>RPE {row.session_rpe}/10</span> : null}
+      {coachCredit(row) ? <span>{coachCredit(row)}</span> : null}
     </div>
     {row.takeaway?.trim() ? <p className="history-row-takeaway">{row.takeaway}</p> : null}
   </li>;
@@ -82,14 +88,14 @@ function Comparison({ rows, label, title, bar = false }: { rows: ComparisonRow[]
   </section>;
 }
 
-function TrainingBlockBody({ block, context, viewer }: { block: SessionDetailBlock; context: string; viewer?: Viewer }) {
+function TrainingBlockBody({ block, context, viewer, byCoach }: { block: SessionDetailBlock; context: string; viewer?: Viewer; byCoach?: boolean }) {
   const entries = Array.isArray(block.actual.set_entries) && block.actual.set_entries.length ? block.actual.set_entries as ExerciseSetResult[] : null;
   const sets = entries ? <SetResults entries={entries} completed={typeof block.actual.sets === "number" ? block.actual.sets : undefined} /> : null;
   const countOnly = countOnlySetSummary(block.actual);
   const notes = <>{block.reason ? <p className={styles.note}>{EXERCISE_LOG_REASON_LABELS[block.reason as ExerciseLogReason] || block.reason}</p> : null}
     {block.notes ? <blockquote className={styles.quote}>{block.notes}</blockquote> : null}</>;
   if (block.source === "manual") return <>
-    <p className={styles.outcome}>Logged training{viewer === "coach" ? "" : " · added by you"}</p>
+    <p className={styles.outcome}>Logged training{viewer === "coach" || byCoach ? "" : " · added by you"}</p>
     {countOnly ? <p className={styles.quiet}>{countOnly}</p> : detailMeasurements(block.actual).length
       ? <Comparison rows={comparisonRows({}, block.actual)} label={`Recorded: ${context}`} title="Recorded" /> : <p className={styles.quiet}>No measurements recorded.</p>}
     {countOnly ? null : sets}{notes}
@@ -134,9 +140,11 @@ function TrainingBlockBody({ block, context, viewer }: { block: SessionDetailBlo
 }
 
 /** A collapsible record card: name, dose and the weight in gold; the full record expands on request. */
-export function TrainingBlock({ block, index, heading, recordId, open, onToggle, numbered = true, compact = false, viewer }: {
+export function TrainingBlock({ block, index, heading, recordId, open, onToggle, numbered = true, compact = false, viewer, byCoach }: {
   block: SessionDetailBlock; index: number; heading?: string; recordId?: string; open: boolean; onToggle: () => void; numbered?: boolean; compact?: boolean;
   viewer?: Viewer;
+  /** The session was entered by a coach, so its exercises were not "added by you". */
+  byCoach?: boolean;
 }) {
   const body = useId();
   const context = heading ? `${block.name} · ${heading} · Record ${index + 1}` : block.name;
@@ -149,7 +157,7 @@ export function TrainingBlock({ block, index, heading, recordId, open, onToggle,
       <div className={styles.blockSide}>{load ? <strong className={styles.weight}>{load}</strong> : null}
         <span className={styles.status} data-status={recordStatus(block.status, block.source === "manual")}><StatusIcon status={recordStatus(block.status, block.source === "manual")} />{label}</span></div>
       <span className={styles.chevron} aria-hidden="true">›</span></div>
-    {open ? <div id={body} className={styles.blockBody}><TrainingBlockBody block={block} context={context} viewer={viewer} /></div> : null}
+    {open ? <div id={body} className={styles.blockBody}><TrainingBlockBody block={block} context={context} viewer={viewer} byCoach={byCoach} /></div> : null}
   </li>;
 }
 
@@ -239,7 +247,7 @@ function RunRecord({ run, history, onEditRun, viewer }: {
       <div className={summary.head}>
         <p className="history-summary-label">{distance ? "Distance" : "Time"}</p>
         {onEditRun && !missing.length ? <button type="button" className={`${progress.textButton} ${styles.runEdit}`} aria-haspopup="dialog" onClick={onEditRun}>Edit run</button>
-          : <span className={styles.runMeta}>{viewer === "coach" ? "Added by athlete" : "Added by you"}</span>}
+          : <span className={styles.runMeta}>{coachCredit(run) ?? (viewer === "coach" ? "Added by athlete" : "Added by you")}</span>}
       </div>
       <div className={styles.runHeadline}>
         <strong>{distance ? Number(distance.toFixed(2)) : time ?? run.duration_minutes ?? "—"}</strong>
@@ -352,7 +360,7 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
   const sport = facts.sport ? sportLabel(facts.sport) : null;
   const sessionType = facts.session_type ? sessionTypes(facts.sport).find(item => item.id === facts.session_type)?.label || facts.session_type.replaceAll("_", " ") : null;
   const metadata = [facts.duration_minutes != null ? `${facts.duration_minutes} min` : null, sessionEffort(facts),
-    facts.source === "external" ? viewer === "coach" ? "Added by athlete" : "Added by you" : "UNLXCK",
+    facts.source === "external" ? coachCredit(facts) ?? (viewer === "coach" ? "Added by athlete" : "Added by you") : "UNLXCK",
     ...[sport, sessionType].filter(value => value && !title.toLocaleLowerCase().includes(value.toLocaleLowerCase()))].filter(Boolean);
   return <dialog ref={dialog} className={`${styles.dialog} ${styles.journal}`} aria-labelledby={heading} data-closing={closing || undefined}
     onCancel={event => { if (event.target !== event.currentTarget) return; event.preventDefault(); dismiss(); }}
@@ -380,7 +388,7 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
             <div className={styles.manualHead}><h3>Drills & exercises</h3>
               {onEditExercises ? <button type="button" className={styles.manualAction} aria-haspopup="dialog"
                 onClick={() => onEditExercises(run)}>{details.blocks.length ? "Edit exercises" : "Add exercises"}</button> : null}</div>
-            <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} numbered={false} compact viewer={viewer}
+            <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} numbered={false} compact viewer={viewer} byCoach={facts.logged_by_coach}
               open={expanded.has(index)} onToggle={() => setOpen(new Set(expanded.has(index) ? [...expanded].filter(item => item !== index) : [...expanded, index]))} />)}</ol>
           </section> : null}
           {record.notes || record.takeaway ? <section className={styles.section}><h3>Notes</h3>
@@ -394,7 +402,7 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
               {record.source === "external" && onEditExercises && record.activity !== "sparring" ? <button type="button" className={styles.manualAction} aria-haspopup="dialog"
                 onClick={() => onEditExercises({ ...row, ...record })}>{details.blocks.length ? "Edit exercises" : "Add exercises"}</button> : null}</div>
             {details.prescription_source === "exercise_logs" ? <p className={styles.quiet}>Saved exercise logs only. Full prescription and block order unavailable.</p> : null}
-            {details.blocks.length ? <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} numbered={false} compact viewer={viewer}
+            {details.blocks.length ? <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} numbered={false} compact viewer={viewer} byCoach={facts.logged_by_coach}
               open={expanded.has(index)} onToggle={() => setOpen(new Set(expanded.has(index) ? [...expanded].filter(item => item !== index) : [...expanded, index]))} />)}</ol>
               : record.source === "external" ? <p className={styles.quiet}>No exercises recorded.</p> : null}
           </section>
