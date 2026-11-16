@@ -18,6 +18,7 @@ const connection: Connection = {
   status: "accepted",
 };
 const fighter: Fighter = {
+  allow_session_logging: true,
   id: fighterId,
   connection_id: connection.id,
   name: "Test Fighter",
@@ -719,4 +720,26 @@ test("legacy athlete can allow logging without granting unshared health categori
   await expect(page.getByRole("button", { name: "Allow session logging" })).toHaveCount(0);
   expect(state.actions[0]).toMatchObject({ p_action: "consent", p_logging: true,
     p_recovery: false, p_injuries: false, p_weight: false });
+});
+
+
+test("session logging offers only authorised fighters", async ({ page, baseURL }) => {
+  await fixture(page, baseURL!, "coach", false, {}, [fighter,
+    { ...fighter, id: "not-authorised", name: "Read Only Fighter", allow_session_logging: false },
+    { ...fighter, id: "legacy", name: "Legacy Fighter", allow_session_logging: undefined },
+  ]);
+  await page.goto("/coach");
+  await page.getByRole("button", { name: "Log session" }).click();
+  await expect(page.getByRole("dialog", { name: "Log session" }).getByText("For Test Fighter")).toBeVisible();
+  await expect(page.getByRole("dialog").getByRole("combobox")).toHaveCount(0);
+});
+
+test("session logging is hidden without authorised fighters", async ({ page, baseURL }) => {
+  await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, allow_session_logging: false }]);
+  await page.goto("/coach");
+  await expect(page.getByRole("heading", { name: "Your corner. In focus." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Log session" })).toHaveCount(0);
+  await page.goto(`/coach/fighters/${fighterId}`);
+  await expect(page.getByRole("heading", { name: "Training history" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Log session" })).toHaveCount(0);
 });

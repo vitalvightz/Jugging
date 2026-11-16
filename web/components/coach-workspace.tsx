@@ -312,6 +312,7 @@ function Fighters({ token, fighterId }: { token: string; fighterId?: string }) {
     [token, fighterId],
   );
   const { data: fighters, error, reload } = useLive(fetcher);
+  const loggingFighters = fighters?.filter((fighter) => fighter.allow_session_logging === true) ?? [];
   // Bumped when a session is logged, so the History list reads it at once.
   const [logged, setLogged] = useState(0);
   return (
@@ -324,11 +325,11 @@ function Fighters({ token, fighterId }: { token: string; fighterId?: string }) {
         ) : (
           <h1>Your corner. In focus.</h1>
         )}
-        {fighters?.length ? (
+        {loggingFighters.length ? (
           <LogTraining
             accessToken={token}
             variant="primary"
-            fighters={fighters.map((f) => ({
+            fighters={loggingFighters.map((f) => ({
               id: f.id,
               name: f.name,
               today: f.today,
