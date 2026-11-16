@@ -1001,3 +1001,19 @@ test("missing recovery stays grey and skipped sessions do not populate either hi
   await history.getByRole("button", { name: "List", exact: true }).click();
   await expect(history.getByText("No completed sessions recorded yet.", { exact: true })).toBeVisible();
 });
+
+for (const width of [320, 390]) {
+  test(`coach permission buttons keep readable spacing at ${width}px`, async ({ page, baseURL }) => {
+    await fixture(page, baseURL!, "athlete", false, { status: "accepted", share_weight: false, share_recovery: false, share_injuries: false, allow_session_logging: false, health_consent: true });
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto('/settings/coach-access');
+    const share = page.getByRole('button', { name: /^Share weight/ });
+    const logging = page.getByRole('button', { name: 'Allow session logging' });
+    await expect(share).toBeVisible(); await expect(logging).toBeVisible();
+    const a = (await share.boundingBox())!; const b = (await logging.boundingBox())!;
+    expect(b.y).toBeGreaterThanOrEqual(a.y + a.height + 8);
+    expect(a.width).toBeGreaterThan(240);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/coach-permissions-spacing-${width}.png`, fullPage: true });
+  });
+}

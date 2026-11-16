@@ -470,3 +470,19 @@
 .workspace [data-recovery-tone="unknown"] { color: var(--text-muted) !important; }
 :global(html[data-theme="light"]) .workspace [data-recovery-tone="caution"] { color: #865400 !important; }
 .pill[aria-pressed="true"] { background: var(--bg-surface-alt); border-color: var(--text-muted); color: var(--text-primary); }
+/* Keep headings and controls intact; move whole groups onto the next line. */
+.sectionHeading { flex-wrap: wrap; row-gap: 10px; }
+.sectionHeading h2, .weekControls, .calendarLegend span { white-space: nowrap; }
+.sectionHeading > small { flex-basis: 100%; }
+.actions, .weekControls { flex-shrink: 0; }
+.pill { white-space: nowrap; flex-shrink: 0; }
+@media (max-width: 600px) {
+  .connection { align-items: stretch; gap: 16px; }
+  .connection .rowCopy { flex-basis: 100%; }
+  .connection .rowCopy > small { overflow-wrap: break-word; line-height: 1.6; }
+  .connection .actions { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; gap: 10px; }
+  .connection .invitationActions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .connection .actions > button { width: 100%; min-width: 0; white-space: normal; word-break: normal; overflow-wrap: normal; }
+  .tiles > div > span { white-space: nowrap; }
+}
+.recoveryTiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }

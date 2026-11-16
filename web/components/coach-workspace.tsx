@@ -261,7 +261,7 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
                 <small>{sharing.note}</small>
               ) : null}
             </div>
-            <div className={styles.actions}>
+            <div className={`${styles.actions} ${pending ? styles.invitationActions : ""}`}>
               {!coach && !pending && sharing.missing.length ? (
                 <button
                   className="cta"
@@ -800,7 +800,7 @@ function FighterOverview({
           <strong>Recovery concerns</strong>
           {warnings.map(value => <p key={value.label} data-recovery-tone={value.tone}>{value.label}</p>)}
         </div> : f.share_recovery && sleepTone === "good" && bodyTone === "good" ? <p data-recovery-tone="good">Recovery check-in: No new concerns</p> : null}
-        <div className={styles.tiles}>
+        <div className={`${styles.tiles} ${styles.recoveryTiles}`}>
           <div><span>Sleep</span><strong data-recovery-tone={sleepTone}>{latestSleep?.sleep ? humanize(latestSleep.sleep) : latestSleep?.sleep_quality != null ? `${latestSleep.sleep_quality}/5` : unknown}</strong></div>
           <div><span>Readiness</span><strong data-recovery-tone={bodyTone}>{latestBody?.body ? humanize(latestBody.body) : latestBody?.readiness != null ? `${latestBody.readiness}/5` : unknown}</strong></div>
         </div>
