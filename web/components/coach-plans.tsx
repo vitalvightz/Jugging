@@ -127,6 +127,7 @@ export function AssignedSchedule({ plan, schedule, today, fightDate }: { plan: C
   const start = plan.start_date ?? dates?.[0] ?? today;
   const end = plan.end_date ?? dates?.at(-1) ?? start;
   const [selected, setSelected] = useState(today < start ? start : today > end ? end : today);
+  const dayLabels = Object.fromEntries(plan.sessions.filter(s => s.scheduled_date && ['rest', 'recovery'].includes(s.session_type)).map(s => [s.scheduled_date!, s.session_type === 'recovery' ? 'Recovery' : /\boff\b/i.test(s.name) ? 'Off' : 'Rest'])) as Record<string, 'Rest' | 'Off' | 'Recovery'>;
   const sessions = rows?.map(row => ({
     id: `${row.day}:${row.id}`, name: row.title, scheduled_date: row.day,
     session_type: row.type, exercises: row.blocks.filter(block => block.kind === "exercise").map(() => ({})),
@@ -134,7 +135,7 @@ export function AssignedSchedule({ plan, schedule, today, fightDate }: { plan: C
   return <section className={styles.planSchedule} aria-label={`${plan.name} schedule`}>
     <h3>Training schedule</h3>
     {!schedule ? <p role="status">Loading schedule…</p> : !rows?.length ? <p>No sessions scheduled.</p> :
-      <CustomPlanCalendar fightDate={fightDate} sessions={sessions} start={start} end={end} selected={selected < start ? start : selected > end ? end : selected} onSelect={setSelected} readOnly />}
+      <CustomPlanCalendar fightDate={fightDate} dayLabels={dayLabels} sessions={sessions} start={start} end={end} selected={selected < start ? start : selected > end ? end : selected} onSelect={setSelected} readOnly />}
   </section>;
 }
 
