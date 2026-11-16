@@ -120,7 +120,9 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   const router = useRouter();
   const requestId = useRef(crypto.randomUUID());
   const savedPlansHref = coachFighterId ? "/coach/plans" : "/plans#custom-plans";
-  const fighterDate = fightDate ?? (onboarding?.latest_intake ? (onboarding.latest_intake.no_scheduled_fight ? null : onboarding.latest_intake.fight_date) : onboarding?.latest_plan?.fight_date);
+  const fighterDate = fightDate !== undefined ? fightDate : onboarding?.latest_plan
+    ? onboarding.latest_plan.fight_date
+    : onboarding?.latest_intake?.no_scheduled_fight ? null : onboarding?.latest_intake?.fight_date;
   const scheduledFightDate = /^\d{4}-\d{2}-\d{2}$/.test(fighterDate ?? '') ? fighterDate : null;
   const fadeNavigate = useFadeNavigate();
   const [draft, setDraft] = useState<Draft>(() => {
