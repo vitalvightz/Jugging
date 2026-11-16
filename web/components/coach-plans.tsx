@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { CoachPlan, CoachPlannedSession } from "@/lib/api-schema.generated";
 import { weekStart, dayOffset, humanize, type Fighter } from "@/lib/coach";
+import { sharePlanWithFighters } from "@/lib/custom-plan-share";
 import { assignCoachPlan, listCoachPlans, getFighterPlan } from "@/lib/api";
 import { CustomPlanBuilder } from "./custom-plan-builder";
 import { AssignedPlanPreview } from "./assigned-plan-preview";
@@ -38,11 +39,11 @@ export function CoachPlans({ token, fighters }: { token: string; fighters: Fight
       {fighter && !editorOpen ? <button type="button" className={styles.desktopCreatePlan} aria-label="Create New Plan" onClick={() => setEditing("")}><PlanIcon name="plus" />Create Plan</button> : null}
     </div>
     {!fighters.length ? <p className={styles.empty}>Connect a fighter to create a plan.</p> : null}
-    {fighter ? <FighterPlans key={`${token}:${fighter.connection_id}`} token={token} fighter={fighter} refresh={refresh} editing={editing} setEditing={setEditing} /> : null}
+    {fighter ? <FighterPlans key={`${token}:${fighter.connection_id}`} token={token} fighter={fighter} others={fighters.filter(row => row.id !== fighter.id)} refresh={refresh} editing={editing} setEditing={setEditing} /> : null}
   </section>;
 }
 
-function FighterPlans({ token, fighter, refresh, editing, setEditing }: { token: string; fighter: Fighter; refresh: number; editing: string | null; setEditing: (id: string | null) => void }) {
+function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: { token: string; fighter: Fighter; others: Fighter[]; refresh: number; editing: string | null; setEditing: (id: string | null) => void }) {
   const [plans, setPlans] = useState<CoachPlan[]>();
   const [schedule, setSchedule] = useState<CoachPlannedSession[]>();
   const [filter, setFilter] = useState<"all" | "active" | "draft" | "past">("all");
@@ -103,9 +104,43 @@ function FighterPlans({ token, fighter, refresh, editing, setEditing }: { token:
       {scheduleOpen === plan.id ? <section className={styles.planSchedule} aria-label={`${plan.name} schedule`}><h3>Training schedule</h3>{!schedule ? <p role="status">Loading schedule…</p> : schedule.filter(row => row.plan_id === plan.published_plan_id).length ? <ul>{schedule.filter(row => row.plan_id === plan.published_plan_id).map(row => <li key={`${row.day}:${row.id}`}><span>{formatAppDate(row.day)}</span><strong>{row.title}</strong></li>)}</ul> : <p>No sessions scheduled.</p>}</section> : null}
       {preview === plan.id ? <AssignedPlanPreview plan={plan} /> : null}
       {plan.assignment_status === "draft" && plan.incomplete ? <p className={styles.planActionNote}>Finish schedule and doses to assign.</p> : null}
+      {others.length ? <SharePlan token={token} plan={plan} others={others} /> : null}
     </article>)}
     <button type="button" className={styles.newPlanAction} onClick={() => { setEditing(""); }}><PlanIcon name="plus" />Create New Plan</button>
   </>;
+}
+
+/** Gives other fighters their own copy of this plan, without touching the original. */
+function SharePlan({ token, plan, others }: { token: string; plan: CoachPlan; others: Fighter[] }) {
+  const [open, setOpen] = useState(false);
+  const [chosen, setChosen] = useState<string[]>([]);
+  const [assign, setAssign] = useState(!plan.incomplete);
+  const [pending, setPending] = useState(false);
+  const [status, setStatus] = useState("");
+  const name = (id: string) => others.find(row => row.id === id)?.name ?? "fighter";
+  async function send() {
+    setPending(true); setStatus("");
+    const results = await sharePlanWithFighters(token, plan, chosen, assign && !plan.incomplete);
+    const failedIds = results.filter(row => row.error).map(row => row.fighterId);
+    const sent = results.filter(row => !row.error).map(row => name(row.fighterId));
+    const failed = failedIds.map(name);
+    setStatus([sent.length ? `${assign && !plan.incomplete ? "Assigned to" : "Draft copied to"} ${sent.join(", ")}.` : "", failed.length ? `Couldn't send to ${failed.join(", ")}.` : ""].filter(Boolean).join(" "));
+    setChosen(failedIds);
+    if (!failed.length) setOpen(false);
+    setPending(false);
+  }
+  return <div className={styles.planShare}>
+    {!open ? <button type="button" className={styles.planShareToggle} onClick={() => { setOpen(true); setStatus(""); }}>Send to other fighters</button> : <fieldset className={styles.planSharePanel}>
+      <legend>Send a copy to</legend>
+      <div className={styles.planShareList}>{others.map(row => <label key={row.id}><input type="checkbox" checked={chosen.includes(row.id)} onChange={event => setChosen(event.target.checked ? [...chosen, row.id] : chosen.filter(id => id !== row.id))} />{row.name}</label>)}</div>
+      <label className={styles.planShareAssign}><input type="checkbox" checked={assign && !plan.incomplete} disabled={plan.incomplete} onChange={event => setAssign(event.target.checked)} />{plan.incomplete ? "Saves as draft until the plan is complete" : "Assign now (fighters accept it)"}</label>
+      <div className={styles.planShareActions}>
+        <button type="button" className="ghost-button" disabled={pending} onClick={() => { setOpen(false); setChosen([]); }}>Cancel</button>
+        <button type="button" className="cta" disabled={pending || !chosen.length} onClick={() => void send()}>{pending ? "Sending…" : chosen.length ? `Send to ${chosen.length}` : "Send"}</button>
+      </div>
+    </fieldset>}
+    {status ? <p role="status" className={styles.planShareStatus}>{status}</p> : null}
+  </div>;
 }
 
 export function AssignedProgress({ plan, fighter, schedule }: { plan: CoachPlan; fighter: Fighter; schedule: CoachPlannedSession[] | undefined }) {
