@@ -619,9 +619,6 @@
 .planFilters button { min-height: 38px; padding: 9px 18px; border: 1px solid #292c32; border-radius: 10px; background: #101215; color: #bfc3cb; font: inherit; font-size: 12px; cursor: pointer; }
 .planFilters button[aria-pressed="true"] { background: #b5122b; border-color: #b5122b; color: #fff; }
 .planSchedule { margin-top: 18px; padding-top: 16px; border-top: 1px solid #292c32; }
-.planSchedule ul { display: grid; gap: 10px; padding: 0; list-style: none; }
-.planSchedule li { display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: space-between; font-size: 12px; color: var(--text-secondary); }
-.planSchedule li strong { color: var(--text-primary); font-weight: 550; }
 @media (min-width: 760px) {
   .plansDashboard { gap: 20px; }
   .desktopPlanText { display: inline; }
