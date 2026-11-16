@@ -43,8 +43,11 @@ begin
     if d.assigned_at is not null then
       -- An interrupted acceptance can leave an inert compiled copy; a retracted
       -- draft may be edited, so that copy must not be reused by a later send.
-      delete from public.plans where athlete_id=p_fighter and status='review_required'
-        and (planning_brief::jsonb->>'coach_assignment_id')=d.id::text;
+      -- CASE fixes the evaluation order: a brief is only parsed once the row
+      -- is known to be an inert copy, so an older non-JSON brief cannot fail this.
+      delete from public.plans where athlete_id=p_fighter
+        and (case when status='review_required' and planning_brief ~ '^\s*\{'
+                  then planning_brief::jsonb->>'coach_assignment_id' end)=d.id::text;
       update public.custom_training_plans set assigned_at=null,coach_name=null where id=d.id returning * into d;
     end if;
   elsif p_action='remove' then
