@@ -153,7 +153,7 @@ test("a rest day with a prescribed mindset cue stays readable without duplicate 
   assert.equal(countOccurrences(html, "cm-rest-day"), 0);
   assert.equal(countOccurrences(html, "cm-day-summary"), 1);
   assert.match(html, /Visualise the opening exchange for five minutes/);
-  assert.doesNotMatch(html, /Rest day\\.<\\/p>/);
+  assert.doesNotMatch(html, /Rest day\.<\/p>/);
 });
 
 test("custom and generated calendars keep rest days inert without disabling planned sessions", () => {
