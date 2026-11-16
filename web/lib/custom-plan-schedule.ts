@@ -3,6 +3,7 @@ import type { MeResponse } from "./types";
 import { hydratePlanRequest } from "./onboarding";
 import { parseRoundsFormat } from "./rounds-format";
 import { blankDose, doseIncomplete } from "./custom-plan-dose";
+import { calendarMonday } from "./custom-plan-calendar";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 export const sessionNames = {
@@ -51,9 +52,14 @@ export function prepareCustomSession<T extends EditableSession>(session: T, me: 
 
 export function customScheduleIssues(sessions: EditableSession[]): Array<{ sessionId?: string; message: string }> {
   const issues: Array<{ sessionId?: string; message: string }> = [];
+  const weeklyCounts = new Map<string, number>();
   for (const session of sessions) {
+    if (session.scheduled_date) {
+      const week = calendarMonday(session.scheduled_date);
+      weeklyCounts.set(week, (weeklyCounts.get(week) ?? 0) + 1);
+    }
     const type = session.session_type ?? "mixed";
-    const label = session.weekday ? `${session.weekday}’s ${sessionNames[type]}` : session.name;
+    const label = session.scheduled_date ? `${session.scheduled_date}’s ${sessionNames[type]}` : session.weekday ? `${session.weekday}’s ${sessionNames[type]}` : session.name;
     const add = (message: string) => issues.push({ sessionId: session.id, message });
     if (!session.weekday) add(`Choose a day for ${session.name}.`);
     if (type === "rest") {
@@ -64,8 +70,10 @@ export function customScheduleIssues(sessions: EditableSession[]): Array<{ sessi
       add(`Finish the exercise doses in ${label}.`);
     }
   }
+  for (const [week, count] of weeklyCounts)
+    if (count > 28) issues.push({ message: `The week of ${week} has ${count} sessions. Keep each week to 28 or fewer.` });
   if (!sessions.some(s => !["rest", "recovery"].includes(s.session_type ?? "mixed")))
-    issues.push({ message: "Add at least one training day to your weekly plan." });
+    issues.push({ message: "Add at least one training day to your plan." });
   return issues;
 }
 
@@ -90,6 +98,6 @@ export function customSchedulePrefill(me: MeResponse | null): CustomSession[] {
     return [
       ...(hard ? [{ name: "Hard Sparring", session_type: "sparring" as const }] : []),
       ...(technical ? [{ name: "Light Technical", session_type: "skill" as const }] : []),
-    ].map((session) => prepareCustomSession({ ...session, id: crypto.randomUUID(), weekday, exercises: [] }, me));
+    ].map((session) => prepareCustomSession({ ...session, id: crypto.randomUUID(), scheduled_date: null, weekday, exercises: [] }, me));
   });
 }

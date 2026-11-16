@@ -557,7 +557,7 @@ REQUIRED_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "manual_exercise_entries": REQUIRED_MANUAL_EXERCISE_ENTRIES_COLUMNS,
     "personal_exercises": ("id", "athlete_id", "name", "name_key", "created_at", "updated_at"),
     "custom_training_plans": ("id", "athlete_id", "name", "kind", "sessions", "incomplete", "created_at", "updated_at",
-                              "fighter_id", "coach_name", "assigned_at", "accepted_at", "declined_at", "published_plan_id"),
+                              "fighter_id", "coach_name", "assigned_at", "accepted_at", "declined_at", "published_plan_id", "schedule_mode", "start_date", "end_date"),
     "private_video_assets": ("id", "athlete_id", "status", "size_bytes", "content_type", "intake_path", "rendition_path", "duration_seconds", "width", "height", "sha256", "processor_version", "upload_expires_at", "processed_at", "created_at", "updated_at"),
     "private_exercise_media": ("id", "athlete_id", "provider", "video_id", "asset_id", "start_s", "end_s", "channel_title", "orientation", "made_for_kids", "created_at"),
     "private_media_budget": ("athlete_id", "upload", "created_at"),

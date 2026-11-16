@@ -2160,7 +2160,9 @@ function RestDayRow({
 function customDaySessionHref(day: StructuredDay, customPlanId?: string | null): string | null {
   if (!customPlanId || !["rest", "recovery"].includes(day.day_type ?? "")) return null;
   const weekday = CALENDAR_WEEKDAYS.find(value => value.toLowerCase() === (cleanText(day.weekday) || weekdayLabel(day.date ?? null))?.slice(0, 3).toLowerCase());
-  return weekday ? `/plans/custom?plan=${encodeURIComponent(customPlanId)}&addSession=${weekday}` : null;
+  // Dated plans add on the tapped date; weekly plans ignore it.
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(day.date ?? "") ? `&date=${day.date}` : "";
+  return weekday ? `/plans/custom?plan=${encodeURIComponent(customPlanId)}&addSession=${weekday}${date}` : null;
 }
 
 function CompletionTag({ completion }: { completion: Completion }) {

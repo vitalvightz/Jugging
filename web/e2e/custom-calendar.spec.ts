@@ -5,18 +5,18 @@ import { blankDose } from "../lib/custom-plan-dose";
 import type { CustomPlan, CustomPlanInput, CustomSession } from "../lib/api-schema.generated";
 
 function demo(): CustomPlan {
-  return { id: crypto.randomUUID(), name: "Demo", kind: "self_directed", incomplete: true,
+  return { id: crypto.randomUUID(), name: "Demo", kind: "self_directed", schedule_mode: "weekly", start_date: null, end_date: null, incomplete: true,
     created_at: "2026-10-12T12:00:00Z", updated_at: "2026-10-12T12:00:00Z",
     sessions: [
       ...["Monday", "Wednesday", "Thursday", "Saturday"].map(weekday => ({
-        id: crypto.randomUUID(), name: "Lower Body", weekday: weekday as CustomSession["weekday"], session_type: "strength_power" as const,
+        id: crypto.randomUUID(), name: "Lower Body", scheduled_date: null, weekday: weekday as CustomSession["weekday"], session_type: "strength_power" as const,
         exercises: [{ id: crypto.randomUUID(), origin: "manual" as const, exercise_type: null, name: "My squat", equipment: "Rack", notes: "Keep my dose",
           media_id: null, community_id: null, community_revision_id: null, incomplete: false,
           coaching_cues: null, stop_rules: null,
           dose: { ...blankDose(), sets: 3, reps: 5, load_or_intensity: "80 kg" } }],
       })),
-      { id: crypto.randomUUID(), name: "Training", weekday: "Tuesday", session_type: "recovery", exercises: [] },
-      { id: crypto.randomUUID(), name: "Training", weekday: "Friday", session_type: "sparring", exercises: [] },
+      { id: crypto.randomUUID(), name: "Training", scheduled_date: null, weekday: "Tuesday", session_type: "recovery", exercises: [] },
+      { id: crypto.randomUUID(), name: "Training", scheduled_date: null, weekday: "Friday", session_type: "sparring", exercises: [] },
     ],
   };
 }
@@ -43,6 +43,22 @@ test("rest-day Add session shortcut opens the existing editor on the selected we
   await expect(page.getByRole("button", { name: "Save draft", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
   await expect.poll(() => saved.get(original.id)?.sessions.filter(s => s.weekday === "Sunday").map(s => s.name)).toEqual(["Sunday conditioning"]);
+});
+test("rest-day Add session shortcut on a dated plan adds on the tapped date", async ({ page, baseURL }) => {
+  test.skip(Boolean(process.env.CUSTOM_PLAN_TEST_API), "Uses a saved draft fixture.");
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { saved } = await setup(page, baseURL!);
+  const original = { ...demo(), schedule_mode: "dated" as const, start_date: "2026-11-16", end_date: "2026-12-13" };
+  original.sessions = [{ ...original.sessions[0], scheduled_date: "2026-11-16" }];
+  saved.set(original.id, original);
+  await page.goto(`/plans/custom?plan=${original.id}&addSession=Tue&date=2026-11-24`);
+  const sheet = page.getByRole("dialog", { name: "New session" });
+  await expect(sheet.getByLabel("Session date", { exact: true })).toHaveValue("2026-11-24");
+  await sheet.getByRole("button", { name: "Light technical / skill", exact: true }).click();
+  await sheet.getByRole("button", { name: "Add session", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Open Light Technical on/ })).toBeVisible();
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect.poll(() => saved.get(original.id)?.sessions.map(s => s.scheduled_date)).toEqual(["2026-11-16", "2026-11-24"]);
 });
 test("rest-day shortcut respects the existing 28-session limit", async ({ page, baseURL }) => {
   test.skip(Boolean(process.env.CUSTOM_PLAN_TEST_API), "Uses a saved draft fixture.");

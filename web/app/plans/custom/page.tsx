@@ -9,14 +9,16 @@ function Editor() {
   const params = useSearchParams();
   const planId = params.get("plan") ?? undefined;
   const addSessionDay = params.get("addSession");
+  const addSessionDate = params.get("date");
   return (
     <RequireAuth>
       {session?.access_token && me ? (
         <CustomPlanBuilder
-          key={`${session.user_id}:${planId ?? "new"}:${addSessionDay ?? ""}`}
+          key={`${session.user_id}:${planId ?? "new"}:${addSessionDay ?? ""}:${addSessionDate ?? ""}`}
           accessToken={session.access_token}
           planId={planId}
           addSessionDay={addSessionDay}
+          addSessionDate={addSessionDate}
           onboarding={me}
         />
       ) : null}

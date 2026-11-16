@@ -57,7 +57,7 @@ test("custom week overlay does not prescribe automatic progression or deload", (
 
 
 const emptySession = (type: CustomSession["session_type"], weekday: CustomSession["weekday"] = "Friday"): CustomSession => ({
-  id: crypto.randomUUID(), name: "Training", session_type: type, weekday, exercises: [],
+  id: crypto.randomUUID(), name: "Training", session_type: type, scheduled_date: null, weekday, exercises: [],
 });
 import type { CustomSession } from "./api-schema.generated";
 
@@ -118,4 +118,11 @@ test("type changes rename defaults, preserve custom names and keep programmed da
 
 test("normal athlete errors omit raw request identifiers", () => {
   assert.equal(customPlanError(new Error("Wednesday needs exercises. (request id: abc-123)"), "Unable to save"), "Wednesday needs exercises.");
+});
+
+test("dated validation counts sessions per calendar week, not across the whole block", () => {
+  const session = prepareCustomSession(emptySession("skill"), onboarding);
+  const dated = Array.from({ length: 29 }, (_, index) => ({ ...session, id: `session-${index}`, scheduled_date: "2026-11-16" }));
+  assert.match(customScheduleIssues(dated)[0].message, /week of 2026-11-16.*29 sessions/);
+  assert.deepEqual(customScheduleIssues(dated.map((s, index) => ({ ...s, scheduled_date: index < 15 ? "2026-11-16" : "2026-11-23" }))), []);
 });

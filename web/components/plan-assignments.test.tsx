@@ -8,10 +8,10 @@ import type { CoachPlan } from "@/lib/api-schema.generated";
 import { blankDose } from "@/lib/custom-plan-dose";
 
 const original: CoachPlan = {
-  id: "assignment", name: "Coach week", kind: "self_directed", fighter_id: "fighter",
+  id: "assignment", name: "Coach week", kind: "self_directed", schedule_mode: "weekly", start_date: null, end_date: null, fighter_id: "fighter",
   coach_name: "Coach Sam", assigned_at: "2026-11-16T12:00:00Z", assignment_status: "pending",
   created_at: "2026-11-16T12:00:00Z", updated_at: "2026-11-16T12:00:00Z", published_plan_id: null, incomplete: false,
-  sessions: [{ id: "squat-day", name: "Strength", weekday: "Monday", session_type: "strength_power",
+  sessions: [{ id: "squat-day", name: "Strength", scheduled_date: null, weekday: "Monday", session_type: "strength_power",
     exercises: [{ id: "squat", origin: "manual", name: "Squat", dose: { ...blankDose(), sets: 3, reps: 5 }, incomplete: false,
       exercise_type: "strength", equipment: null, notes: "Use rack", media_id: null, community_id: null, community_revision_id: null, coaching_cues: ["Brace"], stop_rules: ["Stop if painful"] }] }],
 };

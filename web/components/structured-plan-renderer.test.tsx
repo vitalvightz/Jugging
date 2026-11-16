@@ -110,8 +110,8 @@ test("owned custom plan rest and recovery days offer Add session without changin
   };
   const own = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} openOngoing customPlanId="draft-1"
     today={new Date("2026-11-02T12:00:00")} />);
-  assert.match(own, /href="\/plans\/custom\?plan=draft-1&amp;addSession=Mon"/);
-  assert.match(own, /href="\/plans\/custom\?plan=draft-1&amp;addSession=Tue"/);
+  assert.match(own, /href="\/plans\/custom\?plan=draft-1&amp;addSession=Mon&amp;date=2026-11-02"/);
+  assert.match(own, /href="\/plans\/custom\?plan=draft-1&amp;addSession=Tue&amp;date=2026-11-03"/);
   assert.equal(countOccurrences(own, "+ Add session"), 2);
   const generated = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} openOngoing
     today={new Date("2026-11-02T12:00:00")} />);

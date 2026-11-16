@@ -141,9 +141,10 @@ export async function setup(page: Page, baseURL: string, role = "athlete") {
         return route.fulfill({ status: 204 });
       }
       const body = request.postDataJSON() as CustomPlanInput;
-      expect(Object.keys(body).sort()).toEqual(["name", "sessions"]);
+      expect(Object.keys(body).sort()).toEqual(["end_date", "name", "schedule_mode", "sessions", "start_date"]);
       const sessions = (body.sessions ?? []).map((session) => ({
         ...session,
+        scheduled_date: session.scheduled_date ?? null,
         session_type: session.session_type ?? "mixed",
         weekday: session.weekday ?? null,
         exercises: (session.exercises ?? []).map((exercise) => {
@@ -191,7 +192,7 @@ export async function setup(page: Page, baseURL: string, role = "athlete") {
         id: id || crypto.randomUUID(),
         name: body.name,
         sessions,
-        kind: "self_directed",
+        kind: "self_directed", schedule_mode: body.schedule_mode ?? "weekly", start_date: body.start_date ?? null, end_date: body.end_date ?? null,
         incomplete: customScheduleIssues(sessions).length > 0,
         created_at: "2026-10-11T12:00:00Z",
         updated_at: "2026-10-11T12:00:00Z",

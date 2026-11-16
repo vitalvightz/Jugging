@@ -11,6 +11,7 @@ for (const width of [320, 390, 1280, 1600]) {
     const { mutations } = await setup(page, baseURL!);
     await page.goto("/create");
     await page.getByRole("link", { name: /^Build Your Own/ }).click();
+    await page.getByLabel("Schedule mode", { exact: true }).selectOption("weekly");
     await page.getByLabel("Plan name", { exact: true }).fill(`Weekly strength ${width}`);
     await page.getByRole("button", { name: /^Monday,/ }).click();
     await page.getByRole("button", { name: "Add session on Monday", exact: true }).click();
@@ -105,7 +106,9 @@ for (const width of [320, 390, 1280, 1600]) {
     await page.reload();
     const exercises = page.getByRole("region", { name: "Session 1", exact: true }).getByRole("listitem");
     await expect(exercises.first()).toContainText("My bag rounds");
-    await expect(exercises.last()).toContainText("4 × 8 · 80 kg · rest 120s");
+    await expect(exercises.last()).toContainText("4 × 8");
+    await expect(exercises.last()).toContainText("80 kg");
+    await expect(exercises.last()).toContainText("rest 120s");
     await expect(page.getByText("Monday", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Edit dose for My bag rounds" }).click();
     await expect(page.getByLabel("Work duration", { exact: true })).toHaveValue("5");
@@ -281,7 +284,7 @@ test("Saved-plan failures are visible and retryable", async ({ page, baseURL }) 
       body: JSON.stringify({
         id,
         name: "Demo Plan",
-        kind: "self_directed",
+        kind: "self_directed", schedule_mode: "weekly", start_date: null, end_date: null,
         sessions: [],
         incomplete: true,
         created_at: "2026-10-11T12:00:00Z",
@@ -315,6 +318,7 @@ for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 844 });
     const { saved } = await setup(page, baseURL!);
     await page.goto('/plans/custom');
+    await page.getByLabel('Schedule mode', { exact: true }).selectOption('weekly');
     // New sessions always start on the day being viewed, so every one has a day.
     const days = ['Sunday', 'Friday', 'Monday', 'Wednesday', 'Tuesday', 'Thursday', 'Saturday', 'Monday'];
     for (const [index, day] of days.entries()) {
@@ -351,11 +355,11 @@ for (const width of [320, 390, 1280]) {
     page.on("pageerror", (error) => errors.push(error.message));
     const { saved } = await setup(page, baseURL!);
     const publishedDraft = "00000000-0000-4000-8000-000000000011";
-    saved.set(publishedDraft, { id: publishedDraft, name: "Already published", kind: "self_directed",
+    saved.set(publishedDraft, { id: publishedDraft, name: "Already published", kind: "self_directed", schedule_mode: "weekly", start_date: null, end_date: null,
       incomplete: false, sessions: [], created_at: "2026-10-11T12:00:00Z", updated_at: "2026-10-11T12:00:00Z" });
     const draftId = "00000000-0000-4000-8000-000000000012";
     saved.set(draftId, { id: draftId, name: "My custom strength and conditioning week with a longer title",
-      kind: "self_directed", incomplete: true, sessions: [], created_at: "2026-10-12T12:00:00Z",
+      kind: "self_directed", schedule_mode: "weekly", start_date: null, end_date: null, incomplete: true, sessions: [], created_at: "2026-10-12T12:00:00Z",
       updated_at: "2026-10-12T12:00:00Z" });
     const base = { athlete_id: "00000000-0000-4000-8000-000000000001", full_name: "Carlos", fight_date: "",
       technical_style: ["boxing"], created_at: "2026-10-11T12:00:00Z", status: "ready", activation_state: "eligible" };
@@ -402,6 +406,7 @@ test("custom Back Squat Add/Edit shares Suggested and Last without replacing ath
   } }));
   await page.goto("/create");
   await page.getByRole("link", { name: /^Build Your Own/ }).click();
+    await page.getByLabel("Schedule mode", { exact: true }).selectOption("weekly");
   await page.getByRole("button", { name: /^Monday,/ }).click();
   await page.getByRole("button", { name: "Add session on Monday", exact: true }).click();
   const session = page.getByRole("dialog", { name: "New session", exact: true });
@@ -435,9 +440,9 @@ for (const width of [320, 390]) test(`private strength progression uses confirme
       prescribed: { display_name: "Bench Press" }, actual, status: "modified", training_day: "2026-10-01",
     },
   }] } }));
-  saved.set(id, { id, name: "Private strength", kind: "self_directed", incomplete: false,
+  saved.set(id, { id, name: "Private strength", kind: "self_directed", schedule_mode: "weekly", start_date: null, end_date: null, incomplete: false,
     created_at: "2026-10-01T12:00:00Z", updated_at: "2026-10-01T12:00:00Z", sessions: [{
-      id: "00000000-0000-4000-8000-000000000031", name: "Strength", weekday: "Monday", session_type: "strength_power",
+      id: "00000000-0000-4000-8000-000000000031", name: "Strength", scheduled_date: null, weekday: "Monday", session_type: "strength_power",
       exercises: [{ id: "00000000-0000-4000-8000-000000000032", origin: "manual", name: "Bench Press", exercise_type: "strength",
         equipment: null, notes: null, media_id: null, community_id: null, community_revision_id: null,
         coaching_cues: null, stop_rules: null, incomplete: false,
