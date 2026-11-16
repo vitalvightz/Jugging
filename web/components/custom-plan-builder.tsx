@@ -114,7 +114,7 @@ function PencilIcon() {
     </svg>
   );
 }
-export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboarding = null, coachFighterId, onCoachClose, initialPlan, athleteTimezone }: { athleteTimezone?: string; initialPlan?: CustomPlan; onCoachClose?: () => void; coachFighterId?: string; accessToken: string; planId?: string; addSessionDay?: string | null; onboarding?: MeResponse | null }) {
+export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessionDate, onboarding = null, coachFighterId, onCoachClose, initialPlan, athleteTimezone }: { athleteTimezone?: string; initialPlan?: CustomPlan; onCoachClose?: () => void; coachFighterId?: string; accessToken: string; planId?: string; addSessionDay?: string | null; addSessionDate?: string | null; onboarding?: MeResponse | null }) {
   const router = useRouter();
   const requestId = useRef(crypto.randomUUID());
   const savedPlansHref = coachFighterId ? "/coach/plans" : "/plans#custom-plans";
@@ -139,6 +139,8 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   // One added exercise is open at a time: the newest, so its dose can be set at once; the rest stay one line each.
   const [openAdded, setOpenAdded] = useState<string>();
   const [quickDose, setQuickDose] = useState<string | null>(null);
+  // A typed date passes through partial values; commit once on leaving the field, not per keystroke.
+  const [startInput, setStartInput] = useState<string>();
   const [openExercise, setOpenExercise] = useState<string | null>(null);
   const [error, setError] = useState<string>(),
     [message, setMessage] = useState<string>();
@@ -223,10 +225,15 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
           savedSnapshot.current = JSON.stringify(repaired);
           if (repaired.schedule_mode === 'dated') setSelectedDate(repaired.sessions[0]?.scheduled_date ?? repaired.start_date!);
           const day = weekdays.find(value => value.slice(0, 3).toLowerCase() === addSessionDay?.toLowerCase());
-          if (day && repaired.sessions.length >= 28) setError("This plan already has the maximum 28 sessions.");
-          else if (day) {
+          // A dated session needs the tapped date; a weekday alone would leave it off the calendar and unsaveable.
+          const dated = repaired.schedule_mode === 'dated';
+          const date = dated && addSessionDate && addSessionDate >= repaired.start_date! && addSessionDate <= repaired.end_date! ? addSessionDate : null;
+          const limit = dated ? 336 : 28;
+          if (day && repaired.sessions.length >= limit) setError(`This plan already has the maximum ${limit} sessions.`);
+          else if (day && (!dated || date)) {
             setChosenDay(day);
-            const session = newSession(day);
+            if (date) setSelectedDate(date);
+            const session = { ...newSession(date ? calendarWeekday(date) : day), scheduled_date: date };
             setSessionFresh(session);
             setSessionEdit(session);
           }
@@ -243,7 +250,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
     return () => {
       active = false;
     };
-  }, [accessToken, planId, retry, onboarding, addSessionDay, coachFighterId]);
+  }, [accessToken, planId, retry, onboarding, addSessionDay, addSessionDate, coachFighterId]);
   useEffect(() => {
     if (!loading && loaded.current) heading.current?.focus({ preventScroll: true });
   }, [loading]);
@@ -338,7 +345,8 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
     const next = source.current.pop();
     if (!next) return;
     destination.current.push(latest.current);
-    if (next.schedule_mode === 'dated') setSelectedDate(next.start_date!);
+    // Stay on the day being viewed unless the restored range no longer contains it.
+    if (next.schedule_mode === 'dated' && (selectedDate < next.start_date! || selectedDate > next.end_date!)) setSelectedDate(next.start_date!);
     latest.current = next; setDraft(next); setDirty(JSON.stringify(next) !== savedSnapshot.current);
     setHistoryVersion(n => n + 1); setMessage(undefined);
   }
@@ -773,7 +781,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
           </label>
           <div className={styles.scheduleSettings}>
             <label>Schedule<select aria-label="Schedule mode" value={draft.schedule_mode ?? 'weekly'} onChange={event => selectScheduleMode(event.target.value as 'weekly' | 'dated')}><option value="dated">Dated multi-week calendar</option><option value="weekly">Repeating week</option></select></label>
-            {isDated ? <><label>Start date<input type="date" value={draft.start_date!} onChange={event => resizeDates(event.target.value, Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!)) / 604800000 + 1 / 7))} /></label><label>Weeks<input aria-label="Plan duration in weeks" type="number" min={1} max={12} value={Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!) + 86400000) / 604800000)} onChange={event => resizeDates(draft.start_date!, Number(event.target.value))} /></label></> : null}
+            {isDated ? <><label>Start date<input type="date" value={startInput ?? draft.start_date!} onChange={event => setStartInput(event.target.value)} onBlur={() => { const next = startInput; setStartInput(undefined); if (next && next !== draft.start_date) resizeDates(next, Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!) + 86400000) / 604800000)); }} /></label><label>Weeks<input aria-label="Plan duration in weeks" type="number" min={1} max={12} value={Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!) + 86400000) / 604800000)} onChange={event => resizeDates(draft.start_date!, Number(event.target.value))} /></label></> : null}
           </div>
           <div className={isDated ? styles.calendarEditorLayout : undefined}>
           <div>

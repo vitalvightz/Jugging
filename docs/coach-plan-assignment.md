@@ -128,7 +128,7 @@ retains its own exercise doses. Quick dose editing and exercise ordering reuse t
 existing dose model. Undo/redo keeps up to 100 draft changes in memory and resets
 after saving; it is not a server version history.
 
-`20261116162904_dated_custom_plans.sql` adds only `schedule_mode`, `start_date` and
+`20261116171039_dated_custom_plans.sql` adds only `schedule_mode`, `start_date` and
 `end_date` to the existing draft table and extends the service-only coach command
 to persist them. Session JSON gains `scheduled_date`; API validation derives weekday,
 checks range/unique occurrence IDs, and limits each calendar week to 28 sessions.
@@ -154,14 +154,17 @@ per-set prescriptions, AI generation and automatic progression remain out of sco
 1. Confirm the Phase 3 assignment schema is present. Its production application was
    explicitly requested separately; do not replay the old migration under a second
    version when the hosted migration history already records it.
-2. Apply `20261116162904_dated_custom_plans.sql` using the reviewed migration process.
+2. `20261116171039_dated_custom_plans.sql` is already applied to production and is
+   recorded in the hosted migration history under that version. Do not apply it again.
    It is additive for existing drafts, with default weekly mode and no data backfill.
 3. Deploy backend, then frontend. The old application remains compatible during the
    schema-first rollout. Do not roll back to an application version that interprets
    dated drafts as weekly once dated drafts exist; retain the columns and records.
 
-The Phase 3.5 migration has only been exercised against disposable local PostgreSQL.
-It has not been applied to production; no merge or deployment was performed.
+The Phase 3.5 migration was exercised against disposable local PostgreSQL and then
+applied to production on 2026-11-16. The migration file is not idempotent, so its
+filename matches the hosted version to stop history-based tooling replaying it.
+The application change itself has not been merged or deployed.
 
 ### Phase 3.5 validation
 

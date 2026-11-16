@@ -44,6 +44,22 @@ test("rest-day Add session shortcut opens the existing editor on the selected we
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
   await expect.poll(() => saved.get(original.id)?.sessions.filter(s => s.weekday === "Sunday").map(s => s.name)).toEqual(["Sunday conditioning"]);
 });
+test("rest-day Add session shortcut on a dated plan adds on the tapped date", async ({ page, baseURL }) => {
+  test.skip(Boolean(process.env.CUSTOM_PLAN_TEST_API), "Uses a saved draft fixture.");
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { saved } = await setup(page, baseURL!);
+  const original = { ...demo(), schedule_mode: "dated" as const, start_date: "2026-11-16", end_date: "2026-12-13" };
+  original.sessions = [{ ...original.sessions[0], scheduled_date: "2026-11-16" }];
+  saved.set(original.id, original);
+  await page.goto(`/plans/custom?plan=${original.id}&addSession=Tue&date=2026-11-24`);
+  const sheet = page.getByRole("dialog", { name: "New session" });
+  await expect(sheet.getByLabel("Session date", { exact: true })).toHaveValue("2026-11-24");
+  await sheet.getByRole("button", { name: "Light technical / skill", exact: true }).click();
+  await sheet.getByRole("button", { name: "Add session", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Open Light Technical on/ })).toBeVisible();
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect.poll(() => saved.get(original.id)?.sessions.map(s => s.scheduled_date)).toEqual(["2026-11-16", "2026-11-24"]);
+});
 test("rest-day shortcut respects the existing 28-session limit", async ({ page, baseURL }) => {
   test.skip(Boolean(process.env.CUSTOM_PLAN_TEST_API), "Uses a saved draft fixture.");
   const { saved } = await setup(page, baseURL!);

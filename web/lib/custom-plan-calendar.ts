@@ -7,8 +7,11 @@ export function addCalendarDays(day: string, amount: number): string {
 }
 export function calendarWeekday(day: string) { return calendarWeekdays[(new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7]; }
 export function calendarMonday(day: string) { return addCalendarDays(day, -((new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7)); }
-export function nextCalendarMonday(timezone = 'UTC', now = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+export function nextCalendarMonday(timezone?: string | null, now = new Date()) {
+  // Profiles can hold a blank or unknown timezone; Intl throws on those, so use the device's instead.
+  const format = (timeZone?: string) => new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+  let parts: Intl.DateTimeFormatPart[];
+  try { parts = format(timezone || undefined); } catch { parts = format(); }
   const part = (type: string) => parts.find(p => p.type === type)!.value;
   const today = `${part('year')}-${part('month')}-${part('day')}`;
   const monday = calendarMonday(today);

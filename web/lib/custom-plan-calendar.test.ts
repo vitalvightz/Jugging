@@ -8,6 +8,9 @@ test('date-only calendar arithmetic handles month/year boundaries without timezo
   assert.equal(calendarWeekday('2027-01-01'), 'Friday');
   assert.equal(nextCalendarMonday('Pacific/Auckland', new Date('2026-11-15T12:30:00Z')), '2026-11-16');
 });
+test('a blank or unknown profile timezone still yields a start date instead of throwing', () => {
+  for (const timezone of ['', null, undefined, 'Mars/Phobos']) assert.match(nextCalendarMonday(timezone, new Date('2026-11-18T12:00:00Z')), /^2026-11-23$/);
+});
 test('copying creates new occurrence IDs and preserves prescription content', () => {
   const copied = copyCalendarSession(session, '2026-11-24');
   assert.notEqual(copied.id, session.id); assert.notEqual(copied.exercises[0].id, session.exercises[0].id);

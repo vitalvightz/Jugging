@@ -50,7 +50,7 @@ def db():
                 (ROOT / 'supabase/migrations/20261116001139_coach_workspace.sql').read_text())[0])
             setup.execute((ROOT / 'supabase/migrations/20261011164637_add_custom_training_plans.sql').read_text())
             setup.execute(MIGRATION.read_text())
-            setup.execute((ROOT / "supabase/migrations/20261116162904_dated_custom_plans.sql").read_text())
+            setup.execute((ROOT / "supabase/migrations/20261116171039_dated_custom_plans.sql").read_text())
         yield test_dsn
     finally:
         with psycopg.connect(dsn, autocommit=True) as admin:

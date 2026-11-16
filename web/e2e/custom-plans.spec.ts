@@ -318,6 +318,7 @@ for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 844 });
     const { saved } = await setup(page, baseURL!);
     await page.goto('/plans/custom');
+    await page.getByLabel('Schedule mode', { exact: true }).selectOption('weekly');
     // New sessions always start on the day being viewed, so every one has a day.
     const days = ['Sunday', 'Friday', 'Monday', 'Wednesday', 'Tuesday', 'Thursday', 'Saturday', 'Monday'];
     for (const [index, day] of days.entries()) {
