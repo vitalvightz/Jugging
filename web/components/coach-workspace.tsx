@@ -86,7 +86,7 @@ export function CoachWorkspace({
   const coach = me?.profile.role === "coach" || me?.profile.role === "admin";
   return (
     <RequireAuth>
-      <div className={styles.workspace}>
+      <div className={`${styles.workspace} ${view === "plans" ? styles.plansWorkspace : ""}`}>
         {!isMeHydrated || !session || !me ? (
           <Loading />
         ) : connectionsOnly || !coach ? (
@@ -331,7 +331,7 @@ function Fighters({ token, fighterId, view }: { token: string; fighterId?: strin
   const [logged, setLogged] = useState(0);
   return (
     <>
-      <div className={styles.pageHead}>
+      {view === "plans" ? null : <div className={styles.pageHead}>
         {fighterId ? (
           <Link className={styles.back} href="/coach">
             ← All fighters
@@ -356,7 +356,7 @@ function Fighters({ token, fighterId, view }: { token: string; fighterId?: strin
             }}
           />
         ) : null}
-      </div>
+      </div>}
       {view === "plans" && fighters ? <CoachPlans key={token} token={token} fighters={fighters} /> : view === "log" && fighters && !loggingFighters.length ? <p className={styles.empty}>No fighters have authorised session logging.</p> : null}
       {fighterId ? <h1 className={styles.srOnly}>Fighter overview</h1> : null}
       <LoadState error={error} loading={!fighters} retry={reload} />

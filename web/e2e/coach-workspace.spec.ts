@@ -1282,15 +1282,54 @@ for (const width of [390, 1440]) {
     await page.goto('/coach/plans');
     await expect(page.getByRole('progressbar', { name: 'Weekly completion' })).toHaveAttribute('value', '100');
     await expect(page.getByText('All sessions complete this week', { exact: true })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Progress', exact: true })).toHaveAttribute('href', `/coach/fighters/${fighterId}#training-history`);
+    await expect(page.getByRole('link', { name: width >= 760 ? 'View Fighter Progress' : 'Progress', exact: true })).toHaveAttribute('href', `/coach/fighters/${fighterId}#training-history`);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const dashboard = page.getByRole('region', { name: 'Fighter plans dashboard' });
+    if (width >= 760) {
+      const main = await page.locator('main').boundingBox();
+      const card = await page.getByRole('article', { name: 'Coach technical week', exact: true }).boundingBox();
+      expect(card!.width / main!.width).toBeGreaterThan(0.9);
+      const meter = await page.getByRole('progressbar').boundingBox();
+      const stats = await dashboard.locator('dl').boundingBox();
+      expect(stats!.x).toBeGreaterThan(meter!.x + meter!.width);
+      await page.getByRole('button', { name: 'View Schedule', exact: true }).click();
+      await expect(page.getByRole('region', { name: 'Coach technical week schedule' })).toContainText('Technical');
+      await page.getByRole('button', { name: 'View Schedule', exact: true }).click();
+    }
     await expect(dashboard.getByText('100%', { exact: true })).toBeVisible();
     await expect(dashboard.getByText('Latest: 15 Nov · Done · RPE 6', { exact: true })).toBeVisible();
     const dashboardA11y = await new AxeBuilder({ page }).include('[aria-label="Fighter plans dashboard"]').analyze();
     expect(dashboardA11y.violations).toEqual([]);
     expect(pageErrors).toEqual([]);
+    await page.mouse.move(0, 0);
     await page.screenshot({ path: `test-results/coach-plan-dashboard-${width}.png`, fullPage: true });
     await dashboard.screenshot({ path: `test-results/coach-plan-dashboard-card-${width}.png` });
   });
 }
+
+test('desktop plan filters keep pending assignments accessible and separate drafts from past plans', async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await fixture(page, baseURL!);
+  const rows = ['active', 'pending', 'draft', 'declined'].map((status, index) => ({
+    id: `filter-plan-${index}`, name: `${status} plan`, kind: 'self_directed', sessions: [], incomplete: false,
+    fighter_id: fighterId, assignment_status: status, coach_name: 'Test Coach',
+    assigned_at: status === 'draft' ? null : '2026-11-15T12:00:00Z',
+    published_plan_id: status === 'active' ? 'test-plan' : null,
+    created_at: '2026-11-15T12:00:00Z', updated_at: '2026-11-15T12:00:00Z',
+  }));
+  await page.route('**/api/coach/fighters/*/plans**', route => route.fulfill({ json: rows }));
+  await page.goto('/coach/plans');
+  const filters = page.getByRole('group', { name: 'Filter plans' });
+  await expect(page.getByRole('article', { name: 'pending plan', exact: true })).toBeVisible();
+  await filters.getByRole('button', { name: 'Active (1)', exact: true }).click();
+  await expect(page.getByRole('article', { name: 'active plan', exact: true })).toBeVisible();
+  await expect(page.getByRole('article')).toHaveCount(1);
+  await filters.getByRole('button', { name: 'Drafts (1)', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Edit draft', exact: true })).toBeVisible();
+  await expect(page.getByRole('article')).toHaveCount(1);
+  await filters.getByRole('button', { name: 'Past (1)', exact: true }).click();
+  await expect(page.getByRole('article', { name: 'declined plan', exact: true })).toBeVisible();
+  await filters.getByRole('button', { name: 'All Plans', exact: true }).click();
+  await expect(page.getByRole('article')).toHaveCount(4);
+  await expect(filters.getByRole('button', { name: 'All Plans', exact: true })).toHaveAttribute('aria-pressed', 'true');
+});

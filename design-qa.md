@@ -1,8 +1,8 @@
 # Coach Plans dashboard design QA
 
-Source visual: the user's inline illustrative mobile concept in the redesign
-request (Fighter Plans / Coach Technical Week / 2 of 2 sessions / 100%). The
-source is visible in the chat; it is not a separate workspace image file.
+Source visuals: the user's inline illustrative mobile concept and subsequent
+full-width desktop reference in the redesign requests (Fighter Plans / Coach Technical Week / 2 of 2 sessions / 100%). The
+sources are visible in the chat; it is not a separate workspace image file.
 
 Implementation captures:
 - `web/test-results/coach-plan-dashboard-390.png` (390 × 1000 CSS/pixel viewport).
@@ -12,7 +12,7 @@ Implementation captures:
 
 State: selected Test Fighter, active Coach technical week, assigned 15 Nov 2026,
 2/2 done, 100%, zero modified/skipped, latest 15 Nov / Done / RPE 6. Density 1x.
-The source is an illustrative compact mobile composition, not a full app viewport;
+The references are illustrative compact mobile and wide desktop compositions, not full app viewports;
 compare the dashboard content hierarchy rather than the existing navigation/footer.
 No claim of pixel-exact scaling or a side-by-side composite is made.
 
@@ -25,14 +25,17 @@ No claim of pixel-exact scaling or a side-by-side composite is made.
 - Full-view comparison against the supplied concept: fighter selection, current
   plan, status, progress and bottom creation action follow the requested order.
   The active card has two balanced Preview Plan / Progress actions. Refresh is an
-  icon button; the active-plan instructional paragraph is removed. Filters omitted.
+  icon button; the active-plan instructional paragraph is removed. Desktop has
+  All Plans / Active / Drafts / Past filters, while mobile shows them for multiple plans.
 - Focused mobile-card review: count/percentage align, progress spans the card,
   modified/skipped tiles have equal weight, and the completed-week note contains
   the short latest result. All main controls have at least 44px targets.
 - Typography: existing UNLXCK font retained; small uppercase context labels,
   stronger plan title, and a large tabular completion count provide hierarchy.
 - Spacing/layout: one bordered card replaces nested form panels. Native app
-  navigation/footer retained. Desktop uses a compact 660px dashboard column.
+  navigation/footer retained. Desktop now fills the available workspace rather than using the former 660px
+  column. Its completion meter and stat tiles sit side by side; the completion
+  note spans both columns, with three actions beneath it.
 - Color/tokens: dark surfaces, green Active/complete state, amber Pending and grey
   Declined/Superseded/Draft; muted red creation action retains the UNLXCK language.
 - Assets: real MIT Heroicons SVG files, license included, plus the existing shared
@@ -42,10 +45,15 @@ No claim of pixel-exact scaling or a side-by-side composite is made.
 
 ## Validation and remaining gaps
 
-Both mobile/desktop create-save-assign-preview-activate-progress journeys passed;
+The earlier narrow desktop layout was replaced to match the new wide reference;
+post-change desktop and mobile screenshots were captured and inspected. A browser
+assertion requires the card to occupy over 90% of the main workspace width and
+checks that stats sit beside the meter. Both mobile/desktop
+create-save-assign-preview-activate-progress journeys passed;
 Axe checks passed for fighter assignments and the coach dashboard, page-error lists
 were empty, and horizontal overflow checks passed. All six existing role/navigation
-cases passed. Focused tests cover complete, modified, skipped, empty and unrelated
+cases passed, plus the desktop plan-filter test. Schedule expansion was exercised.
+Focused tests cover complete, modified, skipped, empty and unrelated
 plan records. TypeScript, changed-file ESLint and the production build passed.
 No actionable P0/P1/P2 findings remain. Existing app chrome is intentionally outside
 this redesign; the supplied concept does not define it.

@@ -602,11 +602,65 @@
 .planEmpty { padding: 24px 20px; border: 1px dashed #35383f; border-radius: 16px; }
 .planEmpty p { margin-bottom: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
 @media (min-width: 760px) {
-  .plansDashboard { max-width: 660px; }
+  .plansDashboard { width: 100%; }
   .coachPlanCard { padding: 24px; }
 }
 @media (max-width: 360px) {
   .coachPlanCard { padding: 16px; }
   .planCardHeader { gap: 8px; }
   .planCardHeader .planStatus { padding-inline: 7px; }
+}
+
+
+.plansWorkspace { max-width: none; }
+.plansPageHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.plansPageHeader p { margin: 7px 0 0; color: var(--text-secondary); font-size: 12px; }
+.desktopPlanText, .desktopCreatePlan, .planCalendarIcon { display: none; }
+.planCardActions > .desktopScheduleAction { display: none; }
+.planFilters { display: none; gap: 10px; flex-wrap: wrap; }
+.multiplePlanFilters { display: flex; }
+.planFilters button { min-height: 38px; padding: 9px 18px; border: 1px solid #292c32; border-radius: 10px; background: #101215; color: #bfc3cb; font: inherit; font-size: 12px; cursor: pointer; }
+.planFilters button[aria-pressed="true"] { background: #b5122b; border-color: #b5122b; color: #fff; }
+.planSchedule { margin-top: 18px; padding-top: 16px; border-top: 1px solid #292c32; }
+.planSchedule ul { display: grid; gap: 10px; padding: 0; list-style: none; }
+.planSchedule li { display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: space-between; font-size: 12px; color: var(--text-secondary); }
+.planSchedule li strong { color: var(--text-primary); font-weight: 550; }
+@media (min-width: 760px) {
+  .plansDashboard { gap: 20px; }
+  .desktopPlanText { display: inline; }
+  .mobilePlanText { display: none; }
+  .plansPageHeader .planRefresh { width: 42px; height: 42px; border: 1px solid #292c32; background: #101215; }
+  .plansSelectorRow { align-items: center; gap: 18px; }
+  .plansSelectorRow .fighterSelector { padding: 12px; border: 1px solid #292c32; border-radius: 14px; background: #101215; }
+  .plansSelectorRow .fighterSelector select { min-height: 44px; background: #15171c; }
+  .desktopCreatePlan { display: flex; align-items: center; justify-content: center; gap: 10px; flex: 0 0 210px; min-height: 50px; padding: 14px 22px; border: 1px solid #cf1235; border-radius: 11px; background: #ca1032; color: #fff; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .desktopCreatePlan:hover { background: #dc1840; }
+  .newPlanAction { display: none; }
+  .planFilters { display: flex; }
+  .coachPlanCard { padding: 24px; background: #0e1012; }
+  .planCardHeader { align-items: center; gap: 16px; }
+  .planCardHeader > div { flex: 1; }
+  .planCardHeader .planEyebrow { display: none; }
+  .planCalendarIcon { display: grid; place-items: center; width: 50px; height: 50px; flex-shrink: 0; border: 1px solid #6a2637; border-radius: 12px; background: #421321; }
+  .planCalendarIcon .planIcon { width: 23px; height: 23px; }
+  .planStatus { padding: 7px 13px; font-size: 12px; }
+  .planAssignedDate { font-size: 12px; }
+  .planProgress { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 24px; margin-top: 20px; padding-top: 20px; }
+  .completionMeter { min-width: 0; padding-right: 24px; border-right: 1px solid #292c32; }
+  .completionLabel { font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
+  .completionHeading { justify-content: flex-start; margin-top: 15px; }
+  .completionHeading > strong { font-size: 38px; }
+  .workspace .completionBar { height: 9px; margin-top: 14px; }
+  .completionStats { align-self: center; margin: 0; gap: 16px; }
+  .completionStats > div { padding: 16px 18px; border: 1px solid #2c3036; border-radius: 12px; }
+  .completionStats dt { font-size: 10px; }
+  .completionStats dd { font-size: 30px; }
+  .planWeekSummary { grid-column: 1 / -1; padding: 15px 18px; border: 1px solid #30343a; }
+  .planWeekSummary[data-complete="true"] { border-color: #195e3b; background: #0d2419; }
+  .planWeekSummary > p:first-child { font-size: 14px; }
+  .planWeekSummary .planLatest { font-size: 12px; }
+  .planSessionDetails, .planUpcoming { grid-column: 1 / -1; margin-top: 0; }
+  .planCardActions { margin-top: 22px; gap: 16px; }
+  .planCardActions > a, .planCardActions > button { font-size: 13px; background: #15181b; }
+  .planCardActions > .desktopScheduleAction { display: flex; }
 }

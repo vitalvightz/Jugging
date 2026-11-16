@@ -106,7 +106,11 @@ journeys and all six coach/admin/athlete navigation cases pass.
 Coach Plans uses a current-plan card with a weekly progress bar/percentage,
 modified/skipped tiles, compact latest result and paired Preview/Progress actions.
 Active is green, Pending amber, and other states neutral. Refresh is an accessible
-icon button; Create New Plan sits below the cards. A nonempty, fully completed
+icon button. Desktop uses the full workspace width, a top creation toolbar,
+side-by-side progress/stats and three actions; mobile keeps creation below the cards. A nonempty, fully completed
 week shows “All sessions complete this week”; skipped or unrecorded sessions do
-not. No Active/Pending/Draft filters are introduced yet. Icons are MIT Heroicons
+not. Desktop offers All Plans, Active, Drafts and Past filters with live counts;
+mobile shows these only when multiple plans make them useful. Pending assignments
+remain accessible under All Plans. View Schedule expands the existing coach-safe
+projected training sessions without introducing new scheduling logic. Icons are MIT Heroicons
 assets with their license retained under `web/public/icons/coach/`.
