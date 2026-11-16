@@ -238,7 +238,7 @@ export function coachRecoveryTone(field: string, value: string | number | undefi
   }
   if (typeof value !== "number" || !Number.isFinite(value) || value < 1 || value > 5) return "unknown";
   if (field === "fatigue") return value >= 4 ? "concern" : value === 3 ? "caution" : "good";
-  if (field === "sleep_quality") return value <= 3 ? "caution" : "good";
+  if (field === "sleep_quality") return value <= 2 ? "concern" : value === 3 ? "caution" : "good";
   return value <= 2 ? "concern" : value === 3 ? "caution" : "good";
 }
 export function coachCheckInValues(readings: readonly Recovery[]) {

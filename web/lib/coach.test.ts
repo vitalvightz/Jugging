@@ -174,6 +174,13 @@ test("check-in dates group sources, retain distinct values and use recorded time
   assert.equal(values.filter(value => value.label === "Sleep: Good").length, 1);
   assert.ok(values.some(value => value.label === "Readiness: 3/5"));
   assert.ok(values.some(value => value.label === "Fatigue: 4/5"));
+  assert.equal(coachRecoveryTone("sleep_quality", 1), "concern");
+  assert.equal(coachRecoveryTone("sleep_quality", 2), "concern");
+  assert.equal(coachRecoveryTone("sleep_quality", 3), "caution");
+  assert.equal(coachRecoveryTone("sleep_quality", 4), "good");
+  assert.equal(coachRecoveryTone("sleep_quality", 5), "good");
+  assert.equal(coachRecoveryTone("sleep_quality", undefined), "unknown");
+  assert.equal(coachRecoveryTone("sleep", "poor"), "concern");
   assert.equal(coachRecoveryTone("injury", "mild"), "caution");
   assert.equal(coachRecoveryTone("injury", "severe"), "concern");
   assert.equal(coachRecoveryTone("body", "flat"), "caution");
