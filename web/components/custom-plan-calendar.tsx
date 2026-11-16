@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { addCalendarDays, calendarMonday, calendarWeekday, calendarWeekdays, laterWeeks } from '@/lib/custom-plan-calendar';
 import { formatAppDate } from '@/lib/date-format';
 import styles from './custom-plan-builder.module.css';
@@ -14,9 +14,9 @@ export function CustomPlanCalendar({ sessions, start, end, selected, onSelect, o
 }) {
   const [view, setView] = useState<'week' | 'month'>('week');
   const fightDay = /^\d{4}-\d{2}-\d{2}$/.test(fightDate ?? '') ? fightDate : null;
-  const [focusedDay, setFocusedDay] = useState<string | null>(null);
-  useEffect(() => setFocusedDay(null), [selected, start, end]);
-  const focus = focusedDay ?? (selected < start || selected > end ? start : selected);
+  const [cursor, setCursor] = useState<{ day: string; selected: string; range: string } | null>(null);
+  const range = `${start}:${end}:${fightDay ?? ''}`;
+  const focus = cursor?.selected === selected && cursor.range === range ? cursor.day : selected < start || selected > end ? start : selected;
   const firstDay = fightDay && fightDay < start ? fightDay : start;
   const lastDay = fightDay && fightDay > end ? fightDay : end;
   const month = focus.slice(0, 7);
@@ -29,8 +29,9 @@ export function CustomPlanCalendar({ sessions, start, end, selected, onSelect, o
   function navigate(direction: number) {
     const next = view === 'week' ? addCalendarDays(focus, direction * 7) : new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1 + direction, 1, 12)).toISOString().slice(0, 10);
     const bounded = next < firstDay ? firstDay : next > lastDay ? lastDay : next;
-    setFocusedDay(bounded);
-    if (bounded >= start && bounded <= end) onSelect(bounded);
+    const inPlan = bounded >= start && bounded <= end;
+    setCursor({ day: bounded, selected: inPlan ? bounded : selected, range });
+    if (inPlan) onSelect(bounded);
   }
   const label = copying ? (copying.sessions.length === 1 ? copying.sessions[0].name : `${copying.sessions.length} sessions`) : '';
   const from = copying?.sessions[0]?.scheduled_date ?? undefined;
@@ -58,9 +59,9 @@ export function CustomPlanCalendar({ sessions, start, end, selected, onSelect, o
         const daily = sessions.filter(s => s.scheduled_date === day);
         return <div key={day} className={`${styles.calendarDate}${isFightDay ? ' custom-plan-fight-day' : ''}`} data-selected={selected === day} data-outside={outside} data-fight-day={isFightDay}
           onDragOver={event => { if (!readOnly && !outside) event.preventDefault(); }} onDrop={event => { event.preventDefault(); if (!readOnly && !outside) { const id = event.dataTransfer.getData('text/plain'); if (!sessions.some(s => s.id === id)) return; if ((event.altKey || event.ctrlKey || event.metaKey) && onCopy) onCopy([id], [day]); else onMove?.(id, day); } }}>
-          <button type="button" className={styles.dateSelect} disabled={outside} aria-pressed={selected === day} aria-label={`Select ${formatAppDate(day)}${isFightDay ? ' (Fight day)' : ''}`} onClick={() => { setFocusedDay(null); onSelect(day); }}><span>{day.slice(8).replace(/^0/, '')}</span><small className={isFightDay ? 'cm-cal-fight-label' : undefined}>{isFightDay ? 'Fight day' : daily.length ? `${daily.length} ${daily.length === 1 ? 'session' : 'sessions'}` : 'Rest'}</small></button>
+          <button type="button" className={styles.dateSelect} disabled={outside} aria-pressed={selected === day} aria-label={`Select ${formatAppDate(day)}${isFightDay ? ' (Fight day)' : ''}`} onClick={() => { setCursor(null); onSelect(day); }}><span>{day.slice(8).replace(/^0/, '')}</span><small className={isFightDay ? 'cm-cal-fight-label' : undefined}>{isFightDay ? 'Fight day' : daily.length ? `${daily.length} ${daily.length === 1 ? 'session' : 'sessions'}` : 'Rest'}</small></button>
           {daily.map(session => <button type="button" key={session.id} className={styles.calendarSession} data-type={session.session_type} draggable={!readOnly}
-            onDragStart={event => { event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData('text/plain', session.id); }} onClick={() => { onSelect(day); onOpen?.(session.id); }} aria-label={`${readOnly ? 'View' : 'Open'} ${session.name} on ${formatAppDate(day)}`}><strong>{session.name}</strong><small>{session.exercises.length} {session.exercises.length === 1 ? 'exercise' : 'exercises'}{session.exercises.some(e => e.incomplete) ? ' · Finish dose' : ''}</small></button>)}
+            onDragStart={event => { event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData('text/plain', session.id); }} onClick={() => { setCursor(null); onSelect(day); onOpen?.(session.id); }} aria-label={`${readOnly ? 'View' : 'Open'} ${session.name} on ${formatAppDate(day)}`}><strong>{session.name}</strong><small>{session.exercises.length} {session.exercises.length === 1 ? 'exercise' : 'exercises'}{session.exercises.some(e => e.incomplete) ? ' · Finish dose' : ''}</small></button>)}
           {!readOnly && !outside && copying?.sessions.length && onCopy ? (copying.move ? <button type="button" className={styles.calendarPaste} aria-label={`Move to ${day}`} disabled={day === from} onClick={() => onMoveMany?.(copying.ids, day)}>Move here</button> : <button type="button" className={styles.calendarPaste} aria-label={`Paste on ${day}`} onClick={() => onCopy(copying.ids, [day])}>Paste</button>)
             : !readOnly && !outside ? <button type="button" className={styles.calendarAdd} aria-label={`Add session on ${day}`} onClick={() => { onSelect(day); onAdd?.(day); }}>Add session</button> : null}
         </div>;
