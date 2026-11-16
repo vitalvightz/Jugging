@@ -47,11 +47,24 @@ const TAB_BAR_HIDDEN_ROUTES = new Set<string>([
 
 // Whether the phone bottom bar (and with it + Create and the account button
 // in place of the sidebar) belongs on this route. Admin keeps its sidebar.
-export function showsMobileTabBar(pathname: string, signedIn: boolean): boolean {
+export function showsMobileTabBar(pathname: string, signedIn: boolean, coachWorkspace = false): boolean {
   const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
-  return signedIn && !isAdminRoute && !pathname.startsWith("/coach") && !TAB_BAR_HIDDEN_ROUTES.has(pathname);
+  return signedIn && !isAdminRoute && (coachWorkspace || !pathname.startsWith("/coach")) && !TAB_BAR_HIDDEN_ROUTES.has(pathname);
 }
 
 export function isStandaloneNutritionPath(path: string): boolean {
   return /^\/nutrition(\/|\?|#|$)/.test(path);
+}
+
+export const COACH_NAV_ITEMS: readonly NavItem[] = [
+  { href: "/coach", label: "Overview" },
+  { href: "/coach/fighters", label: "Fighters" },
+  { href: "/coach/plans", label: "Plans", meta: "Assignment coming soon" },
+  { href: "/coach/log", label: "Log Session" },
+  { href: "/coach/invitations", label: "Invitations" },
+  { href: "/coach/settings", label: "Settings" },
+];
+
+export function isCoachWorkspace(pathname: string, role?: string | null): boolean {
+  return role === "coach" || ((role === "admin" || !role) && (pathname === "/coach" || pathname.startsWith("/coach/")));
 }

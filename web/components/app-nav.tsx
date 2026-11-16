@@ -12,7 +12,7 @@ import { HistoryHint } from "@/components/history-hint";
 import { shouldShowAdminPanelLink } from "@/lib/admin-nav-visibility";
 import { getShellSurface, isAuthSurfaceRoute, shouldShowBrandTopbar } from "@/lib/app-surface";
 import { isSafeAvatarImageUrl } from "@/lib/avatar-image-url";
-import { showsMobileTabBar, SIDE_NAV_ITEMS } from "@/lib/beta-navigation";
+import { showsMobileTabBar, SIDE_NAV_ITEMS, COACH_NAV_ITEMS, isCoachWorkspace } from "@/lib/beta-navigation";
 import { isNavToggleCondensed } from "@/lib/nav-toggle-scroll";
 import { lockOverlayScroll } from "@/lib/overlay-scroll-lock";
 import { useFadeNavigate } from "@/components/fade-through";
@@ -380,8 +380,8 @@ export function AppNav() {
   const athleteLinks = SIDE_NAV_ITEMS.map((item) => ({ ...item, ...navCopy[item.href] }));
   const coachLink = { href: "/coach", label: "Coach workspace", meta: "Fighters & preparation" };
   // Athletes reach Coach access from Settings; it is not a daily destination.
-  const signedInLinks = me?.profile.role === "coach"
-    ? [coachLink, { href: "/settings/coach-access", label: "Coach access", meta: "Invitations" }, athleteLinks.find((item) => item.href === "/settings")!]
+  const coachWorkspace = isCoachWorkspace(pathname, me?.profile.role);
+  const signedInLinks = coachWorkspace ? COACH_NAV_ITEMS
     : me?.profile.role === "admin" ? [...athleteLinks, coachLink] : athleteLinks;
 
   const profile = me?.profile;
@@ -393,7 +393,7 @@ export function AppNav() {
   const isAdminWorkspace = shouldShowAdminPanelLink(role, isActive(pathname, "/admin"));
   // Phones with the bottom bar get + Create and the account button instead of
   // the sidebar; CSS limits both to phone widths, so tablets keep the drawer.
-  const hasPhoneBar = isReady && role !== "coach" && showsMobileTabBar(pathname, hasSession);
+  const hasPhoneBar = isReady && !coachWorkspace && showsMobileTabBar(pathname, hasSession);
   const identity: AccountIdentity = { displayName, displayEmail, initials, avatarUrl, role, isSessionResolving };
 
   return (
@@ -497,7 +497,7 @@ export function AppNav() {
                 </svg>
               </button>
             </div>
-            <Link href="/" className="brand" onClick={closeMobileDrawer}>
+            <Link href={coachWorkspace ? "/coach" : "/"} className="brand" onClick={closeMobileDrawer}>
               {t("fightCamp")}
             </Link>
             <p className="sidebar-tagline">{t("tagline")}</p>
@@ -548,11 +548,12 @@ export function AppNav() {
           {isReady && session ? (
             <>
               <nav className="sidebar-nav">
-                <p className="sidebar-section-label">{t("workspace")}</p>
+                <p className="sidebar-section-label">{coachWorkspace ? "Coach Workspace" : t("workspace")}</p>
+                {coachWorkspace && role === "admin" ? <Link className="sidebar-link" href="/admin" onClick={closeMobileDrawer}>Switch Workspace</Link> : null}
                 {signedInLinks.map((link) => (
                   <Fragment key={link.href}>
                     <Link
-                      className={isLinkActive(link.href) ? "sidebar-link sidebar-link-active" : "sidebar-link"}
+                      className={(link.href === "/coach" ? pathname === "/coach" : isLinkActive(link.href)) ? "sidebar-link sidebar-link-active" : "sidebar-link"}
                       href={link.href}
                       // Client shells with no user data: prefetched in full, as the phone tabs are.
                       prefetch
@@ -566,7 +567,7 @@ export function AppNav() {
                     {link.href === "/history" ? <HistoryHint className="once-hint once-hint-below" /> : null}
                   </Fragment>
                 ))}
-                {isAdminWorkspace ? (
+                {isAdminWorkspace && !coachWorkspace ? (
                   <>
                     <div className="sidebar-admin-divider" aria-hidden="true" />
                     <p className="sidebar-section-label">{t("control")}</p>

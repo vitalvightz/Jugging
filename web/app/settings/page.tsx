@@ -2,6 +2,7 @@
 import { AnalyticsPreference } from "@/components/analytics-preference";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { PerfDiagnosticsToggle } from "@/components/perf-diagnostics";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -352,10 +353,12 @@ function SettingsSummaryItem({ label, value }: Readonly<{ label: string; value: 
 }
 
 export default function SettingsPage() {
+  const pathname = usePathname();
   const t = useTranslations("Workspace");
   const tNav = useTranslations("Navigation");
   const { isMeHydrated, me, previewAppearanceMode, replaceMe, session, signOut } = useAppSession();
 
+  const coachSettings = pathname.startsWith("/coach/") || me?.profile.role === "coach";
   const [fullName, setFullName] = useState("");
   const [appearanceMode, setAppearanceMode] = useState<AppearanceMode>("dark");
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -1604,14 +1607,14 @@ export default function SettingsPage() {
         <div className="section-heading">
           <div className="athlete-motion-slot athlete-motion-header">
             <p className="kicker">{t("settings")}</p>
-            <h1>{isAdmin ? t("adminSettings") : t("athleteSettings")}</h1>
-            <p className="muted">
+            <h1>{coachSettings ? t("settings") : isAdmin ? t("adminSettings") : t("athleteSettings")}</h1>
+            {!coachSettings ? <p className="muted">
               {isAdmin ? t("adminSettingsSummary") : t("athleteSettingsSummary")}
-            </p>
+            </p> : null}
             {/* Account controls that the phone avatar button leads here for. */}
             <div className="sidebar-user-actions settings-quick-account">
               <LanguageSwitcher placement="inline" />
-              <Link href="/settings/coach-access" className="ghost-button">Coach access</Link>
+              <Link href={pathname.startsWith("/coach/") ? "/coach/invitations" : "/settings/coach-access"} className="ghost-button">Coach access</Link>
               {isAdmin ? <Link href="/coach" className="ghost-button">Coach workspace</Link> : null}
               {shouldShowAdminPanelLink(me?.profile.role) ? (
                 <Link href="/admin" className="ghost-button">{tNav("adminPanel")}</Link>
