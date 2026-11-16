@@ -34,7 +34,7 @@ def camp():
         client.app.state.auth_service.users_by_token[token] = user
     grant_default_compliance(store, FIGHTER)
     connection = {"id": str(uuid4()), "coach_id": COACH, "athlete_id": FIGHTER, "status": "accepted",
-                  "share_recovery": True, "share_injuries": True, "share_weight": True}
+                  "share_recovery": True, "share_injuries": True, "share_weight": True, "allow_session_logging": True}
     store.coach_connections.append(connection)
     return client, store, connection
 
@@ -228,7 +228,7 @@ def test_only_an_accepted_connection_can_write(camp):
 def test_a_coach_can_only_change_sessions_they_recorded(camp):
     client, store, _ = camp
     store.coach_connections.append({"id": str(uuid4()), "coach_id": STRANGER, "athlete_id": FIGHTER,
-                                    "status": "accepted", "share_recovery": True, "share_injuries": True})
+                                    "status": "accepted", "share_recovery": True, "share_injuries": True, "allow_session_logging": True})
     as_other = {"Authorization": "Bearer stranger-token"}
     own = client.post("/api/training/sessions", headers=AS_FIGHTER, json=boxing()).json()["id"]
     mine = client.post(SESSIONS, headers=AS_COACH, json=boxing()).json()["id"]
@@ -302,3 +302,18 @@ def test_mixed_rehab_sessions_reveal_no_injury_detail_unless_shared(camp, shared
         named_details = client.get(f"{BASE}/training/history/unlxck/{named['id']}", headers=AS_COACH).json()
         assert "Hamstring strain prehab" in [block["name"] for block in named_details["blocks"]]
     assert titles[plain["id"]] == "Power Day"
+
+
+def test_logging_requires_explicit_write_consent_and_only_owned_sessions_can_reopen(camp):
+    client, store, connection = camp
+    mine = client.post(SESSIONS, headers=AS_COACH, json=boxing()).json()["id"]
+    other = client.post("/api/training/sessions", headers=AS_FIGHTER, json=boxing()).json()["id"]
+    rows = client.get(BASE + "/training/history", headers=AS_COACH).json()["sessions"]
+    assert next(row for row in rows if row["id"] == mine)["coach_exercises_editable"] is True
+    assert next(row for row in rows if row["id"] == other)["coach_exercises_editable"] is False
+    connection.pop("allow_session_logging")  # Earlier accepted connections stay read-only.
+    assert client.post(SESSIONS, headers=AS_COACH, json=boxing()).status_code == 403
+    assert client.put(**squat(mine)).status_code == 403
+    assert client.get(f"{SESSIONS}/{mine}/exercises", headers=AS_COACH).status_code == 403
+    rows = client.get(BASE + "/training/history", headers=AS_COACH).json()["sessions"]
+    assert not any(row["coach_exercises_editable"] for row in rows)

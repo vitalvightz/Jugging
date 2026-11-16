@@ -204,6 +204,7 @@ async function fixture(
           share_recovery: body.p_recovery,
           share_injuries: body.p_injuries,
           share_weight: body.p_weight,
+          allow_session_logging: body.p_logging,
           health_consent: c.health_consent ?? true,
         }));
       if (body.p_action === "invite")
@@ -242,6 +243,7 @@ async function fixture(
         training_day: "2026-11-15",
         plan_id: null,
         session_rpe: null,
+        coach_exercises_editable: true,
         logged_by_coach: true,
         logged_by_coach_name: "Test Coach",
         athlete,
@@ -264,7 +266,7 @@ async function fixture(
               ],
               next_before_day: null,
             }
-          : details,
+          : { ...details, session: logged.find(row => row.id === path.split("/").at(-1)) ?? details.session },
     });
   });
   return {
@@ -435,7 +437,7 @@ test("athlete accepts with one tap, then disconnects", async ({
   await expect(page.getByText("Test Coach")).toBeVisible();
   await expect(
     page.getByText(
-      "Accepting shares your training, weight, recovery and injury information",
+      "Accepting shares training, weight, recovery and injuries, and lets your coach add sessions",
       { exact: false },
     ),
   ).toBeVisible();
@@ -460,6 +462,7 @@ test("athlete accepts with one tap, then disconnects", async ({
     p_recovery: true,
     p_injuries: true,
     p_weight: true,
+    p_logging: true,
   });
   await expect(
     page.getByText(
@@ -688,4 +691,19 @@ test("administrator can coach while keeping admin navigation", async ({
     page.getByRole("heading", { name: "Your corner. In focus." }),
   ).toBeVisible();
   await expect(page.locator('a[href="/admin"]').first()).toBeVisible();
+});
+
+
+test("coach reopens exercises on their own saved session", async ({ page, baseURL }) => {
+  const state = await fixture(page, baseURL!);
+  state.logged.push({ ...strengthSession, id: "00000000-0000-4000-8000-0000000000c9", athlete: fighterId,
+    source: "external", activity: "strength", title: "Strength", logged_by_coach: true,
+    logged_by_coach_name: "Test Coach", coach_exercises_editable: true });
+  await page.goto(`/coach/fighters/${fighterId}`);
+  await page.getByRole("listitem").filter({ hasText: "Logged by coach Test Coach" }).getByRole("button").click();
+  const request = page.waitForRequest(req => req.url().endsWith(`/api/coach/fighters/${fighterId}/training/sessions/00000000-0000-4000-8000-0000000000c9/exercises`));
+  await page.getByRole("button", { name: "Edit exercises" }).click();
+  await request;
+  await expect(page.getByRole("dialog", { name: "Add exercises" })).toBeVisible();
+  await expect(page.getByRole("searchbox")).toBeVisible();
 });

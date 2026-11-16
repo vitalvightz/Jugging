@@ -106,6 +106,7 @@ class TrainingHistorySession(BaseModel):
     history_editable: bool = False
     # The coach who entered a manual session for the athlete; None when the
     # athlete logged it. ``logged_by_coach`` stays true if the name is unknown.
+    coach_exercises_editable: bool = False
     logged_by_coach: bool = False
     logged_by_coach_name: str | None = None
 

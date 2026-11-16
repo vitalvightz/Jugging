@@ -1769,7 +1769,7 @@ revoke insert, update, delete on public.push_subscriptions from authenticated;
 grant select on public.push_subscriptions to authenticated;
 grant all on public.push_subscriptions to service_role;
 
-+-- Secure beta feedback. All application access is server-side through the
+-- Secure beta feedback. All application access is server-side through the
 -- service role; there are intentionally no browser-facing RLS policies.
 
 create table if not exists public.beta_feedback (

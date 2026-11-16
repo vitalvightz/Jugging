@@ -2798,6 +2798,7 @@ export type TrainingHistorySession = {
   takeaway: string;
   exercise_count: number | null;
   history_editable: boolean;
+  coach_exercises_editable: boolean;
   logged_by_coach: boolean;
   logged_by_coach_name: string | null;
 };

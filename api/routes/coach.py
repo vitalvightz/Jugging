@@ -53,6 +53,7 @@ class ConnectedFighter:
     share_injuries: bool
     # Weight is its own choice; connections accepted before it existed lack it.
     share_weight: bool
+    allow_session_logging: bool
 
 
 class CoachFighterWeight(BaseModel):
@@ -89,6 +90,10 @@ def _is_health_session(row: Mapping[str, Any]) -> bool:
 def _coach_row(row: Mapping[str, Any], fighter: ConnectedFighter) -> dict[str, Any]:
     safe = {key: value for key, value in row.items() if key not in PRIVATE_TEXT}
     safe["history_editable"] = False
+    safe["coach_exercises_editable"] = (
+        fighter.allow_session_logging and fighter.health_consent and row.get("source") == "external"
+        and str(row.get("logged_by_coach_id") or "") == fighter.coach.athlete_id
+    )
     if not fighter.share_injuries:
         safe.pop("pain_after", None)
         if _is_health_session(row):
@@ -118,11 +123,14 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
         health = evaluate_profile_compliance(athlete).health_consent_granted
         return ConnectedFighter(athlete, coach, health, health and connection.get("share_recovery") is True,
                                 health and connection.get("share_injuries") is True,
-                                health and connection.get("share_weight") is True)
+                                health and connection.get("share_weight") is True,
+                                connection.get("allow_session_logging") is True)
 
     def writable_fighter(fighter: ConnectedFighter = Depends(connected_fighter)) -> ConnectedFighter:
         # The athlete's own logging needs this consent too; a coach cannot
         # collect training data the athlete has not agreed to have held.
+        if not fighter.allow_session_logging:
+            raise HTTPException(status_code=403, detail="This fighter has not allowed coach session logging.")
         if not fighter.health_consent:
             raise HTTPException(status_code=403, detail="This fighter has not allowed health-data use, so sessions can't be logged for them.")
         return fighter

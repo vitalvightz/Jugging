@@ -117,6 +117,9 @@ export function ManualExerciseLogger({ token, session, reference, onClose, fight
 
   useEffect(() => {
     let cancelled = false;
+    setRecorded([]);
+    // A coach cannot use their own personal exercise IDs or training history.
+    if (fighterId) return;
     // Previously recorded movements rank first; search still works without them.
     getExerciseLibrary(token).then(library => {
       if (cancelled) return;
@@ -125,7 +128,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose, fight
       if (unit === "lb") { setLoadUnit("lb"); setEditor(current => current.picked ? current : fresh("lb")); }
     }).catch(() => { /* Catalogue search and new names remain available. */ });
     return () => { cancelled = true; };
-  }, [token]);
+  }, [token, fighterId]);
 
   const trimmed = query.trim();
   useEffect(() => {
@@ -154,6 +157,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose, fight
 
   const weightContext = useWeightContext();
   function suggestion(past: PersonalExercise | undefined) {
+    if (fighterId) return { last: null, suggested: null, tryReps: null, sets: [] };
     const target = past?.latest_performance?.prescribed;
     const current = past && picked && (picked.historyId === past.id || ("personal_exercise_id" in picked.choice && past.id === `custom:${picked.choice.personal_exercise_id}`)) ? editor.draft.values : undefined;
     const rows = past?.latest_values.set_entries;
@@ -255,7 +259,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose, fight
       const list = entries ?? [];
       const next = list.some(item => item.entry_id === saved.entry_id) ? list.map(item => item.entry_id === saved.entry_id ? saved : item) : [...list, saved];
       setEntries(next);
-      invalidatePastExercises(token);
+      if (!fighterId) invalidatePastExercises(token);
       setRecorded(current => current.map(row => row.id === saved.exercise_id
         ? { ...row, latest_values: saved.actual, latest_day: saved.training_day, latest_source: "manual" } : row));
       setReuse(current => current?.filter(item => item.exercise_id !== saved.exercise_id) ?? null);
@@ -291,7 +295,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose, fight
   }
 
   async function loadReuse() {
-    if (!reference || reuseState === "loading") return;
+    if (fighterId || !reference || reuseState === "loading") return;
     setReuseState("loading");
     try {
       const result = await listManualExercises(token, reference.id);
@@ -369,7 +373,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose, fight
           <button type="button" onClick={dismissEditHint} aria-label="Dismiss saved exercise edit tip">×</button>
         </div> : null}
 
-        {reference && entries && !entries.length && reuse === null && !picked ? <button type="button" className={styles.reuse} disabled={reuseState === "loading"} onClick={() => void loadReuse()}>
+        {!fighterId && reference && entries && !entries.length && reuse === null && !picked ? <button type="button" className={styles.reuse} disabled={reuseState === "loading"} onClick={() => void loadReuse()}>
           <span><strong>Reuse exercises from {formatAppDate(reference.training_day)}</strong><span className={styles.rowValues}>Names only. You enter today’s values.</span></span>
           <span aria-hidden="true">{reuseState === "loading" ? "…" : "+"}</span>
         </button> : null}
