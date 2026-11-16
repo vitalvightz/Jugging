@@ -1448,7 +1448,7 @@ for (const width of [390, 1440]) {
     await expect(calendar.locator('[data-fight-day="true"]')).toHaveCount(1);
     await expect(calendar.locator('[data-fight-day="true"]').getByText('Fight day')).toBeVisible();
     await expect(calendar.locator('[data-fight-day="true"]').getByRole('button')).toHaveCount(0);
-    await expect(calendar.locator('[data-outside="true"]')).not.toContainText('Rest');
+    await expect(calendar.locator('[data-outside="true"][data-rest="true"]')).toHaveCount(0);
     await expect(calendar.getByRole('list', { name: 'Sessions on selected day' })).toContainText('Strength & Power');
     await expect(calendar.getByRole('button', { name: 'Next calendar period', exact: true })).toBeDisabled();
     await calendar.getByRole('button', { name: 'Week', exact: true }).click();
