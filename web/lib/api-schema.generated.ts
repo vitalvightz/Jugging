@@ -475,6 +475,7 @@ export type ComplianceAcceptanceRequest = {
   date_of_birth?: string | null;
   accept_terms?: boolean | null;
   health_data_consent?: boolean | null;
+  account_type?: "athlete" | "coach" | null;
 };
 
 export type ConfirmedClinicalStatement = {

@@ -14,9 +14,10 @@ to athlete training data.
 - `/settings/coach-access`: coaches invite and remove athletes; athletes accept,
   decline or disconnect. Athletes reach it from Settings.
 
-Coach is an existing protected `profiles.role`. There is no self-registration:
-an operator provisions approved coach accounts. Approved administrators can
-also coach through accepted connections without changing role.
+Coach uses the existing protected `profiles.role`. New members can choose Coach
+through server-validated signup (see `docs/coach-signup.md`) or be provisioned
+by an operator. Approved administrators can also coach through accepted
+connections without changing role.
 
 ## Sharing and consent
 
@@ -42,7 +43,7 @@ Safeguards that remain:
 
 ## Database
 
-`supabase/migrations/20261115232832_coach_workspace.sql` adds
+`supabase/migrations/20261116001139_coach_workspace.sql` adds
 `coach_connections` (participant-only SELECT, no browser writes) and three
 security-invoker RPCs that delegate to `coach_private` functions:
 
@@ -56,7 +57,7 @@ security-invoker RPCs that delegate to `coach_private` functions:
 
 `coach_private` must stay outside PostgREST's exposed schemas.
 
-`20261116001001_coach_signup_invitations.sql` adds the service-only
+`20261116001150_coach_signup_invitations.sql` adds the service-only
 `coach_invitation_rules` table. An operator can list email domains for a coach;
 matching new signups receive a pending invitation. It never accepts on the
 athlete's behalf.

@@ -12,9 +12,10 @@ const json = (route: Route, body: unknown) => route.fulfill({ contentType: "appl
 async function oauth(page: Page, baseURL: string, returning = false, dateOfBirth: string | null = null) {
   await isolateFromNetwork(page, baseURL);
   let accepted = returning;
+  let savedRole = "athlete";
   const requests: Record<string, unknown>[] = [];
   const profile = () => ({ profile: {
-    athlete_id: ID, email: user.email, full_name: "Fighter", role: "athlete", access_status: "approved",
+    athlete_id: ID, email: user.email, full_name: "Fighter", role: savedRole, access_status: "approved",
     starting_path: returning ? "tracking_first" : null, technical_style: [], tactical_style: [], stance: "",
     professional_status: "", record: "", athlete_timezone: "Europe/London", athlete_locale: "en",
     appearance_mode: "dark", nutrition_profile: {}, date_of_birth: accepted ? "1996-05-04" : dateOfBirth,
@@ -25,14 +26,15 @@ async function oauth(page: Page, baseURL: string, returning = false, dateOfBirth
   await page.route(`${SUPABASE}/auth/v1/user`, route => json(route, user));
   await page.route(`${SUPABASE}/auth/v1/logout**`, route => json(route, {}));
   await page.route("**/api/me/compliance", async route => {
-    requests.push(route.request().postDataJSON()); accepted = true; await json(route, profile());
+    requests.push(route.request().postDataJSON()); accepted = true; savedRole=route.request().postDataJSON().account_type??savedRole; await json(route, profile());
   });
   await page.route(`${SUPABASE}/auth/v1/authorize**`, async route => {
     const url = new URL(route.request().url());
     expect(url.searchParams.get("provider")).toBe("google");
-    expect(url.searchParams.get("redirect_to")).toBe(`${baseURL}/login`);
+    const redirect = url.searchParams.get("redirect_to")!;
+    expect(new URL(redirect).pathname).toBe("/login");
     const fragment = `#access_token=oauth-test-token&refresh_token=oauth-refresh&expires_in=3600&token_type=bearer&type=signup`;
-    await route.fulfill({ status: 302, headers: { location: `${baseURL}/login${fragment}` }, body: "" });
+    await route.fulfill({ status: 302, headers: { location: `${baseURL}${new URL(redirect).pathname}${new URL(redirect).search}${fragment}` }, body: "" });
   });
   return { requests, user };
 }
@@ -43,14 +45,14 @@ for (const route of ["/login", "/signup"]) {
     if (route === "/signup") await grantSignupAccess(page, baseURL!);
     await page.goto(route);
     await expect(page.getByRole("button", { name: "Continue with Google", exact: true })).toBeVisible();
-    await expect(page.locator("input")).toHaveCount(0);
+    await expect(page.locator("input:not([type=radio])")).toHaveCount(0);
     await page.getByRole("button", { name: "Continue with email", exact: true }).click();
     await expect(page.getByLabel("Email", { exact: true })).toBeFocused();
     await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("autocomplete", route === "/login" ? "current-password" : "new-password");
     await expect(page).toHaveURL(new RegExp(`${route}$`));
     if (route === "/login") await expect(page.getByRole("link", { name: "Forgot password?" })).toBeVisible();
     await page.getByRole("button", { name: "All sign-in options" }).click();
-    await expect(page.locator("input")).toHaveCount(0);
+    await expect(page.locator("input:not([type=radio])")).toHaveCount(0);
   });
 }
 
@@ -59,13 +61,13 @@ test("new Google identity supplies only missing compliance and can decline healt
   await grantSignupAccess(page, baseURL!);
   await page.goto("/signup");
   await page.getByRole("button", { name: "Continue with Google", exact: true }).click();
-  await expect(page).toHaveURL(/\/consent$/);
+  await expect(page).toHaveURL(/\/consent\?account_type=athlete$/);
   await page.getByLabel("Date of birth", { exact: true }).fill("1996-05-04");
   await page.locator("#complianceTerms").check();
   await expect(page.locator("#complianceHealthConsent")).not.toBeChecked();
   await page.getByRole("button", { name: "CONTINUE", exact: true }).click();
   await expect(page).toHaveURL(/\/get-started$/);
-  expect(requests).toEqual([{ date_of_birth: "1996-05-04", accept_terms: true }]);
+  expect(requests).toEqual([{ account_type: "athlete", date_of_birth: "1996-05-04", accept_terms: true }]);
   await page.goto("/login");
   await expect(page).toHaveURL(/\/get-started$/);
   await page.goto("/consent");
@@ -87,14 +89,14 @@ test("underage Google identity stays unverified and can sign out", async ({ page
   await grantSignupAccess(page, baseURL!);
   await page.goto("/login");
   await page.getByRole("button", { name: "Continue with Google", exact: true }).click();
-  await expect(page).toHaveURL(/\/consent$/);
+  await expect(page).toHaveURL(/\/consent(?:\?account_type=athlete)?$/);
   const dob = new Date(); dob.setUTCFullYear(dob.getUTCFullYear() - 10);
   await page.getByLabel("Date of birth", { exact: true }).fill(dob.toISOString().slice(0, 10));
   await expect(page.locator("#compliance-dob-error")).toContainText("13");
   await page.locator("#complianceTerms").check();
   await expect(page.getByRole("button", { name: "CONTINUE", exact: true })).toBeDisabled();
   await page.reload();
-  await expect(page).toHaveURL(/\/consent$/);
+  await expect(page).toHaveURL(/\/consent(?:\?account_type=athlete)?$/);
   expect(requests).toHaveLength(0);
   await page.getByRole("region", { name: "Finish your account" }).getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
@@ -105,7 +107,7 @@ test("Google compliance keeps an existing DOB and records health consent only wh
   await grantSignupAccess(page, baseURL!);
   await page.goto("/login");
   await page.getByRole("button", { name: "Continue with Google", exact: true }).click();
-  await expect(page).toHaveURL(/\/consent$/);
+  await expect(page).toHaveURL(/\/consent(?:\?account_type=athlete)?$/);
   await expect(page.getByLabel("Date of birth", { exact: true })).toHaveCount(0);
   await page.locator("#complianceTerms").check();
   await page.locator("#complianceHealthConsent").check();
@@ -235,6 +237,21 @@ test("a brand-new Google account from a browser that entered the code goes strai
   await page.getByRole("button", { name: "Continue with Google", exact: true }).click();
 
   // Into the app: the new account lands on the compliance step, not the gate.
-  await expect(page).toHaveURL(/\/consent$/);
+  await expect(page).toHaveURL(/\/consent(?:\?account_type=athlete)?$/);
   expect(signedOut).toBe(false);
+});
+
+test("Google coach signup preserves the choice through confirmation", async ({page,baseURL})=>{
+  const {requests}=await oauth(page,baseURL!);
+  await grantSignupAccess(page,baseURL!);
+  await page.goto("/signup");
+  await page.getByRole("radio",{name:"Coach",exact:true}).check();
+  await page.getByRole("button",{name:"Continue with Google",exact:true}).click();
+  await expect(page).toHaveURL(/\/consent\?account_type=coach$/);
+  await page.getByLabel("Date of birth",{exact:true}).fill("1996-05-04");
+  await page.locator("#complianceTerms").check();
+  await expect(page.locator("#complianceHealthConsent")).toHaveCount(0);
+  await page.getByRole("button",{name:"CONTINUE",exact:true}).click();
+  await expect(page).toHaveURL(/\/coach$/);
+  expect(requests[0]).toMatchObject({account_type:"coach",accept_terms:true});
 });
