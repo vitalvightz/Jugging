@@ -42,7 +42,10 @@ export function CustomPlanCalendar({ sessions, start, end, selected, onSelect, o
         </div>;
       })}
     </div>
-    <div className={styles.calendarFooter}><span>Move sessions by dragging, or use the Date field in the session editor.</span><button type="button" onClick={onDuplicateWeek}>Duplicate selected week</button></div>
+    <div className={styles.calendarFooter}><span>Drag to move, or edit the date.</span><button type="button" onClick={onDuplicateWeek}>Duplicate week</button></div>
     <p className={styles.selectedCalendarDay}>{calendarWeekday(selected)} · {formatAppDate(selected)}</p>
+    {view === 'month' ? <ul className={styles.selectedDaySessions} aria-label="Sessions on selected day">
+      {sessions.filter(s => s.scheduled_date === selected).map(s => <li key={s.id} data-type={s.session_type}>{s.name}<small>{s.exercises.length} exercises</small></li>)}
+    </ul> : null}
   </section>;
 }

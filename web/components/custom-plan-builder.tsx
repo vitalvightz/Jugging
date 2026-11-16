@@ -594,8 +594,8 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
                 </li>
               ))}
             </ol></ExerciseLogProvider></ExerciseMediaProvider></PrivateExerciseMediaProvider> : <p className="muted">{REST_DAY_REMINDER}</p>}
-        {!s.exercises.length && s.session_type !== "rest" ? <p className="muted">{s.session_type === "recovery" ? REST_DAY_REMINDER : ["sparring", "skill"].includes(s.session_type ?? "mixed") ? "Coach-led day — Add editable rounds if useful." : "Workout needs exercises."}</p> : null}
-        {s.session_type === "recovery" && s.exercises.length ? <p className="muted">Optional recovery work. No completion required.</p> : null}
+        {!s.exercises.length && s.session_type !== "rest" ? <p className="muted">{s.session_type === "recovery" ? REST_DAY_REMINDER : ["sparring", "skill"].includes(s.session_type ?? "mixed") ? "Coach-led day. Rounds optional." : "Workout needs exercises."}</p> : null}
+        {s.session_type === "recovery" && s.exercises.length ? <p className="muted">Optional recovery. No need to complete.</p> : null}
         {s.session_type !== "rest" ? (
           <button type="button" className={styles.addExercise} aria-label={`Add exercise to ${s.name}`}
             disabled={s.exercises.length >= 100} onClick={() => setAdding({ sessionId: s.id, added: [] })}>
@@ -679,7 +679,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
       savedSnapshot.current = JSON.stringify(orderedDraft(saved)); undoStack.current = []; redoStack.current = []; setHistoryVersion(n => n + 1);
       setOpened(true);
       setDirty(false);
-      setMessage(coachFighterId ? "Draft saved. Return to coach plans to assign it." : saved.incomplete ? "Draft saved. Finish the workouts listed below when ready." : "Plan saved. View your plan to activate it.");
+      setMessage(coachFighterId ? "Draft saved. Assign it from Plans." : saved.incomplete ? "Draft saved. Finish the workouts below." : "Plan saved. View your plan to activate it.");
       if (!coachFighterId) window.history.replaceState(window.history.state, "", `/plans/custom?plan=${saved.id}`);
       loaded.current = true;
       if (viewPlan && !coachFighterId) {
@@ -746,7 +746,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
           </h1>
           <span className={styles.badge}>{dirty ? "Unsaved" : draft.id ? "Saved" : "New"}</span>
         </div>
-        <p className="muted">{isDated ? 'Build your programme on the calendar. Each date keeps its own prescription.' : 'Repeating weekly plan. Create a dated copy to programme different weeks.'}</p>
+        <p className="muted">{isDated ? 'Each date has its own workout.' : 'Repeats every week. Switch to Calendar to vary weeks.'}</p>
         <div className={styles.historyToolbar} data-version={historyVersion}>
           <button type="button" className="ghost-button" disabled={pending || sheetDirty || !undoStack.current.length} onClick={() => travelHistory('undo')}>Undo</button>
           <button type="button" className="ghost-button" disabled={pending || sheetDirty || !redoStack.current.length} onClick={() => travelHistory('redo')}>Redo</button>
@@ -780,7 +780,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
             />
           </label>
           <div className={styles.scheduleSettings}>
-            <label>Schedule<select aria-label="Schedule mode" value={draft.schedule_mode ?? 'weekly'} onChange={event => selectScheduleMode(event.target.value as 'weekly' | 'dated')}><option value="dated">Dated multi-week calendar</option><option value="weekly">Repeating week</option></select></label>
+            <label>Schedule<select aria-label="Schedule mode" value={draft.schedule_mode ?? 'weekly'} onChange={event => selectScheduleMode(event.target.value as 'weekly' | 'dated')}><option value="dated">Calendar</option><option value="weekly">Weekly</option></select></label>
             {isDated ? <><label>Start date<input type="date" value={startInput ?? draft.start_date!} onChange={event => setStartInput(event.target.value)} onBlur={() => { const next = startInput; setStartInput(undefined); if (next && next !== draft.start_date) resizeDates(next, Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!) + 86400000) / 604800000)); }} /></label><label>Weeks<input aria-label="Plan duration in weeks" type="number" min={1} max={12} value={Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!) + 86400000) / 604800000)} onChange={event => resizeDates(draft.start_date!, Number(event.target.value))} /></label></> : null}
           </div>
           <div className={isDated ? styles.calendarEditorLayout : undefined}>
@@ -1105,7 +1105,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
                   const suggestedDose = candidate && Object.entries(candidate).some(([k, v]) => k !== "mode" && v != null) ? candidate : null;
                   return (
                   <div>
-                    <p>{suggestion.original || (suggestedDose ? "The library suggests this format:" : "The library has no set format for this exercise. Enter your own dose.")}</p>
+                    <p>{suggestion.original || (suggestedDose ? "The library suggests this format:" : "No library format. Enter your own dose.")}</p>
                     {suggestedDose ? (
                       <button
                         type="button"

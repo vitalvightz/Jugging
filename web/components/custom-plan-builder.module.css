@@ -407,6 +407,7 @@
 .datedCalendar { min-width: 0; padding: 16px; background: var(--bg-panel); border: 1px solid var(--border-default); border-radius: 16px; }
 .calendarToolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; margin-bottom: 16px; }
 .calendarToolbar > strong { font-size: 12px; color: var(--text-secondary); }
+.calendarToolbar > div { display: flex; gap: 6px; }
 .calendarToolbar button, .calendarFooter button { min-height: 40px; padding: 8px 10px; border: 1px solid var(--border-default); border-radius: 8px; background: var(--bg-input); color: var(--text-primary); font: inherit; font-size: 12px; cursor: pointer; }
 .calendarToolbar button[aria-pressed="true"] { background: #84152d; border-color: #bf2446; }
 .calendarGrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
@@ -426,6 +427,13 @@
 .calendarFooter { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
 .calendarFooter span { max-width: 32ch; color: var(--text-secondary); font-size: 11px; line-height: 1.6; }
 .selectedCalendarDay { margin: 12px 0 0; font-size: 12px; color: var(--text-secondary); }
+.selectedDaySessions { display: none; }
+@media (max-width: 600px) {
+  .selectedDaySessions { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+  .selectedDaySessions li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 10px; border-left: 3px solid #d82a4b; border-radius: 6px; background: var(--bg-input); font-size: 12px; font-weight: 550; }
+  .selectedDaySessions li[data-type="recovery"], .selectedDaySessions li[data-type="rest"] { border-left-color: #70b7ad; }
+  .selectedDaySessions small { color: var(--text-secondary); font-size: 11px; font-weight: 400; }
+}
 .quickControls { display: flex; gap: 8px; flex-wrap: wrap; padding: 6px 0; }
 .quickControls button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--border-default); border-radius: 7px; background: var(--bg-input); color: var(--text-secondary); font-size: 11px; }
 .quickDose { padding: 14px; border: 1px solid var(--border-default); border-radius: 10px; background: var(--bg-panel); }
@@ -447,6 +455,14 @@
   .dateSelect small { font-size: 8px; }
   .calendarToolbar { gap: 8px; }
   .calendarToolbar > strong { order: 3; flex-basis: 100%; font-size: 11px; }
+  /* Month view on phones: coloured indicators + counts; names show for the selected date below. */
+  .calendarGrid[data-view="month"] .calendarDate { display: flex; flex-wrap: wrap; align-content: flex-start; min-height: 64px; padding: 2px; }
+  .calendarGrid[data-view="month"] .dateSelect { flex-basis: 100%; min-height: 36px; padding: 3px; }
+  .calendarGrid[data-view="month"] .dateSelect > span { font-size: 13px; }
+  .calendarGrid[data-view="month"] .calendarSession { display: grid; place-items: center; width: 24px; height: 24px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 99px; background: transparent; }
+  .calendarGrid[data-view="month"] .calendarSession::before { content: ""; width: 9px; height: 9px; border-radius: 99px; background: #d82a4b; }
+  .calendarGrid[data-view="month"] .calendarSession[data-type="recovery"]::before, .calendarGrid[data-view="month"] .calendarSession[data-type="rest"]::before { background: #70b7ad; }
+  .calendarGrid[data-view="month"] .calendarSession strong { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .historyToolbar span { flex-basis: 100%; margin: 0; }
   .sessionActions { flex-wrap: wrap; }
 }
