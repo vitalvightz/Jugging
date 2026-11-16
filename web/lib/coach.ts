@@ -1,3 +1,4 @@
+import { describeCutStatus } from "./weight-cut-status.ts";
 export type Connection = {
   id: string;
   coach_id: string;
@@ -244,11 +245,67 @@ export function coachRecoveryTone(field: string, value: string | number | undefi
 export function coachCheckInValues(readings: readonly Recovery[]) {
   const labels = { sleep: "Sleep", body: "Body", readiness: "Readiness", fatigue: "Fatigue", sleep_quality: "Sleep quality" } as const;
   const values = new Map<string, { label: string; tone: RecoveryTone }>();
+  const seenFields = new Set<string>();
+  const seenValues = new Set<string>();
   for (const reading of readings) for (const field of Object.keys(labels) as (keyof typeof labels)[]) {
     const value = reading[field];
     if (value == null) continue;
-    const label = `${labels[field]}: ${typeof value === "number" ? `${value}/5` : humanize(value)}`;
+    const key = `${field}:${value}`;
+    if (seenValues.has(key)) continue;
+    seenValues.add(key);
+    const prefix = seenFields.has(field) ? `Earlier ${labels[field].toLowerCase()}` : labels[field];
+    seenFields.add(field);
+    const label = `${prefix}: ${typeof value === "number" ? `${value}/5` : humanize(value)}`;
     values.set(label, { label, tone: coachRecoveryTone(field, value) });
   }
   return [...values.values()];
+}
+
+export type CoachConcern = { id: string; tone: "concern" | "caution" | "unknown"; category: "weight" | "contact" | "injury" | "recovery" | "adherence"; reason: string; section: string };
+
+// A recorded risk and the freshness of its inputs are separate facts. Keep a
+// severe assessment visible even when the underlying weight needs updating.
+export function coachCutStatus(weight: import("./api-schema.generated").CoachFighterWeight | null, today: string) {
+  if (!weight?.shared || !weight.cut_assessment) return null;
+  const status = describeCutStatus(weight.cut_assessment);
+  if (status?.tone === "red") return status;
+  const recorded = weight.current_weight_recorded_at?.slice(0, 10);
+  // Same seven-day recent-data window used by the coach recovery overview.
+  if (!recorded || recorded < dayOffset(today, -6) || recorded > today) return { label: "Unknown", tone: "unknown" as const, detail: "Current weight needs updating." };
+  return status ?? { label: "Unknown", tone: "unknown" as const, detail: "Fight date, current weight or target is missing." };
+}
+
+export function coachConcerns(f: Fighter, weight: import("./api-schema.generated").CoachFighterWeight | null, weightFailed = false): CoachConcern[] {
+  const concerns: CoachConcern[] = [];
+  const canAssessWeight = f.share_weight && (f.age == null || f.age >= 18);
+  const cut = canAssessWeight ? coachCutStatus(weight, f.today) : null;
+  if (canAssessWeight && weightFailed) concerns.push({ id: "weight:unavailable", category: "weight", tone: "unknown", reason: "Weight status unavailable", section: "fight-weight" });
+  if (cut && cut.tone !== "green") concerns.push({ id: "weight", category: "weight", tone: cut.tone === "red" ? "concern" : cut.tone === "amber" ? "caution" : "unknown", reason: cut.tone === "unknown" ? `Weight-cut safety unknown · ${cut.detail}` : `${cut.label}${weight?.cut_assessment?.days_until_fight != null ? ` · ${weight.cut_assessment.days_until_fight} days to fight` : ""}`, section: "fight-weight" });
+  if (f.share_injuries) {
+    for (const report of f.sparring_reports ?? []) {
+      if (report.day < dayOffset(f.today, -6) || report.day > f.today || !(report.rocked || report.head_contact === "heavy")) continue;
+      concerns.push({ id: `contact:${report.id}`, category: "contact", tone: "concern", reason: `${report.day} · ${report.rocked ? "Athlete reported being rocked" : "Heavy head contact reported"}`, section: "sparring" });
+    }
+    for (const injury of f.injuries ?? []) {
+      if (["resolved", "closed", "healed"].includes(injury.status)) continue;
+      const tone = coachRecoveryTone("injury", injury.severity);
+      concerns.push({ id: `injury:${injury.id}`, category: "injury", tone: tone === "good" ? "unknown" : tone, reason: `${humanize(injury.body_area)} · ${humanize(injury.severity)} · ${humanize(injury.status)}`, section: "recovery" });
+    }
+  }
+  if (f.share_recovery) {
+    const days = groupCoachCheckIns((f.recovery ?? []).filter(row => row.day <= f.today));
+    // Retain recent recorded warnings when a later source/check-in is normal.
+    for (const day of days.filter(row => row.day >= dayOffset(f.today, -6))) for (const value of coachCheckInValues(day.readings)) {
+      if (value.tone === "concern" || value.tone === "caution") concerns.push({ id: `recovery:${day.day}:${value.label}`, category: "recovery", tone: value.tone, reason: `${day.day} · ${value.label}`, section: "recovery" });
+    }
+    if (!days.length || days[0].day < dayOffset(f.today, -6)) concerns.push({ id: "recovery:unknown", category: "recovery", tone: "unknown", reason: "Recovery unknown · No recent check-in", section: "recovery" });
+  }
+  for (const session of f.sessions) {
+    if (session.status === "skipped" && session.day <= f.today && f.schedule.some(planned => planned.id === session.session_id && planned.day === session.day)) {
+      concerns.push({ id: `adherence:${session.id}`, category: "adherence", tone: "caution", reason: `${session.day} · Scheduled session recorded as skipped`, section: "training-history" });
+    }
+  }
+  const severity = { concern: 0, caution: 1, unknown: 2 };
+  const category = { weight: 0, contact: 1, injury: 2, recovery: 3, adherence: 4 };
+  return concerns.sort((a, b) => severity[a.tone] - severity[b.tone] || category[a.category] - category[b.category]);
 }

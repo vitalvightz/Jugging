@@ -11,7 +11,7 @@ COACH, FIGHTER, STRANGER = (str(uuid4()) for _ in range(3))
 PLAN, DAY, SECRET = str(uuid4()), "2026-10-10", "PRIVATE NOTE"
 AS_COACH = {"Authorization": "Bearer coach-token"}
 BASE = f"/api/coach/fighters/{FIGHTER}"
-PATHS = ("/training/history", f"/training/history/unlxck/{uuid4()}", "/weight")
+PATHS = ("/training/history", f"/training/history/unlxck/{uuid4()}", "/weight", "/training/plan")
 
 
 def session(title="Strength & Power", session_type="strength_power", block_type="strength", **changes):
@@ -117,7 +117,7 @@ def test_unshared_health_detail_stays_hidden(camp, withhold):
     report = client.get(f"{BASE}/training/history/external/{spar['id']}", headers=AS_COACH).json()["sparring"]
     assert report["rounds_completed"] == 6 and report["head_contact"] is None and report["rocked"] is None
     assert client.get(BASE + "/weight", headers=AS_COACH).json() == {
-        "shared": False, "entries": [], "current_weight_kg": None, "target_weight_kg": None,
+        "shared": False, "cut_assessment": None, "current_weight_recorded_at": None, "entries": [], "current_weight_kg": None, "target_weight_kg": None,
         "rolling_7_day_average_weight": None, "weekly_pace_kg": None}
 
 
@@ -333,3 +333,58 @@ def test_calendar_categories_use_saved_sessions_and_respect_injury_sharing(camp)
     assert next(row for row in rows if row["id"] == rehab["id"])["training_category"] == "training"
     connection["status"] = "revoked"
     assert client.get(BASE + "/training/history", headers=AS_COACH).status_code == 404
+
+
+def test_coach_weight_assessment_matches_athlete_including_active_fight_date(camp, monkeypatch):
+    from datetime import date, timedelta
+    from api.contracts.training_day import current_training_day
+    client, store, _ = camp
+    as_fighter = {"Authorization": "Bearer fighter-token"}
+    fight = (current_training_day() + timedelta(days=3)).isoformat()
+    # Same active-plan override is consumed by both endpoints.
+    monkeypatch.setattr("api.routes.nutrition.resolve_active_plan", lambda *a, **kw: type("Active", (), {"plan": {"fight_date": fight}})())
+    workspace = client.get("/api/nutrition/current", headers=as_fighter).json()
+    body = {key: workspace[key] for key in ("nutrition_profile", "s_and_c_preferences", "nutrition_readiness", "nutrition_coach_controls", "nutrition_monitoring", "shared_camp_context")}
+    body["shared_camp_context"].update(current_weight_kg=80, target_weight_kg=70, current_weight_source="manual", current_weight_recorded_at=date.today().isoformat())
+    saved = client.put("/api/nutrition/current", headers=as_fighter, json=body)
+    assert saved.status_code == 200, saved.text
+    athlete = client.get("/api/nutrition/current", headers=as_fighter).json()["derived"]
+    coach = client.get(BASE + "/weight", headers=AS_COACH).json()["cut_assessment"]
+    assert coach["weight_cut_status"] == athlete["weight_cut_status"] == "too_aggressive"
+    assert coach["weight_cut_risk_band"] == athlete["weight_cut_risk_band"] == "severe"
+    assert coach["days_until_fight"] == athlete["days_until_fight"] == 3
+    assert all(coach[key] == athlete[key] for key in coach)
+    assert "readiness_flags" not in coach
+
+
+def test_minor_and_unshared_weight_never_expose_cut_assessment(camp):
+    client, store, connection = camp
+    store.profiles[FIGHTER]["date_of_birth"] = "2011-01-01"
+    response = client.get(BASE + "/weight", headers=AS_COACH)
+    assert response.status_code == 200
+    assert response.json()["cut_assessment"] is None
+    assert response.json()["target_weight_kg"] is None
+    connection["share_weight"] = False
+    assert client.get(BASE + "/weight", headers=AS_COACH).json()["cut_assessment"] is None
+
+
+def test_future_plan_is_permission_checked_and_never_exposes_private_notes(camp, monkeypatch):
+    from datetime import timedelta
+    from api.contracts.training_day import current_training_day
+    client, store, connection = camp
+    day = (current_training_day() + timedelta(days=10)).isoformat()
+    plan = {"id": PLAN, "athlete_id": FIGHTER, "structured_plan": {"weeks": [{"days": [{"date": day, "sessions": [
+        {"session_id": "strength", "title": "Strength", "session_type": "strength_power", "notes": SECRET,
+         "blocks": [{"block_id": "squat", "display_name": "Squat", "sets": 3, "reps": 5, "notes": SECRET}]},
+        {"session_id": "rehab", "title": "Knee rehab", "session_type": "rehab", "blocks": []},
+    ]}]}]}}
+    monkeypatch.setattr("api.routes.coach.resolve_active_plan", lambda *a, **kw: type("Active", (), {"plan": plan})())
+    response = client.get(BASE + "/training/plan", headers=AS_COACH)
+    assert response.status_code == 200 and SECRET not in response.text
+    assert len(response.json()) == 2
+    assert response.json()[1]["blocks"][0]["prescribed"] == {"sets": 3, "reps": 5}
+    connection["share_injuries"] = False
+    rows = client.get(BASE + "/training/plan", headers=AS_COACH).json()
+    assert [row["id"] for row in rows] == ["strength"]
+    connection["status"] = "revoked"
+    assert client.get(BASE + "/training/plan", headers=AS_COACH).status_code == 404

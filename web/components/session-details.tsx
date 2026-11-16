@@ -89,7 +89,8 @@ function Comparison({ rows, label, title, bar = false }: { rows: ComparisonRow[]
   </section>;
 }
 
-function TrainingBlockBody({ block, context, viewer, byCoach }: { block: SessionDetailBlock; context: string; viewer?: Viewer; byCoach?: boolean }) {
+function TrainingBlockBody({ block, context, viewer, byCoach, planned = false }: { block: SessionDetailBlock; context: string; viewer?: Viewer; byCoach?: boolean; planned?: boolean }) {
+  if (planned) return <Comparison rows={comparisonRows(block.prescribed, {})} label={`Planned: ${context}`} title="Planned exercises" />;
   const entries = Array.isArray(block.actual.set_entries) && block.actual.set_entries.length ? block.actual.set_entries as ExerciseSetResult[] : null;
   const sets = entries ? <SetResults entries={entries} completed={typeof block.actual.sets === "number" ? block.actual.sets : undefined} /> : null;
   const countOnly = countOnlySetSummary(block.actual);
@@ -141,7 +142,8 @@ function TrainingBlockBody({ block, context, viewer, byCoach }: { block: Session
 }
 
 /** A collapsible record card: name, dose and the weight in gold; the full record expands on request. */
-export function TrainingBlock({ block, index, heading, recordId, open, onToggle, numbered = true, compact = false, viewer, byCoach, feedback }: {
+export function TrainingBlock({ block, index, heading, recordId, open, onToggle, numbered = true, compact = false, viewer, byCoach, feedback, planned = false }: {
+  planned?: boolean;
   feedback?: ReactNode;
   block: SessionDetailBlock; index: number; heading?: string; recordId?: string; open: boolean; onToggle: () => void; numbered?: boolean; compact?: boolean;
   viewer?: Viewer;
@@ -150,7 +152,7 @@ export function TrainingBlock({ block, index, heading, recordId, open, onToggle,
 }) {
   const body = useId();
   const context = heading ? `${block.name} · ${heading} · Record ${index + 1}` : block.name;
-  const label = block.source === "manual" ? "Logged" : block.status ? SHORT_OUTCOMES[block.status] : "Not recorded";
+  const label = planned ? "Planned" : block.source === "manual" ? "Logged" : block.status ? SHORT_OUTCOMES[block.status] : "Not recorded";
   const { load, dose } = blockSummary(block, compact);
   return <li className={styles.block} data-performance={recordId} data-open={open} tabIndex={recordId ? -1 : undefined}>
     <div className={styles.blockHeading}>{numbered ? <span className={styles.number}>{String(index + 1).padStart(2, "0")}</span> : null}
@@ -159,7 +161,7 @@ export function TrainingBlock({ block, index, heading, recordId, open, onToggle,
       <div className={styles.blockSide}>{load ? <strong className={styles.weight}>{load}</strong> : null}
         <span className={styles.status} data-status={recordStatus(block.status, block.source === "manual")}><StatusIcon status={recordStatus(block.status, block.source === "manual")} />{label}</span></div>
       <span className={styles.chevron} aria-hidden="true">›</span></div>
-    {open ? <div id={body} className={styles.blockBody}><TrainingBlockBody block={block} context={context} viewer={viewer} byCoach={byCoach} />{feedback}</div> : null}
+    {open ? <div id={body} className={styles.blockBody}><TrainingBlockBody block={block} context={context} viewer={viewer} byCoach={byCoach} planned={planned} />{feedback}</div> : null}
   </li>;
 }
 

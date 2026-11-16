@@ -150,6 +150,8 @@ const details: SessionDetails = {
 };
 const weight: CoachFighterWeight = {
   shared: true,
+  current_weight_recorded_at: "2026-11-15",
+  cut_assessment: { weight_cut_status: "on_track", weight_cut_risk_band: "low", days_until_fight: 27, kg_to_target: 3.6, weight_cut_behind_kg: null },
   current_weight_kg: 73.6,
   target_weight_kg: 70,
   rolling_7_day_average_weight: 73.9,
@@ -267,6 +269,7 @@ async function fixture(
       logged.unshift(row);
       return route.fulfill({ status: 201, json: row });
     }
+    if (path.endsWith("/training/plan")) return route.fulfill({ json: [] });
     if (path.endsWith("/exercises"))
       return route.fulfill({ json: { entries: [] } });
     return route.fulfill({
@@ -826,7 +829,7 @@ test("sparring totals use displayed reports and coach feedback stays attached to
   await sparring.getByRole("textbox", { name: "Coach note" }).fill("Keep your guard up.");
   await sparring.getByRole("button", { name: "Save note" }).click();
   await expect(sparring.getByText("Keep your guard up.", { exact: true })).toBeVisible();
-  expect(state.feedback[0]).toMatchObject({ source: "sparring", target_id: "report-hard", exercise_ref: "" });
+  await expect.poll(() => state.feedback[0]).toMatchObject({ source: "sparring", target_id: "report-hard", exercise_ref: "" });
   await page.screenshot({ path: "test-results/coach-sparring-feedback-mobile.png", fullPage: true });
   await page.getByRole("button", { name: "List", exact: true }).click();
   await page.getByRole("listitem").filter({ hasText: "Strength & power" }).getByRole("button").first().click();
@@ -936,7 +939,7 @@ for (const width of [320, 1440]) {
     await history.getByRole("button", { name: "Next month" }).click();
     await expect(history.getByText("November 2026", { exact: true })).toBeVisible();
     await history.getByRole("button", { name: "Today", exact: true }).click();
-    await expect(history.getByText("No completed sessions recorded for this day.")).toBeVisible();
+    await expect(history.getByText("No sessions recorded or planned for this day.")).toBeVisible();
     await history.getByRole("button", { name: "List", exact: true }).click();
     await expect(history.getByRole("listitem")).toHaveCount(6);
     await expect(page).toHaveURL(new RegExp(`/coach/fighters/${fighterId}$`));
@@ -996,7 +999,7 @@ test("missing recovery stays grey and skipped sessions do not populate either hi
   await expect(recovery.getByText("No check-ins recorded.", { exact: true })).toBeVisible();
   await expect(recovery.getByText("Recovery check-in: No new concerns", { exact: true })).toHaveCount(0);
   const history = page.locator("section").filter({ has: page.getByRole("heading", { name: "Training history", exact: true }) });
-  await expect(history.locator('[data-training-tone]')).toHaveCount(5); // Legend only; no training dots.
+  await expect(history.locator('[data-training-tone]')).toHaveCount(6); // Legend only; no training dots.
   await expect(history.getByRole("listitem")).toHaveCount(0);
   await history.getByRole("button", { name: "List", exact: true }).click();
   await expect(history.getByText("No completed sessions recorded yet.", { exact: true })).toBeVisible();
@@ -1017,3 +1020,129 @@ for (const width of [320, 390]) {
     await page.screenshot({ path: `test-results/coach-permissions-spacing-${width}.png`, fullPage: true });
   });
 }
+
+test("coach sections fold and reopen without losing their contents", async ({ page, baseURL }) => {
+  await fixture(page, baseURL!);
+  await page.setViewportSize({ width: 390, height: 1000 });
+  await page.goto(`/coach/fighters/${fighterId}`);
+  for (const [name, content] of [["Sparring", "Recent sparring activity"], ["Training history", "November 2026"], ["Recovery", "Recent check-ins"], ["Fight weight", "Days to fight"]] as const) {
+    const section = page.locator("section").filter({ has: page.getByRole("heading", { name, exact: true }) });
+    const details = section.locator("details").first();
+    await expect(details).toHaveAttribute("open", "");
+    await details.locator("summary").click();
+    await expect(details).not.toHaveAttribute("open", "");
+    await expect(section.getByText(content, { exact: true })).toBeHidden();
+    await details.locator("summary").click();
+    await expect(details).toHaveAttribute("open", "");
+  }
+});
+
+for (const width of [390, 1280]) {
+  test(`fight preparation calendar and priority concerns stay compact at ${width}px`, async ({ page, baseURL }) => {
+    await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, share_injuries: true,
+      injuries: [{ id: "arm", body_area: "Left bicep", severity: "mild", status: "open", updated_at: fighter.today }],
+      sparring_reports: [{ id: "contact", day: "2026-11-12", rounds: 5, intensity: "technical", round_seconds: 180, head_contact: "heavy", rocked: true }],
+    }]);
+    await page.route("**/api/coach/fighters/*/weight", route => route.fulfill({ json: { ...weight,
+      cut_assessment: { ...weight.cut_assessment, weight_cut_status: "too_aggressive", weight_cut_risk_band: "severe" },
+    } }));
+    await page.route("**/api/coach/fighters/*/training/plan", route => route.fulfill({ json: [
+      { id: "future", plan_id: "test-plan", day: "2026-12-10", title: "Planned strength", type: "strength_power", blocks: [{ ...details.blocks[0], name: "Squat", status: null, actual: {} }] },
+      // A completed occurrence also appearing in the plan must not be duplicated.
+      { id: "strength", plan_id: "test-plan", day: "2026-11-09", title: "Duplicate", type: "strength_power", blocks: [] },
+    ] }));
+    const runtimeErrors: string[] = [];
+    page.on("pageerror", error => runtimeErrors.push(error.message));
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/coach/fighters/${fighterId}`);
+    const attention = page.getByRole("region", { name: "Needs attention" });
+    await expect(attention.getByRole("listitem")).toHaveCount(3);
+    await expect(attention.getByRole("listitem").first()).toContainText("Cut too aggressive");
+    await expect(attention.getByRole("listitem").nth(1)).toContainText("rocked");
+    await attention.getByRole("button", { name: "View all", exact: true }).click();
+    expect(await attention.getByRole("listitem").count()).toBeGreaterThan(3);
+    await expect(attention.getByText(/Left bicep/)).toBeVisible();
+    await page.locator('#fight-weight > details > summary').click();
+    await attention.getByRole("link").first().click();
+    await expect(page.locator('#fight-weight > details')).toHaveAttribute("open", "");
+    await expect(page.locator('#fight-weight').getByText("Cut too aggressive", { exact: true })).toBeVisible();
+    const calendar = page.locator('#training-history');
+    await calendar.getByRole("button", { name: "Next month" }).click();
+    await expect(calendar.getByText("December 2026", { exact: true })).toBeVisible();
+    await calendar.getByRole("button", { name: /10 Dec 2026: 0 completed sessions, 1 planned/ }).click();
+    await calendar.getByRole("button", { name: /Planned strength/ }).click();
+    await expect(calendar.getByRole("button", { name: "Squat", exact: true })).toBeVisible();
+    await calendar.getByRole("button", { name: /12 Dec 2026: 0 completed sessions, Fight day/ }).click();
+    await expect(calendar.getByText("◆ Fight day", { exact: true }).last()).toBeVisible();
+    await calendar.getByRole("button", { name: "Next month" }).click();
+    await expect(calendar.getByText("January 2027", { exact: true })).toBeVisible();
+    await calendar.getByRole("button", { name: "Today", exact: true }).click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(runtimeErrors).toEqual([]);
+    await page.screenshot({ path: `/tmp/coach-fight-preparation-${width}.png`, fullPage: true });
+  });
+}
+
+test("mobile weight keeps recent weigh-ins compact with full history available", async ({ page, baseURL }) => {
+  await fixture(page, baseURL!);
+  await page.route("**/api/coach/fighters/*/weight", route => route.fulfill({ json: { ...weight, entries: Array.from({ length: 10 }, (_, index) => ({ ...weight.entries[0], date: `2026-11-${String(15 - index).padStart(2, "0")}` })) } }));
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.goto(`/coach/fighters/${fighterId}`);
+  const section = page.locator('#fight-weight');
+  await expect(section.getByRole("listitem")).toHaveCount(3);
+  await section.getByRole("button", { name: "View all 10 weigh-ins" }).click();
+  await expect(section.getByRole("listitem")).toHaveCount(10);
+  await section.getByRole("button", { name: "Show fewer", exact: true }).click();
+  await expect(section.getByRole("listitem")).toHaveCount(3);
+  for (const label of ["7 days", "30 days", "All"]) {
+    await section.getByRole("button", { name: label, exact: true }).click();
+    await expect(section.getByRole("button", { name: label, exact: true })).toHaveAttribute("aria-pressed", "true");
+  }
+  for (const label of ["Current", "Target", "Above target", "7-day average", "Per week", "Days to fight"]) {
+    const text = section.getByText(label, { exact: true });
+    const bounds = await text.boundingBox();
+    const tile = await text.locator("..").boundingBox();
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(tile!.x + tile!.width);
+  }
+  const plot = await section.getByRole("slider").boundingBox();
+  expect(plot!.height).toBeLessThanOrEqual(120);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await section.screenshot({ path: "/tmp/coach-weight-mobile.png" });
+});
+
+for (const age of [25, 17]) {
+  test(`failed weight request shows authorised availability without a minor cut alert at age ${age}`, async ({ page, baseURL }) => {
+    await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, age, share_recovery: false, share_injuries: false }]);
+    await page.route("**/api/coach/fighters/*/weight", route => route.fulfill({ status: 503, json: { detail: "Unavailable" } }));
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.goto(`/coach/fighters/${fighterId}`);
+    await expect(page.locator('#fight-weight').getByText("Unable to load weight.", { exact: true })).toBeVisible();
+    const attention = page.getByRole("region", { name: "Needs attention" });
+    if (age < 18) {
+      await expect(attention).toHaveCount(0);
+    } else {
+      await expect(attention.getByRole("listitem")).toHaveAttribute("data-recovery-tone", "unknown");
+      await page.locator('#fight-weight > details > summary').click();
+      await attention.getByRole("link", { name: /Weight status unavailable/ }).click();
+      await expect(page.locator('#fight-weight > details')).toHaveAttribute("open", "");
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}
+
+test("old contact reports stay in sparring history while only recent concerns need attention", async ({ page, baseURL }) => {
+  const report = { id: "recent", day: "2026-11-14", intensity: "technical", rounds: 3, round_seconds: 180, head_contact: "heavy", rocked: true };
+  await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, share_recovery: false, share_injuries: true, share_weight: false,
+    sparring_reports: [{ ...report, id: "normal", day: fighter.today, head_contact: "none", rocked: false }, report, { ...report, id: "old", day: "2026-11-01" }],
+  }]);
+  await page.goto(`/coach/fighters/${fighterId}`);
+  const attention = page.getByRole("region", { name: "Needs attention" });
+  await expect(attention.getByRole("listitem")).toHaveCount(1);
+  await expect(attention).toContainText("2026-11-14");
+  await expect(attention).not.toContainText("2026-11-01");
+  await page.getByRole("button", { name: "Previous week", exact: true }).click();
+  await page.getByRole("button", { name: "Previous week", exact: true }).click();
+  await expect(page.locator('#sparring').getByText("Sun 01 Nov 2026", { exact: true })).toBeVisible();
+  await expect(page.locator('#sparring').getByText(/Athlete reported being rocked/)).toBeVisible();
+  await expect(attention.getByRole("listitem")).toHaveCount(1);
+});

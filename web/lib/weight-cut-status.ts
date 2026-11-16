@@ -81,7 +81,7 @@ const kg = (value: number) => `${value.toFixed(1)} kg`;
 const daysOutPhrase = (days: number) => (days === 0 ? "on fight day" : `${days} ${days === 1 ? "day" : "days"} out`);
 
 /** The API's status in words. The copy says who to talk to, never how to cut. */
-export function describeCutStatus(derived: NutritionDerivedState | null | undefined): CutStatusView | null {
+export function describeCutStatus(derived: Pick<NutritionDerivedState, "weight_cut_status" | "kg_to_target" | "weight_cut_behind_kg" | "days_until_fight"> | null | undefined): CutStatusView | null {
   if (!derived) return null;
   const toGo = derived.kg_to_target ?? null;
   switch (derived.weight_cut_status) {
