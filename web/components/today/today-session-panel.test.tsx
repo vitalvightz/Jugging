@@ -1038,7 +1038,7 @@ test("a new safety hold offers stopped logging without resuming frozen work", ()
 });
 
 for (const [status, performance, label] of [
-  ["done", "done_as_shown", "Completed"], ["modified", "changed", "Modified"], ["skipped", undefined, "Skipped"],
+  ["done", "done_as_shown", "Completed"], ["modified", "changed", "Modified"], ["skipped", undefined, "Not done"],
 ] as const) {
   test(`simple rehab ${label} saves without a questionnaire`, async () => {
     const container = document.createElement("div"); document.body.appendChild(container);

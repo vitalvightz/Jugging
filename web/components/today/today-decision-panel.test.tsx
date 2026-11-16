@@ -488,3 +488,13 @@ for (const displayState of ["adjust", "pull_back"] as const) {
     assert.match(render({ banner: { ...BANNER, displayState }, triggers: ["Current injury restrictions"] }), /Current injury restrictions/);
   });
 }
+
+
+test("repeated guidance is shown once while distinct safety instructions remain", () => {
+  const html = render({ banner: { ...BANNER, action: "Avoid contact.", detail: "Avoid contact.", safety: "Keep the wound covered." } });
+  assert.equal((html.match(/Avoid contact\./g) ?? []).length, 1);
+  assert.match(html, /Keep the wound covered/);
+  const repeated = render({ banner: { ...BANNER, action: "Keep it covered.", detail: "Different reason.", safety: "Keep it covered." } });
+  assert.equal((repeated.match(/Keep it covered\./g) ?? []).length, 1);
+  assert.match(repeated, /Different reason/);
+});
