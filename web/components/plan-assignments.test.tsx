@@ -43,7 +43,8 @@ test("fighter previews the full prescription before activation", async () => {
   const ui = await mount("activate");
   try {
     assert.match(ui.host.textContent!, /Coach Sam/); assert.match(ui.host.textContent!, /Pending/);
-    assert.equal(ui.host.querySelectorAll("button").length, 1); assert.equal(ui.writes.length, 0);
+    assert.match(ui.host.textContent!, /Your plan stays the same until you tap Activate/);
+    assert.equal(ui.host.querySelectorAll("button:not([aria-label='Dismiss tip'])").length, 1); assert.equal(ui.writes.length, 0);
     await ui.click("Preview Plan");
     for (const text of [/Monday/, /Squat/, /3 × 5/, /Use rack/, /Brace/, /Stop if painful/]) assert.match(ui.host.textContent!, text);
     await ui.click("Activate plan");

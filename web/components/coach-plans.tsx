@@ -1,4 +1,5 @@
 "use client";
+import { DiscoveryHint } from "@/components/once-hint";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { CoachPlan, CoachPlannedSession } from "@/lib/api-schema.generated";
@@ -75,6 +76,8 @@ function FighterPlans({ token, fighter, refresh, editing, setEditing }: { token:
     {!plans && !error ? <p role="status">Loading plans…</p> : null}
     {plans?.length === 0 ? <div className={styles.planEmpty}><h2>No plans yet</h2><p>Create a draft for {fighter.name}, then send it for their review.</p></div> : null}
     {Boolean(plans?.length) && !visible?.length ? <p className={styles.empty}>No plans in this view.</p> : null}
+    {visible?.some(plan => plan.assignment_status !== "draft") ? <DiscoveryHint id="coach-plan-revise" text="Want to change it? Tap Revise." /> : null}
+    {visible?.some(plan => plan.assignment_status === "draft") ? <DiscoveryHint id="coach-plan-draft" text="This is a draft. Tap Assign when it's ready." /> : null}
     {visible?.map(plan => <article key={plan.id} className={styles.coachPlanCard} aria-label={plan.name}>
       <header className={styles.planCardHeader}>
         <span className={styles.planCalendarIcon}><PlanIcon name="calendar-days" /></span>

@@ -1,4 +1,5 @@
 "use client";
+import { DiscoveryHint } from "@/components/once-hint";
 import { useEffect, useState } from "react";
 import { coachRpc } from "@/lib/coach";
 import { formatAppDate } from "@/lib/date-format";
@@ -35,6 +36,8 @@ export function CoachFeedback({ token, athleteId, source, targetId, exerciseRef 
     finally { setBusy(false); }
   }
   return <div className={styles.feedback}>
+    {editable && source === "sparring" && !exerciseRef && !notes.length && !editing ? <DiscoveryHint id="coach-feedback-note" text="Leave a note on this round." /> : null}
+    {!editable && !exerciseRef && notes.length ? <DiscoveryHint id="fighter-coach-note" text="Your coach left you a note." /> : null}
     {notes.map(note => <div key={note.id}><small>Coach {note.coach_name} · {formatAppDate(note.updated_at.slice(0, 10))}</small><p>{note.note}</p></div>)}
     {editable && !editing ? <button type="button" className="ghost-button" onClick={() => { setDraft(notes[0]?.note ?? ""); setEditing(true); }}>{notes.length ? "Edit coach note" : "Coach note"}</button> : null}
     {editing ? <form onSubmit={event => { event.preventDefault(); void save(); }}>
