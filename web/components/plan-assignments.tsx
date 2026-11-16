@@ -1,4 +1,5 @@
 "use client";
+import { DiscoveryHint } from "@/components/once-hint";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { CoachPlan } from "@/lib/api-schema.generated";
@@ -36,6 +37,7 @@ export function PlanAssignments({ token, onActivated }: { token: string; onActiv
   if (!rows.length && !error) return null;
   return <section aria-label="Coach assigned plans" className={styles.workspace}>
     <h2>From your coach</h2>
+    {rows.some(plan => plan.assignment_status === "pending") ? <DiscoveryHint id="fighter-coach-plan" text="Have a look first. Your plan stays the same until you tap Activate." /> : null}
     {error ? <p role="alert">{error} <button type="button" disabled={pending} onClick={() => setAttempt(n => n + 1)}>Retry</button></p> : null}
     {rows.map(plan => <article key={plan.id} className={styles.panel}>
       <div className={styles.pageHead}><h3>{plan.name}</h3><span>{plan.assignment_status[0].toUpperCase() + plan.assignment_status.slice(1)}</span></div>

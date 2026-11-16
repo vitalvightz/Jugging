@@ -1,4 +1,5 @@
 "use client";
+import { DiscoveryHint } from "@/components/once-hint";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { CoachPlan, CoachPlannedSession } from "@/lib/api-schema.generated";
@@ -89,7 +90,11 @@ function FighterPlans({ token, fighter, refresh, editing, setEditing }: { token:
       </div>
       {scheduleOpen === plan.id ? <section className={styles.planSchedule} aria-label={`${plan.name} schedule`}><h3>Training schedule</h3>{!schedule ? <p role="status">Loading schedule…</p> : schedule.filter(row => row.plan_id === plan.published_plan_id).length ? <ul>{schedule.filter(row => row.plan_id === plan.published_plan_id).map(row => <li key={`${row.day}:${row.id}`}><span>{formatAppDate(row.day)}</span><strong>{row.title}</strong></li>)}</ul> : <p>No scheduled sessions available.</p>}</section> : null}
       {preview === plan.id ? <AssignedPlanPreview plan={plan} /> : null}
-      {plan.assignment_status !== "draft" ? <button type="button" className="ghost-button" onClick={() => setEditing(`revision:${plan.id}`)}>Create revised draft</button> : null}
+      {plan.assignment_status !== "draft" ? <>
+        <DiscoveryHint id="coach-plan-revise" text="Want to change it? Tap Create revised draft." />
+        <button type="button" className="ghost-button" onClick={() => setEditing(`revision:${plan.id}`)}>Create revised draft</button>
+      </> : null}
+      {plan.assignment_status === "draft" ? <DiscoveryHint id="coach-plan-draft" text="This is a draft. Tap Assign when it's ready." /> : null}
       {plan.assignment_status === "draft" ? <div className={styles.planDraftActions}>
         <button type="button" className="ghost-button" onClick={() => { setEditing(plan.id); }}>Edit draft</button>
         <button type="button" className="cta" disabled={pending || plan.incomplete} onClick={async () => {

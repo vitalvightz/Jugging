@@ -41,3 +41,15 @@ export function OnceHint({ className = "once-hint", label, onDismiss }: { classN
     </button>
   );
 }
+
+/** A one-time tip box. It stays until the person taps ×, then never shows on this device again. */
+export function DiscoveryHint({ id, text, className = "" }: { id: string; text: string; className?: string }) {
+  const [unseen, dismiss] = useSeenOnce(`discovery-${id}-seen`);
+  if (!unseen) return null;
+  return (
+    <div className={`discovery-hint ${className}`.trim()} role="note">
+      <span>{text}</span>
+      <button type="button" onClick={dismiss} aria-label="Dismiss tip">×</button>
+    </div>
+  );
+}

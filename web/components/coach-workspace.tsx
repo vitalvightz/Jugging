@@ -1,4 +1,5 @@
 "use client";
+import { DiscoveryHint } from "@/components/once-hint";
 
 import Link from "next/link";
 import Image from "next/image";
@@ -357,7 +358,7 @@ function Fighters({ token, fighterId, view }: { token: string; fighterId?: strin
           />
         ) : null}
       </div>}
-      {view === "plans" && fighters ? <CoachPlans key={token} token={token} fighters={fighters} /> : view === "log" && fighters && !loggingFighters.length ? <p className={styles.empty}>No fighters have authorised session logging.</p> : null}
+      {view === "plans" && fighters ? <CoachPlans key={token} token={token} fighters={fighters} /> : view === "log" && fighters && !loggingFighters.length ? <p className={styles.empty}>No fighters have authorised session logging.</p> : view === "log" && fighters ? <DiscoveryHint id="coach-log-consent" text="You can only log for fighters who said yes." /> : null}
       {fighterId ? <h1 className={styles.srOnly}>Fighter overview</h1> : null}
       <LoadState error={error} loading={!fighters} retry={reload} />
       {!fighters ? null : !fighterId ? (
@@ -428,6 +429,7 @@ function CoachDashboard({ token, fighters, rosterOnly = false }: { token: string
   return (
     <>
       {!rosterOnly ? <>
+      {attention.length ? <DiscoveryHint id="coach-attention" text="Fighters who need help show at the top. Tap one to see why." /> : null}
       <section className={styles.metrics} aria-label="Roster summary">
         {(
           [
@@ -742,6 +744,7 @@ function FighterOverview({
           </div> : null}
         </div>
       </section>
+      <DiscoveryHint id="coach-fighter-sections" text="Tap a section to open it." />
       {concerns.length ? <section className={`${styles.panel} ${styles.attentionPanel}`} aria-label="Needs attention">
         <h2>Needs attention</h2>
         <ul>{(allConcerns ? concerns : concerns.slice(0, 3)).map(concern => <li key={concern.id} data-recovery-tone={concern.tone}>
@@ -759,6 +762,7 @@ function FighterOverview({
         {concerns.length > 3 ? <button type="button" className="ghost-button" aria-expanded={allConcerns} onClick={() => setAllConcerns(!allConcerns)}>{allConcerns ? "Show fewer" : "View all"}</button> : null}
       </section> : null}
       <FoldableSection title="Weekly performance"><section aria-label="Weekly performance">
+        <DiscoveryHint id="coach-week-arrows" text="Use the arrows to see other weeks." />
         <div className={styles.sectionHeading}>
           <h2>Weekly performance</h2>
           <div className={styles.weekControls}>
@@ -1025,6 +1029,7 @@ function TrainingHistory({
             <button type="button" className={styles.pill} onClick={() => { setMonth(today.slice(0, 7)); setDay(today); }}>Today</button>
             <button type="button" className={styles.pill} aria-label="Next month" onClick={() => changeMonth(1)}>›</button></div>
         </div>
+        <DiscoveryHint id="coach-calendar-day" text="Tap a day to see what they did." />
         <div className={styles.trainingCalendar} role="group" aria-label="Training calendar">
           {CALENDAR_WEEKDAYS.map(label => <small key={label}>{label.slice(0, 1)}</small>)}
           {Array.from({ length: offset }, (_, index) => <span key={`gap-${index}`} />)}
@@ -1228,6 +1233,7 @@ function FightWeight({ fighter: f, weight, failed }: { fighter: Fighter; weight:
                     ? `${formatWeight(selected.weight_kg)} · ${formatAppDate(selected.date)}`
                     : `No weights in the last ${activeRange === "7D" ? 7 : 30} days`}
                 </span>
+                <DiscoveryHint id="coach-weight-range" text="Pick a time range to see the change." />
                 <div
                   className={`${summary.toggle} ${weightStyles.rangeToggle}`}
                   role="group"
