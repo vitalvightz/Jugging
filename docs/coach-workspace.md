@@ -98,7 +98,7 @@ Browser tests cover desktop/mobile sizing, search, profile navigation, empty
 roster, invitations, acceptance with opt-in health sharing, consent withdrawal,
 revocation, loss of access, failures and WCAG accessibility (including contrast).
 Connected database catalog metadata was checked read-only for required columns
-and existing RLS. The new migration is tested locally, not applied remotely.
+and existing RLS. The migrations have been applied to the connected Supabase project.
 
 ## V1 limits
 
@@ -145,3 +145,27 @@ The final UI follows the user's supplied dashboard/profile references. The dashb
 explanations are omitted, search is expandable, and connection management lives
 in Coach access. Full consent wording remains available before sharing. The supplied screenshots' illustrative
 fighters and metric values are not copied into production.
+
+## Operator-configured signup invitations
+
+Approved administrators can also use the consent-bound coach workspace without
+changing their admin role or losing existing admin access. This does not grant
+access to unaccepted athlete performance records.
+
+`20261116001001_coach_signup_invitations.sql` adds a service-only
+`coach_invitation_rules` table and a private profile-insert trigger. An operator
+can configure exact Auth email domains for a coach. Only Auth accounts created
+on or after rule activation receive pending invitations; existing signups and
+lookalike domains are excluded. Profile email fields are not trusted. No athlete
+identity, training or health access is attached until the athlete accepts.
+Turning the rule off stops future invitations. Revoking an accepted connection
+does not automatically re-invite that athlete.
+
+Rule configuration and initial invitations are runtime operator data and are
+not hardcoded into this public repository. Tuta's domains are configured on the
+connected project. No email notifications or automatic acceptance are added.
+
+Follow-up verification: 43 isolated PostgreSQL assertions include future domain
+matching, unverified recipients, older accounts, spoofed profile emails,
+disabled rules, service-only configuration and admin coaching with acceptance
+and revocation. The sole administrator's existing role is preserved.

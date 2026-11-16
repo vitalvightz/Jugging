@@ -382,7 +382,7 @@ export function AppNav() {
     ? [{ href: "/coach", label: "Coach workspace", meta: "Fighters & preparation" },
        { href: "/settings/coach-access", label: "Coach access", meta: "Invitations & sharing" },
        athleteLinks.find(item => item.href === "/settings")!]
-    : [...athleteLinks, { href: "/settings/coach-access", label: "Coach access", meta: "Invitations & sharing" }];
+    : [...athleteLinks, ...(me?.profile.role === "admin" ? [{ href: "/coach", label: "Coach workspace", meta: "Fighters & preparation" }] : []), { href: "/settings/coach-access", label: "Coach access", meta: "Invitations & sharing" }];
 
   const profile = me?.profile;
   const displayName = profile?.full_name || t("athlete");

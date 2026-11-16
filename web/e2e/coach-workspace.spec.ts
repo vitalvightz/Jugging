@@ -84,8 +84,8 @@ async function fixture(
     : [
         {
           ...connection,
-          status: role === "coach" ? "accepted" : "pending",
-          share_recovery: role === "coach",
+          status: role === "coach" || role === "admin" ? "accepted" : "pending",
+          share_recovery: role === "coach" || role === "admin",
           share_injuries: false,
         },
       ];
@@ -304,4 +304,16 @@ test("RPC failure hides stale performance", async ({ page, baseURL }) => {
   await expect(
     page.getByRole("heading", { name: "Your fighters" }),
   ).toHaveCount(0);
+});
+
+test("administrator can coach while keeping admin navigation", async ({
+  page,
+  baseURL,
+}) => {
+  await fixture(page, baseURL!, "admin");
+  await page.goto("/coach");
+  await expect(
+    page.getByRole("heading", { name: "Your corner. In focus." }),
+  ).toBeVisible();
+  await expect(page.locator('a[href="/admin"]').first()).toBeVisible();
 });

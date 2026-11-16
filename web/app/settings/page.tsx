@@ -1612,6 +1612,7 @@ export default function SettingsPage() {
             <div className="sidebar-user-actions settings-quick-account">
               <LanguageSwitcher placement="inline" />
               <Link href="/settings/coach-access" className="ghost-button">Coach access</Link>
+              {isAdmin ? <Link href="/coach" className="ghost-button">Coach workspace</Link> : null}
               {shouldShowAdminPanelLink(me?.profile.role) ? (
                 <Link href="/admin" className="ghost-button">{tNav("adminPanel")}</Link>
               ) : null}

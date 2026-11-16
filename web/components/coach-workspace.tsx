@@ -41,7 +41,7 @@ export function CoachWorkspace({
         <Workspace
           key={`${session.user_id}:${session.access_token}:${fighterId ?? "roster"}`}
           token={session.access_token}
-          coach={me.profile.role === "coach"}
+          coach={me.profile.role === "coach" || me.profile.role === "admin"}
           fighterId={fighterId}
           connectionsOnly={connectionsOnly}
         />

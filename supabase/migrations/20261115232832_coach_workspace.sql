@@ -45,7 +45,7 @@ begin
   select * into actor from public.profiles where id = auth.uid() and access_status = 'approved';
   if actor.id is null then raise exception 'Approved account required' using errcode='42501'; end if;
   if p_action = 'invite' then
-    if actor.role <> 'coach' then raise exception 'Coach account required' using errcode='42501'; end if;
+    if actor.role not in ('coach','admin') then raise exception 'Coach account required' using errcode='42501'; end if;
     if p_email is null or lower(trim(p_email)) !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' or char_length(trim(p_email)) > 254
       or lower(trim(p_email)) = lower(actor.email) then raise exception 'Enter a valid athlete email'; end if;
     if (select count(*) from public.coach_connections where coach_id=actor.id and status in ('pending','accepted')) >= 250
@@ -59,14 +59,14 @@ begin
   select * into c from public.coach_connections where id=p_id for update;
   if c.id is null then raise exception 'Connection unavailable' using errcode='42501'; end if;
   if p_action in ('accept','decline') and c.status='pending' and c.invited_email=coach_private.actor_email() and actor.role='athlete'
-    and exists(select 1 from public.profiles where id=c.coach_id and role='coach' and access_status='approved') then
+    and exists(select 1 from public.profiles where id=c.coach_id and role in ('coach','admin') and access_status='approved') then
     update public.coach_connections set athlete_id=actor.id, status=case when p_action='accept' then 'accepted' else 'declined' end,
       share_recovery=(p_action='accept' and coalesce(p_recovery,false)), share_injuries=(p_action='accept' and coalesce(p_injuries,false)),
       accepted_at=case when p_action='accept' then now() end, updated_at=now() where id=c.id;
   elsif p_action in ('revoke','consent') and c.status='accepted' and c.athlete_id=actor.id and actor.role='athlete' then
     update public.coach_connections set status=case when p_action='revoke' then 'revoked' else 'accepted' end,
       share_recovery=(p_action='consent' and coalesce(p_recovery,false)), share_injuries=(p_action='consent' and coalesce(p_injuries,false)), updated_at=now() where id=c.id;
-  elsif p_action='remove' and c.coach_id=actor.id and actor.role='coach' and c.status in ('pending','accepted') then
+  elsif p_action='remove' and c.coach_id=actor.id and actor.role in ('coach','admin') and c.status in ('pending','accepted') then
     update public.coach_connections set status='removed',share_recovery=false,share_injuries=false,updated_at=now() where id=c.id;
   else raise exception 'Connection action not permitted' using errcode='42501'; end if;
   return c.id;
@@ -86,7 +86,7 @@ create function coach_private.fighters(p_athlete_id uuid) returns jsonb
 language plpgsql stable security definer set search_path='' as $$
 declare result jsonb;
 begin
-  if not exists(select 1 from public.profiles where id=auth.uid() and role='coach' and access_status='approved')
+  if not exists(select 1 from public.profiles where id=auth.uid() and role in ('coach','admin') and access_status='approved')
     then raise exception 'Coach account required' using errcode='42501'; end if;
   select coalesce(jsonb_agg(data order by data->>'name'),'[]'::jsonb) into result from (
     select jsonb_build_object('id',a.id,'connection_id',c.id,'name',a.full_name,'avatar_url',a.avatar_url,
