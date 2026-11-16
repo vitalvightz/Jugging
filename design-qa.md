@@ -29,8 +29,8 @@ has session/sharing details closed, matching the reference's resting state.
 1. The original dashboard had large cards, a wide table and long explanatory
    copy. It did not have the reference's priority and upcoming-fight sections.
    Replaced the main roster table with compact linked rows, added the attention
-   list and countdown cards, reduced metric/card spacing and moved count
-   explanations and connection management into details disclosures.
+   list and countdown cards, reduced metric/card spacing and removed count
+   explanations entirely and moved connection management to Coach access.
 2. The first compact profile capture had a narrow intrinsic content width and
    navigation buttons wrapping. Set the workspace width to 100%, removed the
    inherited minimum width on breadcrumb actions and adjusted mobile spacing.
@@ -83,6 +83,8 @@ introducing another icon library for a small additive workspace.
 ## Implementation checklist
 
 - Compact dashboard and profile implemented inside existing routes.
+- Final copy pass removes rollover/counting paragraphs, roster dates and extra
+  status lines; dashboard labels match the supplied reference.
 - Reference hierarchy and short copy checked in rendered screenshots.
 - Mobile layout, keyboard controls and accessibility checked.
 - Permission boundary and read-only performance access retained.

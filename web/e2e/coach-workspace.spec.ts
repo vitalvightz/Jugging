@@ -140,12 +140,12 @@ for (const width of [1440, 390, 320]) {
       page.getByRole("heading", { name: "Your corner. In focus." }),
     ).toBeVisible();
     await expect(
-      page.getByText("2 sessions this week", { exact: false }),
+      page.getByText("Boxing · 2 sessions", { exact: false }),
     ).toBeVisible();
     await expect(
       page
-        .getByRole("link", { name: /Test Fighter.*sessions this week/ })
-        .getByText("Needs attention"),
+        .getByRole("link", { name: /Test Fighter.*sessions/ })
+        .getByText("Recovery concern"),
     ).toBeVisible();
     expect(
       await page.evaluate(
@@ -165,14 +165,15 @@ for (const width of [1440, 390, 320]) {
         ["serious", "critical"].includes(v.impact ?? ""),
       ),
     ).toEqual([]);
+    await page
+      .getByRole("button", { name: "Search fighters", exact: true })
+      .click();
     await page.getByRole("searchbox").fill("does not exist");
     await expect(
       page.getByText("No fighters match this search."),
     ).toBeVisible();
     await page.getByRole("searchbox").fill("Test Fighter");
-    await page
-      .getByRole("link", { name: /Test Fighter.*sessions this week/ })
-      .click();
+    await page.getByRole("link", { name: /Test Fighter.*sessions/ }).click();
     await expect(
       page.getByRole("heading", { name: "Fighter overview" }),
     ).toBeVisible();
@@ -223,7 +224,10 @@ test("empty roster and invitation", async ({ page, baseURL }) => {
   const state = await fixture(page, baseURL!, "coach", true);
   await page.goto("/coach");
   await expect(page.getByText("Your corner starts here.")).toBeVisible();
-  await page.getByText("Manage connections", { exact: true }).click();
+  await page.goto("/settings/coach-access");
+  await expect(
+    page.getByRole("textbox", { name: "Athlete email" }),
+  ).toBeVisible();
   await page
     .getByRole("textbox", { name: "Athlete email" })
     .fill("fighter@example.invalid");

@@ -73,13 +73,13 @@ rows display as skipped; absent logs are never classified as missed training.
 S&C progress requires actual scheduled strength/conditioning identities and
 matching plan/day completions. No inferred sessions or denominators are added.
 
-Active fighters have a completed training occurrence or positive-round sparring
-report in the inclusive current-day / previous-six-day window. Needs attention
+The dashboard’s Active this week count uses completed training occurrences or
+positive-round sparring reports since Monday in each athlete’s training week. Needs attention
 uses a recent explicit poor sleep/flat body, readiness <=2, fatigue >=4 or sleep
 quality <=2, open shared injury flags, or recent shared heavy-contact/rocked
 reports. Missing, unshared or stale check-ins do not create concern flags.
-Upcoming fights counts connected fighters with a date on or after their current
-training day. No production fixture data is included.
+Upcoming fights counts connected fighters with dates in the next 30 days,
+including their current training day. No production fixture data is included.
 
 ## Verification
 
@@ -133,7 +133,7 @@ the existing app's locale and theme shell.
 - New coach components, helpers and browser tests pass ESLint with zero warnings.
   Existing navigation/settings retain their pre-existing lint warnings.
 - PostgreSQL 17: 32 permission/projection assertions passed and rolled back.
-- Frontend affected-area regressions: 25 passed.
+- Frontend affected-area regressions after rebasing onto latest Main: 26 passed.
 - Existing Python authentication, authorization, training history and consent
   checks: 44 passed using test-only environment markers.
 - Chromium: seven flows passed across 1440, 390 and 320 CSS-pixel widths.
@@ -141,7 +141,7 @@ the existing app's locale and theme shell.
   timer-provider tests: 458 passed, zero failed, 148 cancelled. This is not a
   claim that the complete suite passed.
 
-The final UI follows the user's supplied dashboard/profile references. Optional
-explanations and connection management are collapsed; full consent wording
-remains available before sharing. The supplied screenshots' illustrative
+The final UI follows the user's supplied dashboard/profile references. The dashboard follows the reference copy with two-line fighter rows. Counting
+explanations are omitted, search is expandable, and connection management lives
+in Coach access. Full consent wording remains available before sharing. The supplied screenshots' illustrative
 fighters and metric values are not copied into production.

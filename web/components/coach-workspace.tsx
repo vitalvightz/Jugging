@@ -155,7 +155,7 @@ function Workspace({
     <div className={styles.workspace}>
       <header className={fighterId ? styles.profileHeader : styles.header}>
         <div>
-          <p className="kicker">
+          <p className={showRoster ? styles.srOnly : "kicker"}>
             {fighterId
               ? "Fighter overview"
               : coach
@@ -176,11 +176,6 @@ function Workspace({
           </p>
         </div>
         <div className={styles.actions}>
-          {coach && !fighterId && !connectionsOnly ? (
-            <Link className="cta" href="/settings/coach-access">
-              Invite fighter
-            </Link>
-          ) : null}
           {fighterId ? (
             <Link className="ghost-button" href="/coach">
               ← All fighters
@@ -191,17 +186,19 @@ function Workspace({
               Coach workspace
             </Link>
           ) : null}
-          <button
-            className="ghost-button"
-            type="button"
-            disabled={busy || loading}
-            onClick={() => {
-              setLoading(true);
-              void load();
-            }}
-          >
-            Refresh
-          </button>
+          {!showRoster || error ? (
+            <button
+              className="ghost-button"
+              type="button"
+              disabled={busy || loading}
+              onClick={() => {
+                setLoading(true);
+                void load();
+              }}
+            >
+              Refresh
+            </button>
+          ) : null}
         </div>
       </header>
       {error ? (
@@ -224,7 +221,7 @@ function Workspace({
           </section>
         )
       ) : null}
-      {!fighterId ? (
+      {!fighterId && !showRoster ? (
         <details className={styles.panel} open={!coach || connectionsOnly}>
           <summary className={styles.manageSummary}>
             {coach ? "Manage connections" : "Your coaches"}
@@ -294,9 +291,14 @@ function CoachDashboard({
     fighter,
     summary: fighterSummary(fighter),
   }));
+  const [searchOpen, setSearchOpen] = useState(false);
   const attention = rows.filter((row) => row.summary.attention);
   const upcoming = rows
-    .filter((row) => row.summary.upcoming)
+    .filter(
+      (row) =>
+        row.summary.upcoming &&
+        row.fighter.fight_date! <= dayOffset(row.fighter.today, 30),
+    )
     .sort((a, b) => a.fighter.fight_date!.localeCompare(b.fighter.fight_date!));
   const visible = rows.filter(({ fighter }) =>
     `${fighter.name} ${fighter.sport ?? ""}`
@@ -309,12 +311,18 @@ function CoachDashboard({
         {[
           ["Total fighters", rows.length, "Connected athletes"],
           [
-            "Active fighters",
-            rows.filter((r) => r.summary.active).length,
-            "Logged training · 7 days",
+            "Active this week",
+            rows.filter(
+              (r) =>
+                r.summary.weekSessions > 0 ||
+                r.fighter.sparring_reports?.some(
+                  (s) => s.rounds > 0 && s.day >= weekStart(r.fighter.today),
+                ),
+            ).length,
+            "Completed training",
           ],
           ["Needs attention", attention.length, "Reported concerns"],
-          ["Upcoming fights", upcoming.length, "Scheduled fights"],
+          ["Upcoming fights", upcoming.length, "Next 30 days"],
         ].map(([label, value, help]) => (
           <article className={styles.metric} key={label}>
             <span>{label}</span>
@@ -338,7 +346,7 @@ function CoachDashboard({
             <h2>Needs attention</h2>
           </div>
           <span className={styles.flag}>
-            {attention.length} {attention.length === 1 ? "fighter" : "fighters"}
+            {attention.length} {attention.length === 1 ? "flag" : "flags"}
           </span>
         </div>
         {attention.length ? (
@@ -410,17 +418,29 @@ function CoachDashboard({
       <section className={styles.panel}>
         <div className={styles.sectionHeading}>
           <h2>Your fighters</h2>
-          <small className={styles.muted}>{rows.length} connected</small>
+          <div className={styles.rosterTools}>
+            <small className={styles.muted}>{rows.length} connected</small>
+            <button
+              className={styles.searchToggle}
+              aria-label="Search fighters"
+              aria-expanded={searchOpen}
+              onClick={() => setSearchOpen(!searchOpen)}
+            >
+              <TileIcon name="source" />
+            </button>
+          </div>
         </div>
-        <label className={styles.search}>
-          <span className={styles.srOnly}>Search fighters</span>
-          <input
-            type="search"
-            placeholder="Search name or sport"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </label>
+        {searchOpen ? (
+          <label className={styles.search}>
+            <span className={styles.srOnly}>Search fighters</span>
+            <input
+              type="search"
+              placeholder="Search name or sport"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </label>
+        ) : null}
         {!rows.length ? (
           <div className={styles.empty}>
             <strong>Your corner starts here.</strong>
@@ -440,39 +460,31 @@ function CoachDashboard({
                   <span className={styles.rowCopy}>
                     <strong>{f.name || "Fighter"}</strong>
                     <small>
-                      {humanize(f.sport)} · {s.weekSessions} sessions this week
-                    </small>
-                    <small>
-                      Last activity:{" "}
-                      {s.lastActivity
-                        ? formatDay(s.lastActivity)
-                        : "Not recorded"}
-                      {s.upcoming ? ` · Fight: ${formatDay(f.fight_date)}` : ""}
+                      {humanize(f.sport)} · {s.weekSessions} sessions
                     </small>
                   </span>
                   <span className={styles.rosterState}>
                     <span
-                      className={s.attention ? styles.concern : styles.muted}
+                      className={
+                        s.attention
+                          ? styles.concern
+                          : s.recovery === "No concern reported"
+                            ? styles.positive
+                            : styles.muted
+                      }
                     >
-                      {s.attention ? "Needs attention" : s.recovery}
+                      {s.attention
+                        ? "Recovery concern"
+                        : s.recovery === "No concern reported"
+                          ? "On track"
+                          : s.recovery}
                     </span>
-                    <small>
-                      {s.recoveryDay ? formatDay(s.recoveryDay) : ""}
-                    </small>
                   </span>
                 </Link>
               </li>
             ))}
           </ul>
         )}
-        <details className={styles.method}>
-          <summary>How counts work</summary>
-          <p>
-            Weeks start Monday in the athlete’s timezone. Completed and modified
-            sessions count; day credits do not. Missing logs are not missed
-            training.
-          </p>
-        </details>
       </section>
     </>
   );
@@ -970,7 +982,6 @@ function FighterOverview({ fighter: f }: { fighter: Fighter }) {
           ) : null}
         </div>
       </section>
-      <p className={styles.footnote}>Read-only · Last 56 training days.</p>
     </>
   );
 }
