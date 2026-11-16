@@ -36,7 +36,7 @@
   padding: 8px 14px;
   border-radius: 9px;
 }
-.workspace :is(button, a, input, summary):focus-visible {
+.workspace :is(button, a, input, select, summary):focus-visible {
   outline: 2px solid #ee7b8b;
   outline-offset: 3px;
 }
@@ -528,4 +528,23 @@
 @media (max-width: 600px) {
   .weightTiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .weightTiles > div { min-width: 0; }
+}
+
+.fighterSelector {
+  display: grid;
+  gap: 8px;
+  max-width: 28rem;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.fighterSelector select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #2a2d34);
+  border-radius: 9px;
+  background: var(--bg-elevated, #15171c);
+  color: var(--text-primary, #fff);
+  font: inherit;
+  font-size: 14px;
 }

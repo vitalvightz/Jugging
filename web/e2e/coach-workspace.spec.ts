@@ -269,6 +269,7 @@ async function fixture(
       logged.unshift(row);
       return route.fulfill({ status: 201, json: row });
     }
+    if (path.endsWith("/plans")) return route.fulfill({ json: [] });
     if (path.endsWith("/training/plan")) return route.fulfill({ json: [] });
     if (path.endsWith("/exercises"))
       return route.fulfill({ json: { entries: [] } });
@@ -791,7 +792,7 @@ for (const role of ["coach", "admin", "athlete"]) {
       await expect(sidebar.locator('a[href="/coach/invitations"]')).toBeVisible();
       await expect(sidebar.locator('a[href="/today"]')).toHaveCount(0);
       await sidebar.getByRole("link", { name: /^Plans/ }).click();
-      await expect(page.getByText("Plan assignment is coming soon.")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Create Plan", exact: true })).toBeVisible();
       await page.goto('/coach/log');
       await expect(page.getByRole('dialog', { name: 'Log session' })).toBeVisible();
       await page.goto('/coach/settings');
@@ -1211,3 +1212,75 @@ test("one weigh-in shows weight summary without an invented trend", async ({ pag
   await expect(section.getByText("Current", { exact: true })).toBeVisible();
   await expect(section.getByText("73.6 kg", { exact: true }).first()).toBeVisible();
 });
+
+for (const width of [390, 1440]) {
+  test(`coach draft to fighter consent and shared progress at ${width}px`, async ({ page, baseURL }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await fixture(page, baseURL!);
+    const rows: import('../lib/api-schema.generated').CoachPlan[] = [];
+    let activations = 0;
+    await page.route('**/api/coach/fighters/*/plans**', async route => {
+      const request = route.request(), url = new URL(request.url());
+      if (url.pathname.endsWith('/assign')) {
+        rows[0] = { ...rows[0], assignment_status: 'pending', assigned_at: '2026-11-15T12:00:00Z', coach_name: 'Test Coach' };
+        return route.fulfill({ json: rows[0] });
+      }
+      if (request.method() === 'POST') {
+        const body = request.postDataJSON();
+        rows.push({ ...body, id: url.searchParams.get('request_id'), fighter_id: fighterId, kind: 'self_directed', incomplete: false,
+          assignment_status: 'draft', assigned_at: null, coach_name: null, published_plan_id: null,
+          created_at: '2026-11-15T12:00:00Z', updated_at: '2026-11-15T12:00:00Z' });
+        return route.fulfill({ status: 201, json: rows[0] });
+      }
+      return route.fulfill({ json: rows });
+    });
+    await page.goto('/coach/plans');
+    await page.getByRole('button', { name: 'Create Plan', exact: true }).click();
+    await expect(page.getByRole('combobox', { name: 'Fighter', exact: true })).toBeDisabled();
+    await page.getByLabel('Plan name', { exact: true }).fill('Coach technical week');
+    await page.getByRole('button', { name: /^Monday,/ }).click();
+    await page.getByRole('button', { name: 'Add session on Monday', exact: true }).click();
+    const session = page.getByRole('dialog', { name: 'New session', exact: true });
+    await session.getByRole('button', { name: 'Light technical / skill', exact: true }).click();
+    await session.getByRole('button', { name: 'Add session', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Save & view plan' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+    await page.getByRole('button', { name: 'View saved plans', exact: true }).click();
+    await expect(page.getByText('Draft', { exact: true })).toBeVisible();
+    expect(activations).toBe(0);
+    await page.getByRole('button', { name: 'Assign to fighter', exact: true }).click();
+    await expect(page.getByText('Pending', { exact: true })).toBeVisible();
+    expect(activations).toBe(0);
+    await setup(page, baseURL!, 'athlete');
+    await page.route('**/api/custom-plans/assignments**', async route => {
+      if (route.request().method() === 'POST') {
+        activations++;
+        rows[0] = { ...rows[0], assignment_status: 'active', published_plan_id: 'test-plan' };
+        return route.fulfill({ json: { plan_id: 'test-plan' } });
+      }
+      return route.fulfill({ json: rows });
+    });
+    await page.goto('/plans');
+    const assigned = page.getByRole('region', { name: 'Coach assigned plans' });
+    await expect(assigned).toContainText('Test Coach');
+    await expect(assigned.getByRole('button', { name: 'Activate plan' })).toHaveCount(0);
+    await assigned.getByRole('button', { name: 'Preview Plan' }).click();
+    await expect(assigned).toContainText('Monday');
+    await assigned.getByRole('button', { name: 'Activate plan' }).click();
+    await expect(assigned.getByText('Active', { exact: true })).toBeVisible();
+    expect(activations).toBe(1);
+    const a11y = await new AxeBuilder({ page }).include('[aria-label="Coach assigned plans"]').analyze();
+    expect(a11y.violations).toEqual([]);
+    await fixture(page, baseURL!);
+    await page.route('**/api/coach/fighters/*/plans**', route => route.fulfill({ json: rows }));
+    await page.route('**/api/coach/fighters/*/training/plan**', route => route.fulfill({ json: [
+      { id: 'strength', plan_id: 'test-plan', day: '2026-11-09', title: 'Strength', type: 'strength_power', blocks: [] },
+      { id: 'spar', plan_id: 'test-plan', day: '2026-11-15', title: 'Technical', type: 'skill', blocks: [] },
+    ] }));
+    await page.goto('/coach/plans');
+    await expect(page.getByText('This week: 2 / 2 scheduled sessions completed')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'View fighter progress' })).toHaveAttribute('href', `/coach/fighters/${fighterId}#training-history`);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/coach-plan-assignment-${width}.png`, fullPage: true });
+  });
+}

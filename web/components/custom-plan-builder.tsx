@@ -111,8 +111,10 @@ function PencilIcon() {
     </svg>
   );
 }
-export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboarding = null }: { accessToken: string; planId?: string; addSessionDay?: string | null; onboarding?: MeResponse | null }) {
+export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboarding = null, coachFighterId, onCoachClose }: { onCoachClose?: () => void; coachFighterId?: string; accessToken: string; planId?: string; addSessionDay?: string | null; onboarding?: MeResponse | null }) {
   const router = useRouter();
+  const requestId = useRef(crypto.randomUUID());
+  const savedPlansHref = coachFighterId ? "/coach/plans" : "/plans#custom-plans";
   const fadeNavigate = useFadeNavigate();
   const [draft, setDraft] = useState<Draft>(() => ({
     name: "My Training Plan",
@@ -169,7 +171,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   const latest = useRef(draft);
   useEffect(() => { latest.current = draft; });
   // Read only once an exercise is open, for last time's weight.
-  const past = usePastExercises(adding || editing ? accessToken : null);
+  const past = usePastExercises(!coachFighterId && (adding || editing) ? accessToken : null);
   useEffect(() => {
     if (!planId) void trackProductEvent(accessToken, "plan_editor_opened", "plans");
   }, [accessToken, planId]);
@@ -197,7 +199,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   useEffect(() => {
     if (!planId || loaded.current) return;
     let active = true;
-    void getCustomPlan(accessToken, planId)
+    void getCustomPlan(accessToken, planId, coachFighterId)
       .then((plan) => {
         if (active) {
           loaded.current = true;
@@ -227,7 +229,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
     return () => {
       active = false;
     };
-  }, [accessToken, planId, retry, onboarding, addSessionDay]);
+  }, [accessToken, planId, retry, onboarding, addSessionDay, coachFighterId]);
   useEffect(() => {
     if (!loading && loaded.current) heading.current?.focus({ preventScroll: true });
   }, [loading]);
@@ -393,7 +395,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   function prefill(id: string, entry: LibraryEntry, hasGuidance: boolean) {
     void Promise.all([
       getCustomDoseSuggestion(accessToken, entry.catalogue_id).catch(() => null),
-      pastExercisesByKey(accessToken, getExerciseLibrary),
+      coachFighterId ? new Map() : pastExercisesByKey(accessToken, getExerciseLibrary),
       // Search results carry no coaching guidance; the preview already did.
       hasGuidance ? null : getTrainingLibraryEntry(accessToken, entry.catalogue_id).then(detail => detail.guidance).catch(() => null),
     ]).then(([suggestion, history, guidance]) => {
@@ -535,6 +537,11 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
       root.style.removeProperty("--custom-save-height");
     };
   }, [loading, selecting]);
+  async function closeCoach() {
+    if (unsaved && !window.confirm("Discard unsaved changes?")) return;
+    await releaseGuard.current();
+    onCoachClose?.();
+  }
   async function save(viewPlan = false) {
     if (!draftValid || (viewPlan && !publishable)) return;
     setPending(true);
@@ -577,16 +584,18 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
           })),
         },
         draft.id,
+        coachFighterId,
+        requestId.current,
       );
       if (!mounted.current) return;
       await releaseGuard.current();
       setDraft(orderedDraft(saved));
       setOpened(true);
       setDirty(false);
-      setMessage(saved.incomplete ? "Draft saved. Finish the workouts listed below when ready." : "Plan saved. View your plan to activate it.");
-      window.history.replaceState(window.history.state, "", `/plans/custom?plan=${saved.id}`);
+      setMessage(coachFighterId ? "Draft saved. Return to coach plans to assign it." : saved.incomplete ? "Draft saved. Finish the workouts listed below when ready." : "Plan saved. View your plan to activate it.");
+      if (!coachFighterId) window.history.replaceState(window.history.state, "", `/plans/custom?plan=${saved.id}`);
       loaded.current = true;
-      if (viewPlan) {
+      if (viewPlan && !coachFighterId) {
         const published = await publishCustomPlan(accessToken, saved.id);
         fadeNavigate(() => router.push(`/plans/${published.plan_id}`));
       }
@@ -605,7 +614,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   if (planId && !opened)
     return (
       <section className={styles.builder}>
-        <Link href="/plans#custom-plans">← Saved plans</Link>
+        {onCoachClose ? <button type="button" className="ghost-button" onClick={() => void closeCoach()}>← Saved plans</button> : <Link href={savedPlansHref}>← Saved plans</Link>}
         <p role="alert">{error}</p>
         <button
           className="ghost-button"
@@ -643,7 +652,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   return (
     <section className={styles.builder} aria-label="Custom training plan builder">
       <header className={styles.header}>
-        <Link href="/plans#custom-plans">← Saved plans</Link>
+        {onCoachClose ? <button type="button" className="ghost-button" onClick={() => void closeCoach()}>← Saved plans</button> : <Link href={savedPlansHref}>← Saved plans</Link>}
         <div className={styles.row}>
           <h1 ref={heading} tabIndex={-1}>
             {draft.name}
@@ -659,7 +668,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
       ) : null}
       {message ? (
         <p role="status">
-          {message} <Link href="/plans#custom-plans">View saved plans</Link>
+          {message} {onCoachClose ? <button type="button" className="ghost-button" onClick={() => void closeCoach()}>View saved plans</button> : <Link href={savedPlansHref}>View saved plans</Link>}
         </p>
       ) : null}
       <form
@@ -733,17 +742,17 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
             </details> : null}
             <div className={styles.saveActions}>
               {/* One primary at a time: Save draft until the plan can be published, then Save & view plan. */}
-              <button type="submit" className={publishable ? "ghost-button" : "cta"} disabled={!draftValid}>
+              <button type="submit" className={publishable && !coachFighterId ? "ghost-button" : "cta"} disabled={!draftValid}>
                 {pending ? "Saving…" : "Save draft"}
               </button>
-              <button type="button" className={publishable ? "cta" : "ghost-button"} disabled={!publishable} onClick={() => void save(true)}>
+              {!coachFighterId ? <button type="button" className={publishable ? "cta" : "ghost-button"} disabled={!publishable} onClick={() => void save(true)}>
                 Save &amp; view plan
-              </button>
+              </button> : null}
             </div>
           </div>
         </fieldset>
       </form>
-      {draft.id ? (
+      {draft.id && !coachFighterId ? (
         <button
           className={`ghost-button ${styles.dangerButton}`}
           disabled={pending}
@@ -940,7 +949,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
                   </select>
                 </label>
                 {/* Video and sharing are optional extras: folded, with their state in the summary. */}
-                <details className={styles.advanced}>
+                {!coachFighterId ? <details className={styles.advanced}>
                   <summary><span>Video &amp; sharing</span>
                     <small>{[editing.exercise.media_id ? "Video" : null, editing.exercise.community_revision_id ? "From community" : editing.exercise.community_id ? "Shared" : "Private"].filter(Boolean).join(" · ")}</small>
                   </summary>
@@ -959,7 +968,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
                   current?.exercise.origin === "manual" ? { ...current, exercise: { ...current.exercise, media_id: null } } : current,
                 )}>Remove video</button> : null}
                   </div>
-                </details>
+                </details> : null}
                 {editing.exercise.community_id && linkedCommunity?.id === editing.exercise.community_id && linkedCommunity.entry &&
                   communityDetailsChanged(linkedCommunity.entry, editing.exercise) ? <div role="status" className={styles.communityNotice}>
                     {linkedCommunity.entry.media_id !== editing.exercise.media_id

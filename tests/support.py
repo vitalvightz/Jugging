@@ -2167,11 +2167,11 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         return copy.deepcopy(row)
 
     def list_custom_plans(self, athlete_id: str) -> list[dict]:
-        return [copy.deepcopy(row) for row in self.custom_plans.values() if row["athlete_id"] == athlete_id]
+        return [copy.deepcopy(row) for row in self.custom_plans.values() if row["athlete_id"] == athlete_id and not row.get("fighter_id")]
 
     def get_custom_plan(self, athlete_id: str, plan_id: str) -> dict | None:
         row = self.custom_plans.get(plan_id)
-        return copy.deepcopy(row) if row and row["athlete_id"] == athlete_id else None
+        return copy.deepcopy(row) if row and row["athlete_id"] == athlete_id and not row.get("fighter_id") else None
 
     def update_custom_plan(self, athlete_id: str, plan_id: str, fields: dict) -> dict | None:
         if not self.get_custom_plan(athlete_id, plan_id):

@@ -13,6 +13,7 @@ import {
 import { createPortal } from "react-dom";
 import { RequireAuth } from "@/components/auth-guard";
 import { ManualExerciseLogger } from "@/components/manual-exercise-logger";
+import { CoachPlans } from "./coach-plans";
 import { CoachFeedback } from "./coach-feedback";
 import { LogTraining } from "@/components/log-training";
 import { useAppSession } from "@/components/auth-provider";
@@ -356,7 +357,7 @@ function Fighters({ token, fighterId, view }: { token: string; fighterId?: strin
           />
         ) : null}
       </div>
-      {view === "plans" ? <p className={styles.empty}>Plan assignment is coming soon.</p> : view === "log" && fighters && !loggingFighters.length ? <p className={styles.empty}>No fighters have authorised session logging.</p> : null}
+      {view === "plans" && fighters ? <CoachPlans key={token} token={token} fighters={fighters} /> : view === "log" && fighters && !loggingFighters.length ? <p className={styles.empty}>No fighters have authorised session logging.</p> : null}
       {fighterId ? <h1 className={styles.srOnly}>Fighter overview</h1> : null}
       <LoadState error={error} loading={!fighters} retry={reload} />
       {!fighters ? null : !fighterId ? (

@@ -62,6 +62,36 @@ class _SummaryPlanReads:
         return self._store.get_plan_summary_for_athlete(plan_id, athlete_id)
 
 
+def reconcile_plan_activation(store, profile, plan_id):
+    # Activation can restore an existing plan whose completion history was
+    # already present. Rebuild the persisted adherence view from that
+    # history; this reconciliation is deliberately XP-free.
+    try:
+        reconcile_training_streak(
+            store,
+            athlete_id=profile.athlete_id,
+            athlete_timezone=profile.athlete_timezone,
+        )
+    except Exception:  # noqa: BLE001 - the active pointer remains authoritative
+        logger.exception(
+            "[streak] activation training reconciliation failed athlete_id=%s plan_id=%s",
+            profile.athlete_id,
+            plan_id,
+        )
+    try:
+        reconcile_adherence_streak(
+            store,
+            athlete_id=profile.athlete_id,
+            athlete_timezone=profile.athlete_timezone,
+        )
+    except Exception:  # noqa: BLE001 - the active pointer remains authoritative
+        logger.exception(
+            "[streak] activation reconciliation failed athlete_id=%s plan_id=%s",
+            profile.athlete_id,
+            plan_id,
+        )
+
+
 def build_plans_router(*, require_profile, require_plan_row, get_store) -> APIRouter:
     router = APIRouter()
     # Kept in the factory signature for compatibility with create_app wiring.
@@ -242,6 +272,10 @@ def build_plans_router(*, require_profile, require_plan_row, get_store) -> APIRo
             datetime.now(timezone.utc), athlete_timezone=profile.athlete_timezone
         )
         rows = store.list_user_plans(profile.athlete_id)
+        # A failed/concurrent consent request can leave an inert compiled row.
+        # The assignment card, not the normal held-plan list, owns that preview.
+        rows = [row for row in rows if not (row.get('status') == 'review_required' and
+                (row.get('stage2_validator_report') or {}).get('custom_plan', {}).get('coach_assignment_id'))]
         if not is_effective_admin_profile(profile, store):
             rows = [row for row in rows if not _is_triage_blocked_plan(row)]
         return [_map_plan_summary(row, current_training_day=training_day) for row in rows]
@@ -367,33 +401,7 @@ def build_plans_router(*, require_profile, require_plan_row, get_store) -> APIRo
             overlap_action=activation.overlap_action if activation else None,
             current_training_day=training_day,
         )
-        # Activation can restore an existing plan whose completion history was
-        # already present. Rebuild the persisted adherence view from that
-        # history; this reconciliation is deliberately XP-free.
-        try:
-            reconcile_training_streak(
-                store,
-                athlete_id=profile.athlete_id,
-                athlete_timezone=profile.athlete_timezone,
-            )
-        except Exception:  # noqa: BLE001 - the active pointer remains authoritative
-            logger.exception(
-                "[streak] activation training reconciliation failed athlete_id=%s plan_id=%s",
-                profile.athlete_id,
-                plan_id,
-            )
-        try:
-            reconcile_adherence_streak(
-                store,
-                athlete_id=profile.athlete_id,
-                athlete_timezone=profile.athlete_timezone,
-            )
-        except Exception:  # noqa: BLE001 - the active pointer remains authoritative
-            logger.exception(
-                "[streak] activation reconciliation failed athlete_id=%s plan_id=%s",
-                profile.athlete_id,
-                plan_id,
-            )
+        reconcile_plan_activation(store, profile, plan_id)
         return _map_plan_summary(plan_row, current_training_day=training_day)
 
     @router.patch("/api/plans/{plan_id}", response_model=PlanDetail)

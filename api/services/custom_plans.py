@@ -266,7 +266,7 @@ def _dose_text(dose: dict) -> str:
     return " · ".join(parts)
 
 
-def publish_custom_plan(store, draft: dict, profile) -> dict:
+def publish_custom_plan(store, draft: dict, profile, *, awaiting_assignment: bool = False) -> dict:
     from api.compliance_guards import require_onboarding_compliance
     from api.contracts.training_day import resolve_training_day_str
     from api.models import AthleteProfileInput, PlanRequest
@@ -276,6 +276,10 @@ def publish_custom_plan(store, draft: dict, profile) -> dict:
     latest = store.get_latest_intake(profile.athlete_id)
     training_day = resolve_training_day_str(datetime.now(timezone.utc), athlete_timezone=profile.athlete_timezone)
     result = custom_open_plan_result(draft, profile, training_day=training_day)
+    if awaiting_assignment:
+        result["status"] = "review_required"
+        result["planning_brief"]["coach_assignment_id"] = draft["id"]
+        result["stage2_validator_report"]["custom_plan"]["coach_assignment_id"] = draft["id"]
     existing = store.get_plan_for_athlete(result["plan_id"], profile.athlete_id)
     if existing:
         return existing

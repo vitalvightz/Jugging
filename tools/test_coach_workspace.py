@@ -56,11 +56,12 @@ for filename in (
     '20261116021019_coach_logged_sessions.sql',
     '20261116021019_coach_logged_sessions.sql',  # Safe replay preserves records.
     '20261116024150_coach_feedback.sql',
+    '20261116145410_coach_plan_assignments.sql',
 ):
     bootstrap += (root / 'supabase/migrations' / filename).read_text() + '\n'
 bootstrap += 'grant all on all tables in schema public to service_role; grant all on all sequences in schema public to service_role;\n'
 for filename in ('coach_workspace_permissions.sql', 'coach_signup_invitations.sql',
-                 'coach_self_signup.sql', 'coach_weight_consent.sql', 'coach_logged_sessions.sql', 'coach_feedback.sql', 'coach_fighter_profile_details.sql'):
+                 'coach_self_signup.sql', 'coach_weight_consent.sql', 'coach_logged_sessions.sql', 'coach_feedback.sql', 'coach_fighter_profile_details.sql', 'coach_plan_assignments.sql'):
     source = (root / 'tests' / filename).read_text()
     # Match the JWT role to each simulated request; fixture writes use the
     # backend role and must still pass the actual compliance triggers.

@@ -184,7 +184,7 @@ def test_all_routes_require_authentication(api, identities):
 def test_privileged_store_queries_are_owner_scoped(operation):
     client = MagicMock()
     query = client.table.return_value
-    for method in ("select", "insert", "update", "delete", "eq", "order", "limit"):
+    for method in ("select", "insert", "update", "delete", "eq", "is_", "order", "limit"):
         getattr(query, method).return_value = query
     query.execute.return_value = SimpleNamespace(data=[{"id": "plan", "athlete_id": "owner"}])
     store = SupabaseAppStore(client=client, admin_emails=set())
@@ -200,6 +200,8 @@ def test_privileged_store_queries_are_owner_scoped(operation):
         assert [call.args for call in query.eq.call_args_list] == [("athlete_id", "owner"), ("id", "plan")]
         if operation == "update":
             query.update.assert_called_once_with({"name": "Plan", "sessions": [], "incomplete": True})
+    if operation != "create":
+        query.is_.assert_called_once_with("fighter_id", "null")
     client.table.assert_called_once_with("custom_training_plans")
 
 

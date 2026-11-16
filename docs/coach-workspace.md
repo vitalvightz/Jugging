@@ -154,8 +154,9 @@ Missing, unshared or stale check-ins never create a concern.
 ## Limits
 
 Invitations are in-app only; there is no email or push notification. A coach
-can hold 250 pending or accepted connections. Programme editing, messaging and
-long-term analytics are out of scope. Coach screens use English copy.
+can hold 250 pending or accepted connections. Generated-programme editing, messaging and
+long-term analytics are out of scope. Coach-authored custom plans and consent-based
+assignment are documented in [Coach plan assignment](coach-plan-assignment.md). Coach screens use English copy.
 
 ## Coach feedback and profile details
 

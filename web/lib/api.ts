@@ -11,7 +11,7 @@ import type { ExternalTrainingFields, TrainingHistoryPage, TrainingHistorySessio
 import type { CoachPlannedSession, CoachFighterWeight, SessionDetails, ExerciseLibraryResponse, ExercisePerformancesResponse } from "@/lib/api-schema.generated";
 import type { ManualExerciseEntry, ManualExerciseListResponse, PerformedExerciseInput } from "@/lib/api-schema.generated";
 import type { LibraryFeaturedResponse, LibraryPreview, LibrarySearchResponse } from "@/lib/api-schema.generated";
-import type { CustomDoseSuggestion, CustomPlan, CustomPlanInput } from "@/lib/api-schema.generated";
+import type { CustomDoseSuggestion, CustomPlan, CustomPlanInput, CoachPlan } from "@/lib/api-schema.generated";
 import type { PrivateMediaPreview, PrivateMediaSettings, UploadPermission, UploadState, YouTubeClipInput } from "@/lib/api-schema.generated";
 import type {
   ApproveAndResumeGenerationRequest,
@@ -113,8 +113,8 @@ export function listCustomPlans(token: string, signal?: AbortSignal) {
   return readJson<CustomPlan[]>("/api/custom-plans", { token, signal });
 }
 
-export function getCustomPlan(token: string, id: string) {
-  return readJson<CustomPlan>(`/api/custom-plans/${encodeURIComponent(id)}`, { token });
+export function getCustomPlan(token: string, id: string, fighterId?: string) {
+  return readJson<CustomPlan>(fighterId ? `${coachPlansPath(fighterId)}/${encodeURIComponent(id)}` : `/api/custom-plans/${encodeURIComponent(id)}`, { token });
 }
 
 export function publishCustomPlan(token: string, id: string) {
@@ -123,8 +123,9 @@ export function publishCustomPlan(token: string, id: string) {
   }).then(row => { requestXpRefresh(); return row; });
 }
 
-export function saveCustomPlan(token: string, body: CustomPlanInput, id?: string) {
-  return readJson<CustomPlan>(id ? `/api/custom-plans/${encodeURIComponent(id)}` : "/api/custom-plans", {
+export function saveCustomPlan(token: string, body: CustomPlanInput, id?: string, fighterId?: string, requestId?: string) {
+  const path = fighterId ? `${coachPlansPath(fighterId)}${id ? `/${encodeURIComponent(id)}` : `?request_id=${encodeURIComponent(requestId!)}`}` : id ? `/api/custom-plans/${encodeURIComponent(id)}` : "/api/custom-plans";
+  return readJson<CustomPlan>(path, {
     token, method: id ? "PUT" : "POST", body: JSON.stringify(body),
   });
 }
@@ -613,8 +614,8 @@ export function logFighterTraining(token: string, athleteId: string, body: Exter
   return readJson(`${fighterPath(athleteId)}/training/sessions`, { method: "POST", token, body: JSON.stringify(body) });
 }
 
-export function getFighterPlan(token: string, athleteId: string): Promise<CoachPlannedSession[]> {
-  return readJson(`${fighterPath(athleteId)}/training/plan`, { token });
+export function getFighterPlan(token: string, athleteId: string, includePast = false): Promise<CoachPlannedSession[]> {
+  return readJson(`${fighterPath(athleteId)}/training/plan${includePast ? "?include_past=true" : ""}`, { token });
 }
 
 export function getFighterWeight(token: string, athleteId: string): Promise<CoachFighterWeight> {
@@ -1818,4 +1819,20 @@ export async function productEventIdentity(value: string): Promise<string> {
   bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128;
   const hex = Array.from(bytes, b => b.toString(16).padStart(2,'0')).join('');
   return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+}
+
+function coachPlansPath(fighterId: string) { return `/api/coach/fighters/${encodeURIComponent(fighterId)}/plans`; }
+export function listCoachPlans(token: string, fighterId: string, signal?: AbortSignal) {
+  return readJson<CoachPlan[]>(coachPlansPath(fighterId), { token, signal });
+}
+export function assignCoachPlan(token: string, fighterId: string, id: string) {
+  return readJson<CoachPlan>(`${coachPlansPath(fighterId)}/${encodeURIComponent(id)}/assign`, { token, method: "POST" });
+}
+export function listPlanAssignments(token: string, signal?: AbortSignal) {
+  return readJson<CoachPlan[]>("/api/custom-plans/assignments", { token, signal });
+}
+export function respondPlanAssignment(token: string, id: string, action: "activate" | "decline", overlapAction?: ActivePlanOverlapAction) {
+  return readJson<PlanSummary | CoachPlan>(`/api/custom-plans/assignments/${encodeURIComponent(id)}/${action}`, {
+    token, method: "POST", body: action === "activate" ? JSON.stringify({ overlap_action: overlapAction }) : undefined,
+  });
 }
