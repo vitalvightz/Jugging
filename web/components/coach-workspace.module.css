@@ -486,3 +486,20 @@
   .tiles > div > span { white-space: nowrap; }
 }
 .recoveryTiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.foldTitle { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; list-style: none; }
+.foldTitle::-webkit-details-marker { display: none; }
+.foldTitle > span { color: var(--text-muted); font-size: 20px; transition: transform 180ms ease; }
+.fold details:not([open]) > .foldTitle > span { transform: rotate(-90deg); }
+.foldContent { padding-top: 14px; }
+.foldContent > section { padding: 0; border: 0; background: transparent; }
+.foldContent > section > h2, .foldContent > section > .sectionHeading > h2 { display: none; }
+.foldContent > section > .sectionHeading:has(> h2:only-child) { display: none; }
+.checkInList > li { justify-content: flex-start; align-items: baseline; gap: 6px 20px; }
+.checkInList > li > strong { flex: 0 0 140px; }
+.checkInReadings { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+@media (max-width: 600px) { .checkInList > li > strong { flex-basis: 100%; } }
+@media (prefers-reduced-motion: reduce) { .foldTitle > span { transition: none; } }
+@keyframes coachFoldOpen { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: no-preference) { .fold details[open] > .foldContent { animation: coachFoldOpen 180ms ease-out; } }
+@keyframes coachWatchShimmer { 0%, 68%, 100% { box-shadow: 0 0 0 transparent; border-color: var(--border-strong); } 82% { box-shadow: 0 0 12px rgba(201, 25, 53, .35); border-color: var(--brand-red); } }
+@media (prefers-reduced-motion: no-preference) { .trainingCalendar > button[aria-current="date"] { animation: coachWatchShimmer 4s ease-in-out infinite; } }

@@ -244,10 +244,17 @@ export function coachRecoveryTone(field: string, value: string | number | undefi
 export function coachCheckInValues(readings: readonly Recovery[]) {
   const labels = { sleep: "Sleep", body: "Body", readiness: "Readiness", fatigue: "Fatigue", sleep_quality: "Sleep quality" } as const;
   const values = new Map<string, { label: string; tone: RecoveryTone }>();
+  const seenFields = new Set<string>();
+  const seenValues = new Set<string>();
   for (const reading of readings) for (const field of Object.keys(labels) as (keyof typeof labels)[]) {
     const value = reading[field];
     if (value == null) continue;
-    const label = `${labels[field]}: ${typeof value === "number" ? `${value}/5` : humanize(value)}`;
+    const key = `${field}:${value}`;
+    if (seenValues.has(key)) continue;
+    seenValues.add(key);
+    const prefix = seenFields.has(field) ? `Earlier ${labels[field].toLowerCase()}` : labels[field];
+    seenFields.add(field);
+    const label = `${prefix}: ${typeof value === "number" ? `${value}/5` : humanize(value)}`;
     values.set(label, { label, tone: coachRecoveryTone(field, value) });
   }
   return [...values.values()];

@@ -1017,3 +1017,19 @@ for (const width of [320, 390]) {
     await page.screenshot({ path: `test-results/coach-permissions-spacing-${width}.png`, fullPage: true });
   });
 }
+
+test("coach sections fold and reopen without losing their contents", async ({ page, baseURL }) => {
+  await fixture(page, baseURL!);
+  await page.setViewportSize({ width: 390, height: 1000 });
+  await page.goto(`/coach/fighters/${fighterId}`);
+  for (const [name, content] of [["Sparring", "Recent sparring activity"], ["Training history", "November 2026"], ["Recovery", "Recent check-ins"], ["Fight weight", "Days to fight"]] as const) {
+    const section = page.locator("section").filter({ has: page.getByRole("heading", { name, exact: true }) });
+    const details = section.locator("details").first();
+    await expect(details).toHaveAttribute("open", "");
+    await details.locator("summary").click();
+    await expect(details).not.toHaveAttribute("open", "");
+    await expect(section.getByText(content, { exact: true })).toBeHidden();
+    await details.locator("summary").click();
+    await expect(details).toHaveAttribute("open", "");
+  }
+});

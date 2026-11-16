@@ -581,6 +581,13 @@ function Avatar({ fighter }: { fighter: Fighter }) {
   );
 }
 
+function FoldableSection({ title, children }: { title: string; children: ReactNode }) {
+  return <section className={`${styles.panel} ${styles.fold}`}><details open>
+    <summary className={styles.foldTitle}><h2>{title}</h2><span aria-hidden="true">⌄</span></summary>
+    <div className={styles.foldContent}>{children}</div>
+  </details></section>;
+}
+
 function FighterOverview({
   fighter: f,
   token,
@@ -695,7 +702,7 @@ function FighterOverview({
           </div> : null}
         </div>
       </section>
-      <section aria-label="Weekly performance">
+      <FoldableSection title="Weekly performance"><section aria-label="Weekly performance">
         <div className={styles.sectionHeading}>
           <h2>Weekly performance</h2>
           <div className={styles.weekControls}>
@@ -744,7 +751,8 @@ function FighterOverview({
           ))}
         </div>
       </section>
-      {reports.length ? (
+      </FoldableSection>
+      <FoldableSection title="Sparring">{reports.length ? (
         <section className={styles.panel}>
           <div className={styles.sectionHeading}>
             <h2>Sparring</h2>
@@ -777,17 +785,18 @@ function FighterOverview({
           <p className={styles.empty}>No sparring reports this week</p>
         </section>
       )}
+      </FoldableSection>
       {/* A new key when sharing changes drops everything these loaded
           (weigh-ins, session rows, cached session records, an open record
           sheet) and reloads it under the new permissions. */}
-      <FightWeight key={`weight:${sharingKey}`} token={token} fighter={f} />
-      <TrainingHistory
+      <FoldableSection title="Fight weight"><FightWeight key={`weight:${sharingKey}`} token={token} fighter={f} /></FoldableSection>
+      <FoldableSection title="Training history"><TrainingHistory
         key={`history:${sharingKey}:${historyKey}`}
         token={token}
         athleteId={f.id}
         today={f.today}
-      />
-      <section className={styles.panel}>
+      /></FoldableSection>
+      <FoldableSection title="Recovery"><section className={styles.panel}>
         <div className={styles.sectionHeading}><h2>Recovery</h2>{latest ? <small className={styles.muted}>Latest check-in · {formatAppDate(latest.day)}</small> : null}</div>
         {injuries.length ? <div className={styles.recoveryPriority}>
           <h3>Open injuries · {injuries.length}</h3>
@@ -809,15 +818,15 @@ function FighterOverview({
           {checkIns.length ? <CheckIns rows={allCheckIns ? checkIns : checkIns.slice(0, 3)} /> : <p className={styles.empty}>No check-ins recorded.</p>}
           {checkIns.length > 3 ? <button type="button" className="ghost-button" aria-expanded={allCheckIns} onClick={() => setAllCheckIns(!allCheckIns)}>{allCheckIns ? "Show recent check-ins" : "View all check-ins"}</button> : null}
         </> : <p className={styles.muted}>Recovery check-ins: Not shared</p>}
-      </section>
+      </section></FoldableSection>
     </>
   );
 }
 
 function CheckIns({ rows }: { rows: ReturnType<typeof groupCoachCheckIns> }) {
-  return <ul className={styles.activity}>{rows.map(row => <li key={row.day}>
+  return <ul className={`${styles.activity} ${styles.checkInList}`}>{rows.map(row => <li key={row.day}>
     <strong>{formatAppDate(row.day)}</strong>
-    {coachCheckInValues(row.readings).map(value => <span key={value.label} data-recovery-tone={value.tone}>{value.label}</span>)}
+    <span className={styles.checkInReadings}>{coachCheckInValues(row.readings).map(value => <span key={value.label} data-recovery-tone={value.tone}>{value.label}</span>)}</span>
   </li>)}</ul>;
 }
 

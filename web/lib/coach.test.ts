@@ -189,3 +189,12 @@ test("check-in dates group sources, retain distinct values and use recorded time
   assert.equal(coachRecoveryTone("readiness", 99), "unknown");
   assert.equal(coachRecoveryTone("body", "unknown"), "unknown");
 });
+
+test("conflicting readings on one date retain their order and are clearly labelled", async () => {
+  const { groupCoachCheckIns, coachCheckInValues } = await import("./coach");
+  const [day] = groupCoachCheckIns([
+    { day: "2026-11-03", source: "today", sleep: "good", recorded_at: "2026-11-03T10:00:00Z" },
+    { day: "2026-11-03", source: "daily", sleep: "okay", body: "normal", recorded_at: "2026-11-03T12:00:00Z" },
+  ]);
+  assert.deepEqual(coachCheckInValues(day.readings).map(value => value.label), ["Sleep: Okay", "Body: Normal", "Earlier sleep: Good"]);
+});
