@@ -1868,6 +1868,7 @@ export function weekLabel(week: StructuredWeek | null | undefined): string {
 
 const REST_DAY_TYPES = new Set(["rest", "recovery"]);
 const REST_HEADLINE_RE = /\b(rest|recovery|off|unavailable|no planned session|no session planned)\b/i;
+export const PLAIN_REST_HEADLINE_RE = /^(?:rest(?: day)?|off(?: day)?|day off|full rest(?: day)?|planned rest|unavailable|no (?:planned session|session planned))\.?$/i;
 // `technical` is checked before `sparring` so a "technical only / no hard
 // sparring" headline is not mislabelled as a sparring day by the stray
 // "sparring" token, and `coach_led` is the catch-all for coach-owned contact.
@@ -2002,7 +2003,7 @@ export function classifySessionlessDay(
     // day_type "rest" + "Full rest and mobility"), rather than a generic
     // "scheduled" day. day_type is only allowed to override an unclassified
     // headline — a headline that names real combat/coach work always wins.
-    if (kind === "scheduled" && dayType !== null && REST_DAY_TYPES.has(dayType)) {
+    if (kind === "scheduled" && (PLAIN_REST_HEADLINE_RE.test(headline) || (dayType !== null && REST_DAY_TYPES.has(dayType)))) {
       return {
         kind: "rest",
         title: REST_HEADLINE_RE.test(headline) ? headline : "No planned session",
