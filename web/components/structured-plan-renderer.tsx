@@ -10,6 +10,8 @@ import {
   compactTimeUnits,
   readableExerciseMetrics,
   classifySessionlessDay,
+  isPlainRestDay,
+  PLAIN_REST_HEADLINE_RE,
   isZeroLoadSupportSession,
   isCompactPlanSupportSession,
   mentalSessionCategory,
@@ -1800,7 +1802,7 @@ export function SessionlessDayCard({
         anchor={card?.mindset_anchor}
         dedupeContext={[cleanText(card?.headline), displayTitle]}
       />
-      {isRest ? <p className="sp-muted">Rest day.</p> : null}
+      {isRest && !PLAIN_REST_HEADLINE_RE.test(cleanText(card?.headline) ?? "") ? <p className="sp-muted">Rest day.</p> : null}
       {date && (kind === "technical" || kind === "light_combat") ? <ExerciseSessionScope date={date} session={{
         session_id: date, session_type: "skill", title: cleanText(card?.headline) ?? displayTitle, blocks: [],
       }}><SessionChangesFoot session={{ session_id: date, session_type: "skill", blocks: [] }} /></ExerciseSessionScope> : null}
@@ -2061,28 +2063,6 @@ export function buildDayTimeline(days: StructuredDay[], enabled: boolean): Timel
     timeline.push({ kind: "day", day, index });
   });
   return timeline;
-}
-
-/** A plan day that is genuinely just rest — no sessions, classified as rest,
- * and no day-card context worth expanding — so it can render as a compact
- * non-interactive rest row identical to the synthesized gap rows. */
-function isPlainRestDay(day: StructuredDay): boolean {
-  if (getSessions(day).length > 0 || classifySessionlessDay(day).kind !== "rest") {
-    return false;
-  }
-  const card = day.today_card;
-  // Neutral calendar placeholders use the same compact row as a camp gap.
-  // A prescribed recovery day or coach-owned contact keeps its full context.
-  const neutral = day.day_type === "rest"
-    && /^(?:unavailable|no (?:planned session|session planned))$/i.test(cleanText(card?.headline) ?? "")
-    && !cleanText(card?.coach_led_contact);
-  return !(
-    (!neutral && cleanText(card?.headline)) ||
-    cleanText(card?.primary_warning) ||
-    cleanText(card?.nutrition_summary) ||
-    cleanText(card?.weight_cut_warning) ||
-    (!neutral && getSessionCoachingLines(card?.mindset_anchor).length > 0)
-  );
 }
 
 /** Widest countdown at which an unprogrammed day is deliberate taper rest.
@@ -3266,7 +3246,7 @@ export function StructuredPlanRenderer({
   const calendarDaySelection = useMemo(() => {
     if (view !== "calendar") return null;
     const cells = calendarRows.flatMap(row => row.cells)
-      .filter(cell => cell.weekPos !== null && cell.dayIndex !== null && cell.state !== "outside" && (customPlanId || cell.state !== "rest"));
+      .filter(cell => cell.weekPos !== null && cell.dayIndex !== null && cell.state !== "outside" && cell.state !== "rest");
     const pick = (weekPos: number | null | undefined, dayIndex: number | null | undefined) =>
       cells.find(cell => cell.weekPos === weekPos && cell.dayIndex === dayIndex);
     const cell = (calendarSelection && pick(calendarSelection.weekPos, calendarSelection.dayIndex))
@@ -3318,7 +3298,6 @@ export function StructuredPlanRenderer({
                 phaseFor={openOngoing ? undefined : (weekPos) =>
                   glossaryEntry(resolvedWeekPhase(weeks[weekPos]))?.term ?? weekPhaseLabel(weeks[weekPos])}
                 onSelectDay={selectCalendarDay}
-                allowRestSelection={Boolean(customPlanId)}
               />
               {calendarSelectedDay && calendarDaySelection ? (
                 <CalendarDayPanel
@@ -3406,7 +3385,7 @@ export function StructuredPlanRenderer({
 
                 // A pure rest day renders identically to a synthesized gap row,
                 // so real and filled-in rest days read as one continuous line.
-                if (isPlainRestDay(day) && !customPlanId) {
+                if (isPlainRestDay(day)) {
                   const restDate = cleanText(day.date);
                   const displayDay = isCurrent && focusProgress.matchType === "weekday"
                     ? { ...day, date: focusProgress.trainingDayISO } : day;
@@ -3416,7 +3395,7 @@ export function StructuredPlanRenderer({
                       dayIndex={index}
                       countdown={formatCountdownLabel(day.countdown_label)}
                       weekday={openOngoing ? openTimelineDayLabel(displayDay, safePos + 1, `Training day ${index + 1}`) : weekdayLabel(restDate)}
-                      label={humanizeIfRawEnum(cleanText(day.today_card?.headline)) || "Rest"}
+                      label={(humanizeIfRawEnum(cleanText(day.today_card?.headline)) || "Rest").replace(/ day$/i, "")}
                       isCurrent={isCurrent}
                       currentLabel={calendarProgress.currentWeekPos != null ? "Today" : focusLabel}
                     />

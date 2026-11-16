@@ -90,6 +90,21 @@ test("weekday-only open plans get one row per week, dated from the anchor", () =
   assert.equal(unanchored[0].cells[1].isToday, false);
 });
 
+
+test("rest and off are inert calendar days, but prescribed recovery remains openable", () => {
+  const weeks = [{ week_index: 1, days: [
+    { date: "2026-11-16", day_type: "rest", sessions: [], today_card: { headline: "Rest day" } },
+    { date: "2026-11-17", day_type: "moderate", sessions: [], today_card: { headline: "Off day" } },
+    { date: "2026-11-18", day_type: "recovery", sessions: [], today_card: {
+      headline: "Prescribed recovery", primary_warning: "Review recovery restrictions",
+    } },
+  ] }] as StructuredWeek[];
+  const days = buildPlanCalendar(weeks)[0].cells;
+  assert.equal(days[0].state, "rest");
+  assert.equal(days[1].state, "rest");
+  assert.equal(days[2].state, "planned");
+});
+
 test("caption spans the months the plan covers", () => {
   assert.equal(calendarCaption(buildPlanCalendar(datedWeeks())), "Oct – Nov 2026");
   assert.equal(calendarCaption([]), null);

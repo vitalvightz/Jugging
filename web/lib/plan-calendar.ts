@@ -11,6 +11,7 @@ import {
   getPhysicalSessions,
   getSessions,
   isCoachLedPhysicalTrainingDay,
+  isPlainRestDay,
 } from "@/lib/structured-plan";
 import type { StructuredDay, StructuredWeek } from "@/lib/types";
 
@@ -153,7 +154,7 @@ export function calendarDayState(
   }
   // Support-only work (a visualisation, a tactical review) is still something
   // to open, so it reads as planned rather than rest.
-  return getSessions(day).length > 0 ? "planned" : "rest";
+  return getSessions(day).length > 0 || !isPlainRestDay(day) ? "planned" : "rest";
 }
 
 function describe(iso: string | null, fallback: string, state: CalendarCellState): string {

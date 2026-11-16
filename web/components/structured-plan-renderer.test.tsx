@@ -97,7 +97,7 @@ for (const openOngoing of [false, true]) {
   });
 }
 
-test("owned custom plan rest and recovery days offer Add session without changing AI plans", () => {
+test("owned custom rest days stay inert while prescribed recovery keeps its editor shortcut", () => {
   const plan: StructuredPlan = {
     plan_metadata: { title: "Own plan", plan_type: "open_ongoing_system" },
     weeks: [{ week_index: 1, days: [
@@ -110,15 +110,53 @@ test("owned custom plan rest and recovery days offer Add session without changin
   };
   const own = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} openOngoing customPlanId="draft-1"
     today={new Date("2026-11-02T12:00:00")} />);
-  assert.match(own, /href="\/plans\/custom\?plan=draft-1&amp;addSession=Mon&amp;date=2026-11-02"/);
+  assert.equal(countOccurrences(own, 'cm-rest-day'), 1);
+  assert.doesNotMatch(own, /href="\/plans\/custom\?plan=draft-1&amp;addSession=Mon&amp;date=2026-11-02"/);
   assert.match(own, /href="\/plans\/custom\?plan=draft-1&amp;addSession=Tue&amp;date=2026-11-03"/);
-  assert.equal(countOccurrences(own, "+ Add session"), 2);
+  assert.equal(countOccurrences(own, "+ Add session"), 1);
   const generated = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} openOngoing
     today={new Date("2026-11-02T12:00:00")} />);
   assert.doesNotMatch(generated, /Add session/);
 });
 
-test("custom calendar enables rest selection without disabling planned sessions or AI-plan restrictions", () => {
+
+test("rest and off days across published plans use one non-expandable row", () => {
+  const plan: StructuredPlan = { plan_metadata: { title: "Mixed plan", plan_type: "open_ongoing_system" },
+    weeks: [{ week_index: 1, days: [
+      { date: "2026-11-16", weekday: "Mon", day_type: "rest", sessions: [],
+        today_card: { headline: "Rest day", mindset_anchor: { focus_cue: "", reset_cue: "", intent: "" } } },
+      { date: "2026-11-17", weekday: "Tue", day_type: "moderate", sessions: [],
+        today_card: { headline: "Off day" } },
+      { date: "2026-11-18", weekday: "Wed", day_type: "rest", sessions: [],
+        today_card: { headline: "Off / Rest" } },
+      { date: "2026-11-19", weekday: "Thu", day_type: "moderate", sessions: [
+        { session_id: "training", title: "Technical", session_type: "skill", blocks: [] },
+      ] },
+    ] }] };
+  for (const customPlanId of [undefined, "custom-1"]) {
+    const html = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} openOngoing
+      customPlanId={customPlanId} today={new Date("2026-11-16T12:00:00")} />);
+    assert.equal(countOccurrences(html, "cm-rest-day"), 3);
+    assert.equal(countOccurrences(html, "cm-day-summary"), 1);
+    assert.match(html, />Rest<\/span>/);
+    assert.match(html, />Off<\/span>/);
+    assert.doesNotMatch(html, /Rest day\.<\/p>/);
+  }
+});
+
+test("a rest day with a prescribed mindset cue stays readable without duplicate rest copy", () => {
+  const plan: StructuredPlan = { weeks: [{ days: [
+    { date: "2026-11-16", day_type: "rest", sessions: [],
+      today_card: { headline: "Rest day", mindset_anchor: { focus_cue: "Visualise the opening exchange for five minutes" } } },
+  ] }] };
+  const html = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} today={new Date(2026, 10, 16)} />);
+  assert.equal(countOccurrences(html, "cm-rest-day"), 0);
+  assert.equal(countOccurrences(html, "cm-day-summary"), 1);
+  assert.match(html, /Visualise the opening exchange for five minutes/);
+  assert.doesNotMatch(html, /Rest day\.<\/p>/);
+});
+
+test("custom and generated calendars keep rest days inert without disabling planned sessions", () => {
   const plan: StructuredPlan = { weeks: [{ week_index: 1, days: [
     { weekday: "Mon", date: "2026-11-02", day_type: "rest", sessions: [] },
     { weekday: "Tue", date: "2026-11-03", day_type: "moderate", sessions: [
@@ -127,7 +165,7 @@ test("custom calendar enables rest selection without disabling planned sessions 
   ] }] };
   const own = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} defaultView="calendar" customPlanId="custom-1"
     today={new Date("2026-11-02T12:00:00")} />);
-  assert.match(own, /<td data-state="rest"><button/);
+  assert.match(own, /<td data-state="rest"><span/);
   assert.match(own, /<td data-state="planned"><button/);
   const generated = renderToStaticMarkup(<StructuredPlanRenderer plan={plan} defaultView="calendar"
     today={new Date("2026-11-02T12:00:00")} />);

@@ -1868,6 +1868,7 @@ export function weekLabel(week: StructuredWeek | null | undefined): string {
 
 const REST_DAY_TYPES = new Set(["rest", "recovery"]);
 const REST_HEADLINE_RE = /\b(rest|recovery|off|unavailable|no planned session|no session planned)\b/i;
+export const PLAIN_REST_HEADLINE_RE = /^(?:rest(?: day)?|off(?: day)?|day off|off\s*\/\s*rest|rest\s*\/\s*off|full rest(?: day)?|planned rest|unavailable|no (?:planned session|session planned))\.?$/i;
 // `technical` is checked before `sparring` so a "technical only / no hard
 // sparring" headline is not mislabelled as a sparring day by the stray
 // "sparring" token, and `coach_led` is the catch-all for coach-owned contact.
@@ -2002,7 +2003,7 @@ export function classifySessionlessDay(
     // day_type "rest" + "Full rest and mobility"), rather than a generic
     // "scheduled" day. day_type is only allowed to override an unclassified
     // headline — a headline that names real combat/coach work always wins.
-    if (kind === "scheduled" && dayType !== null && REST_DAY_TYPES.has(dayType)) {
+    if (kind === "scheduled" && (PLAIN_REST_HEADLINE_RE.test(headline) || (dayType !== null && REST_DAY_TYPES.has(dayType)))) {
       return {
         kind: "rest",
         title: REST_HEADLINE_RE.test(headline) ? headline : "No planned session",
@@ -2030,6 +2031,27 @@ export function classifySessionlessDay(
   // is instructed to always headline a coach-led/sparring/technical day, so a
   // headline-less session-less day is treated as genuine rest.
   return { kind: "rest", title: "Rest day", tag: null, coachLed: false, converted: false };
+}
+
+/** A plan day that is genuinely just rest — no sessions, classified as rest,
+ * and no day-card context worth expanding — so it can render as a compact
+ * non-interactive rest row identical to the synthesized gap rows. */
+export function isPlainRestDay(day: StructuredDay): boolean {
+  if (getSessions(day).length > 0 || getPriorityMicrodose(day) || classifySessionlessDay(day).kind !== "rest") {
+    return false;
+  }
+  const card = day.today_card;
+  // Neutral calendar placeholders use the same compact row as a camp gap.
+  // A prescribed recovery day or coach-owned contact keeps its full context.
+  const neutral = PLAIN_REST_HEADLINE_RE.test(cleanText(card?.headline) ?? "");
+  return !(
+    (!neutral && cleanText(card?.headline)) ||
+    cleanText(card?.coach_led_contact) ||
+    cleanText(card?.primary_warning) ||
+    cleanText(card?.nutrition_summary) ||
+    cleanText(card?.weight_cut_warning) ||
+    getSessionCoachingLines(card?.mindset_anchor).some(({ value }) => !/^recover well\.?$/i.test(value))
+  );
 }
 
 function isDeclaredLightCombatOnlyDay(day: StructuredDay | null | undefined): boolean {
