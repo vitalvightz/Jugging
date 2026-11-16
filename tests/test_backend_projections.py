@@ -28,7 +28,8 @@ def test_history_removes_real_data_api_plan_attempts():
         assert response.status_code == 200
         assert {r["title"] for r in response.json()["sessions"]} == {"Saved title"}
         assert diagnostics.snapshot()["reads"] == 2
-        assert [q["table"] for q in queries] == ["session_completions", "external_training_sessions"]
+        # These reads run concurrently; their completion order is unspecified.
+        assert sorted(q["table"] for q in queries) == ["external_training_sessions", "session_completions"]
     finally:
         end(token)
         client.close()
