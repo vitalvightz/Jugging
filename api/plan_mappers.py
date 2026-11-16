@@ -267,7 +267,10 @@ def _map_plan_summary(
     raw_status = str(row.get("status") or "generated")
     normalized_status = raw_status
     report = row.get("stage2_validator_report") if isinstance(row.get("stage2_validator_report"), dict) else {}
-    if raw_status == "review_required":
+    custom = report.get("custom_plan")
+    # Coach assignments use review_required until athlete consent commits.
+    # Their compiler report is not evidence that the assignment was accepted.
+    if raw_status == "review_required" and not (isinstance(custom, dict) and custom.get("coach_assignment_id")):
         report_exists = bool(report)
         if not report_exists:
             normalized_status = "held_for_review"
@@ -287,7 +290,6 @@ def _map_plan_summary(
                 normalized_status = "publishable_with_flags"
             else:
                 normalized_status = "ready"
-    custom = report.get("custom_plan")
     return PlanSummary(
         custom_plan_id=custom.get("id") if isinstance(custom, dict) and not custom.get("coach_assignment_id") else None,
         plan_id=str(row["id"]),

@@ -102,6 +102,19 @@ def test_draft_assign_preview_activate_history_and_supersede(plans):
     assert result.status_code == 200, result.text
     plan_id = result.json()['plan_id']
     assert result.json()['custom_plan_id'] is None
+    # Coach assignments are structured-only custom plans. They skip Stage 2 and
+    # expose the same content source as athlete-authored plans without granting
+    # access to the coach's editable draft.
+    detail = client.get(f'/api/plans/{plan_id}', headers=AS_FIGHTER)
+    assert detail.status_code == 200, detail.text
+    detail = detail.json()
+    assert detail['status'] == 'ready'
+    assert detail['plan_source'] == 'custom' and detail['custom_plan_id'] is None
+    assert detail['outputs']['plan_text'] == ''
+    assert detail['outputs']['structured_plan']['plan_metadata']['prescription_source'] == 'athlete'
+    assert detail['structured_card_state']['state'] == 'live'
+    assert store.plans[plan_id]['stage2_status'] == 'not_required'
+    assert not store.generation_jobs
     assert store.get_active_plan_id(FIGHTER) == plan_id
     assert assignment_view(store, store.custom_plans[row['id']])['assignment_status'] == 'active'
     assert client.post(f"{ASSIGNMENTS}/{row['id']}/decline", headers=AS_FIGHTER).status_code == 409
@@ -209,6 +222,24 @@ def test_interrupted_consent_leaves_an_inert_plan_and_retry_reuses_it(plans):
     result = client.post(f"{ASSIGNMENTS}/{row['id']}/activate", headers=AS_FIGHTER, json={})
     assert result.status_code == 200, result.text
     assert result.json()['plan_id'] == plan['id'] and len(store.plans) == 1
+
+
+def test_failed_activation_does_not_map_unaccepted_assignment_as_released(plans):
+    client, store, _ = plans
+    row, _ = create(client)
+    send(client, row)
+    store.respond_coach_plan = lambda *args, **kw: False
+    response = client.post(f"{ASSIGNMENTS}/{row['id']}/activate", headers=AS_FIGHTER, json={})
+    assert response.status_code == 409
+    plan = next(iter(store.plans.values()))
+    assert plan['status'] == 'review_required'
+    assert not store.custom_plans[row['id']].get('accepted_at')
+
+    detail = client.get(f"/api/plans/{plan['id']}", headers=AS_FIGHTER)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()['status'] == 'review_required'
+    assert detail.json()['activation_state'] == 'status_ineligible'
+    assert detail.json()['structured_card_state']['state'] == 'live'
 
 
 def test_coach_deletes_only_unsent_drafts(plans):

@@ -57,6 +57,24 @@ test("validated custom cards are released without AI markdown, including archive
   assert.equal(isPlanReleasedToAthlete(makePlan({ planText: "" })), false);
 });
 
+test("coach assignments release their custom card without an editable athlete draft or AI finalization", () => {
+  const assigned = {
+    ...makePlan({ planText: "" }),
+    plan_source: "custom", custom_plan_id: null,
+    structured_card_state: { state: "live", reasons: [] } as StructuredCardState,
+    outputs: { plan_text: "", structured_plan: { plan_metadata: { prescription_source: "athlete" as const } } },
+  };
+  for (const status of ["ready", "publishable_with_flags", "archived"]) {
+    assert.equal(isPlanReleasedToAthlete({ ...assigned, status }), true, status);
+  }
+  // A compiled assignment awaiting athlete consent must remain inaccessible.
+  for (const status of ["review_required", "held_for_review", "generated", "failed"]) {
+    assert.equal(isPlanReleasedToAthlete({ ...assigned, status }), false, status);
+  }
+  assert.equal(isPlanReleasedToAthlete({ ...assigned, outputs: { plan_text: "" } }), false);
+  assert.equal(isPlanReleasedToAthlete({ ...assigned, plan_source: "generated" }), false);
+});
+
 test("plan feedback is visible to athletes and only the owning admin", () => {
   assert.equal(canShowContextualPlanFeedback("athlete", "athlete-1", "athlete-1"), true);
   assert.equal(canShowContextualPlanFeedback("admin", "admin-1", "admin-1"), true);
