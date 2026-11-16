@@ -26,7 +26,7 @@ export const entries: LibraryEntry[] = ["Medicine Ball Hook Throw", "Standing Ca
   log_format: null,
 }));
 
-export async function setup(page: Page, baseURL: string, role = "athlete") {
+export async function setup(page: Page, baseURL: string, role = "athlete", fightDate?: string) {
   await isolateFromNetwork(page, baseURL);
   await page.route("https://fonts.googleapis.com/**", (route) => route.fulfill({ contentType: "text/css", body: "" }));
   // These journeys drive the plan's day list; the Plan page itself opens on the
@@ -226,7 +226,7 @@ export async function setup(page: Page, baseURL: string, role = "athlete") {
         },
         plan_count: 0,
         latest_plan: null,
-        latest_intake: null,
+        latest_intake: fightDate ? { fight_date: fightDate, no_scheduled_fight: false, athlete: {} } : null,
         username_rate_limit: {},
       });
     if (url.pathname === "/api/plans/active") return json({ detail: "No active plan" }, 404);
