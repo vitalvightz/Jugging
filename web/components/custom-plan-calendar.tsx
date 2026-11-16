@@ -5,9 +5,9 @@ import { formatAppDate } from '@/lib/date-format';
 import styles from './custom-plan-builder.module.css';
 
 type Session = { id: string; name: string; scheduled_date?: string | null; session_type?: string; exercises: { incomplete?: boolean }[] };
-export function CustomPlanCalendar({ sessions, start, end, selected, onSelect, onAdd, onMove, onOpen, onDuplicateWeek, onCopy, onMoveMany, copying, onStartCopying, onStopCopying, readOnly = false, fightDate = null }: {
+export function CustomPlanCalendar({ sessions, start, end, selected, onSelect, onAdd, onMove, onOpen, onDuplicateWeek, onCopy, onMoveMany, copying, onStartCopying, onStopCopying, readOnly = false, fightDate = null, dayLabels }: {
   sessions: Session[]; start: string; end: string; selected: string; onSelect: (day: string) => void;
-  readOnly?: boolean; fightDate?: string | null;
+  readOnly?: boolean; fightDate?: string | null; dayLabels?: Record<string, 'Rest' | 'Off' | 'Recovery'>;
   onAdd?: (day: string) => void; onMove?: (id: string, day: string) => void; onOpen?: (id: string) => void; onDuplicateWeek?: () => void;
   onCopy?: (ids: string[], days: string[]) => void; onMoveMany?: (ids: string[], day: string) => void;
   copying?: { ids: string[]; move?: boolean; sessions: Session[] }; onStartCopying?: (ids: string[], move?: boolean) => void; onStopCopying?: () => void;
@@ -57,11 +57,13 @@ export function CustomPlanCalendar({ sessions, start, end, selected, onSelect, o
         const outside = day < start || day > end;
         const isFightDay = day === fightDay;
         const daily = sessions.filter(s => s.scheduled_date === day);
-        const dateContent = <><span>{day.slice(8).replace(/^0/, '')}</span><small className={isFightDay ? 'cm-cal-fight-label' : undefined}>{isFightDay ? 'Fight day' : daily.length ? `${daily.length} ${daily.length === 1 ? 'session' : 'sessions'}` : 'Rest'}</small></>;
-        return <div key={day} className={`${styles.calendarDate}${isFightDay ? ' custom-plan-fight-day' : ''}`} data-selected={selected === day} data-outside={outside} data-fight-day={isFightDay} data-rest={readOnly && !daily.length && !isFightDay}
+        const off = readOnly && (dayLabels?.[day] === 'Rest' || dayLabels?.[day] === 'Off' || daily.length > 0 && daily.every(s => s.session_type === 'rest'));
+        const dayLabel = isFightDay ? 'Fight day' : outside ? '' : off ? dayLabels?.[day] ?? 'Rest' : daily.length ? daily.every(s => s.session_type === 'recovery') ? 'Recovery' : `${daily.length} ${daily.length === 1 ? 'session' : 'sessions'}` : dayLabels?.[day] ?? (readOnly ? 'No session planned' : 'Rest');
+        const dateContent = <><span>{day.slice(8).replace(/^0/, '')}</span><small className={isFightDay ? 'cm-cal-fight-label' : undefined}>{dayLabel}</small></>;
+        return <div key={day} className={`${styles.calendarDate}${isFightDay ? ' custom-plan-fight-day' : ''}`} data-selected={selected === day} data-outside={outside} data-fight-day={isFightDay} data-rest={Boolean(off) && !outside && !isFightDay}
           onDragOver={event => { if (!readOnly && !outside) event.preventDefault(); }} onDrop={event => { event.preventDefault(); if (!readOnly && !outside) { const id = event.dataTransfer.getData('text/plain'); if (!sessions.some(s => s.id === id)) return; if ((event.altKey || event.ctrlKey || event.metaKey) && onCopy) onCopy([id], [day]); else onMove?.(id, day); } }}>
-          {readOnly && !daily.length ? <span className={styles.dateSelect}>{dateContent}</span> : <button type="button" className={styles.dateSelect} disabled={outside} aria-pressed={selected === day} aria-label={`Select ${formatAppDate(day)}${isFightDay ? ' (Fight day)' : ''}`} onClick={() => { setCursor(null); onSelect(day); }}>{dateContent}</button>}
-          {daily.map(session => <button type="button" key={session.id} className={styles.calendarSession} data-type={session.session_type} draggable={!readOnly}
+          {readOnly && (!daily.length || off) ? <span className={styles.dateSelect}>{dateContent}</span> : <button type="button" className={styles.dateSelect} disabled={outside} aria-pressed={selected === day} aria-label={`Select ${formatAppDate(day)}${isFightDay ? ' (Fight day)' : ''}`} onClick={() => { setCursor(null); onSelect(day); }}>{dateContent}</button>}
+          {(off ? [] : daily).map(session => <button type="button" key={session.id} className={styles.calendarSession} data-type={session.session_type} draggable={!readOnly}
             onDragStart={event => { event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData('text/plain', session.id); }} onClick={() => { setCursor(null); onSelect(day); onOpen?.(session.id); }} aria-label={`${readOnly ? 'View' : 'Open'} ${session.name} on ${formatAppDate(day)}`}><strong>{session.name}</strong><small>{session.exercises.length} {session.exercises.length === 1 ? 'exercise' : 'exercises'}{session.exercises.some(e => e.incomplete) ? ' · Finish dose' : ''}</small></button>)}
           {!readOnly && !outside && copying?.sessions.length && onCopy ? (copying.move ? <button type="button" className={styles.calendarPaste} aria-label={`Move to ${day}`} disabled={day === from} onClick={() => onMoveMany?.(copying.ids, day)}>Move here</button> : <button type="button" className={styles.calendarPaste} aria-label={`Paste on ${day}`} onClick={() => onCopy(copying.ids, [day])}>Paste</button>)
             : !readOnly && !outside ? <button type="button" className={styles.calendarAdd} aria-label={`Add session on ${day}`} onClick={() => { onSelect(day); onAdd?.(day); }}>Add session</button> : null}
