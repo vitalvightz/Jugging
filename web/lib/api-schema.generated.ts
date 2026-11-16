@@ -405,6 +405,21 @@ export type CoachMessagePushRequest = {
   urgent?: boolean;
 };
 
+export type CoachPlan = {
+  id: string;
+  name: string;
+  kind: "self_directed";
+  sessions: CustomSession[];
+  incomplete: boolean;
+  created_at: string;
+  updated_at: string;
+  fighter_id: string;
+  coach_name: string | null;
+  assigned_at: string | null;
+  published_plan_id: string | null;
+  assignment_status: "active" | "declined" | "draft" | "pending" | "superseded";
+};
+
 export type CoachPlannedSession = {
   id: string;
   plan_id: string;

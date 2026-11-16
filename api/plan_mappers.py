@@ -289,7 +289,7 @@ def _map_plan_summary(
                 normalized_status = "ready"
     custom = report.get("custom_plan")
     return PlanSummary(
-        custom_plan_id=custom.get("id") if isinstance(custom, dict) else None,
+        custom_plan_id=custom.get("id") if isinstance(custom, dict) and not custom.get("coach_assignment_id") else None,
         plan_id=str(row["id"]),
         plan_name=(str(row["plan_name"]).strip() if row.get("plan_name") is not None else None) or None,
         athlete_id=str(row["athlete_id"]),

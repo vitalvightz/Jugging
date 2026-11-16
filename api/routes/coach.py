@@ -20,6 +20,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from api.contracts.custom_plans import CustomPlanInput, CoachPlan
+from api.services.coach_plans import coach_plan_fields, assignment_view, saved_input
+from api.services.custom_plans import schedule_issues
 from api.compliance import evaluate_profile_compliance
 from api.contracts.external_training import ExternalTrainingCreate, TrainingHistoryResponse, TrainingHistorySession
 from api.contracts.manual_exercises import ManualExerciseEntry, ManualExerciseListResponse, PerformedExerciseInput
@@ -164,6 +167,47 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
                                 health and connection.get("share_weight") is True,
                                 connection.get("allow_session_logging") is True)
 
+    def authored_plan(plan_id: UUID, fighter: ConnectedFighter = Depends(connected_fighter),
+                      store: AppStore = Depends(get_store)):
+        row = next((r for r in store.list_coach_plans(fighter.coach.athlete_id, fighter.profile.athlete_id)
+                    if str(r['id']) == str(plan_id)), None)
+        if not row:
+            raise HTTPException(404, 'Plan not found.')
+        return row
+
+    @router.get('/api/coach/fighters/{athlete_id}/plans', response_model=list[CoachPlan])
+    def coach_plans(fighter: ConnectedFighter = Depends(connected_fighter), store: AppStore = Depends(get_store)):
+        return [assignment_view(store, row) for row in store.list_coach_plans(fighter.coach.athlete_id, fighter.profile.athlete_id)]
+
+    @router.post('/api/coach/fighters/{athlete_id}/plans', response_model=CoachPlan, status_code=201)
+    def create_coach_plan(body: CustomPlanInput, request_id: UUID,
+                          fighter: ConnectedFighter = Depends(connected_fighter), store: AppStore = Depends(get_store)):
+        fields = coach_plan_fields(store, body, coach_id=fighter.coach.athlete_id)
+        row = store.coach_plan_command(fighter.coach.athlete_id, fighter.profile.athlete_id, str(request_id), 'create', fields)
+        return assignment_view(store, row)
+
+    @router.get('/api/coach/fighters/{athlete_id}/plans/{plan_id}', response_model=CoachPlan)
+    def read_coach_plan(row=Depends(authored_plan), store: AppStore = Depends(get_store)):
+        return assignment_view(store, row)
+
+    @router.put('/api/coach/fighters/{athlete_id}/plans/{plan_id}', response_model=CoachPlan)
+    def edit_coach_plan(body: CustomPlanInput, row=Depends(authored_plan),
+                        fighter: ConnectedFighter = Depends(connected_fighter), store: AppStore = Depends(get_store)):
+        fields = coach_plan_fields(store, body, row, coach_id=fighter.coach.athlete_id)
+        updated = store.coach_plan_command(fighter.coach.athlete_id, fighter.profile.athlete_id, row['id'], 'update', fields)
+        return assignment_view(store, updated)
+
+    @router.post('/api/coach/fighters/{athlete_id}/plans/{plan_id}/assign', response_model=CoachPlan)
+    def assign_coach_plan(row=Depends(authored_plan), fighter: ConnectedFighter = Depends(connected_fighter),
+                          store: AppStore = Depends(get_store)):
+        # Recheck schedule, exercise availability and private attachments at send.
+        fields = coach_plan_fields(store, saved_input(row), row, coach_id=fighter.coach.athlete_id)
+        issues = schedule_issues(fields['sessions'])
+        if issues:
+            raise HTTPException(422, ' '.join(issues))
+        updated = store.coach_plan_command(fighter.coach.athlete_id, fighter.profile.athlete_id, row['id'], 'assign')
+        return assignment_view(store, updated)
+
     def writable_fighter(fighter: ConnectedFighter = Depends(connected_fighter)) -> ConnectedFighter:
         # The athlete's own logging needs this consent too; a coach cannot
         # collect training data the athlete has not agreed to have held.
@@ -275,7 +319,7 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
         )
 
     @router.get("/api/coach/fighters/{athlete_id}/training/plan", response_model=list[CoachPlannedSession])
-    def fighter_plan(fighter: ConnectedFighter = Depends(connected_fighter),
+    def fighter_plan(include_past: bool = False, fighter: ConnectedFighter = Depends(connected_fighter),
                      store: AppStore = Depends(get_store)):
         athlete = fighter.profile
         today = current_training_day(athlete_timezone=athlete.athlete_timezone)
@@ -290,7 +334,7 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
         for week in projected.get("weeks") or []:
             for day in week.get("days") or []:
                 iso = str(day.get("date") or "")[:10]
-                if iso < today.isoformat():
+                if not include_past and iso < today.isoformat():
                     continue
                 try:
                     date.fromisoformat(iso)

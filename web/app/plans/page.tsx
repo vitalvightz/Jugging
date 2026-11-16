@@ -1,4 +1,5 @@
 "use client";
+import { PlanAssignments } from "@/components/plan-assignments";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -355,6 +356,8 @@ export default function PlansPage() {
             )}
           </div>
         ) : null}
+
+        {session ? <PlanAssignments key={session.access_token} token={session.access_token} onActivated={() => void loadPlans()} /> : null}
 
         <div className="athlete-motion-slot athlete-motion-main">
           {isPlanListLoading ? (

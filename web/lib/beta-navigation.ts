@@ -59,7 +59,7 @@ export function isStandaloneNutritionPath(path: string): boolean {
 export const COACH_NAV_ITEMS: readonly NavItem[] = [
   { href: "/coach", label: "Overview", meta: "Team activity and alerts" },
   { href: "/coach/fighters", label: "Fighters", meta: "Profiles and training progress" },
-  { href: "/coach/plans", label: "Plans", meta: "Assignments coming soon" },
+  { href: "/coach/plans", label: "Plans", meta: "Build plans and track assignments" },
   { href: "/coach/log", label: "Log Session", meta: "Record fighter training" },
   { href: "/coach/invitations", label: "Invitations", meta: "Invite and manage fighters" },
   { href: "/coach/settings", label: "Settings", meta: "Account and preferences" },

@@ -13,6 +13,7 @@ import {
 import { createPortal } from "react-dom";
 import { RequireAuth } from "@/components/auth-guard";
 import { ManualExerciseLogger } from "@/components/manual-exercise-logger";
+import { CoachPlans } from "./coach-plans";
 import { CoachFeedback } from "./coach-feedback";
 import { LogTraining } from "@/components/log-training";
 import { useAppSession } from "@/components/auth-provider";
@@ -85,7 +86,7 @@ export function CoachWorkspace({
   const coach = me?.profile.role === "coach" || me?.profile.role === "admin";
   return (
     <RequireAuth>
-      <div className={styles.workspace}>
+      <div className={`${styles.workspace} ${view === "plans" ? styles.plansWorkspace : ""}`}>
         {!isMeHydrated || !session || !me ? (
           <Loading />
         ) : connectionsOnly || !coach ? (
@@ -330,13 +331,13 @@ function Fighters({ token, fighterId, view }: { token: string; fighterId?: strin
   const [logged, setLogged] = useState(0);
   return (
     <>
-      <div className={styles.pageHead}>
+      {view === "plans" ? null : <div className={styles.pageHead}>
         {fighterId ? (
           <Link className={styles.back} href="/coach">
             ← All fighters
           </Link>
         ) : (
-          <h1>{view === "fighters" ? "Your fighters" : view === "plans" ? "Plans" : view === "log" ? "Log Session" : "Your corner. In focus."}</h1>
+          <h1>{view === "fighters" ? "Your fighters" : view === "plans" ? "Fighter Plans" : view === "log" ? "Log Session" : "Your corner. In focus."}</h1>
         )}
         {view !== "plans" && loggingFighters.length ? (
           <LogTraining
@@ -355,8 +356,8 @@ function Fighters({ token, fighterId, view }: { token: string; fighterId?: strin
             }}
           />
         ) : null}
-      </div>
-      {view === "plans" ? <p className={styles.empty}>Plan assignment is coming soon.</p> : view === "log" && fighters && !loggingFighters.length ? <p className={styles.empty}>No fighters have authorised session logging.</p> : null}
+      </div>}
+      {view === "plans" && fighters ? <CoachPlans key={token} token={token} fighters={fighters} /> : view === "log" && fighters && !loggingFighters.length ? <p className={styles.empty}>No fighters have authorised session logging.</p> : null}
       {fighterId ? <h1 className={styles.srOnly}>Fighter overview</h1> : null}
       <LoadState error={error} loading={!fighters} retry={reload} />
       {!fighters ? null : !fighterId ? (

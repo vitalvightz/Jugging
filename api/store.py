@@ -4782,6 +4782,30 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
         # Return the exact row so the caller can use that immutable winner.
         return self.get_session_completion(athlete_id, session_id, training_day)
 
+    def coach_plan_command(self, actor_id: str, fighter_id: str, plan_id: str, action: str,
+                           fields: dict[str, Any] | None = None) -> dict[str, Any]:
+        try:
+            return self.client.rpc("coach_plan_command", {
+                "p_actor": actor_id, "p_fighter": fighter_id, "p_id": plan_id,
+                "p_action": action, "p_fields": fields or {},
+            }).execute().data
+        except PostgrestAPIError as exc:
+            raise HTTPException(409, "Plan unavailable or connection changed. Refresh and try again.") from exc
+
+    def list_coach_plans(self, coach_id: str, fighter_id: str) -> list[dict[str, Any]]:
+        return self.client.table("custom_training_plans").select("*").eq("athlete_id", coach_id).eq("fighter_id", fighter_id).order("updated_at", desc=True).execute().data or []
+
+    def list_plan_assignments(self, fighter_id: str) -> list[dict[str, Any]]:
+        return self.client.table("custom_training_plans").select("*").eq("fighter_id", fighter_id).not_.is_("assigned_at", "null").order("assigned_at", desc=True).execute().data or []
+
+    @_invalidates_profile_cache()
+    def respond_coach_plan(self, athlete_id: str, assignment_id: str, action: str, *,
+                           plan_id: str | None = None, expected_id: str | None = None, replace: bool = False) -> bool:
+        return self.client.rpc("respond_coach_plan", {
+            "p_actor": athlete_id, "p_id": assignment_id, "p_action": action,
+            "p_plan": plan_id, "p_expected": expected_id, "p_replace": replace,
+        }).execute().data is True
+
     def create_custom_plan(self, athlete_id: str, fields: dict[str, Any]) -> dict[str, Any]:
         payload = {key: fields[key] for key in ("name", "sessions", "incomplete")}
         response = self.client.table("custom_training_plans").insert({**payload, "athlete_id": athlete_id}).execute()
@@ -4792,22 +4816,22 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
 
     def list_custom_plans(self, athlete_id: str) -> list[dict[str, Any]]:
         response = (self.client.table("custom_training_plans").select("*")
-                    .eq("athlete_id", athlete_id).order("updated_at", desc=True).execute())
+                    .eq("athlete_id", athlete_id).is_("fighter_id", "null").order("updated_at", desc=True).execute())
         return getattr(response, "data", None) or []
 
     def get_custom_plan(self, athlete_id: str, plan_id: str) -> dict[str, Any] | None:
         return self._select_first(self.client.table("custom_training_plans").select("*")
-                                  .eq("athlete_id", athlete_id).eq("id", plan_id))
+                                  .eq("athlete_id", athlete_id).is_("fighter_id", "null").eq("id", plan_id))
 
     def update_custom_plan(self, athlete_id: str, plan_id: str, fields: dict[str, Any]) -> dict[str, Any] | None:
         response = (self.client.table("custom_training_plans")
                     .update({key: fields[key] for key in ("name", "sessions", "incomplete")})
-                    .eq("athlete_id", athlete_id).eq("id", plan_id).execute())
+                    .eq("athlete_id", athlete_id).is_("fighter_id", "null").eq("id", plan_id).execute())
         return (getattr(response, "data", None) or [None])[0]
 
     def delete_custom_plan(self, athlete_id: str, plan_id: str) -> bool:
         response = (self.client.table("custom_training_plans").delete()
-                    .eq("athlete_id", athlete_id).eq("id", plan_id).execute())
+                    .eq("athlete_id", athlete_id).is_("fighter_id", "null").eq("id", plan_id).execute())
         return bool(getattr(response, "data", None))
 
     def create_external_training_session(self, athlete_id: str, fields: dict[str, Any]) -> dict[str, Any]:

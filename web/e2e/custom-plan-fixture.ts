@@ -85,6 +85,7 @@ export async function setup(page: Page, baseURL: string, role = "athlete") {
     if (url.pathname === "/api/xp/activity") {
       expect(request.postData()).toBeNull();
     }
+    if (url.pathname === "/api/custom-plans/assignments") return json([]);
     if (url.pathname.startsWith("/api/custom-plans") || url.pathname.startsWith("/api/training/library")) {
       expect(request.headers().authorization).toBe("Bearer athlete-token");
       if (process.env.CUSTOM_PLAN_TEST_API) {

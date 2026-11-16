@@ -3,9 +3,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 
-from api.contracts.custom_plans import CustomDoseSuggestion, CustomPlan, CustomPlanInput
+from api.contracts.custom_plans import CustomDoseSuggestion, CustomPlan, CustomPlanInput, CoachPlan
 from api.services.custom_plans import plan_fields, publish_custom_plan, source_suggestion
 from api.models import PlanSummary
+from api.routes.plans import PlanActivationRequest, reconcile_plan_activation
 from api.plan_mappers import _map_plan_summary
 
 
@@ -25,6 +26,38 @@ def build_custom_plans_router(*, require_profile, get_store):
     @router.post("", response_model=CustomPlan, status_code=201)
     def create_custom_plan(body: CustomPlanInput, profile=Depends(require_profile), store=Depends(get_store)):
         return store.create_custom_plan(profile.athlete_id, plan_fields(store, body, athlete_id=profile.athlete_id))
+
+    def assigned(plan_id: UUID, profile=Depends(require_profile), store=Depends(get_store)):
+        if profile.role != 'athlete':
+            raise HTTPException(404, 'Assignment not found.')
+        row = next((r for r in store.list_plan_assignments(profile.athlete_id) if str(r['id']) == str(plan_id)), None)
+        if not row:
+            raise HTTPException(404, 'Assignment not found.')
+        return row
+
+    @router.get('/assignments', response_model=list[CoachPlan])
+    def assignments(profile=Depends(require_profile), store=Depends(get_store)):
+        from api.services.coach_plans import assignment_view
+        if profile.role != 'athlete':
+            return []
+        return [assignment_view(store, row) for row in store.list_plan_assignments(profile.athlete_id)]
+
+    @router.post('/assignments/{plan_id}/decline', response_model=CoachPlan)
+    def decline_assignment(row=Depends(assigned), profile=Depends(require_profile), store=Depends(get_store)):
+        from api.services.coach_plans import assignment_view
+        if not store.respond_coach_plan(profile.athlete_id, row['id'], 'decline'):
+            raise HTTPException(409, 'This assignment has already been accepted.')
+        return assignment_view(store, {**row, 'declined_at': True})
+
+    @router.post('/assignments/{plan_id}/activate', response_model=PlanSummary)
+    def activate_coach_plan(activation: PlanActivationRequest,
+                            row=Depends(assigned), profile=Depends(require_profile), store=Depends(get_store)):
+        from api.services.coach_plans import activate_assignment
+        from api.contracts.training_day import current_training_day
+        day = current_training_day(athlete_timezone=profile.athlete_timezone)
+        plan = activate_assignment(store, row, profile, overlap_action=activation.overlap_action, training_day=day)
+        reconcile_plan_activation(store, profile, str(plan['id']))
+        return _map_plan_summary(plan)
 
     @router.get("/source-suggestion", response_model=CustomDoseSuggestion)
     def suggest(catalogue_id: str, profile=Depends(require_profile)):

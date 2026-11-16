@@ -192,3 +192,11 @@ class CustomDoseSuggestion(BaseModel):
     source: str
     source_revision: str
     row_revision: str
+
+
+class CoachPlan(CustomPlan):
+    fighter_id: UUID
+    coach_name: str | None = None
+    assigned_at: datetime | None = None
+    published_plan_id: UUID | None = None
+    assignment_status: Literal['draft', 'pending', 'active', 'declined', 'superseded']
