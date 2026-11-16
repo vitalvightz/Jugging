@@ -305,7 +305,12 @@ export function coachConcerns(f: Fighter, weight: import("./api-schema.generated
       concerns.push({ id: `adherence:${session.id}`, category: "adherence", tone: "caution", reason: `${session.day} · Scheduled session recorded as skipped`, section: "training-history" });
     }
   }
+  return concerns.sort(compareCoachConcerns);
+}
+
+
+export function compareCoachConcerns(a: CoachConcern, b: CoachConcern): number {
   const severity = { concern: 0, caution: 1, unknown: 2 };
   const category = { weight: 0, contact: 1, injury: 2, recovery: 3, adherence: 4 };
-  return concerns.sort((a, b) => severity[a.tone] - severity[b.tone] || category[a.category] - category[b.category]);
+  return severity[a.tone] - severity[b.tone] || category[a.category] - category[b.category];
 }

@@ -274,7 +274,7 @@ async function fixture(
       return route.fulfill({ json: { entries: [] } });
     return route.fulfill({
       json: path.endsWith("/weight")
-        ? rows[0].share_weight
+        ? rows.find(row => row.id === athlete)?.share_weight
           ? weight
           : { ...weight, shared: false, entries: [] }
         : path.endsWith("/training/history")
@@ -1145,4 +1145,69 @@ test("old contact reports stay in sparring history while only recent concerns ne
   await expect(page.locator('#sparring').getByText("Sun 01 Nov 2026", { exact: true })).toBeVisible();
   await expect(page.locator('#sparring').getByText(/Athlete reported being rocked/)).toBeVisible();
   await expect(attention.getByRole("listitem")).toHaveCount(1);
+});
+
+for (const width of [320, 1280]) {
+  test(`team overview includes severe cut risk despite normal recovery at ${width}px`, async ({ page, baseURL }) => {
+    const jayId = "00000000-0000-4000-8000-000000000004";
+    await fixture(page, baseURL!, "coach", false, {}, [
+      { ...fighter, name: "Michael", share_injuries: true, share_weight: false, share_recovery: false,
+        injuries: [{ id: "arm", body_area: "Arm", severity: "mild", status: "open", updated_at: fighter.today }] },
+      { ...fighter, id: jayId, connection_id: "jay-connection", name: "Jay", age: 25,
+        recovery: [{ day: fighter.today, source: "today", sleep: "good", body: "normal" }] },
+    ]);
+    await page.route("**/api/coach/fighters/*/weight", route => route.fulfill({ json: { ...weight,
+      cut_assessment: { ...weight.cut_assessment, weight_cut_status: "too_aggressive", weight_cut_risk_band: "severe", days_until_fight: 16 },
+    } }));
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto("/coach");
+    const attention = page.getByRole("region", { name: "Needs attention" });
+    await expect(attention.getByRole("listitem")).toHaveCount(2);
+    await expect(attention.getByRole("listitem").first()).toContainText("Jay");
+    await expect(attention.getByRole("listitem").first()).toContainText("Cut too aggressive");
+    await expect(page.getByRole("region", { name: "Roster summary" }).locator("article").filter({ hasText: "Needs attention" }).locator("strong")).toHaveText("2");
+    const roster = page.locator("section").filter({ has: page.getByRole("heading", { name: "Your fighters", exact: true }) });
+    const jay = roster.getByRole("link", { name: /Jay/ });
+    await expect(jay.getByText("Cut too aggressive", { exact: true })).toHaveAttribute("data-recovery-tone", "concern");
+    await expect(jay.getByText("Recovery normal", { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `/tmp/coach-team-risk-${width}.png`, fullPage: true });
+    await jay.click();
+    await expect(page.getByRole("region", { name: "Needs attention" })).toContainText("Cut too aggressive · 16 days to fight");
+  });
+}
+
+test("team weight checks show pending and unavailable states, and never request unshared or minor assessments", async ({ page, baseURL }) => {
+  const base = { ...fighter, share_recovery: false, share_injuries: false, age: 25 };
+  await fixture(page, baseURL!, "coach", false, {}, [base,
+    { ...base, id: "00000000-0000-4000-8000-000000000005", name: "Private", share_weight: false },
+    { ...base, id: "00000000-0000-4000-8000-000000000006", name: "Junior", age: 17 },
+  ]);
+  const requests: string[] = [];
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/api/coach/fighters/*/weight", async route => {
+    requests.push(new URL(route.request().url()).pathname);
+    await gate;
+    await route.fulfill({ status: 503, json: { detail: "Unavailable" } });
+  });
+  await page.goto("/coach");
+  const metric = page.getByRole("region", { name: "Roster summary" }).locator("article").filter({ hasText: "Needs attention" }).locator("strong");
+  await expect(metric).toHaveText("—");
+  await expect(page.getByText("Checking weight…", { exact: true })).toBeVisible();
+  release();
+  await expect(metric).toHaveText("1");
+  await expect(page.getByRole("region", { name: "Needs attention" }).getByText("Weight status unavailable", { exact: true })).toHaveAttribute("data-recovery-tone", "unknown");
+  expect(requests).toEqual([`/api/coach/fighters/${fighterId}/weight`]);
+});
+
+test("one weigh-in shows weight summary without an invented trend", async ({ page, baseURL }) => {
+  await fixture(page, baseURL!);
+  await page.route("**/api/coach/fighters/*/weight", route => route.fulfill({ json: { ...weight, entries: [weight.entries[1]] } }));
+  await page.goto(`/coach/fighters/${fighterId}`);
+  const section = page.locator('#fight-weight');
+  await expect(section.getByRole("listitem")).toHaveCount(1);
+  await expect(section.getByRole("slider")).toHaveCount(0);
+  await expect(section.getByText("Current", { exact: true })).toBeVisible();
+  await expect(section.getByText("73.6 kg", { exact: true }).first()).toBeVisible();
 });

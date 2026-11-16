@@ -36,6 +36,7 @@ import { isSafeAvatarImageUrl } from "@/lib/avatar-image-url";
 import {
   coachRpc,
   coachConcerns,
+  compareCoachConcerns,
   coachCutStatus,
   groupCoachCheckIns,
   coachCheckInValues,
@@ -359,7 +360,7 @@ function Fighters({ token, fighterId, view }: { token: string; fighterId?: strin
       {fighterId ? <h1 className={styles.srOnly}>Fighter overview</h1> : null}
       <LoadState error={error} loading={!fighters} retry={reload} />
       {!fighters ? null : !fighterId ? (
-        view === "plans" || view === "log" ? null : <CoachDashboard fighters={fighters} rosterOnly={view === "fighters"} />
+        view === "plans" || view === "log" ? null : <CoachDashboard token={token} fighters={fighters} rosterOnly={view === "fighters"} />
       ) : fighters[0] ? (
         <FighterOverview
           fighter={fighters[0]}
@@ -376,14 +377,41 @@ function Fighters({ token, fighterId, view }: { token: string; fighterId?: strin
   );
 }
 
-function CoachDashboard({ fighters, rosterOnly = false }: { fighters: Fighter[]; rosterOnly?: boolean }) {
+function CoachDashboard({ token, fighters, rosterOnly = false }: { token: string; fighters: Fighter[]; rosterOnly?: boolean }) {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
-  const rows = fighters.map((fighter) => ({
-    fighter,
-    summary: fighterSummary(fighter),
-  }));
-  const attention = rows.filter((row) => row.summary.attention);
+  const [weights, setWeights] = useState<Record<string, { token: string; connectionId: string; weight: CoachFighterWeight | null; failed: boolean }>>({});
+  useEffect(() => {
+    let active = true;
+    const eligible = fighters.filter(f => f.share_weight && (f.age == null || f.age >= 18));
+    // Keep authorised results during the regular background refresh, but drop
+    // anything belonging to an ended connection, changed account or consent.
+    setWeights(previous => Object.fromEntries(eligible.flatMap(f => {
+      const result = previous[f.id];
+      return result?.token === token && result.connectionId === f.connection_id ? [[f.id, result]] : [];
+    })));
+    for (const f of eligible) {
+      void getFighterWeight(token, f.id).then(weight => {
+        if (active) setWeights(previous => ({ ...previous, [f.id]: { token, connectionId: f.connection_id, weight, failed: false } }));
+      }).catch(() => {
+        if (active) setWeights(previous => ({ ...previous, [f.id]: { token, connectionId: f.connection_id, weight: null, failed: true } }));
+      });
+    }
+    return () => { active = false; };
+  }, [token, fighters]);
+  const rows = fighters.map(fighter => {
+    const eligible = fighter.share_weight && (fighter.age == null || fighter.age >= 18);
+    const result = eligible && weights[fighter.id]?.token === token && weights[fighter.id]?.connectionId === fighter.connection_id ? weights[fighter.id] : undefined;
+    return {
+      fighter,
+      summary: fighterSummary(fighter),
+      concerns: coachConcerns(fighter, result?.weight ?? null, result?.failed ?? false),
+      cut: result?.weight ? coachCutStatus(result.weight, fighter.today) : null,
+      weightPending: eligible && !result,
+    };
+  });
+  const pending = rows.some(row => row.weightPending);
+  const attention = rows.filter(row => row.concerns.length).sort((a, b) => compareCoachConcerns(a.concerns[0], b.concerns[0]));
   const upcoming = rows
     .filter(
       (row) =>
@@ -417,21 +445,21 @@ function CoachDashboard({ fighters, rosterOnly = false }: { fighters: Fighter[];
                   : undefined
               }
             >
-              {value}
+              {label === "Needs attention" && pending ? "—" : value}
             </strong>
           </article>
         ))}
       </section>
       {attention.length ? (
-        <section className={styles.panel}>
+        <section className={styles.panel} aria-label="Needs attention">
           <h2>Needs attention</h2>
           <ul className={styles.roster}>
-            {attention.map(({ fighter: f, summary: s }) => (
+            {attention.map(({ fighter: f, concerns }) => (
               <FighterRow
                 key={f.id}
                 fighter={f}
                 lead={<Avatar fighter={f} />}
-                detail={<span className={styles.concern}>{s.attention}</span>}
+                detail={<span data-recovery-tone={concerns[0].tone}>{concerns[0].reason}</span>}
               />
             ))}
           </ul>
@@ -495,28 +523,21 @@ function CoachDashboard({ fighters, rosterOnly = false }: { fighters: Fighter[];
           </p>
         ) : (
           <ul className={styles.roster}>
-            {visible.map(({ fighter: f, summary: s }) => (
+            {visible.map(({ fighter: f, summary: s, concerns, cut, weightPending }) => (
               <FighterRow
                 key={f.id}
                 fighter={f}
                 lead={<Avatar fighter={f} />}
                 detail={[f.sport ? humanize(f.sport) : null, f.age != null ? `${f.age} years` : null, f.record, `${s.weekSessions} sessions`].filter(Boolean).join(" · ")}
-                extra={f.last_training ? `Last trained ${formatAppDate(f.last_training.day)}` : undefined}
+                extra={[
+                  f.last_training ? `Last trained ${formatAppDate(f.last_training.day)}` : null,
+                  concerns[0]?.category === "weight" ? (s.recovery === "No concern reported" ? "Recovery normal" : `Recovery: ${s.recovery.toLowerCase()}`) : null,
+                ].filter(Boolean).join(" · ") || undefined}
                 end={
-                  <span
-                    className={
-                      s.attention
-                        ? styles.concern
-                        : s.recovery === "No concern reported"
-                          ? styles.positive
-                          : styles.muted
-                    }
-                  >
-                    {s.attention
-                      ? "Needs attention"
-                      : s.recovery === "No concern reported"
-                        ? "Recovery normal"
-                        : s.recovery}
+                  <span data-recovery-tone={concerns[0]?.tone} className={!concerns.length && !weightPending && s.recovery === "No concern reported" ? styles.positive : styles.muted}>
+                    {concerns.length
+                      ? concerns[0].category === "weight" ? cut?.label === "Unknown" ? "Weight unknown" : cut?.label ?? "Weight unavailable" : "Needs attention"
+                      : weightPending ? "Checking weight…" : s.recovery === "No concern reported" ? "Recovery normal" : s.recovery}
                   </span>
                 }
               />
@@ -1226,7 +1247,7 @@ function FightWeight({ fighter: f, weight, failed }: { fighter: Fighter; weight:
                   ))}
                 </div>
               </div>
-              {trend.length ? (
+              {trend.length > 1 ? (
                 <WeightTrendChart
                   trend={trend}
                   rangeStart={getRangeStart(activeRange, f.today)}
