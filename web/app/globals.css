@@ -1,4 +1,10 @@
 :root {
+  /* Shared session palette for training history and plan calendars. */
+  --training-strength: #74b9ff;
+  --training-sparring: #ff6d84;
+  --training-rehab: #c19aff;
+  --training-modified: #f1c16c;
+  --training-general: var(--text-muted);
   --font-display: "Space Grotesk", "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
   --font-sans: var(--font-display);
   --font-mono: "IBM Plex Mono", "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
