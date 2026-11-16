@@ -9,12 +9,12 @@ for (const role of ['athlete', 'coach']) for (const width of [390, 1440]) {
     await page.clock.install({ time: new Date('2026-11-16T12:00:00Z') });
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
-    const fixture = await setup(page, baseURL!, role);
+    const fixture = await setup(page, baseURL!, role, '2026-11-23');
     const coachSaved = new Map<string, CustomPlan>();
     if (role === 'coach') {
       await page.route('**/rest/v1/rpc/**', route => route.fulfill({ json: new URL(route.request().url()).pathname.endsWith('coach_fighters') ? [{
         id: fighterId, connection_id: 'connection', name: 'Test Fighter', today: '2026-11-16', timezone: 'Europe/London',
-        plan_id: null, plan_name: null, fight_date: null, sport: 'boxing', share_recovery: false, share_injuries: false, share_weight: false, sessions: [], schedule: [], recovery: null, injuries: null,
+        plan_id: null, plan_name: null, fight_date: '2026-11-23', sport: 'boxing', share_recovery: false, share_injuries: false, share_weight: false, sessions: [], schedule: [], recovery: null, injuries: null,
       }] : [] }));
       await page.route('**/api/coach/fighters/*/training/plan**', route => route.fulfill({ json: [] }));
       await page.route('**/api/coach/fighters/*/plans**', async route => {
@@ -32,7 +32,9 @@ for (const role of ['athlete', 'coach']) for (const width of [390, 1440]) {
       await page.goto('/coach/plans');
       await page.getByRole('button', { name: 'Create New Plan', exact: true }).click();
     } else await page.goto('/plans/custom');
-    await expect(page.getByRole('region', { name: 'Plan calendar', exact: true })).toBeVisible();
+    const calendar = page.getByRole('region', { name: 'Plan calendar', exact: true });
+    await expect(calendar).toBeVisible();
+    await expect(calendar.getByText('Fight day · Mon 23 Nov 2026')).toBeVisible();
     const calendarBounds = await page.getByRole('region', { name: 'Plan calendar', exact: true }).boundingBox();
     const restBounds = await page.getByRole('heading', { name: 'Rest day', exact: true }).locator('..').boundingBox();
     if (width >= 1100) {
@@ -84,12 +86,15 @@ for (const role of ['athlete', 'coach']) for (const width of [390, 1440]) {
     await editor.getByRole('button', { name: 'Done', exact: true }).click();
     await page.getByRole('button', { name: 'Duplicate week', exact: true }).click();
     await page.getByRole('button', { name: 'Next calendar period', exact: true }).click();
+    await expect(calendar.locator('[data-fight-day="true"]')).toBeVisible();
+    await expect(calendar.getByRole('button', { name: 'Select Mon 23 Nov 2026 (Fight day)' })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Session 2', exact: true })).toBeVisible();
     await page.getByRole('button', { name: /^Quick dose for/ }).click();
     const dose = page.getByRole('group', { name: /^Quick dose for/ });
     await dose.getByLabel('Rounds', { exact: true }).fill('5');
     await page.getByRole('button', { name: 'Done editing dose', exact: true }).click();
     await page.getByRole('button', { name: 'Month', exact: true }).click();
+    await expect(calendar.locator('[data-fight-day="true"]')).toBeVisible();
     await expect(page.getByRole('button', { name: /^Open Technical day A on/ })).toHaveCount(2);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const builder = page.getByRole('region', { name: 'Custom training plan builder', exact: true });
@@ -124,6 +129,7 @@ for (const role of ['athlete', 'coach']) for (const width of [390, 1440]) {
       expect(coachSaved.size).toBe(2);
       page.once('dialog', dialog => dialog.accept());
       await page.getByLabel('Schedule mode', { exact: true }).selectOption('weekly');
+      await expect(page.getByText('Fight day · Mon 23 Nov 2026')).toBeVisible();
       await page.getByRole('button', { name: 'Save draft', exact: true }).click();
       await expect.poll(() => coachSaved.size).toBe(3);
       expect([...coachSaved.values()].filter(plan => plan.schedule_mode === 'dated')).toHaveLength(2);
