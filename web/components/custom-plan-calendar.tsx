@@ -57,7 +57,7 @@ export function CustomPlanCalendar({ sessions, start, end, selected, onSelect, o
         const outside = day < start || day > end;
         const isFightDay = day === fightDay;
         const daily = sessions.filter(s => s.scheduled_date === day);
-        const off = readOnly && (dayLabels?.[day] === 'Rest' || dayLabels?.[day] === 'Off' || daily.length > 0 && daily.every(s => s.session_type === 'rest'));
+        const off = readOnly && (daily.length ? daily.every(s => s.session_type === 'rest') : dayLabels?.[day] === 'Rest' || dayLabels?.[day] === 'Off');
         const dayLabel = isFightDay ? 'Fight day' : outside ? '' : off ? dayLabels?.[day] ?? 'Rest' : daily.length ? daily.every(s => s.session_type === 'recovery') ? 'Recovery' : `${daily.length} ${daily.length === 1 ? 'session' : 'sessions'}` : dayLabels?.[day] ?? (readOnly ? 'No session planned' : 'Rest');
         const dateContent = <><span>{day.slice(8).replace(/^0/, '')}</span><small className={isFightDay ? 'cm-cal-fight-label' : undefined}>{dayLabel}</small></>;
         return <div key={day} className={`${styles.calendarDate}${isFightDay ? ' custom-plan-fight-day' : ''}`} data-selected={selected === day} data-outside={outside} data-fight-day={isFightDay} data-rest={Boolean(off) && !outside && !isFightDay}
