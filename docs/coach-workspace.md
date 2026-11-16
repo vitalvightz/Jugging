@@ -13,15 +13,14 @@ are unchanged.
   consent changes, decline and revocation. Linked from Settings so it is
   reachable from the phone account button. Also available in side navigation.
 
-Coach is an existing protected `profiles.role`. V1 does not enable coach
-self-registration or self-promotion. An operator must provision an approved
-coach account through the trusted service-role/database administration path;
-`tools/manage_admin.py promote` grants **admin**, not coach, and must not be used
-for this purpose. No live roles are changed by this implementation.
+Coach uses the existing protected `profiles.role`. New members can choose Coach
+through server-validated signup; see `docs/coach-signup.md`. Existing operator
+accounts remain valid. Signup cannot grant admin or gym-owner privileges.
+`tools/manage_admin.py promote` grants **admin**, not coach.
 
 ## Migration and security
 
-Apply `supabase/migrations/20261115232832_coach_workspace.sql` through the
+Apply `supabase/migrations/20261116001139_coach_workspace.sql` through the
 repository's normal Supabase migration release process before deploying the UI.
 It adds one table, `coach_connections`, with participant-only SELECT RLS and no
 browser INSERT/UPDATE/DELETE grants. Three public, security-invoker RPCs delegate
@@ -103,8 +102,7 @@ and existing RLS. The migrations have been applied to the connected Supabase pro
 ## V1 limits
 
 Invitations are in-app only: recipients sign in using the invited verified email
-and open Settings → Coach access. No email or push system is added. Coach roles
-are operator-provisioned. The roster permits 250 live invitations/connections per
+and open Settings → Coach access. No email or push system is added. Coach roles may be chosen during fresh signup or provisioned by an operator. The roster permits 250 live invitations/connections per
 coach. Long-term history, custom-programme editing, messaging, analytics and
 programme generation are outside V1. Screens use English copy while retaining
 the existing app's locale and theme shell.
@@ -120,7 +118,7 @@ the existing app's locale and theme shell.
   `web/lib/beta-navigation.ts`, `web/lib/auth-routing.ts`: existing navigation
   integration and coach destination.
 - `web/lib/coach.ts`, `web/lib/coach.test.ts`: typed RPC adapter and count rules.
-- `supabase/migrations/20261115232832_coach_workspace.sql`: connection table,
+- `supabase/migrations/20261116001139_coach_workspace.sql`: connection table,
   indexes, RLS, permission transitions and consent-aware projections.
 - `tests/coach_workspace_permissions.sql`, `tools/test_coach_workspace.py`:
   isolated PostgreSQL migration/permission tests.
@@ -152,7 +150,7 @@ Approved administrators can also use the consent-bound coach workspace without
 changing their admin role or losing existing admin access. This does not grant
 access to unaccepted athlete performance records.
 
-`20261116001001_coach_signup_invitations.sql` adds a service-only
+`20261116001150_coach_signup_invitations.sql` adds a service-only
 `coach_invitation_rules` table and a private profile-insert trigger. An operator
 can configure exact Auth email domains for a coach. Only Auth accounts created
 on or after rule activation receive pending invitations; existing signups and

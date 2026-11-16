@@ -1,8 +1,6 @@
 import type { TrainingHabitPreferences } from "./training-habits";
-// Role foundation for the single Unlxck app. `athlete` and `admin` are live in
-// private beta; `coach` and `gym_owner` are reserved for public beta and are not
-// yet selectable at sign-up or assignable to accounts. We use `gym_owner` (not
-// `gym`) because the account represents the person managing the gym organisation.
+// Roles for the single UNLXCK app. New members may select athlete or coach;
+// admin and gym_owner remain operator-managed.
 export type UserRole = "athlete" | "coach" | "gym_owner" | "admin";
 export type AppearanceMode = "dark" | "light";
 // localStorage key used to remember the applied appearance mode so the document
@@ -324,6 +322,7 @@ export type ProfileRecord = {
  * saw. `health_data_consent: false` withdraws consent.
  */
 export type ComplianceAcceptanceRequest = {
+  account_type?: "athlete" | "coach";
   date_of_birth?: string;
   accept_terms?: boolean;
   health_data_consent?: boolean;

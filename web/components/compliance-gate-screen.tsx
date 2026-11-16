@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 
 import { RequireAuth } from "@/components/auth-guard";
@@ -31,6 +31,7 @@ import { useFadeNavigate } from "@/components/fade-through";
  */
 function ComplianceAcceptance() {
   const router = useRouter();
+  const choice = useSearchParams().get("account_type");
   const fadeNavigate = useFadeNavigate();
   const { me, session, replaceMe, signOut } = useAppSession();
   const headingId = useId();
@@ -84,6 +85,7 @@ function ComplianceAcceptance() {
     setError(null);
     try {
       const nextMe = await recordCompliance(token, {
+        ...(choice === "coach" || choice === "athlete" ? { account_type: choice } : {}),
         ...(needsDateOfBirth ? { date_of_birth: dateOfBirth } : {}),
         ...(needsTerms ? { accept_terms: acceptedTerms } : {}),
         // Only sent when ticked. Leaving it unticked must not be recorded as a
@@ -158,7 +160,7 @@ function ComplianceAcceptance() {
         </div>
       ) : null}
 
-      {needsHealthConsent ? (
+      {needsHealthConsent && choice !== "coach" ? (
         <div className="field auth-consent-field">
           <label className="auth-consent-row" htmlFor="complianceHealthConsent">
             <input

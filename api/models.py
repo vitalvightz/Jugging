@@ -1213,6 +1213,7 @@ class ComplianceAcceptanceRequest(BaseModel):
     # ``accept_terms`` on purpose: bundling the two would make the Article 9
     # consent non-specific and therefore invalid.
     health_data_consent: bool | None = None
+    account_type: Literal["athlete", "coach"] | None = None
 
     @field_validator("date_of_birth", mode="before")
     @classmethod
