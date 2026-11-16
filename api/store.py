@@ -4800,7 +4800,9 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
         return bool(getattr(response, "data", None))
 
     def list_coach_plans(self, coach_id: str, fighter_id: str) -> list[dict[str, Any]]:
-        return self.client.table("custom_training_plans").select("*").eq("athlete_id", coach_id).eq("fighter_id", fighter_id).order("updated_at", desc=True).execute().data or []
+        # Assignments the coach removed from their list stay the fighter's record.
+        return (self.client.table("custom_training_plans").select("*").eq("athlete_id", coach_id).eq("fighter_id", fighter_id)
+                .is_("coach_removed_at", "null").order("updated_at", desc=True).execute().data or [])
 
     def list_plan_assignments(self, fighter_id: str) -> list[dict[str, Any]]:
         return self.client.table("custom_training_plans").select("*").eq("fighter_id", fighter_id).not_.is_("assigned_at", "null").order("assigned_at", desc=True).execute().data or []
