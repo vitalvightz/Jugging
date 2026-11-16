@@ -59,3 +59,20 @@ No actionable P0/P1/P2 findings remain. Existing app chrome is intentionally out
 this redesign; the supplied concept does not define it.
 
 final result: passed
+
+## Phase 3.5 shared calendar builder
+
+Local implementation captures: `web/test-results/dated-builder-{coach,athlete}-{390,1440}.png`.
+The new test fixes the training date to 16 Nov 2026 and authors different rounds on
+17 and 24 Nov. Desktop uses the available workspace with calendar and session editor
+side by side; mobile stacks a compact seven-day grid above the selected-day editor.
+Week is the default view; Month provides the block overview. Month cells were
+shortened after screenshot inspection so the active weeks are easier to reach.
+Existing UNLXCK tokens, dose controls, exercise picker and mobile action footer are
+retained. Undo/redo and date-range controls sit above the calendar.
+
+The dated coach/athlete journeys passed at 390px and 1440px, including Axe and
+horizontal overflow checks. Session date editing provides an alternative to dragging.
+Source screenshots were inspected locally; this is not a live-site browser audit.
+The requested logged-in browser plugin was not callable in this environment, so no
+production data was accessed or changed for these captures.

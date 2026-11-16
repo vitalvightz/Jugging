@@ -62,7 +62,7 @@ function FighterPlans({ token, fighter, refresh, editing, setEditing }: { token:
       .catch(() => { if (active) { setSchedule(undefined); setError("Training progress unavailable. Retry to refresh."); } });
     return () => { active = false; };
   }, [token, fighter, attempt, refresh]);
-  if (editing !== null) return <CustomPlanBuilder accessToken={token} coachFighterId={fighter.id} planId={editing || undefined} onCoachClose={() => { setEditing(null); setAttempt(n => n + 1); }} />;
+  if (editing !== null) return <CustomPlanBuilder accessToken={token} coachFighterId={fighter.id} athleteTimezone={fighter.timezone} initialPlan={editing.startsWith("revision:") ? plans?.find(plan => plan.id === editing.slice(9)) : undefined} planId={editing.startsWith("revision:") ? undefined : editing || undefined} onCoachClose={() => { setEditing(null); setAttempt(n => n + 1); }} />;
   // Put the current prescription first, retaining the saved order of other plans.
   const ordered = plans?.toSorted((a, b) => Number(b.assignment_status === "active") - Number(a.assignment_status === "active"));
   const past = (row: CoachPlan) => ["declined", "superseded"].includes(row.assignment_status);
@@ -89,6 +89,7 @@ function FighterPlans({ token, fighter, refresh, editing, setEditing }: { token:
       </div>
       {scheduleOpen === plan.id ? <section className={styles.planSchedule} aria-label={`${plan.name} schedule`}><h3>Training schedule</h3>{!schedule ? <p role="status">Loading schedule…</p> : schedule.filter(row => row.plan_id === plan.published_plan_id).length ? <ul>{schedule.filter(row => row.plan_id === plan.published_plan_id).map(row => <li key={`${row.day}:${row.id}`}><span>{formatAppDate(row.day)}</span><strong>{row.title}</strong></li>)}</ul> : <p>No scheduled sessions available.</p>}</section> : null}
       {preview === plan.id ? <AssignedPlanPreview plan={plan} /> : null}
+      {plan.assignment_status !== "draft" ? <button type="button" className="ghost-button" onClick={() => setEditing(`revision:${plan.id}`)}>Create revised draft</button> : null}
       {plan.assignment_status === "draft" ? <div className={styles.planDraftActions}>
         <button type="button" className="ghost-button" onClick={() => { setEditing(plan.id); }}>Edit draft</button>
         <button type="button" className="cta" disabled={pending || plan.incomplete} onClick={async () => {

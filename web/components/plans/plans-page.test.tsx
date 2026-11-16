@@ -214,7 +214,7 @@ test("plan management precedes compact tools and discovery stays in the library"
 });
 
 test("custom drafts share the saved plan list with a clear badge and open the builder", async () => {
-  const draft: CustomPlan = { id: "draft-1", name: "My strength week", kind: "self_directed",
+  const draft: CustomPlan = { id: "draft-1", name: "My strength week", kind: "self_directed", schedule_mode: "weekly", start_date: null, end_date: null,
     incomplete: true, sessions: [], created_at: "2026-10-08T12:00:00Z", updated_at: "2026-10-08T12:00:00Z" };
   const view = await mountPlans([plan("ai-1")], null, {}, [draft]);
   try {
@@ -228,7 +228,7 @@ test("custom drafts share the saved plan list with a clear badge and open the bu
 });
 
 test("published custom plans share normal management and do not duplicate their saved draft", async () => {
-  const draft: CustomPlan = { id: "draft-1", name: "Athlete week", kind: "self_directed",
+  const draft: CustomPlan = { id: "draft-1", name: "Athlete week", kind: "self_directed", schedule_mode: "weekly", start_date: null, end_date: null,
     incomplete: false, sessions: [], created_at: "2026-10-08T12:00:00Z", updated_at: "2026-10-08T12:00:00Z" };
   const view = await mountPlans([plan("custom-1", { custom_plan_id: draft.id, fight_date: "" })], null, {}, [draft]);
   try {

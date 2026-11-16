@@ -29,6 +29,8 @@ select public.coach_plan_command('00000000-0000-4000-8000-000000000071','0000000
 select pg_temp.assert_ok(public.respond_coach_plan('00000000-0000-4000-8000-000000000072','10000000-0000-4000-8000-000000000072','decline'),'fighter declines');
 select pg_temp.assert_ok(public.respond_coach_plan('00000000-0000-4000-8000-000000000072','10000000-0000-4000-8000-000000000072','decline'),'decline retry succeeds');
 select pg_temp.assert_ok(not public.respond_coach_plan('00000000-0000-4000-8000-000000000072','10000000-0000-4000-8000-000000000072','activate','20000000-0000-4000-8000-000000000071'),'decline cannot race into acceptance');
+select public.coach_plan_command('00000000-0000-4000-8000-000000000071','00000000-0000-4000-8000-000000000072','10000000-0000-4000-8000-000000000073','create','{"name":"Dated programme","sessions":[],"incomplete":true,"schedule_mode":"dated","start_date":"2026-11-16","end_date":"2026-12-13"}');
+select pg_temp.assert_ok((select schedule_mode='dated' and start_date='2026-11-16'::date and end_date='2026-12-13'::date from custom_training_plans where id='10000000-0000-4000-8000-000000000073'),'coach writes preserve authored date range');
 update public.coach_connections set status='revoked' where coach_id='00000000-0000-4000-8000-000000000071';
 select pg_temp.assert_denied($$select public.coach_plan_command('00000000-0000-4000-8000-000000000071','00000000-0000-4000-8000-000000000072','10000000-0000-4000-8000-000000000072','assign')$$);
 select pg_temp.assert_ok((select active_plan_id='20000000-0000-4000-8000-000000000071' from public.profiles where id='00000000-0000-4000-8000-000000000072'),'revocation preserves accepted plan');

@@ -130,6 +130,14 @@ def get_plan_activation_state(
     if normalize_plan_status(row) not in ELIGIBLE_ACTIVE_PLAN_STATUSES:
         return "status_ineligible"
 
+    custom = _decode_mapping((row or {}).get("planning_brief")).get("custom_plan") or {}
+    if isinstance(custom, Mapping) and custom.get("schedule_mode") == "dated":
+        end = _parse_date(custom.get("end_date"))
+        day = _parse_date(current_training_day) if current_training_day is not None else date.today()
+        if not end:
+            return "status_ineligible"
+        if day and end < day:
+            return "fight_date_passed"
     raw_fight_date = (row or {}).get("fight_date")
     fight_date_text = str(raw_fight_date or "").strip()
     if not fight_date_text:
@@ -278,6 +286,8 @@ def _validate_custom_plan_activation(
     parsed = safe_parse_structured_plan(plan.get("structured_plan"))
     if not parsed.ok or parsed.plan is None:
         raise HTTPException(409, "This custom plan's prescription is invalid. Edit the plan before activating.")
+    if (_decode_mapping(plan.get("planning_brief")).get("custom_plan") or {}).get("schedule_mode") == "dated":
+        return
     _, context = project_open_structured_plan(
         plan, parsed.plan.model_dump(mode="json"), current_training_day=current_training_day or date.today()
     )

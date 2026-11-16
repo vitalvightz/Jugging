@@ -4,7 +4,7 @@ import re
 import hashlib
 import json
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from uuid import UUID, uuid5
 
 from fastapi import HTTPException
@@ -59,7 +59,10 @@ def custom_open_plan_result(draft: dict, profile, *, training_day: str) -> dict:
     """Compile exactly the saved prescription, with no exercise selection."""
     from api.structured_plan_models import SCHEMA_VERSION, StructuredTrainingPlan
 
-    sessions = draft.get("sessions") or []
+    if draft.get("schedule_mode") == "dated":
+        return dated_custom_plan_result(draft, profile, training_day=training_day)
+    sessions = [{k: v for k, v in session.items() if k != 'scheduled_date' or v is not None} for session in (draft.get("sessions") or [])]
+    draft = {**draft, 'sessions': sessions}
     issues = schedule_issues(sessions)
     if issues:
         raise HTTPException(422, " ".join(issues))
@@ -200,6 +203,49 @@ def custom_open_plan_result(draft: dict, profile, *, training_day: str) -> dict:
     }
 
 
+def dated_custom_plan_result(draft: dict, profile, *, training_day: str) -> dict:
+    """Compile authored dates using the existing exercise/session compiler."""
+    from api.structured_plan_models import StructuredTrainingPlan
+    start, end = date.fromisoformat(str(draft['start_date'])), date.fromisoformat(str(draft['end_date']))
+    # Range participates in identity even if only an empty boundary day changes.
+    namespace = str(uuid5(UUID(draft['id']), f"dated:{start}:{end}"))
+    result = custom_open_plan_result({**draft, 'id': namespace, 'schedule_mode': 'weekly'}, profile, training_day=training_day)
+    structured = result['structured_plan']
+    template = structured['weeks'][0]
+    by_weekday = {day['weekday']: day for day in template['days']}
+    weeks = []
+    cursor = start
+    while cursor <= end:
+        week_end = min(cursor + timedelta(days=6-cursor.weekday()), end)
+        days = []
+        for offset in range((week_end-cursor).days+1):
+            day_date = cursor + timedelta(days=offset)
+            day = deepcopy(by_weekday[day_date.strftime('%a')])
+            daily = [s for s in draft['sessions'] if s.get('scheduled_date') == day_date.isoformat()]
+            identities = {str(uuid5(UUID(result['plan_id']), s['id'])) for s in daily}
+            day['date'] = day_date.isoformat()
+            day['sessions'] = [s for s in day['sessions'] if s['session_id'] in identities]
+            for position, session in enumerate(day['sessions'], 1):
+                session['execution_order'] = position
+            workouts = [s for s in daily if s.get('session_type', 'mixed') not in {'rest', 'recovery'}]
+            recovery = any(s.get('session_type') == 'recovery' for s in daily)
+            day['today_card']['headline'] = ' / '.join(s['name'] for s in workouts) or ('Recovery day' if recovery else 'Rest day')
+            day['today_card']['coach_led_contact'] = 'Hard sparring' if any(s['session_type'] == 'sparring' for s in day['sessions']) else None
+            day['day_type'] = 'moderate' if workouts else 'recovery' if recovery else 'rest'
+            days.append(day)
+        weeks.append({**deepcopy(template), 'week_id': f'dated-{cursor}', 'week_index': len(weeks)+1,
+                      'start_date': str(cursor), 'end_date': str(week_end), 'days': days})
+        cursor = week_end + timedelta(days=1)
+    structured['weeks'] = weeks
+    structured['plan_metadata']['plan_type'] = 'general_performance'
+    result['structured_plan'] = StructuredTrainingPlan.model_validate(structured).model_dump(mode='json')
+    result['planning_brief'].pop('open_plan_spec', None)
+    custom = result['planning_brief']['custom_plan']
+    custom.update(id=draft['id'], schedule_mode='dated', start_date=str(start), end_date=str(end))
+    result['stage2_validator_report']['custom_plan']['id'] = draft['id']
+    return result
+
+
 def dose_block_fields(dose: dict) -> dict:
     """The shared numeric block fields for one athlete dose (CustomDose shape)."""
     fields: dict = {}
@@ -288,7 +334,7 @@ def publish_custom_plan(store, draft: dict, profile, *, awaiting_assignment: boo
         {"created_at": training_day, "planning_brief": result["planning_brief"]},
         result["structured_plan"], current_training_day=training_day,
     )
-    if context["projection_status"] != "projected":
+    if draft.get("schedule_mode") != "dated" and context["projection_status"] != "projected":
         raise HTTPException(422, "This plan's weekly schedule could not be validated.")
     request = PlanRequest(athlete=AthleteProfileInput(
         full_name=profile.full_name, technical_style=profile.technical_style,

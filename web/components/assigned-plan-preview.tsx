@@ -4,7 +4,7 @@ import styles from "./coach-workspace.module.css";
 
 export function AssignedPlanPreview({ plan }: { plan: CustomPlan }) {
   return <div>{plan.sessions.map(session => <section key={session.id} className={styles.panel}>
-    <h3>{session.weekday ?? "Day not set"} · {session.name}</h3>
+    <h3>{session.scheduled_date ?? session.weekday ?? "Day not set"} · {session.name}</h3>
     {!session.exercises.length ? <p>{session.session_type === "rest" ? "Rest day" : "Coach-led session"}</p> : <ol>{session.exercises.map(exercise => <li key={exercise.id}>
       <strong>{exercise.origin === "manual" ? exercise.name : exercise.snapshot.name}</strong>
       <p>{doseSummary(exercise.dose)}</p>

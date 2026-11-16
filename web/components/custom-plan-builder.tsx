@@ -1,4 +1,7 @@
 "use client";
+import { CustomPlanCalendar } from './custom-plan-calendar';
+import { addCalendarDays, calendarWeekday, calendarMonday, datedCopy, duplicateCalendarWeek, copyCalendarSession, nextCalendarMonday } from '@/lib/custom-plan-calendar';
+import type { CustomPlan } from '@/lib/api-schema.generated';
 import { ExerciseLogProvider } from "./exercise-log";
 import { personalPerformance } from "@/lib/weight-recommendation";
 import Link from "next/link";
@@ -32,7 +35,7 @@ import styles from "./custom-plan-builder.module.css";
 import { useFadeNavigate } from "@/components/fade-through";
 type Exercise = (Omit<CustomExercise, "snapshot"> & { snapshot: LibraryEntry }) | ManualExercise;
 type Session = Omit<CustomSession, "exercises" | "session_type"> & { exercises: Exercise[]; session_type?: CustomSession["session_type"] };
-type Draft = { id?: string; name: string; sessions: Session[]; incomplete?: boolean };
+type Draft = { id?: string; name: string; sessions: Session[]; incomplete?: boolean; schedule_mode?: "weekly" | "dated"; start_date?: string | null; end_date?: string | null };
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 const REST_DAY_REMINDER = "Keep this day for recovery.";
 type Weekday = (typeof weekdays)[number];
@@ -47,7 +50,7 @@ function firstScheduledDay(sessions: Session[]): Weekday {
 }
 /** A new session starts on the day the athlete is looking at; its name follows its type until they rename it. */
 function newSession(weekday: Session["weekday"]): Session {
-  return { id: crypto.randomUUID(), name: sessionNames.mixed, weekday, session_type: "mixed", exercises: [] };
+  return { id: crypto.randomUUID(), name: sessionNames.mixed, weekday, session_type: "mixed", scheduled_date: null, exercises: [] };
 }
 /** Types that are built from exercises, so adding one goes straight on to choosing them. */
 const EXERCISE_TYPES: Array<CustomSession["session_type"]> = ["mixed", "strength_power", "conditioning"];
@@ -57,7 +60,7 @@ const SESSION_TYPES: Array<[CustomSession["session_type"], string]> = [
 ];
 function orderedDraft(draft: Draft): Draft {
   const day = (session: Session) => session.weekday ? weekdays.indexOf(session.weekday) : 7;
-  return { ...draft, sessions: [...draft.sessions].sort((a, b) => day(a) - day(b)) };
+  return { ...draft, sessions: [...draft.sessions].sort((a, b) => (a.scheduled_date ?? "").localeCompare(b.scheduled_date ?? "") || day(a) - day(b)) };
 }
 const nameOf = (e: Exercise) => (e.origin === "manual" ? e.name : e.snapshot.name);
 function draftBlock(exercise: Exercise, session: Session): StructuredBlock {
@@ -111,15 +114,20 @@ function PencilIcon() {
     </svg>
   );
 }
-export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboarding = null, coachFighterId, onCoachClose }: { onCoachClose?: () => void; coachFighterId?: string; accessToken: string; planId?: string; addSessionDay?: string | null; onboarding?: MeResponse | null }) {
+export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboarding = null, coachFighterId, onCoachClose, initialPlan, athleteTimezone }: { athleteTimezone?: string; initialPlan?: CustomPlan; onCoachClose?: () => void; coachFighterId?: string; accessToken: string; planId?: string; addSessionDay?: string | null; onboarding?: MeResponse | null }) {
   const router = useRouter();
   const requestId = useRef(crypto.randomUUID());
   const savedPlansHref = coachFighterId ? "/coach/plans" : "/plans#custom-plans";
   const fadeNavigate = useFadeNavigate();
-  const [draft, setDraft] = useState<Draft>(() => ({
-    name: "My Training Plan",
-    sessions: planId ? [] : customSchedulePrefill(onboarding),
-  }));
+  const [draft, setDraft] = useState<Draft>(() => {
+    if (initialPlan) return orderedDraft({ ...initialPlan, id: undefined, name: `${initialPlan.name} revision`.slice(0, 100) });
+    const start = nextCalendarMonday(athleteTimezone ?? onboarding?.profile.athlete_timezone ?? 'UTC');
+    return { name: "My Training Plan", schedule_mode: 'dated', start_date: start, end_date: addCalendarDays(start, 27),
+      sessions: planId ? [] : datedCopy(customSchedulePrefill(onboarding), start, addCalendarDays(start, 27)) };
+  });
+  const [selectedDate, setSelectedDate] = useState(draft.start_date ?? nextCalendarMonday(athleteTimezone ?? onboarding?.profile.athlete_timezone ?? 'UTC'));
+  const isDated = draft.schedule_mode === 'dated';
+  const sessionLimit = isDated ? 336 : 28;
   const [loading, setLoading] = useState(!!planId),
     [retry, setRetry] = useState(0),
     [pending, setPending] = useState(false),
@@ -130,6 +138,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   const [adding, setAdding] = useState<{ sessionId: string; added: string[]; query?: string }>();
   // One added exercise is open at a time: the newest, so its dose can be set at once; the rest stay one line each.
   const [openAdded, setOpenAdded] = useState<string>();
+  const [quickDose, setQuickDose] = useState<string | null>(null);
   const [openExercise, setOpenExercise] = useState<string | null>(null);
   const [error, setError] = useState<string>(),
     [message, setMessage] = useState<string>();
@@ -169,6 +178,9 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   // Exercises the athlete has edited. A late prefill never lands on these.
   const touched = useRef(new Set<string>());
   const latest = useRef(draft);
+  const undoStack = useRef<Draft[]>([]), redoStack = useRef<Draft[]>([]);
+  const savedSnapshot = useRef(JSON.stringify(draft));
+  const [historyVersion, setHistoryVersion] = useState(0);
   useEffect(() => { latest.current = draft; });
   // Read only once an exercise is open, for last time's weight.
   const past = usePastExercises(!coachFighterId && (adding || editing) ? accessToken : null);
@@ -208,6 +220,8 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
           setError(undefined);
           const repaired = orderedDraft({ ...plan, sessions: plan.sessions.map(s => prepareCustomSession(s, onboarding)) });
           setDraft(repaired);
+          savedSnapshot.current = JSON.stringify(repaired);
+          if (repaired.schedule_mode === 'dated') setSelectedDate(repaired.sessions[0]?.scheduled_date ?? repaired.start_date!);
           const day = weekdays.find(value => value.slice(0, 3).toLowerCase() === addSessionDay?.toLowerCase());
           if (day && repaired.sessions.length >= 28) setError("This plan already has the maximum 28 sessions.");
           else if (day) {
@@ -306,9 +320,65 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   }, [unsaved, router]);
   // Updates build on the latest draft, so a prefill landing between taps is never lost.
   function change(next: (current: Draft) => Draft) {
-    setDraft(current => orderedDraft(next(current)));
-    setDirty(true);
+    const current = latest.current;
+    const updated = orderedDraft(next(current));
+    if (JSON.stringify(updated) === JSON.stringify(current)) return;
+    undoStack.current.push(current);
+    if (undoStack.current.length > 100) undoStack.current.shift();
+    redoStack.current = [];
+    latest.current = updated;
+    setDraft(updated);
+    setHistoryVersion(n => n + 1);
+    setDirty(JSON.stringify(updated) !== savedSnapshot.current);
     setMessage(undefined);
+  }
+  function travelHistory(direction: 'undo' | 'redo') {
+    const source = direction === 'undo' ? undoStack : redoStack;
+    const destination = direction === 'undo' ? redoStack : undoStack;
+    const next = source.current.pop();
+    if (!next) return;
+    destination.current.push(latest.current);
+    if (next.schedule_mode === 'dated') setSelectedDate(next.start_date!);
+    latest.current = next; setDraft(next); setDirty(JSON.stringify(next) !== savedSnapshot.current);
+    setHistoryVersion(n => n + 1); setMessage(undefined);
+  }
+  function selectScheduleMode(mode: 'weekly' | 'dated') {
+    if (mode === draft.schedule_mode) return;
+    if (mode === 'weekly') {
+      if (draft.sessions.length && !window.confirm('Create a repeating copy using only the first week? This does not change any saved plan.')) return;
+      requestId.current = crypto.randomUUID();
+      const first = draft.start_date ?? selectedDate;
+      change(current => ({ ...current, id: undefined, schedule_mode: 'weekly', start_date: null, end_date: null,
+        sessions: current.sessions.filter(s => !s.scheduled_date || s.scheduled_date < addCalendarDays(first, 7)).map(s => ({ ...s, scheduled_date: null })) }));
+    } else {
+      if (draft.id && !window.confirm('Create a dated copy? Your saved weekly plan will stay unchanged.')) return;
+      requestId.current = crypto.randomUUID();
+      const start = nextCalendarMonday(athleteTimezone ?? onboarding?.profile.athlete_timezone ?? 'UTC');
+      change(current => ({ ...current, id: undefined, schedule_mode: 'dated', start_date: start, end_date: addCalendarDays(start, 27), sessions: datedCopy(current.sessions, start, addCalendarDays(start, 27)) }));
+      setSelectedDate(start);
+    }
+  }
+  function resizeDates(start: string, weeks: number) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !Number.isInteger(weeks) || weeks < 1 || weeks > 12) return;
+    const end = addCalendarDays(start, weeks * 7 - 1);
+    const offset = Math.round((Date.parse(start) - Date.parse(draft.start_date!)) / 86400000);
+    if (offset && draft.sessions.length && !window.confirm('Move all draft sessions by the same number of days to keep their relative schedule?')) return;
+    const shifted = draft.sessions.map(s => ({ ...s, scheduled_date: addCalendarDays(s.scheduled_date!, offset), weekday: calendarWeekday(addCalendarDays(s.scheduled_date!, offset)) }));
+    const outside = shifted.filter(s => s.scheduled_date < start || s.scheduled_date > end);
+    if (outside.length && !window.confirm(`Remove ${outside.length} sessions outside the new range? Cancel to move them first.`)) return;
+    change(current => ({ ...current, start_date: start, end_date: end, sessions: shifted.filter(s => s.scheduled_date >= start && s.scheduled_date <= end) }));
+    setSelectedDate(start);
+  }
+  function moveSession(id: string, day: string) {
+    if (day < draft.start_date! || day > draft.end_date!) { setError('Choose a date inside this plan.'); return; }
+    const week = calendarMonday(day);
+    if (draft.sessions.filter(s => s.id !== id && s.scheduled_date && calendarMonday(s.scheduled_date) === week).length >= 28) { setError('Each week can hold at most 28 sessions.'); return; }
+    sessionChange(id, s => ({ ...s, scheduled_date: day, weekday: calendarWeekday(day) })); setSelectedDate(day);
+  }
+  function addDatedSession(day: string) {
+    setSelectedDate(day);
+    const session = { ...newSession(calendarWeekday(day)), scheduled_date: day };
+    setSessionFresh(session); setSessionEdit(session);
   }
   function sessionChange(id: string, update: (s: Session) => Session) {
     change(current => ({ ...current, sessions: current.sessions.map((s) => (s.id === id ? update(s) : s)) }));
@@ -330,7 +400,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   }
 
   function addSessionOnDay(weekday: Session["weekday"]) {
-    const session = newSession(weekday);
+    const session = { ...newSession(weekday), scheduled_date: isDated ? selectedDate : null };
     setSessionFresh(session);
     setSessionEdit(session);
   }
@@ -448,12 +518,13 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
   const addedHere = addingSession ? addingSession.exercises.filter(e => adding!.added.includes(e.id)) : [];
   const draftValid = Boolean(draft.name.trim()) && draft.sessions.every(s => s.name.trim() && s.exercises.every(e => nameOf(e).trim()));
   const publishable = draftValid && issues.length === 0;
-  const selectedDay = chosenDay ?? firstScheduledDay(draft.sessions);
-  const daySessions = draft.sessions.filter(s => s.weekday === selectedDay);
+  const selectedDay = isDated ? calendarWeekday(selectedDate) : chosenDay ?? firstScheduledDay(draft.sessions);
+  const daySessions = draft.sessions.filter(s => isDated ? s.scheduled_date === selectedDate : s.weekday === selectedDay);
   const unassigned = draft.sessions.filter(s => !s.weekday);
   const issueSessions = new Set(issues.map(issue => issue.sessionId).filter(Boolean));
   function fixIssue(sessionId: string) {
     const session = draft.sessions.find(s => s.id === sessionId)!;
+    if (session.scheduled_date) setSelectedDate(session.scheduled_date);
     if (session.weekday) setChosenDay(session.weekday);
     const exercise = session.exercises.find(e => doseIncomplete(e.dose));
     if (exercise) edit(session.id, exercise); else openSession(session);
@@ -471,10 +542,11 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
       <section key={s.id} className={`sp-session ${styles.session}`} aria-label={`Session ${i + 1}`}>
         <div className="sp-session-head">
           <div>
-            <small className={styles.weekday} data-attention={s.weekday ? undefined : "true"}>{s.weekday ?? "No day set"}</small>
+            <small className={styles.weekday} data-attention={s.weekday ? undefined : "true"}>{s.scheduled_date ?? s.weekday ?? "No day set"}</small>
             <h2 className="sp-session-title">{s.name}</h2>
           </div>
           <div className={styles.sessionActions}>
+            <button type="button" className="ghost-button" disabled={draft.sessions.length >= sessionLimit} onClick={() => change(current => ({ ...current, sessions: [...current.sessions, isDated ? copyCalendarSession(s, s.scheduled_date!) : { ...s, id: crypto.randomUUID(), exercises: s.exercises.map(e => ({ ...e, id: crypto.randomUUID() })) }] }))}>Copy session</button>
             <button type="button" className={styles.editButton} aria-label={`Edit session ${i + 1}`} title="Edit session"
               onClick={() => openSession(s)}>
               <PencilIcon />
@@ -506,6 +578,11 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
                         <DotsIcon />
                       </button>
                     } />
+                  <div className={styles.quickControls}>
+                    <button type="button" aria-expanded={quickDose === e.id} onClick={() => setQuickDose(quickDose === e.id ? null : e.id)}>Quick dose for {nameOf(e)}</button>
+                    {(['up', 'down'] as const).map(direction => <button key={direction} type="button" disabled={direction === 'up' ? s.exercises.indexOf(e) === 0 : s.exercises.indexOf(e) === s.exercises.length - 1} aria-label={`Move ${nameOf(e)} ${direction}`} onClick={() => sessionChange(s.id, session => { const exercises = [...session.exercises]; const index = exercises.findIndex(item => item.id === e.id); const target = index + (direction === 'up' ? -1 : 1); [exercises[index], exercises[target]] = [exercises[target], exercises[index]]; return { ...session, exercises }; })}>Move {direction}</button>)}
+                  </div>
+                  {quickDose === e.id ? <div className={styles.quickDose} role="group" aria-label={`Quick dose for ${nameOf(e)}`}><CustomDoseEditor dose={e.dose} movement={e.origin === 'catalogue' ? e.snapshot : e} onChange={dose => sessionChange(s.id, session => ({ ...session, exercises: session.exercises.map(item => item.id === e.id ? { ...item, dose, incomplete: doseIncomplete(dose) } : item) }))} /><button type="button" className="ghost-button" onClick={() => setQuickDose(null)}>Done editing dose</button></div> : null}
                 </li>
               ))}
             </ol></ExerciseLogProvider></ExerciseMediaProvider></PrivateExerciseMediaProvider> : <p className="muted">{REST_DAY_REMINDER}</p>}
@@ -551,10 +628,11 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
         accessToken,
         {
           name: draft.name,
+          schedule_mode: draft.schedule_mode ?? "weekly", start_date: draft.start_date ?? null, end_date: draft.end_date ?? null,
           sessions: draft.sessions.map((s) => ({
             id: s.id,
             name: s.name,
-            weekday: s.weekday,
+            weekday: s.weekday, scheduled_date: s.scheduled_date ?? null,
             session_type: s.session_type ?? "mixed",
             exercises: s.exercises.map((e) =>
               e.origin === "manual"
@@ -590,6 +668,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
       if (!mounted.current) return;
       await releaseGuard.current();
       setDraft(orderedDraft(saved));
+      savedSnapshot.current = JSON.stringify(orderedDraft(saved)); undoStack.current = []; redoStack.current = []; setHistoryVersion(n => n + 1);
       setOpened(true);
       setDirty(false);
       setMessage(coachFighterId ? "Draft saved. Return to coach plans to assign it." : saved.incomplete ? "Draft saved. Finish the workouts listed below when ready." : "Plan saved. View your plan to activate it.");
@@ -659,7 +738,12 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
           </h1>
           <span className={styles.badge}>{dirty ? "Unsaved" : draft.id ? "Saved" : "New"}</span>
         </div>
-        <p className="muted">Choose each day’s work. Unselected days are rest.</p>
+        <p className="muted">{isDated ? 'Build your programme on the calendar. Each date keeps its own prescription.' : 'Repeating weekly plan. Create a dated copy to programme different weeks.'}</p>
+        <div className={styles.historyToolbar} data-version={historyVersion}>
+          <button type="button" className="ghost-button" disabled={pending || sheetDirty || !undoStack.current.length} onClick={() => travelHistory('undo')}>Undo</button>
+          <button type="button" className="ghost-button" disabled={pending || sheetDirty || !redoStack.current.length} onClick={() => travelHistory('redo')}>Redo</button>
+          <span>{isDated ? `${draft.start_date} – ${draft.end_date}` : 'Repeats every week'}</span>
+        </div>
       </header>
       {error ? (
         <p className="error-banner" role="alert">
@@ -687,7 +771,14 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
               onChange={(e) => { const name = e.target.value; change(current => ({ ...current, name })); }}
             />
           </label>
-          <div className={styles.calendar} role="group" aria-label="Weekly training calendar">
+          <div className={styles.scheduleSettings}>
+            <label>Schedule<select aria-label="Schedule mode" value={draft.schedule_mode ?? 'weekly'} onChange={event => selectScheduleMode(event.target.value as 'weekly' | 'dated')}><option value="dated">Dated multi-week calendar</option><option value="weekly">Repeating week</option></select></label>
+            {isDated ? <><label>Start date<input type="date" value={draft.start_date!} onChange={event => resizeDates(event.target.value, Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!)) / 604800000 + 1 / 7))} /></label><label>Weeks<input aria-label="Plan duration in weeks" type="number" min={1} max={12} value={Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!) + 86400000) / 604800000)} onChange={event => resizeDates(draft.start_date!, Number(event.target.value))} /></label></> : null}
+          </div>
+          <div className={isDated ? styles.calendarEditorLayout : undefined}>
+          <div>
+          {isDated ? <CustomPlanCalendar sessions={draft.sessions} start={draft.start_date!} end={draft.end_date!} selected={selectedDate} onSelect={setSelectedDate} onAdd={addDatedSession} onMove={moveSession}
+            onOpen={id => openSession(draft.sessions.find(s => s.id === id)!)} onDuplicateWeek={() => { try { change(current => ({ ...current, sessions: duplicateCalendarWeek(current.sessions, selectedDate, current.start_date!, current.end_date!) })); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to copy week.'); } }} /> : <div className={styles.calendar} role="group" aria-label="Weekly training calendar">
             {weekdays.map(day => {
               const sessions = draft.sessions.filter(s => s.weekday === day);
               const label = sessions.length ? sessions.map(s => s.name).join(" / ") : "Rest";
@@ -699,7 +790,9 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
                   data-attention={sessions.some(s => issueSessions.has(s.id)) ? "true" : undefined} aria-hidden="true" />
               </button>;
             })}
+          </div>}
           </div>
+          <div>
           <div className={styles.dayView}>
             {daySessions.length ? daySessions.map(renderSession) : (
               <div className={styles.emptyDay}>
@@ -707,7 +800,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
                 <h2>Rest day</h2>
                 <p className="muted">{REST_DAY_REMINDER}</p>
                 <button type="button" className={`secondary-button ${styles.addSession}`} aria-label={`Add session on ${selectedDay}`}
-                  disabled={draft.sessions.length >= 28}
+                  disabled={draft.sessions.length >= sessionLimit}
                   onClick={() => addSessionOnDay(selectedDay)}>
                   <PlusIcon /> Add session
                 </button>
@@ -716,17 +809,18 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
           </div>
           {daySessions.length ? (
             <button type="button" className={`secondary-button ${styles.addSession}`} aria-label={`Add another session on ${selectedDay}`}
-              disabled={draft.sessions.length >= 28} onClick={() => addSessionOnDay(selectedDay)}>
+              disabled={draft.sessions.length >= sessionLimit} onClick={() => addSessionOnDay(selectedDay)}>
               <PlusIcon /> Add another session on {selectedDay}
             </button>
           ) : null}
+          </div></div>
           {/* Only older drafts can hold a session without a day; new sessions always start on the selected day. */}
           {unassigned.length ? <div className={styles.dayView} role="group" aria-label="Sessions without a day">
             {unassigned.map(renderSession)}
           </div> : null}
           <div className={styles.saveBar} ref={saveBar}>
             <p className={styles.saveStatus} role="status" data-attention={issues.length ? "true" : undefined}>
-              {issues.length ? issues[0].message : "Ready to activate"}
+              {issues.length ? issues[0].message : coachFighterId ? "Ready to assign" : "Ready to activate"}
               {dirty ? " · Unsaved changes" : ""}
             </p>
             {issues[0]?.sessionId ? <button type="button" className={`ghost-button ${styles.fixButton}`} onClick={() => fixIssue(issues[0].sessionId!)}>
@@ -785,6 +879,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
               if (sessionFresh) change(current => ({ ...current, sessions: [...current.sessions, sessionEdit] }));
               else sessionChange(sessionEdit.id, () => sessionEdit);
               // Follow the session to its day so it never disappears from view.
+              if (sessionEdit.scheduled_date) setSelectedDate(sessionEdit.scheduled_date);
               if (sessionEdit.weekday) setChosenDay(sessionEdit.weekday);
               setSessionEdit(undefined);
               // A new workout goes straight on to its exercises; closing the sheet still leaves it empty.
@@ -810,6 +905,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
                 onChange={(e) => setSessionEdit({ ...sessionEdit, name: e.target.value })}
               />
             </label>
+            {isDated ? <label>Date<input aria-label="Session date" type="date" min={draft.start_date!} max={draft.end_date!} required value={sessionEdit.scheduled_date ?? selectedDate} onChange={event => { const day = event.target.value; if (day) setSessionEdit({ ...sessionEdit, scheduled_date: day, weekday: calendarWeekday(day) }); }} /></label> : <>
             <label>
               <span>Day</span>
               <select
@@ -828,6 +924,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, onboardi
                 ))}
               </select>
             </label>
+            </>}
             <button className="cta" disabled={!sessionEdit.weekday}>{sessionFresh ? "Add session" : "Done"}</button>
             {sessionFresh ? null : <button
               type="button"

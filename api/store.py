@@ -4807,7 +4807,7 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
         }).execute().data is True
 
     def create_custom_plan(self, athlete_id: str, fields: dict[str, Any]) -> dict[str, Any]:
-        payload = {key: fields[key] for key in ("name", "sessions", "incomplete")}
+        payload = {key: fields[key] for key in ("name", "sessions", "incomplete", "schedule_mode", "start_date", "end_date") if key in fields}
         response = self.client.table("custom_training_plans").insert({**payload, "athlete_id": athlete_id}).execute()
         rows = getattr(response, "data", None) or []
         if not rows:
@@ -4825,7 +4825,7 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
 
     def update_custom_plan(self, athlete_id: str, plan_id: str, fields: dict[str, Any]) -> dict[str, Any] | None:
         response = (self.client.table("custom_training_plans")
-                    .update({key: fields[key] for key in ("name", "sessions", "incomplete")})
+                    .update({key: fields[key] for key in ("name", "sessions", "incomplete", "schedule_mode", "start_date", "end_date") if key in fields})
                     .eq("athlete_id", athlete_id).is_("fighter_id", "null").eq("id", plan_id).execute())
         return (getattr(response, "data", None) or [None])[0]
 

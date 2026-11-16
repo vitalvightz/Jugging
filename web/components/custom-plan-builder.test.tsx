@@ -76,6 +76,7 @@ test("rest days offer a pencil control that opens a new session", async () => {
         <ToastProvider><CustomPlanBuilder accessToken="test-token" /></ToastProvider>
       </AppRouterContext.Provider>,
     ));
+    await act(async () => type(host.querySelector('[aria-label="Schedule mode"]')!, "weekly"));
     assert.match(host.textContent!, /Keep this day for recovery\./);
     const addSession = host.querySelector<HTMLButtonElement>('[aria-label="Add session on Monday"]')!;
     await act(async () => addSession.click());
@@ -101,6 +102,7 @@ test("a new session only joins the plan once confirmed, and the bin removes it",
         <ToastProvider><CustomPlanBuilder accessToken="test-token" /></ToastProvider>
       </AppRouterContext.Provider>,
     ));
+    await act(async () => type(host.querySelector('[aria-label="Schedule mode"]')!, "weekly"));
     assert.doesNotMatch(host.textContent!, /Unassigned|No day set/);
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Add session on Monday"]')!.click());
     await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Close"], .injury-sheet-close')?.click());
@@ -180,16 +182,18 @@ const field = (scope: ParentNode, label: string) => scope.querySelector<HTMLInpu
 const button = (scope: ParentNode, text: string) => [...scope.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent?.trim() === text)!;
 const submit = (form: HTMLFormElement) => form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
 
-async function mountBuilder(props: { accessToken: string; planId?: string }) {
+async function mountBuilder(props: { accessToken: string; planId?: string; weekly?: boolean }) {
+  const { weekly = true, ...builderProps } = props;
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
   const router = { push() {}, replace() {}, refresh() {}, back() {}, forward() {}, prefetch() {}, bfcacheId: "fixture" };
   await act(async () => root.render(
     <AppRouterContext.Provider value={router}>
-      <ToastProvider><CustomPlanBuilder {...props} /></ToastProvider>
+      <ToastProvider><CustomPlanBuilder {...builderProps} /></ToastProvider>
     </AppRouterContext.Provider>,
   ));
+  if (!props.planId && weekly) await act(async () => type(host.querySelector('[aria-label="Schedule mode"]')!, "weekly"));
   return { host, unmount: async () => { await act(async () => root.unmount()); host.remove(); } };
 }
 /** New session on `day` through the session sheet, which hands straight on to the add sheet. */
@@ -268,7 +272,7 @@ test("several library exercises go in from one sheet, each starting from its ver
       const session = reopened.host.querySelector<HTMLElement>('[aria-label="Session 1"]')!;
       assert.match(session.textContent!, /Wednesday/);
       assert.match(session.textContent!, /Bike sprints[\s\S]*5 × 5 min · rest 30s/);
-      assert.match(session.textContent!, /Back squat[\s\S]*3 × 5Suggested 100 kg/);
+      assert.match(session.textContent!, /Back squat[\s\S]*3 × 5[\s\S]*100 kg/);
       assert.match(reopened.host.textContent!, /Saved/);
     } finally { await reopened.unmount(); }
   } finally {
@@ -289,7 +293,7 @@ test("a saved plan reopens with its days, sessions and doses", async () => {
     const session = ui.host.querySelector<HTMLElement>('[aria-label="Session 1"]')!;
     assert.match(session.textContent!, /Wednesday/);
     assert.match(session.textContent!, /Back squat/);
-    assert.match(session.textContent!, /3 × 5Suggested 100 kg/);
+    assert.match(session.textContent!, /3 × 5[\s\S]*100 kg/);
     assert.match(ui.host.textContent!, /Saved/);
   } finally {
     await ui.unmount();
@@ -433,7 +437,7 @@ test("a set extra keeps its fold open", async () => {
 test("Back closes the builder's own sheets first; only leaving the plan asks to discard", async () => {
   const api = mockApi(library);
   window.history.replaceState(null, "", "/plans/custom");
-  const ui = await mountBuilder({ accessToken: "guard" });
+  const ui = await mountBuilder({ accessToken: "guard", weekly: false });
   const confirm = window.confirm, pushState = window.history.pushState;
   const asked: string[] = [];
   let pushes = 0;

@@ -1,6 +1,6 @@
 """Saved self-directed drafts. These contracts never authorise execution."""
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Annotated, Literal, get_args
 from uuid import UUID
 
@@ -19,7 +19,7 @@ WEEKDAYS = get_args(Weekday)
 
 def ordered_sessions(sessions):
     # Python's stable sort retains athlete order within a day and among drafts.
-    return sorted(sessions, key=lambda session: WEEKDAYS.index(session.weekday) if session.weekday else 7)
+    return sorted(sessions, key=lambda session: (str(getattr(session, "scheduled_date", None) or ""), WEEKDAYS.index(session.weekday) if session.weekday else 7))
 
 
 class DraftModel(BaseModel):
@@ -122,6 +122,7 @@ class CustomSessionInput(DraftModel):
     id: UUID
     name: Name
     weekday: Weekday | None = None
+    scheduled_date: date | None = None
     session_type: Literal["mixed", "strength_power", "conditioning", "skill", "sparring", "recovery", "rest"] = "mixed"
     exercises: list[ExerciseInput] = Field(default_factory=list, max_length=100)
 
@@ -133,10 +134,30 @@ class CustomSessionInput(DraftModel):
 
 class CustomPlanInput(DraftModel):
     name: Name
-    sessions: list[CustomSessionInput] = Field(default_factory=list, max_length=28)
+    schedule_mode: Literal["weekly", "dated"] = "weekly"
+    start_date: date | None = None
+    end_date: date | None = None
+    sessions: list[CustomSessionInput] = Field(default_factory=list, max_length=336)
 
     @model_validator(mode="after")
     def unique_occurrences(self):
+        if self.schedule_mode == "weekly":
+            if self.start_date or self.end_date or any(s.scheduled_date for s in self.sessions):
+                raise ValueError("Weekly plans cannot contain calendar dates.")
+            if len(self.sessions) > 28:
+                raise ValueError("Weekly plans allow at most 28 sessions.")
+        else:
+            if not self.start_date or not self.end_date or not 0 <= (self.end_date - self.start_date).days < 84:
+                raise ValueError("Choose a date range between 1 and 84 days.")
+            counts = {}
+            for session in self.sessions:
+                if not session.scheduled_date or not self.start_date <= session.scheduled_date <= self.end_date:
+                    raise ValueError("Every session needs a date inside the plan range.")
+                session.weekday = WEEKDAYS[session.scheduled_date.weekday()]
+                monday = session.scheduled_date - timedelta(days=session.scheduled_date.weekday())
+                counts[monday] = counts.get(monday, 0) + 1
+                if counts[monday] > 28:
+                    raise ValueError("Each calendar week allows at most 28 sessions.")
         ids = [session.id for session in self.sessions]
         ids += [
             exercise.id for session in self.sessions for exercise in session.exercises
@@ -170,6 +191,9 @@ class CustomSession(CustomSessionInput):
 
 
 class CustomPlan(BaseModel):
+    schedule_mode: Literal["weekly", "dated"] = "weekly"
+    start_date: date | None = None
+    end_date: date | None = None
     id: UUID
     name: str
     kind: Literal["self_directed"] = "self_directed"

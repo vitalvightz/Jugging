@@ -88,18 +88,12 @@ Use test-only environment markers for Python commands (`APP_ENV=test`,
   assign → fighter preview/activation → coach progress at 390px and 1440px, plus
   role navigation checks. Axe checks the assigned-plan UI.
 
-Three existing failures were independently reproduced on unchanged Main
-(`f96926ca`): `test_readiness_and_severe_injury_still_gate_execution` (started
-session returns 201 instead of 409), and two builder assertions expecting the
-old “Suggested 100 kg” copy. They are not fixed in this focused assignment PR.
-The injury-execution failure needs a separate investigation; the assignment
-change continues to use the existing execution and injury guards.
-
-An additional existing athlete browser smoke (`Saved links, mixed exercises and
-compact doses (390px)`) also fails at its dose-label assertion: it expects
-`4 × 8 · 80 kg · rest 120s`, while the unchanged session renderer displays
-`4 × 8 · rest 120s` and a separate `80 kg` label. The new coach/fighter browser
-journeys and all six coach/admin/athlete navigation cases pass.
+The existing `test_readiness_and_severe_injury_still_gate_execution` failure was
+independently reproduced on unchanged Main (`f96926ca`): a started session returns
+201 instead of 409. It needs a separate injury-execution investigation. Phase 3.5
+retains the existing guards. Two stale builder assertions and the athlete browser
+smoke's dose-label ordering assertion now match the existing separate weight label;
+these tests pass with the advanced builder.
 
 ## Compact coach dashboard
 
@@ -114,3 +108,76 @@ mobile shows these only when multiple plans make them useful. Pending assignment
 remain accessible under All Plans. View Schedule expands the existing coach-safe
 projected training sessions without introducing new scheduling logic. Icons are MIT Heroicons
 assets with their license retained under `web/public/icons/coach/`.
+
+## Phase 3.5: dated custom plans
+
+The same builder now defaults new coach and athlete drafts to a four-week dated
+calendar, starting on the next Monday (today when Monday) in the athlete's timezone.
+Start date and duration are editable, from one to twelve weeks. The API also permits
+partial weeks within an 84-day range. Existing drafts default to `weekly` and keep
+their repeating behavior. Switching modes creates a copy rather than updating the
+saved original. Shortening a range requires confirmation before removing sessions;
+shifting the start date confirms moving sessions by the same offset.
+
+Week/month views, date selection and the existing session/exercise sheets share one
+draft. Desktop shows calendar and selected-day editor side by side. Mobile stacks
+them; select a date and use the selected day's Add session action. Drag/drop moves
+sessions on desktop; the session Date field is the keyboard/touch alternative.
+Copy session and Duplicate selected week create fresh occurrence IDs. Each date
+retains its own exercise doses. Quick dose editing and exercise ordering reuse the
+existing dose model. Undo/redo keeps up to 100 draft changes in memory and resets
+after saving; it is not a server version history.
+
+`20261116162904_dated_custom_plans.sql` adds only `schedule_mode`, `start_date` and
+`end_date` to the existing draft table and extends the service-only coach command
+to persist them. Session JSON gains `scheduled_date`; API validation derives weekday,
+checks range/unique occurrence IDs, and limits each calendar week to 28 sessions.
+No new plan or tracking tables are introduced. Legacy weekly publication identity
+ignores the new null date field, preserving deterministic retries for existing drafts.
+
+Dated publication uses the existing custom exercise/session compiler and ordinary
+structured-plan store. It writes actual dated weeks without a repeating Open Plan
+specification. Today, Plan Detail, completion, History and coach progress use those
+same dated records; nothing repeats beyond the authored range. The end date is also
+checked by the shared activation eligibility rules. Weekly publication remains on
+the existing Open Plan projection path.
+
+Create revised draft copies a sent prescription into a new coach draft. Saving or
+assigning it never mutates the accepted plan or existing results. The fighter must
+preview and activate the new assignment through the existing consent and overlap
+rules. Connection and recipient checks, immutable sent drafts, transactional consent
+and concurrent-activation checks remain in the existing services/RPCs. Supersets,
+per-set prescriptions, AI generation and automatic progression remain out of scope.
+
+### Phase 3.5 deployment order
+
+1. Confirm the Phase 3 assignment schema is present. Its production application was
+   explicitly requested separately; do not replay the old migration under a second
+   version when the hosted migration history already records it.
+2. Apply `20261116162904_dated_custom_plans.sql` using the reviewed migration process.
+   It is additive for existing drafts, with default weekly mode and no data backfill.
+3. Deploy backend, then frontend. The old application remains compatible during the
+   schema-first rollout. Do not roll back to an application version that interprets
+   dated drafts as weekly once dated drafts exist; retain the columns and records.
+
+The Phase 3.5 migration has only been exercised against disposable local PostgreSQL.
+It has not been applied to production; no merge or deployment was performed.
+
+### Phase 3.5 validation
+
+- `tests/test_dated_custom_plans.py`: contract/range validation, distinct doses and
+  session identity across weeks, publication retry, legacy identity, expiry, Today,
+  completion History and fighter-approved coach revision.
+- Coach/fighter permissions, custom plan, activation, publication and real PostgreSQL
+  race suites, plus the existing full-schema SQL permission harness.
+- Calendar/date helper tests and shared builder, assignment, plan-switch, coach
+  progress and Plans component tests.
+- `web/e2e/dated-custom-builder.spec.ts`: coach and athlete at 390px/1440px; copy,
+  undo/redo, moving dates, duplicate week, independent doses, month view, save/reopen,
+  coach revision copying, Axe, runtime errors and horizontal overflow.
+- Existing weekly-builder and coach → fighter assignment browser regressions.
+- TypeScript, generated API types, changed-file lint and production build.
+
+Local browser tests use intercepted test fixtures and placeholder public settings.
+The requested logged-in production browser plugin was unavailable in this session;
+these checks do not claim to inspect or modify the live account.

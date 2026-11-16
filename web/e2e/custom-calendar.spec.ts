@@ -5,18 +5,18 @@ import { blankDose } from "../lib/custom-plan-dose";
 import type { CustomPlan, CustomPlanInput, CustomSession } from "../lib/api-schema.generated";
 
 function demo(): CustomPlan {
-  return { id: crypto.randomUUID(), name: "Demo", kind: "self_directed", incomplete: true,
+  return { id: crypto.randomUUID(), name: "Demo", kind: "self_directed", schedule_mode: "weekly", start_date: null, end_date: null, incomplete: true,
     created_at: "2026-10-12T12:00:00Z", updated_at: "2026-10-12T12:00:00Z",
     sessions: [
       ...["Monday", "Wednesday", "Thursday", "Saturday"].map(weekday => ({
-        id: crypto.randomUUID(), name: "Lower Body", weekday: weekday as CustomSession["weekday"], session_type: "strength_power" as const,
+        id: crypto.randomUUID(), name: "Lower Body", scheduled_date: null, weekday: weekday as CustomSession["weekday"], session_type: "strength_power" as const,
         exercises: [{ id: crypto.randomUUID(), origin: "manual" as const, exercise_type: null, name: "My squat", equipment: "Rack", notes: "Keep my dose",
           media_id: null, community_id: null, community_revision_id: null, incomplete: false,
           coaching_cues: null, stop_rules: null,
           dose: { ...blankDose(), sets: 3, reps: 5, load_or_intensity: "80 kg" } }],
       })),
-      { id: crypto.randomUUID(), name: "Training", weekday: "Tuesday", session_type: "recovery", exercises: [] },
-      { id: crypto.randomUUID(), name: "Training", weekday: "Friday", session_type: "sparring", exercises: [] },
+      { id: crypto.randomUUID(), name: "Training", scheduled_date: null, weekday: "Tuesday", session_type: "recovery", exercises: [] },
+      { id: crypto.randomUUID(), name: "Training", scheduled_date: null, weekday: "Friday", session_type: "sparring", exercises: [] },
     ],
   };
 }

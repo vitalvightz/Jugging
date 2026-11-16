@@ -406,6 +406,9 @@ export type CoachMessagePushRequest = {
 };
 
 export type CoachPlan = {
+  schedule_mode: "dated" | "weekly";
+  start_date: string | null;
+  end_date: string | null;
   id: string;
   name: string;
   kind: "self_directed";
@@ -673,6 +676,9 @@ export type CustomExerciseSnapshot = {
 };
 
 export type CustomPlan = {
+  schedule_mode: "dated" | "weekly";
+  start_date: string | null;
+  end_date: string | null;
   id: string;
   name: string;
   kind: "self_directed";
@@ -684,6 +690,9 @@ export type CustomPlan = {
 
 export type CustomPlanInput = {
   name: string;
+  schedule_mode?: "dated" | "weekly";
+  start_date?: string | null;
+  end_date?: string | null;
   sessions?: CustomSessionInput[];
 };
 
@@ -691,6 +700,7 @@ export type CustomSession = {
   id: string;
   name: string;
   weekday: "Friday" | "Monday" | "Saturday" | "Sunday" | "Thursday" | "Tuesday" | "Wednesday" | null;
+  scheduled_date: string | null;
   session_type: "conditioning" | "mixed" | "recovery" | "rest" | "skill" | "sparring" | "strength_power";
   exercises: (CustomExercise | ManualExercise)[];
 };
@@ -699,6 +709,7 @@ export type CustomSessionInput = {
   id: string;
   name: string;
   weekday?: "Friday" | "Monday" | "Saturday" | "Sunday" | "Thursday" | "Tuesday" | "Wednesday" | null;
+  scheduled_date?: string | null;
   session_type?: "conditioning" | "mixed" | "recovery" | "rest" | "skill" | "sparring" | "strength_power";
   exercises?: (CustomExerciseInput | ManualExerciseInput)[];
 };
