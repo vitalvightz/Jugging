@@ -707,3 +707,16 @@ test("coach reopens exercises on their own saved session", async ({ page, baseUR
   await expect(page.getByRole("dialog", { name: "Add exercises" })).toBeVisible();
   await expect(page.getByRole("searchbox")).toBeVisible();
 });
+
+
+test("legacy athlete can allow logging without granting unshared health categories", async ({ page, baseURL }) => {
+  const state = await fixture(page, baseURL!, "athlete", false, {
+    status: "accepted", share_recovery: false, share_injuries: false, share_weight: false,
+    allow_session_logging: false, health_consent: true,
+  });
+  await page.goto("/settings/coach-access");
+  await page.getByRole("button", { name: "Allow session logging" }).click();
+  await expect(page.getByRole("button", { name: "Allow session logging" })).toHaveCount(0);
+  expect(state.actions[0]).toMatchObject({ p_action: "consent", p_logging: true,
+    p_recovery: false, p_injuries: false, p_weight: false });
+});

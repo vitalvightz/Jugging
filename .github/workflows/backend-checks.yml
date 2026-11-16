@@ -51,7 +51,9 @@ jobs:
       - name: Exercise real PostgreSQL concurrency, publication and Open Plan XP
         env:
           REHAB_TEST_DATABASE_URL: postgresql://postgres:rehab_test_only@127.0.0.1:5432/postgres
-        run: pytest tests/test_rehab_lock_concurrency.py tests/test_clinical_review_capture_postgres.py tests/test_intake_injury_sync_postgres.py tests/test_custom_plan_publication_postgres.py tests/test_open_plan_xp_postgres.py tests/test_tracking_xp_postgres.py tests/test_sparring_log_postgres.py tests/test_plan_free_checkin_postgres.py tests/test_first_camp_timezone.py tests/test_manual_exercise_entries_postgres.py -q
+        run: |
+          pytest tests/test_rehab_lock_concurrency.py tests/test_clinical_review_capture_postgres.py tests/test_intake_injury_sync_postgres.py tests/test_custom_plan_publication_postgres.py tests/test_open_plan_xp_postgres.py tests/test_tracking_xp_postgres.py tests/test_sparring_log_postgres.py tests/test_plan_free_checkin_postgres.py tests/test_first_camp_timezone.py tests/test_manual_exercise_entries_postgres.py -q
+          python tools/test_coach_workspace.py --container ${{ job.services.postgres.id }}
 
   pytest:
     runs-on: ubuntu-latest
