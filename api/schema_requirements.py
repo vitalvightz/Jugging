@@ -711,14 +711,10 @@ INDEX_REQUIREMENTS: tuple[IndexRequirement, ...] = (
     ),
     # One Today check-in per athlete/training-day; the store's upsert path
     # (api/store.py::upsert_today_checkin) depends on this conflict target.
+    # This key also covers plan-free rows; the redundant partial key is removed.
     IndexRequirement(
         label="today_checkins athlete/training-day uniqueness",
         accepted_names=("today_checkins_athlete_day_key",),
-    ),
-    # Retained legacy partial index for compatibility with older deployments.
-    IndexRequirement(
-        label="today_checkins plan-free athlete/training-day uniqueness",
-        accepted_names=("today_checkins_athlete_plan_free_day_key",),
     ),
     # One completion per athlete/session/training-day; the store's upsert path
     # (api/store.py::upsert_session_completion) depends on this conflict target.
