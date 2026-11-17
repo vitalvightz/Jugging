@@ -1035,3 +1035,83 @@ def test_clinical_psychology_notes_are_not_training_cues(api):
     edit_notes(client, row["id"], "I had a panic attack during training.")
     assert fake.payloads == []
     assert read_items(client) == []
+
+
+# -- Manually logged exercise notes --------------------------------------------
+
+def _manual_exercise_note(client, session_id, entry_id, note, *, revision=0, reps=8):
+    response = client.put(f"/api/training/sessions/{session_id}/exercises/{entry_id}", headers=AUTH,
+        json={"exercise": {"name": "Heavy Bag Power Intervals"}, "format": "strength",
+              "actual": {"sets": 3, "reps": reps}, "notes": note, "revision": revision})
+    assert response.status_code in {200, 201}, response.text
+    return response.json()
+
+
+def test_manual_exercise_note_creates_grounded_cue_and_history_entry(api):
+    client, store, fake = api
+    coach_text = "Keep your left glove near your cheek as you throw the right; check it stays there before you reset."
+    fake.answer = {"focus": coach_text, "scope": "specific_exercise", "category": "strength",
+                   "sport": None, "exercise_targets": ["Heavy Bag Power Intervals"], "movement_patterns": []}
+    session = manual_session(client)
+    entry_id = str(uuid4())
+    saved = _manual_exercise_note(client, session["id"], entry_id,
+        "I need to keep my left hand up when using my right")
+    assert saved["entry_id"] == entry_id
+    assert len(fake.payloads) == 1
+    payload = fake.payloads[0]
+    assert payload["source"] == "manual_exercise"
+    assert payload["context"]["noted_session"]["noted_exercise"] == "Heavy Bag Power Intervals"
+    assert [item["name"] for item in payload["context"]["noted_session"]["exercises"]] == ["Heavy Bag Power Intervals"]
+    cue = client.get(f"/api/training/focus-cues/manual_exercise/{entry_id}", headers=AUTH)
+    assert cue.status_code == 200 and cue.json()["focus"] == coach_text
+    detail = client.get(f"/api/training/history/external/{session['id']}", headers=AUTH)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["blocks"][0]["notes"] == "I need to keep my left hand up when using my right"
+    assert detail.json()["blocks"][0]["focus_cue"] == coach_text
+
+
+def test_manual_exercise_updates_do_not_duplicate_inference(api):
+    client, store, fake = api
+    fake.answer = {"focus": "Hold the left glove near the cheek during the right hand.",
+                   "scope": "specific_exercise", "category": "strength", "sport": None,
+                   "exercise_targets": ["Heavy Bag Power Intervals"], "movement_patterns": []}
+    session = manual_session(client)
+    entry_id = str(uuid4())
+    note = "Left hand keeps dropping during the right hand"
+    _manual_exercise_note(client, session["id"], entry_id, note)
+    assert len(fake.payloads) == 1
+    _manual_exercise_note(client, session["id"], entry_id, note, revision=1, reps=10)
+    assert len(fake.payloads) == 1
+    _manual_exercise_note(client, session["id"], entry_id, "Keep the front hand closer to my guard", revision=2, reps=10)
+    assert len(fake.payloads) == 2
+    assert len([row for row in store.training_focus_inferences if row["source_kind"] == "manual_exercise"]) == 1
+
+
+def test_cleared_or_deleted_manual_exercise_note_is_not_visible(api):
+    client, store, fake = api
+    fake.answer = {"focus": "Keep the left glove at guard before each right hand.",
+                   "scope": "specific_exercise", "category": "strength", "sport": None,
+                   "exercise_targets": ["Heavy Bag Power Intervals"], "movement_patterns": []}
+    session = manual_session(client)
+    entry_id = str(uuid4())
+    _manual_exercise_note(client, session["id"], entry_id, "Left hand drops when punching")
+    _manual_exercise_note(client, session["id"], entry_id, "", revision=1)
+    cue = client.get(f"/api/training/focus-cues/manual_exercise/{entry_id}", headers=AUTH)
+    assert cue.status_code == 200 and cue.json()["status"] == "none"
+    detail = client.get(f"/api/training/history/external/{session['id']}", headers=AUTH)
+    assert detail.json()["blocks"][0]["focus_cue"] is None
+    removed = client.delete(f"/api/training/sessions/{session['id']}/exercises/{entry_id}", headers=AUTH)
+    assert removed.status_code == 204
+    missing = client.get(f"/api/training/focus-cues/manual_exercise/{entry_id}", headers=AUTH)
+    assert missing.status_code == 200 and missing.json()["status"] == "none"
+
+
+def test_manual_exercise_health_note_is_not_sent_to_model(api):
+    client, store, fake = api
+    session = manual_session(client)
+    entry_id = str(uuid4())
+    _manual_exercise_note(client, session["id"], entry_id, "Sharp knee pain during exercise")
+    assert fake.payloads == []
+    cue = client.get(f"/api/training/focus-cues/manual_exercise/{entry_id}", headers=AUTH)
+    assert cue.status_code == 200 and cue.json()["status"] == "none"
+
