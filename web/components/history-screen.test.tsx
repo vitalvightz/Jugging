@@ -3,13 +3,19 @@ import test, { beforeEach } from "node:test";
 import "./test-dom";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { AppSessionContext } from "./auth-provider";
-import { HistoryScreen, unreportedSparringSessions } from "./history-screen";
+import { HistoryScreen as HistoryScreenView, unreportedSparringSessions } from "./history-screen";
 import { athleteTrainingDayISO } from "@/lib/camp-map";
 import { clearSharedReads } from "@/lib/shared-reads";
 
 // History remembers its last page per session; each test is a fresh session.
 beforeEach(() => clearSharedReads());
+
+const searchParams = new URLSearchParams();
+function HistoryScreen() {
+  return <SearchParamsContext.Provider value={searchParams}><HistoryScreenView /></SearchParamsContext.Provider>;
+}
 
 test("legacy completion records stay visible without claiming independent workouts in the summary", async () => {
   const originalFetch = globalThis.fetch;

@@ -1,6 +1,6 @@
 {
-  "source_commit": "c1951541457737350d0e11584209ec3b649a2019",
-  "capture_note": "Current selector output after merged catalogue updates and approved CI allocation fixes. Historical before.json and after.json remain unchanged.",
+  "source_commit": "b27709e7c81d6ea31c7d88cf488b38f0bd74c3a3",
+  "capture_note": "Current output includes the approved CI goal-capacity and allocation follow-ups. Historical before.json and after.json remain unchanged.",
   "mechanical_baseline": {
     "sha256": "1ac385a4e2ac0231e11b8eab0a2f9e63c440407436249715a22a412a620d813b",
     "winners": {
@@ -255,6 +255,70 @@
           "Slip-Return Shadow Cue"
         ]
       }
+    }
+  },
+  "selection_changes_since_historical": {
+    "d21_to_d14/strength": {
+      "added": [
+        "Adductor Squeeze Isometric",
+        "Quadruped thread-the-needle",
+        "Wall scap push-up plus",
+        "Serratus wall slide",
+        "Lead-leg single-leg stance with guard"
+      ],
+      "removed": [
+        "90/90 hip switches",
+        "Adductor rock-back",
+        "Boxer stance weight-shift hold",
+        "Dead-bug breathing",
+        "Eye-head dissociation drill"
+      ]
+    },
+    "d13_to_d8/strength": {
+      "added": [
+        "Adductor Squeeze Isometric",
+        "Quadruped thread-the-needle",
+        "Wall scap push-up plus",
+        "Serratus wall slide",
+        "Lead-leg single-leg stance with guard",
+        "Wall angel partial range"
+      ],
+      "removed": [
+        "90/90 hip switches",
+        "Adductor rock-back",
+        "Boxer stance weight-shift hold",
+        "Dead-bug breathing",
+        "Lateral step-and-stick boxer reset",
+        "Lead-foot pivot prep"
+      ]
+    },
+    "d7/strength": {
+      "added": [
+        "Adductor Squeeze Isometric"
+      ],
+      "removed": []
+    },
+    "d6_to_d5/strength": {
+      "added": [
+        "Adductor Squeeze Isometric"
+      ],
+      "removed": []
+    },
+    "d4_to_d2/strength": {
+      "added": [
+        "Adductor Squeeze Isometric"
+      ],
+      "removed": []
+    },
+    "d1/strength": {
+      "added": [
+        "Wall thoracic rotation sweep",
+        "Toe-yoga tripod reset"
+      ],
+      "removed": [
+        "Pivot-and-freeze lead foot",
+        "Short-foot hold with nasal breathing"
+      ]
     }
   }
 }

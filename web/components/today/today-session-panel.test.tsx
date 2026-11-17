@@ -1565,27 +1565,28 @@ const HEAD_IMPACT_NOTICE: NonNullable<TodayCommandView["today"]["primary_safety_
   detail: "Get checked if symptoms appear.", tone: "red",
 };
 
-test("a head-impact report locks contact on a green day but keeps the non-contact session", () => {
+test("a head-impact warning stays visible with non-contact actions and timers", () => {
   const state = contactDayState("green");
   state.effective_clinician_clearance = { level: "train_contact", scopes: ["rehab", "training", "contact"],
     requires_update: false, limited_by: [] };
   state.today.primary_safety_notice = HEAD_IMPACT_NOTICE;
   const html = renderPanel(state);
-  assert.doesNotMatch(html, />Start hard sparring<|Sparring rounds<\/button>/);
-  assert.match(html, /No more contact today after your head-impact report/);
+  assert.match(html, /Sparring rounds<\/button>/);
+  assert.match(html, /<strong role="alert">Stop training and seek medical clearance\.<\/strong>/);
   assert.doesNotMatch(html, /locked by clinician clearance/);
   // The mobility flush is not contact, so it stays startable.
   assert.match(html, />Start (session|Mobility flush)</);
 });
 
-test("a head-impact report blocks a contact-only session from being started or finished", () => {
+test("a head-impact warning keeps contact-only logging and timers available", () => {
   const state = contactDayState("green");
   state.today.next_session = { ...state.today.next_session, session_id: "2026-09-25", title: "Hard sparring",
     coach_led_contact: "Hard sparring" };
   state.today.primary_safety_notice = HEAD_IMPACT_NOTICE;
   const html = renderPanel(state);
-  assert.doesNotMatch(html, />Start hard sparring<|>Start session<|>Finish session<|>Mark done</);
-  assert.match(html, /No more contact today: you reported being rocked or dropped/);
+  assert.match(html, />Start (hard sparring|session)</);
+  assert.match(html, /Sparring rounds<\/button>/);
+  assert.match(html, /<strong role="alert">Stop training and seek medical clearance\.<\/strong>/);
 });
 
 test("without a head-impact notice the same contact day is unchanged", () => {

@@ -272,8 +272,8 @@ def test_the_d17_stack_is_resolved_onto_a_free_day():
     assert len(strength_days) == len(set(strength_days)) == 2
 
 
-def test_revalidation_preserves_goals_and_legal_doses_with_three_training_days():
-    """Keep conditioning coverage and legal final doses within three days."""
+def test_revalidation_preserves_conditioning_goals_and_legal_final_doses():
+    """Keep goal evidence and let the normal owner report day overruns."""
     from fightcamp.calendar_context import CalendarLegalityView, build_events, week_scope
     from fightcamp.physical_session_frequency import appointment_budget_exceeded
     brief = _plan("boxer56_novice_revalidation_move")

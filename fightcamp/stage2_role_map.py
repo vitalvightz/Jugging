@@ -3985,9 +3985,10 @@ def _build_weekly_role_map(
         # Let the budget owner see recovery slots that actually serve the
         # athlete's conditioning goal before it chooses the surviving roles.
         # The later pass still handles days freed by compression.
-        session_roles = _upgrade_recovery_days_to_gas_tank(
-            week_entry, session_roles, athlete_model, hard_sparring_plan=hard_sparring_plan,
-        )
+        if not any(role.get("category") == "conditioning" for role in session_roles):
+            session_roles = _upgrade_recovery_days_to_gas_tank(
+                week_entry, session_roles, athlete_model, hard_sparring_plan=hard_sparring_plan,
+            )
         session_roles, suppressed_roles = _apply_high_fatigue_week_compression(
             week_entry,
             session_roles,

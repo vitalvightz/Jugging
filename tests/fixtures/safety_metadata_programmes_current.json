@@ -1,5 +1,5 @@
 {
-  "base_commit": "f13aaf2abaa75d8145b62f20b827a141078becf4",
+  "base_commit": "b27709e7c81d6ea31c7d88cf488b38f0bd74c3a3",
   "clock_utc": "2026-10-11 09:00",
   "python_hash_seed": 0,
   "input_fixture": "tests/fixtures/tag_retirement_plans.json",
