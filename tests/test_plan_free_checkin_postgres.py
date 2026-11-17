@@ -49,7 +49,8 @@ def dsn():
                 as $f$ begin new.updated_at = now(); return new; end $f$;
             """)
             for migration in ("20260618120000_add_today_checkins_and_completions.sql",
-                              "20261019061051_allow_plan_free_today_checkins.sql"):
+                              "20261019061051_allow_plan_free_today_checkins.sql",
+                              "20261117030658_one_daily_checkin_per_athlete.sql"):
                 setup.execute((ROOT / "supabase/migrations" / migration).read_text(encoding="utf-8"))
         yield test_dsn
     finally:
@@ -88,3 +89,21 @@ def test_simultaneous_plan_free_check_ins_leave_one_row(dsn, attempt):
     with psycopg.connect(dsn, autocommit=True) as conn:
         count = conn.execute("select count(*) from public.today_checkins where athlete_id = %s", (athlete,)).fetchone()[0]
     assert count == 1
+
+
+def test_plan_switch_and_plan_free_share_one_checkin(dsn):
+    import psycopg
+    athlete, first, second = (str(uuid4()) for _ in range(3))
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        conn.execute("insert into public.profiles values (%s)", (athlete,))
+        for plan in (first, second):
+            conn.execute("insert into public.plans values (%s, %s)", (plan, athlete))
+            conn.execute("""insert into public.today_checkins
+                (athlete_id, plan_id, phase, training_day, sleep, body, pain, recommendation_state)
+                values (%s, %s, 'GPP', '2026-10-19', 'good', 'normal', 'none', 'train_as_planned')
+                on conflict (athlete_id, training_day) do update set plan_id = excluded.plan_id
+                """, (athlete, plan))
+        saved = conn.execute("select id from public.today_checkins where athlete_id = %s", (athlete,)).fetchone()[0]
+    assert _upsert(dsn, athlete) == saved
+    with psycopg.connect(dsn) as conn:
+        assert conn.execute("select count(*) from public.today_checkins where athlete_id = %s", (athlete,)).fetchone()[0] == 1

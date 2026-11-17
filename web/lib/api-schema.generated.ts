@@ -190,6 +190,7 @@ export type AdminPlanOutputs = {
 };
 
 export type AdminPlanSummary = {
+  can_delete: boolean;
   custom_plan_id: string | null;
   plan_id: string;
   plan_name: string | null;
@@ -1918,6 +1919,7 @@ export type PlanCompletionsResponse = {
 };
 
 export type PlanDetail = {
+  can_delete: boolean;
   custom_plan_id: string | null;
   plan_id: string;
   plan_name: string | null;
@@ -2048,6 +2050,7 @@ export type PlanScheduleContext = {
 };
 
 export type PlanSummary = {
+  can_delete: boolean;
   custom_plan_id: string | null;
   plan_id: string;
   plan_name: string | null;

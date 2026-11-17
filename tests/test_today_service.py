@@ -563,9 +563,7 @@ class TestCheckinSubmit:
         )
         assert len(store.today_checkins[ATHLETE]) == 1
         assert second["recommendation_state"] == "modify"
-        assert second["warnings"] == [
-            "You already completed a check-in today. This response applies to the current active plan only."
-        ]
+        assert second["warnings"] == []
 
     def test_client_supplied_recommendation_is_ignored(self):
         store = _store_with_plan()
@@ -574,7 +572,7 @@ class TestCheckinSubmit:
         row = submit_today_checkin(store, athlete_id=ATHLETE, athlete_timezone="", payload=payload)
         assert row["recommendation_state"] == "pull_back"
 
-    def test_same_day_other_plan_checkin_is_allowed_with_warning(self):
+    def test_same_day_other_plan_checkin_updates_single_daily_row(self):
         store = _store_with_plan()
         store.plans[OTHER_PLAN] = {
             "id": OTHER_PLAN,
@@ -600,10 +598,8 @@ class TestCheckinSubmit:
             now=now,
         )
 
-        assert len(store.today_checkins[ATHLETE]) == 2
-        assert row["warnings"] == [
-            "You already completed a check-in today. This response applies to the current active plan only."
-        ]
+        assert len(store.today_checkins[ATHLETE]) == 1
+        assert row["warnings"] == []
 
     def test_same_day_warning_handles_null_lister_and_immutable_row(self):
         store = NullCheckinListStore()
@@ -2789,7 +2785,7 @@ class TestCommandView:
             now=datetime(2026, 6, 23, 12, 0, tzinfo=timezone.utc),
         )
 
-    def test_other_plan_checkin_warning_surfaces_in_command_view_without_blocking(self):
+    def test_other_plan_checkin_is_reused_in_command_view(self):
         store = _store_with_plan()
         store.plans[OTHER_PLAN] = {
             "id": OTHER_PLAN,
@@ -2809,10 +2805,8 @@ class TestCommandView:
 
         view = build_today_command_view(store, athlete_id=ATHLETE, athlete_timezone="", now=now)
 
-        assert view.today.recommendation_state == "not_checked_in"
-        assert view.today.warnings == [
-            "You already completed a check-in today. This response applies to the current active plan only."
-        ]
+        assert view.today.recommendation_state != "not_checked_in"
+        assert view.today.warnings == []
 
     def test_next_session_crosses_into_following_week(self):
         # Week 0 trains only on Mon; the rest of the week is rest. On a later

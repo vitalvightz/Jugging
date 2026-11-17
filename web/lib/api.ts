@@ -1007,6 +1007,10 @@ export async function deletePlan(token: string, planId: string): Promise<void> {
   );
 }
 
+export async function permanentlyDeleteOwnPlan(token: string, planId: string): Promise<void> {
+  return requestVoid(`/api/plans/${encodeURIComponent(planId)}?permanent=true`, { method: "DELETE", token });
+}
+
 export async function archivePlan(token: string, planId: string): Promise<void> {
   return deletePlan(token, planId);
 }

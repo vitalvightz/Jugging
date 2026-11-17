@@ -19,7 +19,7 @@ export function PlanAssignments({ token, onActivated }: { token: string; onActiv
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
-    listPlanAssignments(token, controller.signal).then(data => { if (!controller.signal.aborted) { setRows(data); setError(""); } })
+    listPlanAssignments(token, controller.signal).then(data => { if (!controller.signal.aborted) { setRows(data.filter(plan => plan.assignment_status === "pending" || plan.assignment_status === "active")); setError(""); } })
       .catch(() => { if (!controller.signal.aborted) setError("Assigned plans unavailable."); });
     return () => controller.abort();
   }, [token, attempt]);

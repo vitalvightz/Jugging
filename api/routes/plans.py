@@ -461,6 +461,7 @@ def build_plans_router(*, require_profile, require_plan_row, get_store) -> APIRo
     @router.delete("/api/plans/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
     def archive_user_plan(
         plan_id: str,
+        permanent: bool = Query(False),
         profile: ProfileRecord = Depends(require_profile),
         store: AppStore = Depends(get_store),
     ) -> Response:
@@ -482,9 +483,18 @@ def build_plans_router(*, require_profile, require_plan_row, get_store) -> APIRo
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Plan has an active generation job. Cancel or wait before archiving.",
             )
-        if _is_archived_plan(plan_row):
+        report = plan_row.get("stage2_validator_report") or {}
+        custom = report.get("custom_plan") or {}
+        if permanent and custom.get("coach_assignment_id") and not is_admin:
+            raise HTTPException(status_code=403, detail="Coach plans can only be archived.")
+        if permanent:
+            if is_admin:
+                store.delete_plan(plan_id)
+            else:
+                store.delete_plan_for_athlete(plan_id, profile.athlete_id)
+        elif _is_archived_plan(plan_row):
             return Response(status_code=status.HTTP_204_NO_CONTENT)
-        if is_admin:
+        elif is_admin:
             store.archive_plan(plan_id)
         else:
             store.archive_plan_for_athlete(plan_id, profile.athlete_id)

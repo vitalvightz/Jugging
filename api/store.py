@@ -4084,6 +4084,8 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
                     detail="plan not found",
                 )
             logger.info("[store] delete_plan_for_athlete:start plan_id=%s athlete_id=%s", plan_id, athlete_id)
+            # Daily readiness belongs to the athlete and survives plan removal.
+            self.client.table("today_checkins").update({"plan_id": None, "phase": None}).eq("athlete_id", athlete_id).eq("plan_id", plan_id).execute()
             self.client.table("plans").delete().eq("id", plan_id).eq("athlete_id", athlete_id).execute()
             logger.info("[store] delete_plan_for_athlete:success plan_id=%s athlete_id=%s", plan_id, athlete_id)
         except HTTPException:
@@ -4600,19 +4602,11 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
     def upsert_today_checkin(self, athlete_id: str, fields: dict[str, Any]) -> dict[str, Any]:
         payload = {"athlete_id": athlete_id, **fields}
         try:
-            if fields.get("plan_id") is None:
-                # NULL plan_ids never conflict on the plan-scoped key, so a
-                # plan-free row upserts on its own partial key via the RPC.
-                response = self.client.rpc(
-                    "upsert_plan_free_today_checkin",
-                    {"p_athlete_id": athlete_id, "p_fields": fields},
-                ).execute()
-            else:
-                response = (
-                    self.client.table("today_checkins")
-                    .upsert(payload, on_conflict="athlete_id,plan_id,training_day")
-                    .execute()
-                )
+            response = (
+                self.client.table("today_checkins")
+                .upsert(payload, on_conflict="athlete_id,training_day")
+                .execute()
+            )
             rows = getattr(response, "data", None) or []
             # A function returning one composite row arrives as an object.
             if isinstance(rows, dict):
@@ -4636,9 +4630,8 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
     def get_today_checkin(
         self, athlete_id: str, plan_id: str | None, training_day: str
     ) -> dict[str, Any] | None:
-        """The day's check-in for ``plan_id``, or the plan-free one for ``None``."""
+        """One athlete-local daily check-in, shared across all plans."""
         query = self.client.table("today_checkins").select("*").eq("athlete_id", athlete_id)
-        query = query.is_("plan_id", "null") if plan_id is None else query.eq("plan_id", plan_id)
         return self._select_first(query.eq("training_day", training_day))
 
     def list_today_checkins_for_day(
