@@ -25,6 +25,8 @@ globalAny.Event = window.Event;
 globalAny.CustomEvent = window.CustomEvent;
 globalAny.MouseEvent = window.MouseEvent;
 globalAny.getComputedStyle = window.getComputedStyle.bind(window);
+globalAny.requestAnimationFrame = window.requestAnimationFrame.bind(window);
+globalAny.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 // jsdom has no scrolling layout; overlay cleanup restores scroll in browsers.
 window.scrollTo = () => {};
 // next/link's intersection-observer fallback reads `self` at module scope and

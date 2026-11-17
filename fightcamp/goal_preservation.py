@@ -1731,7 +1731,8 @@ def _repair_refusal_reasons(week: dict, goal: str, window: dict, *, athlete_mode
         original_cap = sum(r.get("category") == category for r in week.get("goal_repair_candidates") or [])
         current = sum(r.get("original_category", r.get("category")) == category
                       and role_d_day(week, r) is not None for r in week.get("session_roles") or [])
-        if original_cap > 0 and current >= original_cap:
+        if (goal == "conditioning" and category == "conditioning"
+                and original_cap > 0 and current >= original_cap):
             reasons.append({"reason_code": "calendar_capacity", "authority": "planner_category_capacity",
                             "week_index": week.get("week_index"), "role_key": candidate.get("role_key"),
                             "category": category, "allocated_slots": original_cap,

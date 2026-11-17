@@ -379,7 +379,7 @@ def test_today_feedback_falls_back_to_todays_stored_checkin_after_a_same_day_pla
     client, store, _ = _build_client()
     _seed_today(store)
     # The athlete checked in, then activated a different plan the same day: the
-    # check-in stays bound to the original plan and feedback must still land.
+    # daily answers are shared, while feedback describes the current plan.
     store.plans[PLAN_ID]["status"] = "archived"
     _seed_plan(store, plan_id=OTHER_PLAN_ID)
     store.active_plan_ids["athlete-1"] = OTHER_PLAN_ID
@@ -392,7 +392,7 @@ def test_today_feedback_falls_back_to_todays_stored_checkin_after_a_same_day_pla
 
     assert submitted.status_code == 200
     saved = store.beta_feedback[-1]
-    assert saved["plan_id"] == PLAN_ID
+    assert saved["plan_id"] == OTHER_PLAN_ID
     assert saved["today_checkin_id"] == "33333333-3333-3333-3333-333333333333"
 
 

@@ -57,7 +57,9 @@ test("fighter can decline without activating", async () => {
   const ui = await mount("decline");
   try {
     await ui.click("Preview Plan"); await ui.click("Decline");
-    assert.equal(ui.activated(), 0); assert.match(ui.host.textContent!, /Declined/);
+    assert.equal(ui.activated(), 0);
+    assert.equal(ui.writes.length, 1); assert.match(ui.writes[0].path, /assignment\/decline$/);
+    assert.equal(ui.host.textContent, "", "declined assignments leave the active/pending list");
     assert.equal([...ui.host.querySelectorAll("button")].some(el => el.textContent === "Activate plan"), false);
   } finally { ui.close(); }
 });
