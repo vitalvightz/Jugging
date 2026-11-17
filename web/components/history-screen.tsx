@@ -2,6 +2,7 @@
 import { CoachFeedback } from "./coach-feedback";
 
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { useAppSession } from "@/components/auth-provider";
 import { useOnReconnect } from "@/components/connection-status-banner";
@@ -645,6 +646,10 @@ function HistoryContent() {
   const today = trainingDay ? athleteTrainingDayISO(new Date(), me?.profile.athlete_timezone) : null;
 
   const [tab, setTab] = useState<HistoryTab>("sessions");
+  const linkedTab = useSearchParams().get("tab");
+  useEffect(() => {
+    setTab(TABS.find(item => item.id === linkedTab)?.id ?? "sessions");
+  }, [linkedTab]);
   // A revisit shows the sessions page this visit last read at once, then reads
   // it again. History is a training log, not a safety decision, and any write
   // drops the remembered page (lib/shared-reads.ts), so an edit is never undone
