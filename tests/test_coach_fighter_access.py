@@ -378,7 +378,7 @@ def test_future_plan_is_permission_checked_and_never_exposes_private_notes(camp,
          "blocks": [{"block_id": "squat", "display_name": "Squat", "sets": 3, "reps": 5, "notes": SECRET}]},
         {"session_id": "rehab", "title": "Knee rehab", "session_type": "rehab", "blocks": []},
     ]}]}]}}
-    monkeypatch.setattr("api.routes.coach.resolve_active_plan", lambda *a, **kw: type("Active", (), {"plan": plan})())
+    monkeypatch.setattr("api.routes.coach.resolve_active_plan", lambda *a, **kw: type("Active", (), {"plan": plan, "source": "explicit"})())
     response = client.get(BASE + "/training/plan", headers=AS_COACH)
     assert response.status_code == 200 and SECRET not in response.text
     assert len(response.json()) == 2

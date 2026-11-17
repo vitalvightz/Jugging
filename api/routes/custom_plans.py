@@ -37,10 +37,10 @@ def build_custom_plans_router(*, require_profile, get_store):
 
     @router.get('/assignments', response_model=list[CoachPlan])
     def assignments(profile=Depends(require_profile), store=Depends(get_store)):
-        from api.services.coach_plans import assignment_view
+        from api.services.coach_plans import assignment_views
         if profile.role != 'athlete':
             return []
-        return [assignment_view(store, row) for row in store.list_plan_assignments(profile.athlete_id)]
+        return assignment_views(store, store.list_plan_assignments(profile.athlete_id))
 
     @router.post('/assignments/{plan_id}/decline', response_model=CoachPlan)
     def decline_assignment(row=Depends(assigned), profile=Depends(require_profile), store=Depends(get_store)):
