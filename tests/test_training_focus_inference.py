@@ -1021,3 +1021,14 @@ def test_coaching_cue_rejects_more_than_forty_five_words():
         InferredFocus(focus=long_cue, scope="mental_skill", category="strength"),
         exercise_names=[], patterns=set(), categories={"strength"}, sports=set(),
     ) is None
+
+
+def test_clinical_psychology_notes_are_not_training_cues(api):
+    client, store, fake = api
+    fake.answer = {"focus": "Take a calm breath before the next exchange.",
+                   "scope": "mental_skill", "category": "strength", "sport": None,
+                   "exercise_targets": [], "movement_patterns": []}
+    row = lower_body_completion(store)
+    edit_notes(client, row["id"], "I had a panic attack during training.")
+    assert fake.payloads == []
+    assert read_items(client) == []
