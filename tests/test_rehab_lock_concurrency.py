@@ -655,7 +655,7 @@ def test_rehab_start_reuses_daily_readiness_across_plan_switch(postgres_database
     with psycopg.connect(postgres_database) as connection:
         for migration in ('20261019061051_allow_plan_free_today_checkins.sql',
                           '20261022184651_standalone_rehab_completions.sql',
-                          '20261117032109_share_daily_readiness_for_rehab.sql'):
+                          '20261117032530_share_daily_readiness_for_rehab.sql'):
             connection.execute((ROOT / 'supabase/migrations' / migration).read_text())
         athlete, other_athlete, current_plan, previous_plan = (str(uuid4()) for _ in range(4))
         connection.execute('insert into profiles values (%s), (%s)', (athlete, other_athlete))
@@ -683,7 +683,7 @@ def test_rehab_start_reuses_daily_readiness_across_plan_switch(postgres_database
                 connection.execute(old_sql[old_sql.index('create or replace function public.preserve_started_prescription()'):])
                 with pytest.raises(psycopg.errors.CheckViolation, match='prescription_revision_conflict'), connection.transaction():
                     start()
-                connection.execute((ROOT / 'supabase/migrations/20261117032109_share_daily_readiness_for_rehab.sql').read_text())
+                connection.execute((ROOT / 'supabase/migrations/20261117032530_share_daily_readiness_for_rehab.sql').read_text())
 
         for field, value in [('id', str(uuid4())), ('updated_at', '2000-01-01T00:00:00Z')]:
             bad = deepcopy(snapshot)
