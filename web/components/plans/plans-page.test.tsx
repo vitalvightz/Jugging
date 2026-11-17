@@ -194,6 +194,31 @@ test("management lives in a sheet: make active only for an eligible saved plan, 
   }
 });
 
+test("the manage sheet deletes the athlete's own plans permanently; coach plans stay archive-only", async () => {
+  const view = await mountPlans(
+    [plan("active-1"), plan("own-1", { can_delete: true, plan_name: "My own camp" }), plan("coach-1", { can_delete: false, plan_name: "Coach camp" })],
+    "active-1",
+  );
+  try {
+    const rows = [...view.host.querySelectorAll<HTMLButtonElement>('ul button[aria-haspopup="dialog"]')];
+    const rowFor = (name: string) => rows.find((row) => row.textContent?.includes(name))!;
+
+    await view.click(rowFor("Coach camp"));
+    assert.equal(buttonByText(openDialog()!, "Delete"), undefined, "coach plans can only be archived");
+    assert.ok(buttonByText(openDialog()!, "Archive"));
+    await view.click(openDialog()!.querySelector('button[aria-label="Close"]'));
+
+    await view.click(rowFor("My own camp"));
+    const sheet = openDialog()!;
+    await view.click(buttonByText(sheet, "Delete"));
+    assert.match(sheet.textContent ?? "", /can't be undone/);
+    await view.click(buttonByText(sheet, "Delete"));
+    assert.ok(view.calls.some((call) => call.method === "DELETE" && call.url.endsWith("/api/plans/own-1?permanent=true")));
+  } finally {
+    await view.cleanup();
+  }
+});
+
 test("plan management precedes compact tools and discovery stays in the library", async () => {
   const view = await mountPlans([plan("active-1"), plan("saved-1"), plan("archived-1", { status: "archived" })], "active-1");
   try {

@@ -6,7 +6,8 @@ import { type FormEvent, useState } from "react";
 
 import { InjuryDetailSheet } from "@/components/today/injury-detail-sheet";
 import { useToast } from "@/components/toast-provider";
-import { archivePlan, renamePlan } from "@/lib/api";
+import { archivePlan, permanentlyDeleteOwnPlan, renamePlan } from "@/lib/api";
+import { clearCompletedGenerationForDeletedPlan } from "@/lib/completed-generation";
 import { isSafeAvatarImageUrl } from "@/lib/avatar-image-url";
 import { toISODate } from "@/lib/camp-map";
 import { getFightCountdown } from "@/lib/fight-countdown";
@@ -168,16 +169,18 @@ export function usePlanManagement({
   onPlanDeleted: (planId: string) => void;
 }) {
   const { showToast } = useToast();
-  const [pendingAction, setPendingAction] = useState<"rename" | "delete" | null>(null);
+  const [pendingAction, setPendingAction] = useState<"rename" | "delete" | "remove" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState(() => getRenameDraftValue(plan));
   const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 
   function startRename() {
     setError(null);
     setRenameDraft(getRenameDraftValue(plan));
     setIsArchiveConfirmOpen(false);
+    setIsDeleteConfirmOpen(false);
     setIsRenaming(true);
   }
 
@@ -220,7 +223,43 @@ export function usePlanManagement({
   function requestArchive() {
     setError(null);
     setIsRenaming(false);
+    setIsDeleteConfirmOpen(false);
     setIsArchiveConfirmOpen(true);
+  }
+
+  function requestDelete() {
+    setError(null);
+    setIsRenaming(false);
+    setIsArchiveConfirmOpen(false);
+    setIsDeleteConfirmOpen(true);
+  }
+
+  function dismissDelete() {
+    if (pendingAction === "remove") return;
+    setIsDeleteConfirmOpen(false);
+  }
+
+  /** Permanent: the plan and its history are gone, not moved to Archived. */
+  async function confirmDelete(): Promise<boolean> {
+    if (!accessToken) {
+      setError("Session expired. Sign in again.");
+      return false;
+    }
+    setPendingAction("remove");
+    setError(null);
+    try {
+      await permanentlyDeleteOwnPlan(accessToken, plan.plan_id);
+      clearCompletedGenerationForDeletedPlan(plan.plan_id);
+      setIsDeleteConfirmOpen(false);
+      onPlanDeleted(plan.plan_id);
+      showToast(`Deleted ${getPlanDisplayName(plan)}.`, { tone: "success" });
+      return true;
+    } catch (removeError) {
+      setError(connectionAwareMessage(removeError, "Unable to delete this plan."));
+      return false;
+    } finally {
+      setPendingAction(null);
+    }
   }
 
   function dismissArchive() {
@@ -262,6 +301,10 @@ export function usePlanManagement({
     requestArchive,
     dismissArchive,
     confirmArchive,
+    isDeleteConfirmOpen,
+    requestDelete,
+    dismissDelete,
+    confirmDelete,
   };
 }
 
@@ -282,8 +325,9 @@ function getPlanRowNote(plan: PlanSummary, activePlanId: string | null): string 
 }
 
 /**
- * Management for one plan, off the dashboard: its facts, then open, activate,
- * rename and archive. Archive confirms in place rather than in a second dialog.
+ * Management for one plan, off the dashboard: its facts in one row, open and
+ * activate as the two real actions, then rename, archive and delete as a
+ * grouped list. Archive and delete confirm in place, not in a second dialog.
  */
 export function PlanManageSheet({
   plan,
@@ -313,10 +357,12 @@ export function PlanManageSheet({
   const active = isActivePlan(plan, activePlanId);
   const archived = isArchivedPlan(plan.status);
   const canActivate = !archived && !active && canSetActive(plan);
+  // Coach-assigned plans report can_delete=false: they can only be archived.
+  const canDelete = plan.can_delete === true;
   const busy = manage.pendingAction !== null || isSettingActive;
   const facts: SummaryLine[] = [
     ...(plan.fight_date ? [{ label: "Fight date", value: formatPlanFightDate(plan.fight_date) }] : []),
-    { label: "Built", value: formatPlanTimestamp(plan.created_at) },
+    { label: "Built", value: formatBuiltShort(plan.created_at) },
     {
       label: "Status",
       value: active ? "Active" : archived ? "Archived" : formatAthletePlanStatus(plan.status),
@@ -327,7 +373,7 @@ export function PlanManageSheet({
   return (
     <InjuryDetailSheet title={getPlanDisplayName(plan)} busy={busy} onClose={onClose}>
       <div className="injury-sheet-body">
-        <dl className={styles.facts}>
+        <dl className={styles.facts} data-layout="row">
           {facts.map((fact) => (
             <div key={fact.label}>
               <dt>{fact.label}</dt>
@@ -374,8 +420,26 @@ export function PlanManageSheet({
               </button>
             </div>
           </div>
+        ) : manage.isDeleteConfirmOpen ? (
+          <div className={styles.inlineForm} role="group" aria-label="Delete plan">
+            <p>Delete this plan for good? Its sessions and history go with it. This can&apos;t be undone.</p>
+            <div className={styles.sheetActions}>
+              <button
+                type="button"
+                className="secondary-button danger-button"
+                onClick={() => void manage.confirmDelete().then((done) => { if (done) onClose(); })}
+                disabled={busy}
+              >
+                {manage.pendingAction === "remove" ? "Deleting..." : "Delete"}
+              </button>
+              <button type="button" className="ghost-button" onClick={manage.dismissDelete} disabled={busy}>
+                Cancel
+              </button>
+            </div>
+          </div>
         ) : (
-          <div className={styles.sheetActions} data-stack="true">
+          <>
+          <div className={styles.sheetPrimary}>
             <Link href={`/plans/${plan.plan_id}`} className="cta">
               {archived ? "Preview plan" : "Open plan"}
             </Link>
@@ -393,21 +457,29 @@ export function PlanManageSheet({
                 {isSettingActive ? "Setting..." : "Make active"}
               </button>
             ) : null}
+          </div>
+          <div className={styles.menuList} role="group" aria-label="Plan options">
             {archived ? (
-              <Link href="/create" className="ghost-button">
+              <Link href="/create" className={styles.menuItem}>
                 Create a plan
               </Link>
             ) : (
               <>
-                <button type="button" className="ghost-button" onClick={manage.startRename} disabled={busy}>
+                <button type="button" className={styles.menuItem} onClick={manage.startRename} disabled={busy}>
                   Rename
                 </button>
-                <button type="button" className="ghost-button danger-button" onClick={manage.requestArchive} disabled={busy}>
+                <button type="button" className={styles.menuItem} data-tone="danger" onClick={manage.requestArchive} disabled={busy}>
                   Archive
                 </button>
               </>
             )}
+            {canDelete ? (
+              <button type="button" className={styles.menuItem} data-tone="danger" onClick={manage.requestDelete} disabled={busy}>
+                Delete
+              </button>
+            ) : null}
           </div>
+          </>
         )}
         {manage.error ? <div className="error-banner" role="alert">{manage.error}</div> : null}
       </div>
