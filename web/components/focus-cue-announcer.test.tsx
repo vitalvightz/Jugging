@@ -96,3 +96,20 @@ test("plan and manual training cues link to Sessions history", async () => {
     } finally { await app.cleanup(); }
   }
 });
+
+test("a newly saved note clears older feedback even when no new cue is generated", async () => {
+  const app = await mount([
+    { status: "ready", id: "old-cue", focus: "Keep your feet steady." },
+    { status: "none", id: null, focus: null },
+  ]);
+  try {
+    await act(async () => watchNoteFocusCue({ token: "t", kind: "plan_completion", sourceId: "old" }));
+    await wait(35);
+    assert.match(app.text(), /Keep your feet steady/);
+    await act(async () => watchNoteFocusCue({ token: "t", kind: "plan_completion", sourceId: "new" }));
+    assert.equal(document.querySelector('[aria-label="UNLXCK Coach feedback"]'), null);
+    await wait(35);
+    assert.doesNotMatch(app.text(), /Keep your feet steady/);
+    assert.equal(app.urls.length, 2);
+  } finally { await app.cleanup(); }
+});

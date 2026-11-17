@@ -31,7 +31,8 @@ export function FocusCueAnnouncer({ delaysMs = CUE_POLL_DELAYS_MS }: { delaysMs?
     function watch({ token, kind, sourceId }: NoteFocusCueWatch) {
       const key = `${kind}:${sourceId}`;
       const path = window.location.pathname;
-      running.get(key)?.();
+      for (const stop of [...running.values()]) stop();
+      setCard(null);
       let stopped = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
       const stop = () => { stopped = true; if (timer) clearTimeout(timer); running.delete(key); };
