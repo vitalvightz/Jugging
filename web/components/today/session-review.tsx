@@ -258,7 +258,7 @@ export function SessionReview({
             </label>
           ) : null}
           <label className="field" htmlFor={`${fieldId}-notes`}>
-            <span>Notes (optional)</span>
+            <span>Session Notes (optional)</span>
             <textarea
               id={`${fieldId}-notes`}
               value={notes}

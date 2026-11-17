@@ -922,10 +922,10 @@ export function ExerciseRow({
           </span> : null}
           {unlxckCue ? (
             <p className="ex-row-cue">
-              <span className="sp-stat-label">UNLXCK CUE</span>
+              <span className="sp-stat-label">UNLXCK Coach</span>
               {unlxckCue.text}
               {unlxckCue.id && cueContext?.onDismiss ? (
-                <button type="button" className="today-session-focus-dismiss" aria-label="Dismiss this UNLXCK cue"
+                <button type="button" className="today-session-focus-dismiss" aria-label="Dismiss UNLXCK Coach feedback"
                   onClick={() => cueContext.onDismiss?.(unlxckCue.id!)}>
                   Dismiss
                 </button>

@@ -1064,6 +1064,7 @@ def test_manual_exercise_note_creates_grounded_cue_and_history_entry(api):
     assert [item["name"] for item in payload["context"]["noted_session"]["exercises"]] == ["Heavy Bag Power Intervals"]
     cue = client.get(f"/api/training/focus-cues/manual_exercise/{entry_id}", headers=AUTH)
     assert cue.status_code == 200 and cue.json()["focus"] == coach_text
+    assert cue.json()["exercise_name"] == "Heavy Bag Power Intervals"
     detail = client.get(f"/api/training/history/external/{session['id']}", headers=AUTH)
     assert detail.status_code == 200, detail.text
     assert detail.json()["blocks"][0]["notes"] == "I need to keep my left hand up when using my right"
@@ -1167,3 +1168,4 @@ def test_live_heavy_bag_note_in_strength_session_without_sport(monkeypatch):
     cue = client.get(f"/api/training/focus-cues/manual_exercise/{entry_id}", headers=AUTH).json()
     assert cue["status"] == "ready", cue
     assert cue["focus"].strip()
+    assert len(cue["focus"].split()) <= 30, cue
