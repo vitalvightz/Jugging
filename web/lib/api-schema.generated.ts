@@ -2815,7 +2815,7 @@ export type TrainingFocusItem = {
   focus: string;
   training_day: string;
   sport: string | null;
-  scope: "general_quality" | "movement_pattern" | "specific_exercise" | "sport_technique" | null;
+  scope: "general_quality" | "mental_skill" | "movement_pattern" | "specific_exercise" | "sport_technique" | null;
   category: string | null;
   exercise_targets: string[];
   movement_patterns: string[];
