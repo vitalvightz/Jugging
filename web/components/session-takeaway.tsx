@@ -21,7 +21,7 @@ export function sessionMeta(row: TrainingHistorySession): string {
 
 function saveError(reason: unknown): string {
   if (reason instanceof ApiError && reason.status === 401) return "Your session expired. Sign in again to save.";
-  return "Your takeaway wasn't saved. Try again.";
+  return "Your session notes weren't saved. Try again.";
 }
 
 /** Shared save state: one request at a time, trimmed text, a toast on success. */
@@ -35,7 +35,7 @@ function useTakeawaySave(token: string, row: TrainingHistorySession, onSaved: (r
     saving.current = true; setBusy(true); setError(null);
     try {
       const updated = await saveTrainingTakeaway(token, row.id, text.trim());
-      showToast(updated.takeaway ? "Takeaway saved." : "Takeaway removed.", { tone: "success" });
+      showToast(updated.takeaway ? "Session notes saved." : "Session notes removed.", { tone: "success" });
       onSaved(updated);
     } catch (reason) {
       setError(saveError(reason));
@@ -107,7 +107,7 @@ export function SessionTakeawayPrompt({ token, row, onSaved, onDismiss, sheet: a
       <div className={styles.footer}>
         <button className={styles.skip} type="button" disabled={busy} onClick={() => dismiss()}>Optional — skip anytime</button>
         <button className={styles.add} type="submit" disabled={busy || !text.trim()}>
-          {busy ? "Saving…" : <>Add takeaway <span aria-hidden="true">→</span></>}
+          {busy ? "Saving…" : <>Add session notes <span aria-hidden="true">→</span></>}
         </button>
       </div>
     </form>
@@ -122,15 +122,15 @@ export function SessionTakeawayPrompt({ token, row, onSaved, onDismiss, sheet: a
 }
 
 /** Add or edit a saved manual session's takeaway from History. */
-export function TakeawayEditor({ token, row, onSaved }: {
+export function SessionNotesEditor({ token, row, onSaved }: {
   token: string; row: TrainingHistorySession; onSaved: (row: TrainingHistorySession) => void;
 }) {
   const [open, setOpen] = useState(false);
   const has = Boolean(row.takeaway?.trim());
   return <>
     <button className="history-session-delete" type="button" aria-haspopup="dialog"
-      aria-label={`${has ? "Edit" : "Add"} takeaway for ${trainingTitle(row)}`} onClick={() => setOpen(true)}>
-      {has ? "Edit takeaway" : "Add takeaway"}
+      aria-label={`${has ? "Edit" : "Add"} session notes for ${trainingTitle(row)}`} onClick={() => setOpen(true)}>
+      {has ? "Edit session notes" : "Add session notes"}
     </button>
     {open ? <TakeawaySheet token={token} row={row} onClose={() => setOpen(false)}
       onSaved={updated => { setOpen(false); onSaved(updated); }} /> : null}
@@ -151,10 +151,10 @@ function TakeawaySheet({ token, row, onClose, onSaved }: {
       onCancel={event => { event.preventDefault(); if (!busy) close(); }}>
       <header className={sheet.header}>
         <div>
-          <h2 id={`${fieldId}-title`}>Takeaway</h2>
+          <h2 id={`${fieldId}-title`}>Session Notes</h2>
           <p className={sheet.source}>{sessionMeta(row)}</p>
         </div>
-        <button className={sheet.close} type="button" aria-label="Close takeaway" disabled={busy} onClick={() => close()}>×</button>
+        <button className={sheet.close} type="button" aria-label="Close session notes" disabled={busy} onClick={() => close()}>×</button>
       </header>
       <form className={sheet.form} onSubmit={event => { event.preventDefault(); void save(text); }}>
         <div className={sheet.body}>
@@ -166,7 +166,7 @@ function TakeawaySheet({ token, row, onClose, onSaved }: {
         <footer className={sheet.actions}>
           {error ? <p className={sheet.error} role="alert">{error}</p> : null}
           <button className="cta" type="submit" disabled={busy || text.trim() === (row.takeaway ?? "").trim()}>
-            {busy ? "Saving…" : text.trim() || !row.takeaway ? "Save takeaway" : "Remove takeaway"}
+            {busy ? "Saving…" : text.trim() || !row.takeaway ? "Save session notes" : "Remove session notes"}
           </button>
         </footer>
       </form>

@@ -140,7 +140,7 @@ def _run_history(store, athlete_id: str, training_day: str) -> list[SessionDetai
             and not row.get("deleted_at") and str(row["training_day"])[:10] <= week_end]
 
 
-def session_details(store, athlete_id, source, entry_id, *, health_consent_granted):
+def session_details(store, athlete_id, source, entry_id, *, health_consent_granted, with_focus_cues=False):
     consent = health_consent_granted
     row = (store.get_external_training_session(athlete_id, entry_id) if source == "external"
            else store.get_session_completion_by_id(athlete_id, entry_id))
@@ -162,7 +162,18 @@ def session_details(store, athlete_id, source, entry_id, *, health_consent_grant
                    and not entry.get("deleted_at")]
         summary = _summary({**occurrence, "exercise_count": len(entries)}, source, occurrence["title"], consent)
         runs = _run_history(store, athlete_id, str(row["training_day"])) if row.get("activity") == "roadwork" else None
-        return SessionDetails(athlete_id=athlete_id, session=summary, blocks=[_manual_block(entry, consent) for entry in entries],
+        cues = {}
+        if consent and with_focus_cues:
+            from api.services.training_focus import note_focus_cues
+
+            cues = note_focus_cues(store, athlete_id, "manual_exercise", {
+                str(entry["client_entry_id"]): str(entry.get("notes") or "") for entry in entries
+                if entry.get("client_entry_id") and entry.get("notes")
+            })
+        blocks = [_manual_block(entry, consent).model_copy(update={
+            "focus_cue": (cues.get(str(entry.get("client_entry_id"))) or {}).get("focus")
+        }) for entry in entries]
+        return SessionDetails(athlete_id=athlete_id, session=summary, blocks=blocks,
                               prescription_source="manual", sparring=safe_sparring, runs=runs)
 
     session = _snapshot_session(row)

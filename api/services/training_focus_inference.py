@@ -54,6 +54,7 @@ CONTEXT AND TRUTH
 - Identify the exact exercise, sport skill or situation. Resolve "first exercise", "during the hold", "earlier session" using noted_session and the ordering of other_sessions_same_day.
 - Only done/modified exercises were performed. Skipped/unverified exercises are NOT evidence of performance. Do not claim to know technique, symptoms or reasons you cannot observe.
 - Other sessions that day are relevant only when the note clearly refers to them. Do not broaden one exercise's difficulty into a global weakness.
+- For source=manual_exercise, noted_session.noted_exercise names the ONE exercise whose note was saved. Coach that exercise only: prefer specific_exercise scope and copy its name into exercise_targets; do not treat this as a session-wide note.
 
 FIRST CLASSIFY THE NOTE INTERNALLY (never expose a response-type label)
 - Technique problem -> one specific adjustment HOW to execute it. Use a body position, contact point, movement sequence, external target or self-check when supported.
@@ -196,6 +197,15 @@ def read_source(store, athlete_id: str, kind: str, source_id: str, *,
             return None
         return {"note": str(row.get("notes") or ""), "training_day": str(row.get("training_day"))[:10],
                 "row": row, "explicit_focus": str(row.get("focus") or "").strip()}
+    if kind == "manual_exercise":
+        row = store.get_manual_exercise(athlete_id, source_id)
+        if not row or row.get("athlete_id") != athlete_id or row.get("deleted_at"):
+            return None
+        parent = store.get_external_training_session(athlete_id, str(row["external_session_id"]))
+        if not parent or parent.get("athlete_id") != athlete_id or parent.get("deleted_at"):
+            return None
+        return {"note": str(row.get("notes") or ""), "training_day": str(parent["training_day"])[:10],
+                "row": row, "explicit_focus": ""}
     if kind == "manual_takeaway":
         row = store.get_external_training_session(athlete_id, source_id)
         if not row or row.get("athlete_id") != athlete_id or row.get("deleted_at"):
@@ -279,7 +289,7 @@ def _non_training_names(row: dict) -> set[str]:
     return {words(block.get("display_name")) for block in blocks if not is_training(block)} - training
 
 
-def _exercises(store, athlete_id: str, source: str, row: dict) -> list[dict]:
+def _exercises(store, athlete_id: str, source: str, row: dict, *, target_id: str | None = None) -> list[dict]:
     """Prescribed vs performed, from the History projection (rehab and health
     notes left out: they are never a training cue)."""
     try:
@@ -292,6 +302,10 @@ def _exercises(store, athlete_id: str, source: str, row: dict) -> list[dict]:
     any_logged = any(block.status for block in blocks)
     whole_session_done = source == "unlxck" and row.get("status") == "done" and not any_logged
     exercises = []
+    # Keep the usual context budget while prioritising the exercise whose note
+    # triggered this request, including entries beyond the first fourteen.
+    if target_id:
+        blocks.sort(key=lambda block: block.feedback_ref != target_id)
     for block in blocks[:_MAX_BLOCKS]:
         item: dict[str, Any] = {"name": block.name[:60]}
         pattern = movement_pattern(block.name)
@@ -318,12 +332,12 @@ def _exercises(store, athlete_id: str, source: str, row: dict) -> list[dict]:
     return exercises
 
 
-def _session_entry(store, athlete_id: str, row: dict, *, manual: bool) -> dict:
+def _session_entry(store, athlete_id: str, row: dict, *, manual: bool, target_id: str | None = None) -> dict:
     if manual:
         entry = {"kind": "manual", "activity": row.get("activity"), "sport": row.get("sport"),
                  "session_type": row.get("session_type"), "status": "done"}
         categories = _categories_of(row, manual=True)
-        exercises = _exercises(store, athlete_id, "external", row)
+        exercises = _exercises(store, athlete_id, "external", row, target_id=target_id)
     else:
         session = _snapshot_session(row)
         entry = {"kind": "plan", "title": str(session.get("title") or "")[:80] or None,
@@ -419,6 +433,17 @@ def build_context(store, athlete_id: str, kind: str, source: dict) -> dict | Non
             return None
         noted["entry"]["sparring"] = sparring
         noted["categories"] = {"sparring", "technique"}
+    elif kind == "manual_exercise":
+        parent = store.get_external_training_session(athlete_id, str(row["external_session_id"]))
+        if not parent or parent.get("deleted_at"):
+            return None
+        noted = _session_entry(store, athlete_id, parent, manual=True, target_id=str(row["id"]))
+        noted_ids.add(("external", str(parent["id"])))
+        target_name = str(row.get("display_name") or "")
+        if not any(exercise["name"] == target_name[:60] and exercise["status"] in PERFORMED
+                   for exercise in noted["entry"].get("exercises", [])):
+            return None
+        noted["entry"]["noted_exercise"] = target_name
     elif kind == "manual_takeaway":
         noted = _session_entry(store, athlete_id, row, manual=True)
         noted_ids.add(("external", str(row["id"])))
@@ -448,6 +473,8 @@ def build_context(store, athlete_id: str, kind: str, source: dict) -> dict | Non
     categories = set().union(*(item["categories"] for item in sessions))
     # The noted work's own sport only: another class that day says nothing about it.
     sports = _known_sports(store, athlete_id, [noted], noted.get("plan_id"))
+    if kind == "manual_exercise":
+        performed = [exercise for exercise in performed if exercise["name"] == target_name[:60]]
     return {
         "payload": {
             "categories": sorted(categories),

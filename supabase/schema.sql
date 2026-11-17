@@ -4377,7 +4377,7 @@ grant execute on function public.reconcile_approved_contribution_xp(uuid) to ser
 create table if not exists public.training_focus_inferences (
   id uuid primary key default gen_random_uuid(),
   athlete_id uuid not null references public.profiles(id) on delete cascade,
-  source_kind text not null check (source_kind in ('sparring_log', 'manual_takeaway', 'plan_completion')),
+  source_kind text not null check (source_kind in ('sparring_log', 'manual_takeaway', 'manual_exercise', 'plan_completion')),
   source_id uuid not null,
   training_day date not null,
   source_revision text not null,

@@ -15,6 +15,7 @@ import { trainingTitle } from "@/lib/training-disciplines";
 import sheet from "./log-training.module.css";
 import styles from "./manual-exercise-logger.module.css";
 import { invalidatePastExercises } from "@/lib/exercise-library";
+import { watchNoteFocusCue } from "@/lib/focus-cue-watch";
 import type { StructuredBlock } from "@/lib/types";
 import { personalWeightRecommendation } from "@/lib/weight-recommendation";
 import { useWeightContext } from "./exercise-log";
@@ -259,7 +260,12 @@ export function ManualExerciseLogger({ token, session, reference, onClose, fight
       const list = entries ?? [];
       const next = list.some(item => item.entry_id === saved.entry_id) ? list.map(item => item.entry_id === saved.entry_id ? saved : item) : [...list, saved];
       setEntries(next);
-      if (!fighterId) invalidatePastExercises(token);
+      if (!fighterId) {
+        invalidatePastExercises(token);
+        if ((list.find(item => item.entry_id === saved.entry_id)?.notes ?? "") !== (saved.notes ?? "")) {
+          watchNoteFocusCue({ token, kind: "manual_exercise", sourceId: saved.entry_id });
+        }
+      }
       setRecorded(current => current.map(row => row.id === saved.exercise_id
         ? { ...row, latest_values: saved.actual, latest_day: saved.training_day, latest_source: "manual" } : row));
       setReuse(current => current?.filter(item => item.exercise_id !== saved.exercise_id) ?? null);
@@ -450,10 +456,11 @@ export function ManualExerciseLogger({ token, session, reference, onClose, fight
             <details className={styles.more} open={extraFilled || undefined}>
               <summary>More details</summary>
               <div className={styles.measures} data-count={Math.min(3, extras.length)}>{extras.map(measure)}</div>
-              <label className={styles.notes}>Notes
+              <label className={styles.notes}>Training note (optional)
                 <input type="text" value={editor.draft.notes} maxLength={500} disabled={busy} autoComplete="off"
                   onChange={event => setEditor(current => ({ ...current, draft: { ...current.draft, notes: event.target.value } }))} />
               </label>
+              {!fighterId ? <p className={styles.quiet}>UNLXCK Coach may reply.</p> : null}
             </details>
           </> : null}
         </div>}

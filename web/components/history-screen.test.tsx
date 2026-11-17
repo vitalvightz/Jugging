@@ -174,15 +174,15 @@ test("Sessions shows the training summary, takeaways, linked sparring reports an
     assert.match(summary.textContent ?? "", /Sparring.*45m/);
 
     assert.match(container.querySelector(".history-row-takeaway")?.textContent ?? "", /Right hand up after the jab/);
-    assert.equal(button("Edit takeaway"), undefined);
+    assert.equal(button("Edit session notes"), undefined);
     // The manual sparring session shows its linked report, loaded alongside.
     assert.ok(requests.some(url => url.includes("sparring-logs")));
     assert.doesNotMatch(container.querySelector(".history-list")?.textContent ?? "", /6 rounds · Light head contact/);
     assert.equal(button("Update report"), undefined);
 
-    await act(async () => button("Takeaways · 1")!.click());
+    await act(async () => button("Session Notes · 1")!.click());
     assert.equal(container.querySelectorAll(".history-row").length, 1);
-    await act(async () => button("Takeaways · 1")!.click());
+    await act(async () => button("Session Notes · 1")!.click());
 
     await act(async () => button("Load earlier sessions")!.click());
     assert.ok(requests.some(url => url.includes("before_day=2026-01-10")));

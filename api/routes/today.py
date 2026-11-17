@@ -380,9 +380,13 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
                              profile: ProfileRecord = Depends(require_profile),
                              store: AppStore = Depends(get_store)):
         require_health_feature_access(profile)
+        previous = store.get_manual_exercise(profile.athlete_id, str(exercise_entry_id))
         saved = save_session_exercise(store, profile.athlete_id, str(entry_id), str(exercise_entry_id), body)
         reconcile_training_xp(store, profile.athlete_id, athlete_timezone=profile.athlete_timezone)
         schedule_focus_refresh(background_tasks, store, profile.athlete_id, external_session_id=entry_id)
+        if (saved.notes or "").strip() and (not previous or (previous.get("notes") or "") != saved.notes):
+            schedule_focus_inference(background_tasks, store, profile.athlete_id, "manual_exercise",
+                                     exercise_entry_id, note=saved.notes, health_consent_granted=True)
         return saved
 
     @router.delete("/api/training/sessions/{entry_id}/exercises/{exercise_entry_id}", status_code=204)
@@ -450,8 +454,9 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
     def get_training_session_details(source: Literal["unlxck", "external"], entry_id: UUID,
                                      profile: ProfileRecord = Depends(require_profile),
                                      store: AppStore = Depends(get_store)):
+        consent = evaluate_profile_compliance(profile).health_consent_granted
         return session_details(store, profile.athlete_id, source, str(entry_id),
-            health_consent_granted=evaluate_profile_compliance(profile).health_consent_granted)
+            health_consent_granted=consent, with_focus_cues=consent)
 
     @router.post("/api/today/injury-episode-observation")
     def injury_episode_observation(
@@ -956,7 +961,7 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
 
     @router.get("/api/training/focus-cues/{source_kind}/{source_id}", response_model=NoteFocusCueResponse)
     def get_note_focus_cue(
-        source_kind: Literal["sparring_log", "manual_takeaway", "plan_completion"],
+        source_kind: Literal["sparring_log", "manual_takeaway", "manual_exercise", "plan_completion"],
         source_id: UUID,
         profile: ProfileRecord = Depends(require_profile),
         store: AppStore = Depends(get_store),
@@ -968,11 +973,30 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
         if not evaluate_profile_compliance(profile).health_consent_granted:
             return NoteFocusCueResponse(status="none")
         source = read_source(store, profile.athlete_id, source_kind, str(source_id))
-        if source and not source["note"].strip():
+        if (not source and source_kind == "manual_exercise") or (source and not source["note"].strip()):
             return NoteFocusCueResponse(status="none")
         cue = (note_focus_cues(store, profile.athlete_id, source_kind, {str(source_id): source["note"]})
                .get(str(source_id))) if source else None
         return NoteFocusCueResponse(**cue) if cue else NoteFocusCueResponse(status="pending")
+
+    @router.post("/api/training/focus-cues/manual_exercise/{source_id}/retry", status_code=202)
+    def retry_manual_exercise_focus(
+        source_id: UUID,
+        background_tasks: BackgroundTasks,
+        profile: ProfileRecord = Depends(require_profile),
+        store: AppStore = Depends(get_store),
+    ):
+        """Explicit athlete request for a saved note; never scans historical notes.
+
+        The normal revision claim makes repeated requests idempotent.
+        """
+        require_health_feature_access(profile)
+        source = read_source(store, profile.athlete_id, "manual_exercise", str(source_id))
+        if not source or not source["note"].strip():
+            raise HTTPException(status_code=404, detail="Exercise note not found")
+        schedule_focus_inference(background_tasks, store, profile.athlete_id, "manual_exercise",
+                                 source_id, note=source["note"], health_consent_granted=True)
+        return {"status": "accepted"}
 
     @router.delete("/api/today/training-focus/{inference_id}", status_code=204)
     def dismiss_training_focus(

@@ -7,7 +7,7 @@
  * announcer (components/focus-cue-announcer.tsx) to poll briefly for the result
  * and show it as a toast; nothing is shown when the note gives no cue.
  */
-export type NoteFocusSourceKind = "sparring_log" | "manual_takeaway" | "plan_completion";
+export type NoteFocusSourceKind = "sparring_log" | "manual_takeaway" | "manual_exercise" | "plan_completion";
 
 export type NoteFocusCueWatch = { token: string; kind: NoteFocusSourceKind; sourceId: string };
 

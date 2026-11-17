@@ -1057,10 +1057,10 @@ for (const width of [390, 1280]) {
     await page.getByRole("button", { name: /View Strength details/ }).click();
     const details = page.getByRole("dialog", { name: "Strength", exact: true });
     await expect(details.getByRole("button", { name: "Add exercises", exact: true })).toBeVisible();
-    await details.getByRole("button", { name: /Add takeaway/ }).click();
-    const notes = page.getByRole("dialog", { name: "Takeaway", exact: true });
+    await details.getByRole("button", { name: /Add session notes/ }).click();
+    const notes = page.getByRole("dialog", { name: "Session Notes", exact: true });
     await notes.getByRole("textbox").fill("Keep the guard up");
-    await notes.getByRole("button", { name: "Save takeaway", exact: true }).click();
+    await notes.getByRole("button", { name: "Save session notes", exact: true }).click();
     await expect(notes).toHaveCount(0);
     await page.getByRole("button", { name: /View Strength details/ }).click();
     await expect(details).toContainText("Keep the guard up");

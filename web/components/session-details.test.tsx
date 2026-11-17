@@ -207,3 +207,48 @@ test("the athlete sees who logged a coach-recorded session", async () => {
     assert.doesNotMatch(container.textContent!, /by you/i);
   } finally { await act(async () => root.unmount()); container.remove(); globalThis.fetch = fetch; }
 });
+
+
+test("History opened before inference refreshes when the cue becomes ready", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  const cue = "Keep your left glove near your cheek.";
+  globalThis.fetch = async () => {
+    calls++;
+    return new Response(JSON.stringify({ ...payload, blocks: [
+      { ...payload.blocks[0], source: "manual", focus_cue: calls > 1 ? cue : null },
+    ] }));
+  };
+  const cache: SessionDetailsCache = new Map();
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<SessionDetails row={row} token="token" cache={cache} onDismiss={() => {}} />));
+    assert.equal(calls, 1);
+    for (const button of container.querySelectorAll<HTMLButtonElement>("ol button[aria-expanded]")) await act(async () => button.click());
+    assert.ok(!container.textContent!.includes(cue));
+    await act(async () => window.dispatchEvent(new window.Event("unlxck:training-focus-changed")));
+    assert.equal(calls, 2);
+    assert.match(container.textContent!, /Keep your left glove/);
+    await act(async () => root.render(null));
+    await act(async () => root.render(<SessionDetails row={row} token="token" cache={cache} onDismiss={() => {}} />));
+    assert.equal(calls, 2);
+    for (const button of container.querySelectorAll<HTMLButtonElement>("ol button[aria-expanded]")) await act(async () => button.click());
+    assert.match(container.textContent!, /Keep your left glove/);
+  } finally { act(() => root.unmount()); container.remove(); globalThis.fetch = originalFetch; }
+});
+
+test("session rows reuse takeaway styling for notes, preserve legacy text and separate Coach feedback", async () => {
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  const render = (notes: string, takeaway: string) => root.render(<ul><SessionRow
+    row={{ ...row, notes, takeaway, focus_cue: "Coach cue" }} onOpen={() => {}} /></ul>);
+  try {
+    await act(async () => render("Athlete note", "Historical takeaway"));
+    assert.deepEqual([...container.querySelectorAll(".history-row-takeaway")].map(p => p.textContent),
+      ["Athlete note", "Historical takeaway"]);
+    assert.match(container.textContent!, /Coach cue/);
+    await act(async () => render("Same note", " Same note "));
+    assert.equal(container.querySelectorAll(".history-row-takeaway").length, 1);
+  } finally { act(() => root.unmount()); container.remove(); }
+});
