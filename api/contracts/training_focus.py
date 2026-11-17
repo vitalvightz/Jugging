@@ -32,11 +32,11 @@ def _load() -> list[tuple[str, tuple[str, ...]]]:
 PATTERNS = _load()
 PATTERN_IDS = frozenset(pattern for pattern, _ in PATTERNS)
 
-FocusScope = Literal["specific_exercise", "movement_pattern", "general_quality", "sport_technique"]
+FocusScope = Literal["specific_exercise", "movement_pattern", "general_quality", "sport_technique", "mental_skill"]
 FocusCategory = Literal["strength", "conditioning", "technique", "sparring", "mobility"]
 FocusSourceKind = Literal["sparring_log", "manual_takeaway", "plan_completion"]
 
-FOCUS_MAX_CHARS = 90
+FOCUS_MAX_CHARS = 360
 _NON_WORD = re.compile(r"[^a-z0-9]+")
 
 
@@ -136,7 +136,7 @@ def grounded_focus(inferred: InferredFocus, *, exercise_names: list[str], patter
     """The model's answer kept only when every match field is grounded in the
     noted day's context; None otherwise (no suggestion beats a wrong one)."""
     text = " ".join((inferred.focus or "").split())
-    if not text or len(text) > FOCUS_MAX_CHARS or inferred.scope is None or inferred.category is None:
+    if not text or len(text) > FOCUS_MAX_CHARS or len(text.split()) > 45 or inferred.scope is None or inferred.category is None:
         return None
     if mentions_health(text) or _WORKLOAD.search(text):
         return None
@@ -166,8 +166,10 @@ def grounded_focus(inferred: InferredFocus, *, exercise_names: list[str], patter
         # Transfer must name where it applies; a bare "strength" never matches.
         if not chosen:
             return None
-    elif inferred.scope == "sport_technique":
-        if inferred.category not in {"technique", "sparring"}:
+    elif inferred.scope in {"sport_technique", "mental_skill"}:
+        if inferred.scope == "sport_technique" and inferred.category not in {"technique", "sparring"}:
+            return None
+        if inferred.category in {"technique", "sparring"} and not sport:
             return None
         targets, chosen = [], []
     return {"focus": text, "scope": inferred.scope, "category": inferred.category, "sport": sport,
