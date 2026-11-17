@@ -709,7 +709,7 @@ def _other_stimuli(role: dict, pools: dict, phase: str, brief: dict) -> list[dic
         bank_interval = (_number(dose_source.get("work_sec")), _number(dose_source.get("rounds")))
         # The member's own effective dose wins over the bank dose: composition
         # may partition high-load rounds, and the persisted pool is compacted.
-        for field in ("work_sec", "rest_sec", "rounds", "rpe"):
+        for field in ("work_sec", "rest_sec", "rounds", "rpe", "distance_m", "distance_segments_m", "recovery_mode"):
             if member.get(field) is not None:
                 dose_source[field] = member[field]
         if member.get("effective_rounds") is not None:
@@ -1723,6 +1723,20 @@ def _repair_refusal_reasons(week: dict, goal: str, window: dict, *, athlete_mode
                       "coverage_window": window}
             if reason not in reasons:
                 reasons.append(reason)
+        # Match the category-cap refusal in _restore_goal_roles as well. A
+        # surviving low-aerobic touch can fill the allocated conditioning slot
+        # without meeting a development obligation. Report that live capacity
+        # limit so the final contract can promise maintenance honestly.
+        category = candidate.get("category")
+        original_cap = sum(r.get("category") == category for r in week.get("goal_repair_candidates") or [])
+        current = sum(r.get("original_category", r.get("category")) == category
+                      and role_d_day(week, r) is not None for r in week.get("session_roles") or [])
+        if (goal == "conditioning" and category == "conditioning"
+                and original_cap > 0 and current >= original_cap):
+            reasons.append({"reason_code": "calendar_capacity", "authority": "planner_category_capacity",
+                            "week_index": week.get("week_index"), "role_key": candidate.get("role_key"),
+                            "category": category, "allocated_slots": original_cap,
+                            "occupied_slots": current, "coverage_window": window})
     return reasons
 
 

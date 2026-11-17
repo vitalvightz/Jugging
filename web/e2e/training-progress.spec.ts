@@ -23,6 +23,7 @@ for (const width of [390, 1280]) {
     const requests = await setup(page, baseURL!);
     const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
     await page.goto("/history");
+    await page.locator("details.history-trends > summary").click();
     const preview = page.getByRole("region", { name: "Training Rhythm preview" });
     await expect(preview.getByText("Select a week to see its training.")).toBeVisible();
     expect(requests.some(url => url.includes("before_day="))).toBe(true);
@@ -107,6 +108,7 @@ test("incomplete weekly reads retry without showing partial trends or inventing 
     return route.fulfill({ json: fixtureResponse(url).body });
   });
   await page.goto("/history");
+  await page.locator("details.history-trends > summary").click();
   const preview = page.getByRole("region", { name: "Training Rhythm preview" });
   await expect(preview.getByRole("alert")).toBeVisible();
   await expect(preview.getByText("Select a week to see its training.")).toHaveCount(0);
@@ -153,6 +155,7 @@ test("an empty recorded-training window has a factual empty state", async ({ pag
   await setup(page, baseURL!);
   await page.route("**/api/training/history?**", route => route.fulfill({ json: { sessions: sessions.slice(0, 1).map(row => ({ ...row, training_day: "2025-01-01" })), next_before_day: null } }));
   await page.goto("/history");
+  await page.locator("details.history-trends > summary").click();
   const preview = page.getByRole("region", { name: "Training Rhythm preview" });
   await expect(preview).toContainText("No sessions recorded in this period.");
   await preview.getByRole("button", { name: "View trends" }).click();

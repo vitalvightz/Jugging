@@ -1,7 +1,7 @@
 """Plan-free check-in upserts racing on a real PostgreSQL server.
 
-A unique constraint treats NULL plan_ids as distinct, so only the partial key
-and the upsert RPC stand between simultaneous submissions and duplicate rows.
+The athlete/day unique key and upsert RPC keep planned and plan-free
+submissions on one daily row, including simultaneous submissions.
 No production credentials are used.
 """
 import json
@@ -50,7 +50,8 @@ def dsn():
             """)
             for migration in ("20260618120000_add_today_checkins_and_completions.sql",
                               "20261019061051_allow_plan_free_today_checkins.sql",
-                              "20261117032526_one_daily_checkin_per_athlete.sql"):
+                              "20261117032526_one_daily_checkin_per_athlete.sql",
+                              "20261117100010_remove_redundant_plan_free_checkin_index.sql"):
                 setup.execute((ROOT / "supabase/migrations" / migration).read_text(encoding="utf-8"))
         yield test_dsn
     finally:
@@ -107,3 +108,29 @@ def test_plan_switch_and_plan_free_share_one_checkin(dsn):
     assert _upsert(dsn, athlete) == saved
     with psycopg.connect(dsn) as conn:
         assert conn.execute("select count(*) from public.today_checkins where athlete_id = %s", (athlete,)).fetchone()[0] == 1
+
+
+def test_daily_unique_key_replaces_obsolete_partial_key(dsn):
+    import psycopg
+
+    with psycopg.connect(dsn) as conn:
+        assert conn.execute(
+            "select to_regclass('public.today_checkins_athlete_plan_free_day_key')"
+        ).fetchone()[0] is None
+        assert conn.execute("""
+            select indisunique and indisvalid
+            from pg_index
+            where indexrelid = 'public.today_checkins_athlete_day_key'::regclass
+        """).fetchone()[0] is True
+
+    athlete, plan = (str(uuid4()) for _ in range(2))
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        conn.execute("insert into public.profiles values (%s)", (athlete,))
+        conn.execute("insert into public.plans values (%s, %s)", (plan, athlete))
+    _upsert(dsn, athlete)
+    # A planned insert must still conflict with the existing plan-free row.
+    with psycopg.connect(dsn) as conn, pytest.raises(psycopg.errors.UniqueViolation):
+        conn.execute("""insert into public.today_checkins
+            (athlete_id, plan_id, phase, training_day, sleep, body, pain, recommendation_state)
+            values (%s, %s, 'GPP', '2026-10-19', 'good', 'normal', 'none', 'train_as_planned')
+        """, (athlete, plan))

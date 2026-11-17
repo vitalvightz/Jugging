@@ -609,7 +609,7 @@ def test_an_adults_conversion_prompt_is_unchanged():
     # Nutrition guidance (and its coach-gated dosing) never reaches Stage 2;
     # an adult still gets the weight-cut risk bands.
     assert "coach_gated" not in prompt.replace(_STRUCTURED_PLAN_RULES, "")
-    assert '"weight_cut": {"by_phase"' in prompt
+    assert '"weight_cut":{"by_phase"' in prompt
     # An adult's taper still gets its weight-making guidance.
     assert "weight making" in prompt
     assert "days before weigh-in" in prompt

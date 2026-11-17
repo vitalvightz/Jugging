@@ -399,10 +399,9 @@ test(`repeat on Today needs only effort and save; a second session stays separat
   await expect(repeat).not.toContainText("Last recorded");
   await expect(repeat).not.toContainText("Review and log");
   expect((await repeat.boundingBox())!.height).toBeLessThanOrEqual(80);
-  const entryLink = page.getByRole("link", { name: "Log session", exact: true });
-  await expect(entryLink).toBeInViewport();
-  await page.screenshot({ animations: "disabled", path: "/tmp/quick-log-today-first-viewport.png" });
-  await entryLink.click();
+  // The compact logger sits below the prescribed session; its actions are buttons.
+  await expect(page.getByRole("button", { name: "Log session", exact: true })).toBeVisible();
+  await repeat.scrollIntoViewIfNeeded();
   await expect(repeat).toBeInViewport();
   await page.screenshot({ animations: "disabled", path: "/tmp/quick-log-compact-row.png" });
   await repeat.focus();
@@ -456,8 +455,11 @@ test(`repeat on Today needs only effort and save; a second session stays separat
   await page.goto("/history");
   const rows = page.locator(".history-list > li");
   await expect(rows).toHaveCount(4);
-  await expect(rows.filter({ hasText: "Fri 09 Oct 2026" })).toContainText("Hard");
-  await expect(rows.filter({ hasText: "Sun 18 Oct 2026" })).toHaveCount(2);
+  await page.getByRole("button", { name: "View Boxing details for Fri 09 Oct 2026", exact: true }).click();
+  const sourceDetails = page.getByRole("dialog", { name: "Boxing", exact: true });
+  await expect(sourceDetails).toContainText("Hard");
+  await sourceDetails.getByRole("button", { name: "Close session details", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Sun 18 Oct 2026", exact: true }).locator(".history-list > li")).toHaveCount(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(errors).toEqual([]);
 });

@@ -109,7 +109,7 @@ test("pull-back remains blocking despite green-sounding prose", () => {
   assert.doesNotMatch(resolved.banner?.action ?? "", /replaced/i);
   assert.equal(
     resolved.banner?.action,
-    "Today's planned session is blocked. Follow today's limits.",
+    "Follow today's recommended limits.",
   );
   assert.equal(
     resolved.banner?.detail,
@@ -134,7 +134,7 @@ test("STOP uses a safe replacement only for today's matched session", () => {
   assert.equal(resolved.canCompleteSession, false);
   assert.equal(resolved.useSafeReplacement, true);
   assert.equal(resolved.sessionOutcome, "replaced_with_recovery");
-  assert.equal(resolved.banner?.action, "Today's planned session is blocked.");
+  assert.equal(resolved.banner?.action, "Follow today's safety guidance.");
 });
 
 test("backend STOP remains visible before check-in when a severe injury is active", () => {
@@ -214,8 +214,8 @@ test("authoritative STOP overrides pull-back presentation as well as session saf
   assert.equal(resolved.banner.chip, "STOP");
   assert.notEqual(resolved.banner.chip, "PULL BACK");
   assert.equal(resolved.banner.title, "Stop today");
-  assert.equal(resolved.banner.detail, "A safety restriction is blocking training today.");
-  assert.equal(resolved.banner.action, "Today's planned session is blocked.");
+  assert.equal(resolved.banner.detail, "Follow the current safety guidance today.");
+  assert.equal(resolved.banner.action, "Follow today's safety guidance.");
   assert.equal(resolved.banner.tone, "red");
   assert.equal(getTierMeta(resolved.displayTier).label, "Stop today");
   assert.equal(resolved.blocksCurrentSession, true);
@@ -747,7 +747,7 @@ test("the legacy injury presentation export is preserved without overriding back
   const injuryBanner = getInjuryOverrideBanner(state, "Boxing conditioning");
   const resolved = resolveTodayDecision(state);
 
-  assert.equal(injuryBanner?.chip, "INJURY HOLD");
+  assert.equal(injuryBanner?.chip, "CHECK");
   assert.match(injuryBanner?.detail ?? "", /Active severe injury: Knee/);
   assert.equal(resolved.authoritativeTier, "green");
   assert.equal(resolved.banner?.chip, "GO");
@@ -817,7 +817,7 @@ test("STOP copy compatibility preserves hard stops and rejects weaker advice", (
     ...BASE_STATE,
     today: { ...BASE_STATE.today, recommendation_state: "modify", decision_tier: "stop", recommendation_reason: "Reduce volume\nOnly a small adjustment is needed.\nCut 1 round." },
   });
-  assert.equal(stale.banner?.action, "Today's planned session is blocked.");
+  assert.equal(stale.banner?.action, "Follow today's safety guidance.");
   assert.doesNotMatch(stale.banner?.action ?? "", /Cut 1 round/);
 });
 

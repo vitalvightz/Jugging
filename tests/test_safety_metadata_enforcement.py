@@ -273,7 +273,7 @@ def test_unreviewed_bank_edits_cannot_change_a_live_prescription(field, value):
 
 
 def test_complete_programmes_preserve_selection_dose_periodisation_and_personalisation(tmp_path):
-    evidence = json.loads((ROOT / "tests/fixtures/safety_metadata_programmes.json").read_bytes())
+    evidence = json.loads((ROOT / "tests/fixtures/safety_metadata_programmes_current.json").read_bytes())
     target = tmp_path / "plans.json"
     subprocess.run([sys.executable, "tools/canonical_metadata_plan_probe.py",
                     "tests/fixtures/tag_retirement_plans.json", str(target)], cwd=ROOT,

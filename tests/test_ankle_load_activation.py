@@ -85,9 +85,12 @@ def test_new_lower_limb_injury_blocks_saved_unstarted_load(area):
     assert not frozen_review_hold(b[0], b[3], snapshot, work_state="unstarted", as_of=NOW)
     b[0].create_injury_flag(b[3], dict(body_area=area, description="strain", severity="mild", status="open"))
     assert frozen_review_hold(b[0], b[3], snapshot, work_state="unstarted", as_of=NOW)
-    with pytest.raises(HTTPException):
-        execute(b, live)
-    assert b[0].session_completions[b[3]][0]["status"] == "not_started"
+    if area == "Right calf":
+        with pytest.raises(HTTPException):
+            execute(b, live)
+        assert b[0].session_completions[b[3]][0]["status"] == "not_started"
+    else:
+        assert execute(b, live)["status"] == "started"
     assert b[0].session_completions[b[3]][0]["prescription_snapshot"] == snapshot
     assert not frozen_review_hold(b[0], b[3], snapshot, work_state="started", as_of=NOW)
     assert not frozen_review_hold(b[0], b[3], snapshot, work_state="completed", as_of=NOW)

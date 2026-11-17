@@ -272,16 +272,14 @@ def test_the_d17_stack_is_resolved_onto_a_free_day():
     assert len(strength_days) == len(set(strength_days)) == 2
 
 
-def test_revalidation_does_not_force_a_move_when_final_doses_are_legal():
-    """With the requested three-session budget, surplus secondary SPP sessions
-    are absent. Every surviving dose is legal; do not manufacture a relocation.
-    Actual mover/recomposition paths are exercised by the preceding tests.
-    """
+def test_revalidation_preserves_conditioning_goals_and_legal_final_doses():
+    """Keep goal evidence and let the normal owner report day overruns."""
     from fightcamp.calendar_context import CalendarLegalityView, build_events, week_scope
     from fightcamp.physical_session_frequency import appointment_budget_exceeded
     brief = _plan("boxer56_novice_revalidation_move")
     actions = (brief["weekly_role_map"].get("realised_load_revalidation") or {}).get("actions") or []
-    assert actions == []
+    assert all(action["destination_directive"] == "allow" for action in actions)
+    assert not brief["weekly_role_map"]["realised_load_revalidation"]["residual_conflicts"]
     day_overrun = appointment_budget_exceeded(brief["weekly_role_map"], 3)
     assert any("requested day count exceeded" in flag for w in brief["weekly_role_map"]["weeks"]
                for flag in w.get("coach_note_flags", [])) == day_overrun

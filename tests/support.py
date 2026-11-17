@@ -2179,6 +2179,68 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         self.custom_plans[plan_id].update(copy.deepcopy(fields), updated_at=_now())
         return self.get_custom_plan(athlete_id, plan_id)
 
+    def coach_plan_command(self, actor_id: str, fighter_id: str, plan_id: str, action: str,
+                           fields: dict | None = None) -> dict:
+        if not self.get_accepted_coach_connection(actor_id, fighter_id):
+            raise HTTPException(409, "Connection ended")
+        row = self.custom_plans.get(plan_id)
+        if action == "create" and row is None:
+            row = {**copy.deepcopy(fields or {}), "id": plan_id, "athlete_id": actor_id,
+                   "fighter_id": fighter_id, "created_at": _now(), "updated_at": _now()}
+            self.custom_plans[plan_id] = row
+        if not row or row["athlete_id"] != actor_id or row.get("fighter_id") != fighter_id:
+            raise HTTPException(404, "Plan not found")
+        if action == "update":
+            if row.get("assigned_at"):
+                raise HTTPException(409, "Assigned plans cannot be edited")
+            row.update(copy.deepcopy(fields or {}), updated_at=_now())
+        elif action == "assign":
+            if row.get("incomplete"):
+                raise HTTPException(409, "Finish the plan before assigning")
+            if not row.get("assigned_at"):
+                row.update(assigned_at=_now(), coach_name=self.profiles.get(actor_id, {}).get("full_name"))
+        elif action != "create":
+            raise HTTPException(422, "Invalid action")
+        return copy.deepcopy(row)
+
+    def list_coach_plans(self, coach_id: str, fighter_id: str) -> list[dict]:
+        return sorted((copy.deepcopy(row) for row in self.custom_plans.values()
+                       if row["athlete_id"] == coach_id and row.get("fighter_id") == fighter_id),
+                      key=lambda row: row["updated_at"], reverse=True)
+
+    def list_plan_assignments(self, fighter_id: str) -> list[dict]:
+        return sorted((copy.deepcopy(row) for row in self.custom_plans.values()
+                       if row.get("fighter_id") == fighter_id and row.get("assigned_at")),
+                      key=lambda row: row["assigned_at"], reverse=True)
+
+    def respond_coach_plan(self, athlete_id: str, assignment_id: str, action: str, *,
+                           plan_id: str | None = None, expected_id: str | None = None, replace: bool = False) -> bool:
+        row = self.custom_plans.get(assignment_id)
+        if not row or row.get("fighter_id") != athlete_id or not row.get("assigned_at"):
+            return False
+        if action == "decline":
+            if row.get("accepted_at"):
+                return False
+            row.setdefault("declined_at", _now())
+            return True
+        if action != "activate" or row.get("declined_at"):
+            return False
+        if row.get("accepted_at"):
+            return row.get("published_plan_id") == plan_id
+        if (not self.get_accepted_coach_connection(row["athlete_id"], athlete_id)
+                or self.get_active_plan_id(athlete_id) != expected_id):
+            return False
+        plan = self.plans.get(plan_id)
+        if (not plan or plan.get("athlete_id") != athlete_id or plan.get("status") != "review_required"
+                or (plan.get("planning_brief") or {}).get("coach_assignment_id") != assignment_id):
+            return False
+        plan["status"] = "ready"
+        row.update(accepted_at=_now(), published_plan_id=plan_id)
+        if replace and expected_id and expected_id != plan_id:
+            self.plans[expected_id]["status"] = "archived"
+        self.set_active_plan_id(athlete_id, plan_id)
+        return True
+
     def delete_coach_draft(self, coach_id: str, fighter_id: str, plan_id: str) -> bool:
         row = self.custom_plans.get(plan_id)
         if not row or row.get("athlete_id") != coach_id or row.get("fighter_id") != fighter_id or row.get("assigned_at"):

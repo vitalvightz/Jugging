@@ -56,7 +56,8 @@ for (const width of [375, 1280]) {
     const { writes, errors } = await setup(page, baseURL!, "available");
     await expect(page.locator("#today-session")).toHaveCount(0);
     await expect(page.locator("#today-rehab")).toBeVisible();
-    const access = page.getByRole("navigation", { name: "Your rehab" }).getByRole("link").first();
+    await page.locator(".today-injury-summary-row").first().click();
+    const access = page.locator(".today-injury-item").first().getByRole("link", { name: /View rehab/ });
     const target = await access.getAttribute("href");
     expect(target).toBeTruthy();
     await access.click();
@@ -67,7 +68,8 @@ for (const width of [375, 1280]) {
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Complete rehab as shown", exact: true }).click();
     await expect(page.locator("#today-rehab")).toHaveCount(0);
-    await page.locator(".today-injury-summary-row").first().click();
+    const summary = page.locator(".today-injury-summary-row").first();
+    if (await summary.getAttribute("aria-expanded") !== "true") await summary.click();
     await expect(page.locator(".today-injury-care").first()).toContainText("Done for today");
     expect(writes).toHaveLength(1);
     expect(writes[0]).toMatchObject({ plan_id: null, status: "done", rehab_performance: "done_as_shown", rehab_tracking: "injury_checkin" });

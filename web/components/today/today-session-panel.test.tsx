@@ -278,7 +278,7 @@ test("a session the backend scopes to next stays a locked preview", () => {
   assert.doesNotMatch(html, />Start session<|>Skip session<|>Mark skipped</);
 });
 
-test("today's session actions stay locked until check-in is submitted", () => {
+test("today's session actions stay available before check-in", () => {
   const state: TodayCommandView = {
     active_plan: { id: "plan-1", name: "Camp", phase: "GPP" },
     today: {
@@ -303,18 +303,18 @@ test("today's session actions stay locked until check-in is submitted", () => {
   };
 
   const html = renderToStaticMarkup(
-    <ToastProvider>
+    <AuthProvider><ToastProvider>
       <TodaySessionPanel
         state={state}
         structuredPlan={null}
         token="token"
         onRefresh={async () => {}}
       />
-    </ToastProvider>,
+    </ToastProvider></AuthProvider>,
   );
 
-  assert.match(html, /Submit today&#x27;s check-in to unlock session actions\./);
-  assert.doesNotMatch(html, />Start session<|>Skip session<|>Mark skipped</);
+  assert.match(html, /Check in to get today&#x27;s training guidance/);
+  assert.match(html, />Start session</);
 });
 
 test("the session header carries the day, summary chips and a compact injury strip", () => {
@@ -574,19 +574,19 @@ test("safe replacement renders without blocked terminal or completion controls",
     quick_actions: [],
   };
   const html = renderToStaticMarkup(
-    <ToastProvider>
+    <AuthProvider><ToastProvider>
       <TodaySessionPanel
         state={state}
         structuredPlan={null}
         token="token"
         onRefresh={async () => {}}
       />
-    </ToastProvider>,
+    </ToastProvider></AuthProvider>,
   );
 
   assert.match(html, /Rest and recover/i);
   assert.doesNotMatch(html, /Blocked by an active severe injury/);
-  assert.doesNotMatch(html, />Start session<|>Resume session<|Log as|>Mark done<|>Mark modified</);
+  assert.match(html, />Start session</);
 });
 
 function contactDayState(decisionTier: TodayCommandView["today"]["decision_tier"]): TodayCommandView {
@@ -663,7 +663,7 @@ function renderPanel(state: TodayCommandView): string {
 
 for (const level of ["rehab_only", "train_no_contact"] as const) {
   for (const status of ["not_started", "started"] as const) {
-    test(`zero-load tactical watch ${status} remains actionable under ${level} while sparring stays locked`, () => {
+    test(`zero-load tactical watch ${status} remains actionable under ${level} with a clinician warning`, () => {
       const state = contactDayState("green");
       state.today.completion_status = status;
       state.today.next_session = { ...state.today.next_session, title: "Tactical Watch" };
@@ -675,18 +675,19 @@ for (const level of ["rehab_only", "train_no_contact"] as const) {
           blocks: [{ block_id: "watch", block_type: "mindset", display_name: "Sparring exchange review" }] } };
       const html = renderPanel(state);
       assert.match(html, /Sparring exchange review/);
-      assert.match(html, /Sparring rounds locked by clinician clearance/);
+      assert.match(html, /Training caution: follow your clinician&#x27;s contact restrictions/);
+      assert.match(html, /Sparring rounds<\/button>/);
       // Nothing to time: a started session leads with logging it, and there is
       // no separate done / modified pick.
-      assert.match(html, status === "not_started" ? />Start session</ : /class="cta"[^>]*>(<svg[\s\S]*?<\/svg>)?Finish session</);
-      assert.doesNotMatch(html, /data-value="done"|data-value="modified"|>Resume session</);
+      assert.match(html, status === "not_started" ? />Start session</ : />Finish session</);
+      assert.doesNotMatch(html, /data-value="done"|data-value="modified"/);
       assert.doesNotMatch(html, />Start hard sparring</);
     });
   }
 }
 
 for (const tier of ["green", "modify", "pull_back", "stop", "not_checked_in"] as const) {
-  test(`frozen contact renders the backend ${tier} gate despite full clinician clearance`, () => {
+  test(`frozen contact renders the backend ${tier} guidance with session controls despite full clinician clearance`, () => {
     const state = contactDayState(tier);
     state.today.completion_status = "started";
     state.today.next_session = { ...state.today.next_session, title: "Hard sparring", coach_led_contact: "Hard sparring" };
@@ -701,7 +702,7 @@ for (const tier of ["green", "modify", "pull_back", "stop", "not_checked_in"] as
       assert.match(html, />Resume session<|Sparring rounds<\/button>/);
       assert.match(html, />Finish session</);
     } else {
-      assert.doesNotMatch(html, />Resume session<|>Start session<|>Start hard sparring<|>Finish session<|Sparring rounds<\/button>/);
+      assert.match(html, />Finish session</);
     }
     assert.doesNotMatch(html, /locked by clinician clearance/);
   });
@@ -709,7 +710,7 @@ for (const tier of ["green", "modify", "pull_back", "stop", "not_checked_in"] as
 
 for (const sessionType of ["sparring", "mindset", "rehab"] as const) {
   for (const tier of ["green", "stop"] as const) {
-    test(`medical hold locks ${sessionType} under ${tier} despite full contact clearance`, () => {
+    test(`medical warning for ${sessionType} under ${tier} keeps finish available`, () => {
       const state = contactDayState(tier);
       state.today.completion_status = "started";
       state.today.recommendation_state = "pull_back";
@@ -721,7 +722,7 @@ for (const sessionType of ["sparring", "mindset", "rehab"] as const) {
         session: { session_id: state.today.next_session!.session_id!, title: "Accepted work", session_type: sessionType,
           blocks: [{ block_id: "work", block_type: sessionType, display_name: "Accepted work" }] } };
       const html = renderPanel(state);
-      assert.doesNotMatch(html, />Resume session<|>Start session<|>Start hard sparring<|>Finish session<|Sparring rounds<\/button>/);
+      assert.match(html, />Finish session</);
       assert.doesNotMatch(html, /locked by clinician clearance/);
       assert.match(html, /dizziness|medical advice/);
     });
@@ -739,7 +740,7 @@ test("a declared sparring day leads with the sparring, with the app work alongsi
     /today-action-tray[\s\S]*class="cta"[^>]*>Start hard sparring<[\s\S]*class="secondary-button"[^>]*>Start Mobility flush</,
   );
   // The planned rounds cover timing, so no blank timer beside them.
-  assert.doesNotMatch(html, /<\/svg>Free timer<\/button>/);
+  assert.match(html, /<\/svg>Free timer<\/button>/);
   // The lead button already starts the rounds, so no duplicate shortcut.
   assert.doesNotMatch(html, /<\/svg>Sparring rounds<\/button>/);
   assert.doesNotMatch(html, /completion is unavailable|nothing to log/);
@@ -809,33 +810,29 @@ test("an idless day falls back to honest copy instead of a dead end", () => {
   assert.doesNotMatch(html, /completion is unavailable for this entry/);
 });
 
-test("sparring rounds stay locked until check-in, and are never offered under a stop", () => {
-  const state = contactDayState("not_checked_in");
-  state.effective_clinician_clearance = { level: "train_contact", scopes: ["rehab", "training", "contact"],
-    requires_update: false, limited_by: [] };
-  const unchecked = renderPanel(state);
-  assert.doesNotMatch(unchecked, /Sparring rounds<\/button>/);
-  assert.match(unchecked, /Sparring rounds unlock after check-in/);
-  assert.doesNotMatch(unchecked, /locked by clinician clearance/);
-  // With the planned rounds locked, the blank timer is the way to time anything.
-  assert.match(unchecked, /<\/svg>Free timer<\/button>/);
+test("sparring rounds remain available before check-in and under a stop", () => {
+  for (const tier of ["not_checked_in", "stop"] as const) {
+    const html = renderPanel(contactDayState(tier));
+    assert.match(html, /Sparring rounds<\/button>|>Start hard sparring</);
+    assert.match(html, /Free timer<\/button>/);
+    if (tier === "not_checked_in") assert.match(html, /Check in to get today&#x27;s training guidance/);
+    assert.doesNotMatch(html, /locked by|unlock after/);
+  }
 
-  const stopped = renderPanel(contactDayState("stop"));
-  assert.doesNotMatch(stopped, /Sparring rounds<\/button>/);
-  assert.doesNotMatch(stopped, /Free timer<\/button>/);
 });
 
 for (const level of ["rehab_only", "train_no_contact"] as const) {
   for (const tier of ["not_checked_in", "green"] as const) {
     for (const contactOnly of [false, true]) {
-      test(`${level} contact lock copy outranks ${tier} for ${contactOnly ? "contact-owned" : "mixed camp"} sessions`, () => {
+      test(`${level} contact warning remains visible under ${tier} for ${contactOnly ? "contact-owned" : "mixed camp"} sessions`, () => {
         const state = contactDayState(tier);
         if (contactOnly) state.today.next_session = { ...state.today.next_session, title: "Hard sparring", coach_led_contact: "Hard sparring" };
         state.effective_clinician_clearance = { level, scopes: level === "rehab_only" ? ["rehab"] : ["rehab", "training"],
           requires_update: false, limited_by: [{ injury_id: "chest", injury_episode_id: "episode", label: "Chest strain" }] };
         const html = renderPanel(state);
-        assert.match(html, /Sparring rounds locked by clinician clearance/);
-        assert.doesNotMatch(html, /Sparring rounds unlock after check-in|>Start hard sparring<|Sparring rounds<\/button>/);
+        assert.match(html, /Training caution: follow your clinician&#x27;s contact restrictions/);
+      assert.match(html, /Sparring rounds<\/button>/);
+        assert.doesNotMatch(html, /locked by|unlock after/);
       });
     }
   }
@@ -967,7 +964,7 @@ function guidanceDayState(): TodayCommandView {
 test("calm-stage guidance is checked off, never started", () => {
   const html = renderToStaticMarkup(<AuthProvider><ToastProvider><TodaySessionPanel state={guidanceDayState()} structuredPlan={null} token="token" onRefresh={async () => {}} /></ToastProvider></AuthProvider>);
   assert.match(html, /Chest strain recovery support/);
-  assert.match(html, /Follow the guidance, then check it off/);
+  assert.match(html, /Chest strain recovery support/);
   assert.doesNotMatch(html, /Today.s rehab|No rehab exercises/);
   assert.match(html, />Completed</);
   assert.doesNotMatch(html, />Start session<|>Skip session<|How much rehab did you do/);
@@ -1164,7 +1161,7 @@ test("a planned mobility session typed rehab does not ask whether rehab was comp
   assert.doesNotMatch(html, /Did you follow the guidance/);
 });
 
-test("contact actions respect live holds and reviewed rehab replacements", () => {
+test("contact warnings preserve actions and reviewed rehab replacements", () => {
   for (const rehabOnly of [false, true]) {
     const state = contactDayState("green");
     state.live_prescription = {
@@ -1174,20 +1171,21 @@ test("contact actions respect live holds and reviewed rehab replacements", () =>
         session_type: rehabOnly ? "rehab" : "strength", blocks: [] },
     };
     const html = renderPanel(state);
-    assert.doesNotMatch(html, />Start hard sparring<|<h2 id="today-session-heading">Hard sparring<|Sparring rounds<\/button>/);
-    if (!rehabOnly) assert.match(html, /Sparring rounds locked today/);
+    if (!rehabOnly) assert.match(html, /Sparring rounds<\/button>/);
+    if (!rehabOnly) assert.match(html, /Training caution/);
     if (rehabOnly) assert.match(html, />Completed</);
   }
 });
 
 for (const level of ["rehab_only", "train_no_contact"] as const) {
-  test(`${level} effective clearance locks contact even when the original plan permits it`, () => {
+  test(`${level} effective clearance warns while timers remain available`, () => {
     const state = contactDayState("green");
     state.effective_clinician_clearance = { level, scopes: level === "rehab_only" ? ["rehab"] : ["rehab", "training"],
       requires_update: false, limited_by: [{ injury_id: "chest", injury_episode_id: "chest-episode", label: "Chest strain" }] };
     const html = renderPanel(state);
-    assert.doesNotMatch(html, />Start hard sparring<|<h2 id="today-session-heading">Hard sparring<|Sparring rounds<\/button>/);
-    assert.match(html, /Sparring rounds locked by clinician clearance/);
+    assert.match(html, /Sparring rounds<\/button>/);
+    assert.match(html, /Training caution: follow your clinician&#x27;s contact restrictions/);
+      assert.match(html, /Sparring rounds<\/button>/);
   });
 }
 
@@ -1207,8 +1205,9 @@ for (const level of ["rehab_only", "train_no_contact", "train_contact"] as const
         if (status === "started") assert.match(html, />Finish session</);
         assert.doesNotMatch(html, /Sparring rounds locked by clinician clearance/);
       } else {
-        assert.match(html, /Sparring rounds locked by clinician clearance/);
-        assert.doesNotMatch(html, />Start session<|>Start hard sparring<|>Resume session<|>Finish session<|<form/);
+        assert.match(html, /Training caution: follow your clinician&#x27;s contact restrictions/);
+      assert.match(html, /Sparring rounds<\/button>/);
+        assert.match(html, status === "not_started" ? />Start session</ : />Resume session</);
       }
     });
   }
@@ -1225,7 +1224,8 @@ for (const status of ["not_started", "started"] as const) {
         blocks: [{ block_id: "safe", block_type: "strength", display_name: "Reviewed non-contact work" }] } };
     const html = renderPanel(state);
     assert.match(html, /Reviewed non-contact work/);
-    assert.match(html, /Sparring rounds locked by clinician clearance/);
+    assert.match(html, /Training caution: follow your clinician&#x27;s contact restrictions/);
+      assert.match(html, /Sparring rounds<\/button>/);
     assert.match(html, status === "not_started" ? />Start session</ : />Resume session</);
     if (status === "started") assert.match(html, />Finish session</);
     assert.doesNotMatch(html, />Start hard sparring</);
@@ -1233,7 +1233,7 @@ for (const status of ["not_started", "started"] as const) {
 }
 
 for (const action of ["Finish session", "Skip session"] as const) {
-  test(`lowering contact clearance closes an already open ${action} log`, async () => {
+  test(`lowering contact clearance keeps an already open ${action} log with a warning`, async () => {
     const container = document.createElement("div"); document.body.appendChild(container);
     const root = createRoot(container);
     const state = contactDayState("green");
@@ -1244,7 +1244,7 @@ for (const action of ["Finish session", "Skip session"] as const) {
     const writes: unknown[] = [];
     globalThis.fetch = (async (_input, init) => {
       if (init?.method === "POST") writes.push(init.body);
-      return new Response('{"response_sets":[],"history_truncated":false}', { status: 200 });
+      return new Response('{"logs":[],"exercises":[],"response_sets":[],"history_truncated":false}', { status: 200 });
     }) as typeof fetch;
     const render = () => root.render(<AuthProvider><ToastProvider><TodaySessionPanel state={state} structuredPlan={null} token="token" onRefresh={async () => {}} /></ToastProvider></AuthProvider>);
     try {
@@ -1257,9 +1257,9 @@ for (const action of ["Finish session", "Skip session"] as const) {
       assert.ok(openLog());
       state.effective_clinician_clearance = { ...state.effective_clinician_clearance!, level: "train_no_contact", scopes: ["rehab", "training"] };
       await act(async () => { render(); });
-      assert.equal(openLog(), null);
-      assert.equal(Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.trim() === "Finish session"), undefined);
-      assert.match(container.textContent ?? "", /Sparring rounds locked by clinician clearance/);
+      assert.ok(openLog());
+      assert.ok(Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.trim() === "Finish session"));
+      assert.match(container.textContent ?? "", /Training caution: follow your clinician.s contact restrictions/);
       assert.equal(writes.length, 0);
     } finally { globalThis.fetch = original; act(() => root.unmount()); container.remove(); }
   });
@@ -1565,27 +1565,28 @@ const HEAD_IMPACT_NOTICE: NonNullable<TodayCommandView["today"]["primary_safety_
   detail: "Get checked if symptoms appear.", tone: "red",
 };
 
-test("a head-impact report locks contact on a green day but keeps the non-contact session", () => {
+test("a head-impact warning stays visible with non-contact actions and timers", () => {
   const state = contactDayState("green");
   state.effective_clinician_clearance = { level: "train_contact", scopes: ["rehab", "training", "contact"],
     requires_update: false, limited_by: [] };
   state.today.primary_safety_notice = HEAD_IMPACT_NOTICE;
   const html = renderPanel(state);
-  assert.doesNotMatch(html, />Start hard sparring<|Sparring rounds<\/button>/);
-  assert.match(html, /No more contact today after your head-impact report/);
+  assert.match(html, /Sparring rounds<\/button>/);
+  assert.match(html, /<strong role="alert">Stop training and seek medical clearance\.<\/strong>/);
   assert.doesNotMatch(html, /locked by clinician clearance/);
   // The mobility flush is not contact, so it stays startable.
   assert.match(html, />Start (session|Mobility flush)</);
 });
 
-test("a head-impact report blocks a contact-only session from being started or finished", () => {
+test("a head-impact warning keeps contact-only logging and timers available", () => {
   const state = contactDayState("green");
   state.today.next_session = { ...state.today.next_session, session_id: "2026-09-25", title: "Hard sparring",
     coach_led_contact: "Hard sparring" };
   state.today.primary_safety_notice = HEAD_IMPACT_NOTICE;
   const html = renderPanel(state);
-  assert.doesNotMatch(html, />Start hard sparring<|>Start session<|>Finish session<|>Mark done</);
-  assert.match(html, /No more contact today: you reported being rocked or dropped/);
+  assert.match(html, />Start (hard sparring|session)</);
+  assert.match(html, /Sparring rounds<\/button>/);
+  assert.match(html, /<strong role="alert">Stop training and seek medical clearance\.<\/strong>/);
 });
 
 test("without a head-impact notice the same contact day is unchanged", () => {

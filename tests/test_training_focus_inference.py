@@ -171,6 +171,7 @@ def test_note_about_another_session_that_day_is_not_grounded(api):
     client, store, fake = api
     row = lower_body_completion(store)
     boxing = manual_session(client, activity="boxing", sport="boxing", session_type="pads")
+    store.external_training_sessions[boxing["id"]]["created_at"] = f"{today()}T12:00:00+00:00"
     # The model points at the jab from the other session: not in the noted session, so nothing is kept.
     fake.answer = {"focus": "Bring the jab straight back to guard.", "scope": "specific_exercise",
                    "category": "strength", "sport": None, "exercise_targets": ["jab"], "movement_patterns": []}
@@ -520,6 +521,7 @@ def test_a_sparring_note_can_point_at_an_earlier_session_that_day(api):
     client, store, fake = api
     lower_body_completion(store, exercise_logs=[("b1", "skipped", {}), ("b2", "as_prescribed", {"sets": 3, "reps": 6})])
     session = manual_session(client, activity="sparring", sport="boxing", session_type="sparring", effort="hard")
+    store.external_training_sessions[session["id"]]["created_at"] = f"{today()}T12:00:00+00:00"
     fake.answer = {"focus": "Keep the bar close through every RDL.", "scope": "specific_exercise", "category": "strength",
                    "sport": None, "exercise_targets": ["romanian deadlift"], "movement_patterns": []}
     sparring_detail(client, session["id"], notes="Legs were gone from the RDLs this morning, bar drifted forward.")

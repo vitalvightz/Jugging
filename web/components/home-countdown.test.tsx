@@ -14,9 +14,16 @@ import { createFreshXpProgress } from "@/lib/xp-progress";
 import { clearSharedReads } from "@/lib/shared-reads";
 import type { MeResponse } from "@/lib/types";
 
+const pendingResponses = new Set<() => void>();
 function pendingResponse() {
   let resolve!: (response: Response) => void;
-  return { promise: new Promise<Response>((done) => { resolve = done; }), resolve: (body: unknown, status = 200) => resolve(new Response(JSON.stringify(body), { status })) };
+  const finish = (body: unknown, status = 200) => {
+    pendingResponses.delete(cleanup);
+    resolve(new Response(JSON.stringify(body), { status }));
+  };
+  const cleanup = () => finish(null);
+  pendingResponses.add(cleanup);
+  return { promise: new Promise<Response>((done) => { resolve = done; }), resolve: finish };
 }
 
 const today = (id: string) => ({
@@ -24,7 +31,7 @@ const today = (id: string) => ({
   today: { training_day: "2026-10-23", recommendation_state: "train_as_planned", decision_tier: "green", next_session: {}, session_scope: "none", completion_status: "not_started" },
   risk_watch: [], open_injuries: [], week_summary: {}, quick_actions: [],
 });
-const plan = { outputs: { structured_plan: { weeks: [{ phase_label: "GPP", start_date: "2026-10-19", end_date: "2026-11-14", days: [] }] } } };
+const plan = { structured_plan: { weeks: [{ phase_label: "GPP", start_date: "2026-10-19", end_date: "2026-11-14", days: [] }] } };
 
 async function mountHome(latestId: string, latestFightDate?: string) {
   const originalFrame = globalThis.requestAnimationFrame;
@@ -49,7 +56,12 @@ async function mountHome(latestId: string, latestFightDate?: string) {
     </NextIntlClientProvider>,
   ));
   return { host, cleanup: async () => {
-    await act(async () => root.unmount()); host.remove();
+    await act(async () => {
+      root.unmount();
+      // Held shared reads survive unmount. Settle deferred fetches so their
+      // request timeouts and retries cannot leak into the next test.
+      for (const finish of pendingResponses) finish();
+    }); host.remove();
     // Each test is a new session: one test's plan read must not serve the next.
     clearSharedReads();
     if (originalFrame) globalThis.requestAnimationFrame = originalFrame; else Reflect.deleteProperty(globalThis, "requestAnimationFrame");
@@ -93,7 +105,7 @@ test("a prefetched latest plan never supplies a different active plan's calendar
   globalThis.fetch = (async (input) => {
     const url = String(input); calls.push(url);
     if (url.includes("/api/today")) return command.promise;
-    if (url.includes("/api/plans/latest")) return new Response(JSON.stringify({ outputs: { structured_plan: { weeks: [{ start_date: "2000-01-01", end_date: "2026-11-14" }] } } }));
+    if (url.includes("/api/plans/latest")) return new Response(JSON.stringify({ structured_plan: { weeks: [{ start_date: "2000-01-01", end_date: "2026-11-14" }] } }));
     return active.promise;
   }) as typeof fetch;
   const ui = await mountHome("latest");

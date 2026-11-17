@@ -209,8 +209,10 @@ for (const width of [320, 390, 1280]) {
         await expect(records).toContainText("Rocked / dropped");
         await expect(records).toContainText("Talk to your coach before your next hard spar.");
         await records.getByRole("button", { name: /Update sparring report/ }).click();
-        await expect(page.getByRole("dialog", { name: "Update sparring report", exact: true })).toBeVisible();
+        const report = page.getByRole("dialog", { name: "Update sparring report", exact: true });
+        await expect(report).toBeVisible();
         await page.keyboard.press("Escape");
+        await expect(report).toHaveCount(0);
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       // A normal word must stay on one line; wrap between words instead.

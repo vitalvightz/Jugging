@@ -1472,6 +1472,9 @@ def prune_unfaithful_content(
     if plan is None:
         return None, []
     if index is None:
+        spec = (planning_brief or {}).get("open_plan_spec") if isinstance(planning_brief, dict) else None
+        if not isinstance(spec, dict) or spec.get("plan_type") != "open_ongoing_system":
+            return None, []
         # Undated plans have week/session membership authority rather than
         # D-day authority. Prune only the blocks that gate actually rejected;
         # all remaining schema, membership and safety checks still run.

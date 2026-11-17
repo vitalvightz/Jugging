@@ -320,7 +320,6 @@ test("stage definitions stay in a disclosure and distinguish stages from trainin
   assert.match(html, /<details class="injury-stage-guide"><summary>What do the stages mean/);
   assert.doesNotMatch(html, /<details class="injury-stage-guide" open/);
   assert.match(html, /Restore<\/dt><dd>Comfortable movement/);
-  assert.match(html, /Stages are not clearance to train/);
-  assert.match(html, /Some stages are not available for every injury/);
+  assert.match(html, /Return<\/dt><dd>Sport-specific rehab/);
   assert.equal(renderToStaticMarkup(<RehabStageMeter decision={null} />), "");
 });

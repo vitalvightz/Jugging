@@ -38,7 +38,9 @@ for (const width of [320, 375, 390, 430, 1280]) {
     await expect(today.locator(".sp-week-body")).toHaveCSS("animation-name", "none");
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await expect(today).toContainText("4 rounds · 2 min work · 2 min rest");
-    await expect(today).toContainText("3 sets × 8 reps · 40 kg · RPE 6");
+    const squat = today.locator(".ex-row").filter({ hasText: "Back Squat" });
+    await expect(squat).toContainText("40 kg");
+    await expect(squat).toContainText("3 sets × 8 reps · RPE 6");
     await expect(page.locator('.sp-session-toggle')).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Change Back Squat", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Add exercise", exact: true })).toBeVisible();
@@ -123,7 +125,7 @@ for (const width of [320, 375, 390, 430, 1280]) {
   });
 }
 
-for (const width of [390, 1280]) test(`Plan Detail uses historical Back Squat recommendations without enabling logs (${width}px)`, async ({ page, baseURL }) => {
+for (const width of [390, 1280]) test(`Plan Detail recalls historical Back Squat weights without enabling logs (${width}px)`, async ({ page, baseURL }) => {
   await page.setViewportSize({ width, height: 900 });
   await setup(page, baseURL!);
   const historicalPlan = structuredClone(plan);
@@ -145,13 +147,12 @@ for (const width of [390, 1280]) test(`Plan Detail uses historical Back Squat re
   await page.goto("/plans/premium-plan");
   const today = page.locator('.cm-days [data-day-index="2"]');
   const row = today.locator(".ex-row").filter({ hasText: "Back Squat" });
-  await expect(row).toContainText("Suggested");
   await expect(row).toContainText("Last");
   await expect(row).toContainText("120 kg");
   await expect(row.locator(".ex-log-tick")).toHaveCount(0);
   await row.getByRole("button", { name: "Back Squat", exact: true }).click();
   const detail = page.getByRole("dialog", { name: "Back Squat", exact: true });
-  await expect(detail).toContainText("Suggested");
+  await expect(detail).not.toContainText("Suggested");
   await expect(detail).toContainText("Last");
   await expect(detail).toContainText("120 kg");
   await expect(detail.getByRole("button", { name: "Done", exact: true })).toHaveCount(0);

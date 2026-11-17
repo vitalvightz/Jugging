@@ -147,6 +147,19 @@ def test_find_missing_index_constraints_none_when_all_present():
     assert find_missing_index_constraints(_all_required_index_names()) == []
 
 
+def test_daily_checkin_key_covers_plan_free_rows_without_legacy_partial_index():
+    present = set(_all_required_index_names())
+    present.discard("today_checkins_athlete_plan_free_day_key")
+    assert find_missing_index_constraints(present) == []
+
+    # The old partial key must not substitute for uniqueness across all plans.
+    present.remove("today_checkins_athlete_day_key")
+    present.add("today_checkins_athlete_plan_free_day_key")
+    assert find_missing_index_constraints(present) == [
+        "today_checkins athlete/training-day uniqueness"
+    ]
+
+
 def test_exercise_log_schema_is_required_by_the_deploy_gate():
     from api.schema_requirements import INDEX_REQUIREMENTS, REQUIRED_COLUMNS
 
@@ -174,7 +187,6 @@ def test_index_requirement_satisfied_by_constraint_alias():
         "profiles_active_plan_id_idx",
         "daily_checkins_athlete_date_key",
         "today_checkins_athlete_day_key",
-        "today_checkins_athlete_plan_free_day_key",
         "session_completions_athlete_session_day_key",
         "sparring_logs_athlete_day_idx",
         "sparring_logs_external_session_key",

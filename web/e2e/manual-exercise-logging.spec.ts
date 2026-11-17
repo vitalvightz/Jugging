@@ -187,6 +187,9 @@ for (const width of [390, 1280]) {
     await sheet.getByLabel("Sets", { exact: true }).fill("3");
     await sheet.getByLabel("Hold", { exact: true }).fill("45");
     await sheet.getByRole("button", { name: "Add exercise" }).click();
+    await expect(rows).toHaveCount(3);
+    await expect(rows.nth(2)).toContainText("Plank");
+    await expect(search).toBeFocused();
     await search.fill("Landmine rotation");
     await sheet.getByRole("button", { name: /Add “Landmine rotation”/ }).click();
     await sheet.getByRole("group", { name: "How to record it" }).getByRole("button", { name: "Bodyweight" }).click();

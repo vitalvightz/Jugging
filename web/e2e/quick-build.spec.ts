@@ -24,7 +24,7 @@ async function setup(page: Page, baseURL: string) {
   });
   page.on("dialog", dialog => dialog.accept());
   await page.goto("/quick-build");
-  await expect(page.getByRole("heading", { name: "Generate a plan in about two minutes." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^Generate your plan in/ })).toBeVisible();
   return writes;
 }
 

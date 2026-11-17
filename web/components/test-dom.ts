@@ -4,6 +4,7 @@
 // act() environment. renderToStaticMarkup tests are unaffected by a DOM being
 // present, so this can coexist with the SSR tests in the same run.
 import { JSDOM } from "jsdom";
+import { after } from "node:test";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "http://localhost/",
@@ -24,6 +25,8 @@ globalAny.Event = window.Event;
 globalAny.CustomEvent = window.CustomEvent;
 globalAny.MouseEvent = window.MouseEvent;
 globalAny.getComputedStyle = window.getComputedStyle.bind(window);
+globalAny.requestAnimationFrame = window.requestAnimationFrame.bind(window);
+globalAny.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 // jsdom has no scrolling layout; overlay cleanup restores scroll in browsers.
 window.scrollTo = () => {};
 // next/link's intersection-observer fallback reads `self` at module scope and
@@ -56,5 +59,26 @@ Object.defineProperty(globalThis, "navigator", {
 
 // React uses this flag to decide whether act() is required for updates.
 globalAny.IS_REACT_ACT_ENVIRONMENT = true;
+
+// Supabase uses Node's native BroadcastChannel when a DOM is present. Its
+// MessagePort survives React unmounts and otherwise keeps the test worker alive.
+const channels = new Set<BroadcastChannel>();
+const NativeBroadcastChannel = globalThis.BroadcastChannel;
+if (NativeBroadcastChannel) {
+  globalAny.BroadcastChannel = class extends NativeBroadcastChannel {
+    constructor(name: string) {
+      super(name);
+      channels.add(this);
+    }
+    close() {
+      channels.delete(this);
+      super.close();
+    }
+  };
+}
+after(() => {
+  for (const channel of channels) channel.close();
+  window.close();
+});
 
 export { window };

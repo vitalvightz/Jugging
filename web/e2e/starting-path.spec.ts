@@ -108,7 +108,7 @@ test("tracking keeps consent optional and grants it in one explicit tap inside t
   await page.goto("/today");
   await page.getByRole("button", { name: "Log session", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog).toContainText("Training logs include health-related information");
+  await expect(dialog).toContainText("Training logs include health information, like effort and sparring.");
   await expect(dialog.getByRole("form")).toHaveCount(0);
   const allow = dialog.getByRole("button", { name: "Allow health-data use and continue", exact: true });
   await expect(allow).toBeFocused();
@@ -299,9 +299,9 @@ test("Unaccepted terms precede the choice", async ({ page, baseURL }) => {
   await expect(page.getByRole("button", { name: /Track my training/ })).toHaveCount(0);
 });
 
-test("Existing athlete with a plan keeps their destination", async ({ page, baseURL }) => {
+test("Existing athlete with a plan lands on Today", async ({ page, baseURL }) => {
   await setup(page, baseURL!, { path: "tracking_first", plan: true }); await page.goto("/get-started");
-  await expect(page).toHaveURL(/\/plans\/plan-9$/);
+  await expect(page).toHaveURL(/\/today$/);
 });
 
 test("Profile failure never becomes first-use onboarding", async ({ page, baseURL }) => {
@@ -329,11 +329,15 @@ for (const width of [320, 390, 1280]) {
     // Compact by default: the questionnaire stays closed until asked for.
     await expect(manager.locator("form.today-injury-add")).toBeHidden();
     await manager.getByRole("button", { name: /Add injury/ }).click();
-    await manager.getByRole("button", { name: /Enter it manually/ }).click();
-    await manager.getByLabel(/Affected area/).fill("left shoulder");
-    await manager.getByRole("button", { name: "Soreness", exact: true }).click();
-    await manager.getByRole("button", { name: "Not limiting me", exact: true }).click();
-    await manager.getByRole("button", { name: "Save injury", exact: true }).click();
+    const add = page.getByRole("dialog", { name: "Add injury", exact: true });
+    await add.getByRole("button", { name: /Enter it manually/ }).click();
+    await add.getByLabel(/Affected area/).fill("left shoulder");
+    await add.getByLabel(/Affected area/).press("Tab");
+    await add.getByRole("button", { name: "Soreness", exact: true }).click();
+    await add.getByRole("slider", { name: "Impact on training", exact: true }).focus();
+    await page.keyboard.press("Home");
+    await add.getByRole("button", { name: "Save injury", exact: true }).click();
+    await expect(add).toHaveCount(0);
     await expect(page.getByRole("list", { name: "Today command status" })).toContainText("1 active");
     expect(writes[0]).toMatchObject({ injuries: [{ body_area: "left shoulder" }] });
     expect(writes[0]).not.toHaveProperty("plan_id");
@@ -357,7 +361,7 @@ test("without health-data consent the injury form is never offered", async ({ pa
   const writes = await setup(page, baseURL!, { path: "tracking_first", consent: false });
   await page.goto("/today");
   const injuries = page.locator("#today-injury");
-  await expect(injuries).toContainText("needs your health-data consent");
+  await expect(injuries).toContainText("Reporting an injury needs health-data consent.");
   await expect(injuries.getByRole("button", { name: /Add injury/ })).toHaveCount(0);
   expect(writes).toEqual([]);
 });
@@ -368,7 +372,7 @@ for (const width of [320, 390, 1280]) {
     await setup(page, baseURL!, { path: "tracking_first", activePlan: true, plan: true });
     await page.goto("/today");
     await expect(page.getByRole("heading", { name: "Today", level: 1 })).toHaveCount(1);
-    await expect(page.getByText("General prep", { exact: true })).toBeVisible();
+    await expect(page.getByText("Autumn camp", { exact: true })).toBeVisible();
     const status = page.getByRole("list", { name: "Today command status" });
     await expect(status).toContainText("Check-in");
     await expect(status).not.toContainText("Not assessed");

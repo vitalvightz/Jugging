@@ -72,20 +72,20 @@ class TestTodayCheckin:
         assert len(store.today_checkins["athlete-1"]) == 1
         assert store.today_checkins["athlete-1"][0]["recommendation_state"] == "modify"
 
-    def test_same_day_other_plan_checkin_warns_without_blocking(self):
+    def test_same_day_other_plan_checkin_reuses_daily_answers(self):
         client, store, _ = _build_client()
         _seed_plan(store)
         _seed_plan(store, plan_id=OTHER_PLAN)
 
         first = client.post("/api/today/checkin", headers=ATHLETE, json=_checkin_body(plan_id=OTHER_PLAN))
+        checkin_id = store.today_checkins["athlete-1"][0]["id"]
         second = client.post("/api/today/checkin", headers=ATHLETE, json=_checkin_body())
 
         assert first.status_code == 201
         assert second.status_code == 201
-        assert len(store.today_checkins["athlete-1"]) == 2
-        assert second.json()["warnings"] == [
-            "You already completed a check-in today. This response applies to the current active plan only."
-        ]
+        assert len(store.today_checkins["athlete-1"]) == 1
+        assert store.today_checkins["athlete-1"][0]["id"] == checkin_id
+        assert second.json()["warnings"] == []
 
     def test_client_supplied_recommendation_is_ignored(self):
         client, store, _ = _build_client()
