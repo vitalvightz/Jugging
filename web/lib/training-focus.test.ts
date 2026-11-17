@@ -232,3 +232,19 @@ test("exercise cues sit under the exercise each is about, once", () => {
   // Athlete-built rows match the same way.
   assert.deepEqual(Object.keys(exerciseCues(splitSquat, [{ ...block("x", "Split Squat"), prescription_source: "athlete" as const }])), ["x"]);
 });
+
+test("mental coaching cues match only their relevant type and sport", () => {
+  const sparringReset = withItems(inferred({ scope: "mental_skill", category: "sparring",
+    sport: "boxing", exercise_targets: [], focus: "After a mistake, exhale and refocus on the next exchange." }));
+  assert.equal(relevantFocus(sparringReset, card(generatedSparring, { sport: "boxing" })),
+    "After a mistake, exhale and refocus on the next exchange.");
+  assert.equal(relevantFocus(sparringReset, card(generatedSparring, { sport: "muay_thai" })), null);
+  assert.equal(relevantFocus(sparringReset, card(generatedStrength, { sport: "boxing" })), null);
+  assert.equal(relevantFocus(sparringReset, card(null)), null);
+
+  const strengthFocus = withItems(inferred({ scope: "mental_skill", category: "strength",
+    sport: null, exercise_targets: [], focus: "Choose one cue word before starting the lift." }));
+  assert.equal(relevantFocus(strengthFocus, card(generatedStrength)), "Choose one cue word before starting the lift.");
+  assert.equal(relevantFocus(strengthFocus, card(conditioning)), null);
+  assert.deepEqual(exerciseCues(strengthFocus, [{ block_id: "b1", block_type: "strength", display_name: "Split Squat" }]), {});
+});
