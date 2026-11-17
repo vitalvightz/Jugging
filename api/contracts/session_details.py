@@ -22,6 +22,7 @@ class SessionDetailBlock(BaseModel):
     status: Literal["as_prescribed", "modified", "skipped", "done_as_shown", "changed", "stopped"] | None = None
     reason: str | None = None
     notes: str | None = None
+    focus_cue: str | None = None
     completed_dose: ExposureDose | None = None
     responses: list[ExposureResponse] = Field(default_factory=list)
 
