@@ -1984,13 +1984,13 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
     # ------------------------------------------------------------------
 
     def upsert_today_checkin(self, athlete_id: str, fields: dict) -> dict:
-        # Mirrors both keys: plan-scoped rows and the one plan-free row per day.
+        # Mirrors one daily row per athlete, independent of plan.
         # (Older fixtures omit a planned row's phase; a plan-free one never has it.)
         if fields.get("plan_id") is None and fields.get("phase") is not None:
             raise ValueError("today_checkins_phase_matches_plan")
         bucket = self.today_checkins.setdefault(athlete_id, [])
         for row in bucket:
-            if row.get("plan_id") == fields.get("plan_id") and row["training_day"] == fields["training_day"]:
+            if row["training_day"] == fields["training_day"]:
                 row.update(fields)
                 row["updated_at"] = _now()
                 return dict(row)
@@ -2011,7 +2011,7 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
 
     def get_today_checkin(self, athlete_id: str, plan_id: str | None, training_day: str) -> dict | None:
         for row in self.today_checkins.get(athlete_id, []):
-            if row.get("plan_id") == plan_id and row["training_day"] == training_day:
+            if row["training_day"] == training_day:
                 return dict(row)
         return None
 

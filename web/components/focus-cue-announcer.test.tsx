@@ -39,9 +39,13 @@ test("a saved note is answered with its cue once it is ready", async () => {
   window.addEventListener(TRAINING_FOCUS_CHANGED_EVENT, onRefresh);
   try {
     await act(async () => watchNoteFocusCue({ token: "t", kind: "sparring_log", sourceId: "log-1" }));
-    await wait(80);
-    assert.match(app.text(), /Next time: Turn your hips through each hook\./);
+    // Wait for the observable result rather than assuming chained timers finish in 80ms.
+    for (let attempt = 0; attempt < 100 && !app.text().includes("Turn your hips"); attempt++) await wait(10);
+    assert.match(app.text(), /Turn your hips through each hook\./);
     assert.match(app.text(), /UNLXCK COACH/);
+    assert.doesNotMatch(app.text(), /Next time:|Got it/);
+    assert.equal(document.querySelector(".unlxck-coach-cue h2")?.textContent, "Session feedback");
+    assert.equal(document.querySelectorAll(".unlxck-coach-cue button").length, 1);
     assert.match(app.text(), /Saved to History/);
     assert.equal(document.querySelector('a[href="/history?tab=sparring"]')?.textContent, "View in History →");
     await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Close UNLXCK Coach feedback"]')?.click());
@@ -80,14 +84,14 @@ test("History shows a ready cue under its note and nothing otherwise", async () 
   const root = createRoot(container);
   try {
     await act(async () => root.render(<FocusCueLine cue="Keep your foot planted." />));
-    assert.equal(container.querySelector(".history-row-cue")?.textContent, "UNLXCK CUEKeep your foot planted.");
+    assert.equal(container.querySelector(".history-row-cue")?.textContent, "UNLXCK CoachKeep your foot planted.");
     await act(async () => root.render(<FocusCueLine cue={null} />));
     assert.equal(container.querySelector(".history-row-cue"), null);
   } finally { await act(async () => root.render(null)); container.remove(); }
 });
 
 test("plan and manual training cues link to Sessions history", async () => {
-  for (const kind of ["plan_completion", "manual_takeaway"] as const) {
+  for (const kind of ["plan_completion", "manual_takeaway", "manual_exercise"] as const) {
     const app = await mount([{ status: "ready", id: "cue-1", focus: "Check foot pressure as you lower." }]);
     try {
       await act(async () => watchNoteFocusCue({ token: "t", kind, sourceId: "note-1" }));
@@ -111,5 +115,17 @@ test("a newly saved note clears older feedback even when no new cue is generated
     await wait(35);
     assert.doesNotMatch(app.text(), /Keep your feet steady/);
     assert.equal(app.urls.length, 2);
+  } finally { await app.cleanup(); }
+});
+
+
+test("exercise cues lead with their saved target and leave advice unprefixed", async () => {
+  const focus = "Use light support and lower slowly. Reset your balance before each rep.";
+  const app = await mount([{ status: "ready", id: "cue-1", exercise_name: "Assisted Pistol Squat", focus }]);
+  try {
+    await act(async () => watchNoteFocusCue({ token: "t", kind: "manual_exercise", sourceId: "entry-1" }));
+    await wait(80);
+    assert.equal(document.querySelector(".unlxck-coach-cue h2")?.textContent, "Assisted Pistol Squat");
+    assert.equal(document.querySelector(".unlxck-coach-cue > p")?.textContent, focus);
   } finally { await app.cleanup(); }
 });

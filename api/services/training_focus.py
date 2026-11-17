@@ -117,7 +117,10 @@ def note_focus_cues(store, athlete_id: str, source_kind: str, source_notes: dict
         status = str(row.get("status") or "")
         focus = str(row.get("focus") or "").strip()
         if status == "ready" and focus and not row.get("dismissed_at"):
-            cues[str(row["source_id"])] = {"status": "ready", "id": str(row.get("id") or ""), "focus": focus}
+            targets = row.get("exercise_targets") or []
+            exercise_name = targets[0] if row.get("scope") == "specific_exercise" and len(targets) == 1 else None
+            cues[str(row["source_id"])] = {"status": "ready", "id": str(row.get("id") or ""), "focus": focus,
+                                           "exercise_name": exercise_name}
         elif status == "pending":
             cues[str(row["source_id"])] = {"status": "pending", "id": None, "focus": None}
         else:

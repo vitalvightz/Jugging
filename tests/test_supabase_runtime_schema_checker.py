@@ -173,7 +173,7 @@ def test_index_requirement_satisfied_by_constraint_alias():
         "profiles_username_idx",
         "profiles_active_plan_id_idx",
         "daily_checkins_athlete_date_key",
-        "today_checkins_athlete_plan_day_key",
+        "today_checkins_athlete_day_key",
         "today_checkins_athlete_plan_free_day_key",
         "session_completions_athlete_session_day_key",
         "sparring_logs_athlete_day_idx",

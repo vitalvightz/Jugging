@@ -1646,7 +1646,7 @@ test("a previewed session says when it opens and that an injury may still change
   );
 });
 
-test("YOUR FOCUS stays on the card and each UNLXCK CUE sits under its own exercise", async () => {
+test("YOUR FOCUS stays on the card and each UNLXCK Coach sits under its own exercise", async () => {
   const plan = {
     weeks: [{
       week_index: 1,
@@ -1700,7 +1700,7 @@ test("YOUR FOCUS stays on the card and each UNLXCK CUE sits under its own exerci
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     // The fighter's words keep the session slot even though a newer cue fits; the technique cue sits beside it.
     const lines = [...container.querySelectorAll(".today-session-focus")].map((line) => line.textContent);
-    assert.deepEqual(lines, ["Your focusNeed to get in pockets", "UNLXCK CUEReturn the jab to guard.Dismiss"]);
+    assert.deepEqual(lines, ["Your focusNeed to get in pockets", "UNLXCK CoachReturn the jab to guard.Dismiss"]);
     assert.ok(container.querySelector(".today-session-focus svg"), "target icon");
     assert.doesNotMatch(container.textContent ?? "", /Keep your foot planted|Last training focus/);
 
@@ -1709,8 +1709,8 @@ test("YOUR FOCUS stays on the card and each UNLXCK CUE sits under its own exerci
     const screen = domWindow.document.querySelector('[role="dialog"][data-variant="screen"]')!;
     const cueOf = (name: string) => [...screen.querySelectorAll(".ex-row")]
       .find((row) => row.querySelector(".ex-row-title")?.textContent === name)?.querySelector(".ex-row-cue")?.textContent ?? null;
-    assert.equal(cueOf("Assisted Pistol Squat"), "UNLXCK CUEKeep your foot planted and control the descent.Dismiss");
-    assert.equal(cueOf("Goblet Squat"), "UNLXCK CUESit between your heels.Dismiss");
+    assert.equal(cueOf("Assisted Pistol Squat"), "UNLXCK CoachKeep your foot planted and control the descent.Dismiss");
+    assert.equal(cueOf("Goblet Squat"), "UNLXCK CoachSit between your heels.Dismiss");
     assert.equal(cueOf("Bench Press"), null);
     assert.equal(screen.querySelectorAll(".ex-row-cue").length, 2);
   } finally {
@@ -1721,17 +1721,17 @@ test("YOUR FOCUS stays on the card and each UNLXCK CUE sits under its own exerci
   }
 });
 
-test("UNLXCK CUE rows render only where Today provides cues", () => {
+test("UNLXCK Coach rows render only where Today provides cues", () => {
   const plan = { weeks: [{ week_index: 1, days: [{ date: "2026-06-13", weekday: "Sat", sessions: [{ session_id: "s", title: "Strength",
     blocks: [{ block_id: "pistol", block_type: "strength", display_name: "Assisted Pistol Squat", sets: 3, reps: "8" }] }] }] }] } as StructuredPlan;
   const current = resolveCurrentDay(plan, new Date(2026, 5, 13));
   const cue = { id: "c", text: "Keep your foot planted and control the descent.", origin: "inferred" as const };
   assert.match(renderToStaticMarkup(<TodaySessionBlocks current={current} exerciseCues={{ cues: { pistol: cue } }} />),
-    /class="ex-row-cue"><span class="sp-stat-label">UNLXCK CUE<\/span>Keep your foot planted and control the descent.<\/p>/);
-  assert.doesNotMatch(renderToStaticMarkup(<TodaySessionBlocks current={current} />), /ex-row-cue|UNLXCK CUE/);
+    /class="ex-row-cue"><span class="sp-stat-label">UNLXCK Coach<\/span>Keep your foot planted and control the descent.<\/p>/);
+  assert.doesNotMatch(renderToStaticMarkup(<TodaySessionBlocks current={current} />), /ex-row-cue|UNLXCK Coach/);
 });
 
-test("UNLXCK CUE reaches Today's exercises when no next_session is reported, and leaves once logged", async () => {
+test("UNLXCK Coach reaches Today's exercises when no next_session is reported, and leaves once logged", async () => {
   // The panel resolves the athlete's training day (03:00 rollover), so the plan is dated to it.
   const day = toISODate(resolveTrainingDay(new Date()));
   const plan = { weeks: [{ week_index: 1, days: [{ date: day, sessions: [{ session_id: "str", title: "Strength",
@@ -1768,7 +1768,7 @@ test("UNLXCK CUE reaches Today's exercises when no next_session is reported, and
     // The no-session branch: the date headline, the day's exercises, no session focus line.
     assert.equal(container.querySelector(".today-session-head"), null);
     assert.ok(container.querySelector(".ex-row"), "today's exercises are listed");
-    assert.equal(cueOf("Assisted Pistol Squat"), "UNLXCK CUEKeep your foot planted and control the descent.Dismiss");
+    assert.equal(cueOf("Assisted Pistol Squat"), "UNLXCK CoachKeep your foot planted and control the descent.Dismiss");
     assert.equal(cueOf("Bench Press"), null);
     assert.equal(container.querySelector(".today-session-focus"), null);
     await render(stateFor("done"));

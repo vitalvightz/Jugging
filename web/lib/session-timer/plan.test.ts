@@ -15,6 +15,7 @@ import {
   withoutSparringItems,
   type TimerItem,
 } from "./plan.ts";
+import { advance, completeSet, createTimerState, startItem } from "./engine.ts";
 import type { StructuredBlock, StructuredSession } from "../types.ts";
 
 test("measured values convert to seconds and reject unknown units", () => {
@@ -388,4 +389,43 @@ test("after a head impact the day's timer keeps every block except its sparring 
   const items = [interval("spar", true), interval("bag", false)];
   assert.deepEqual(withoutSparringItems(items).map((item) => item.id), ["bag"]);
   assert.deepEqual(withoutSparringItems([interval("bag", false)]).map((item) => item.id), ["bag"]);
+});
+
+test("contrast clusters are tapped rounds with movement prescriptions and between-round rest", () => {
+  const block: StructuredBlock = {
+    block_id: "contrast", block_type: "strength", display_name: "Heavy RDL → Broad Jump",
+    rounds: 3, rest: { value: 4, unit: "min" },
+    components: [
+      { name: "Heavy RDL", reps: 2, load: { display: "85% 1RM" } },
+      { name: "Broad Jump", reps: 2, effort: { method: "intent", value: "max" } },
+    ],
+  };
+  const item = blockToTimerItem(block, 0);
+  assert.equal(item?.kind, "sets");
+  if (item?.kind !== "sets") return;
+  assert.deepEqual(item.sets, { min: 3, max: 3 });
+  assert.deepEqual(item.planned, { field: "rounds", min: 3 });
+  assert.equal(item.unit, "round");
+  assert.equal(item.holdSec, null);
+  assert.deepEqual(item.restSec, { min: 240, max: 240 });
+  assert.equal(item.components?.[0].detail, "2 reps · 85% 1RM");
+  assert.equal(item.components?.[1].detail, "2 reps · Max intent");
+  assert.equal(item.setFields, undefined);
+  let state = startItem(createTimerState([item]), 1000).state;
+  assert.equal(state.phaseMs, null); // No invented work clock.
+  state = advance(state, 181000).state;
+  assert.equal(state.phase, "work");
+  for (let round = 1; round <= 3; round++) {
+    state = completeSet(state, 181000 + (round - 1) * 240000).state;
+    assert.equal(state.completed[0], round);
+    assert.equal(state.phase, round === 3 ? "done" : "rest");
+    if (round < 3) state = advance(state, 181000 + round * 240000).state;
+  }
+
+  const noCount = blockToTimerItem({ ...block, rounds: null, rest: null }, 0);
+  assert.ok(noCount?.kind === "sets");
+  assert.equal(noCount.sets, null);
+  assert.equal(noCount.restSec, null);
+  const sparring = blockToTimerItem({ ...block, block_type: "sparring" }, 0);
+  assert.equal(sparring?.kind, "interval");
 });

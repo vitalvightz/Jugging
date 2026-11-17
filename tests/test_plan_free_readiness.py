@@ -213,19 +213,19 @@ def test_an_injury_reported_after_a_clean_check_in_refreshes_it():
     assert _today(client)["today"]["decision_tier"] in {"pull_back", "stop"}
 
 
-def test_creating_a_plan_later_keeps_history_and_asks_for_the_plan_check_in():
+def test_creating_a_plan_later_reuses_daily_check_in():
     client, store, _ = _build_client()
     _checkin(client, sleep="poor")
 
     _seed_plan(store)
     today = _today(client)["today"]
 
-    assert today["recommendation_state"] == "not_checked_in"
+    assert today["recommendation_state"] != "not_checked_in"
     assert len(_plan_free_rows(store)) == 1
     planned = client.post("/api/today/checkin", headers=ATHLETE, json=_body(plan_id=PLAN_ID, phase="GPP"))
     assert planned.status_code == 201
-    assert len(_plan_free_rows(store)) == 1
-    assert len(store.today_checkins["athlete-1"]) == 2
+    assert len(_plan_free_rows(store)) == 0
+    assert len(store.today_checkins["athlete-1"]) == 1
 
 
 def test_no_health_data_consent_means_no_plan_free_collection():

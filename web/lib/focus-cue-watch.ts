@@ -23,5 +23,5 @@ export function watchNoteFocusCue(watch: NoteFocusCueWatch): void {
 
 /** The line shown for a ready cue. */
 export function noteFocusCueMessage(focus: string): string {
-  return `Next time: ${focus.trim()}`;
+  return focus.trim();
 }

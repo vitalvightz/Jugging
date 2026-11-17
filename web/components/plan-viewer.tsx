@@ -13,6 +13,7 @@ import {
   approveAndResumeGeneration,
   approvePlanForRelease,
   archivePlan,
+  permanentlyDeleteOwnPlan,
   getActivePlan,
   getPlan,
   getPlanCompletions,
@@ -2498,9 +2499,8 @@ export function PlanViewer({
     const planName = plan.plan_name?.trim() ?? "";
     const isArchived = (plan.status || "").trim().toLowerCase() === "archived";
 
-    // Archived plans are already retired, so skip the type-the-name confirmation
-    // and use a single confirm. Live plans still require typing the name.
-    if (isArchived) {
+    // Athletes confirm once; live admin deletions retain typed confirmation.
+    if (isArchived || !isViewerAdmin) {
       const confirmed = window.confirm(
         `Permanently delete "${planDetailTitle}"? This cannot be undone.`,
       );
@@ -2530,10 +2530,11 @@ export function PlanViewer({
     setPlanActionMessage(null);
 
     try {
-      await adminPermanentlyDeletePlan(accessToken, plan.plan_id, isArchived ? undefined : planName);
+      if (isViewerAdmin) await adminPermanentlyDeletePlan(accessToken, plan.plan_id, isArchived ? undefined : planName);
+      else await permanentlyDeleteOwnPlan(accessToken, plan.plan_id);
       clearCompletedGenerationForDeletedPlan(plan.plan_id);
       await onPlanDeleted?.();
-      router.push("/admin");
+      router.push(isViewerAdmin ? "/admin" : "/plans");
       router.refresh();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unable to delete this plan.";
@@ -2742,14 +2743,14 @@ export function PlanViewer({
               {hasPublishedPlan && athletePlanText ? (
                 <QuickCopyButton text={athletePlanText} artifactKey="athlete-plan" />
               ) : null}
-              {isViewerAdmin ? (
+              {isViewerAdmin || (viewerRole === "athlete" && plan.athlete_id === viewerProfileId && plan.can_delete) ? (
                 <button
                   type="button"
                   className="ghost-button danger-button"
                   onClick={handlePermanentDelete}
                   disabled={planActionPending !== null}
                 >
-                  {planActionPending === "permanent-delete" ? "Deleting..." : "Permanent delete"}
+                  {planActionPending === "permanent-delete" ? "Deleting..." : isViewerAdmin ? "Permanent delete" : "Delete plan"}
                 </button>
               ) : null}
               {isViewerAdmin && plan.athlete_id ? (

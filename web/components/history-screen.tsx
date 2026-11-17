@@ -458,7 +458,6 @@ function SparringRows({ history, sessions, token, onSaved, hasMore, athleteId }:
                   <span key={item}>{item}</span>
                 ))}
               </div>
-              {token ? <CoachFeedback token={token} athleteId={athleteId} source="sparring" targetId={row.id} /> : null}
               {row.rocked || row.head_contact === "heavy" || difference ? (
                 <Chips
                   chips={[
@@ -472,9 +471,10 @@ function SparringRows({ history, sessions, token, onSaved, hasMore, athleteId }:
                   ]}
                 />
               ) : null}
-              {row.focus?.trim() ? <p className="history-row-takeaway">Focus: {row.focus}</p> : null}
-              {row.notes ? <p className="muted history-row-note">Notes: {row.notes}</p> : null}
+              {sessionNotes({ notes: row.notes, takeaway: row.focus }).map(note =>
+                <p key={note} className="history-row-takeaway">{note}</p>)}
               <FocusCueLine cue={row.focus_cue} />
+              {token ? <CoachFeedback token={token} athleteId={athleteId} source="sparring" targetId={row.id} /> : null}
               {row.external_session_id && token ? (
                 <div className="history-session-actions">
                   <button className="history-session-delete" type="button" aria-haspopup="dialog"

@@ -1626,6 +1626,7 @@ class ProfileRecord(BaseModel):
 
 
 class PlanSummary(BaseModel):
+    can_delete: bool = False
     custom_plan_id: str | None = None
     plan_id: str
     plan_name: str | None = None
@@ -2448,6 +2449,7 @@ class NoteFocusCueResponse(BaseModel):
     status: Literal["pending", "ready", "none"]
     id: str | None = None
     focus: str | None = None
+    exercise_name: str | None = Field(default=None, json_schema_extra={"x-response-optional": True})
 
 
 class TrainingFocusResponse(BaseModel):

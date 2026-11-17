@@ -120,11 +120,6 @@ _CHECKIN_INPUT_FIELDS = (
     "worse_next_day_pain",
 )
 
-TODAY_CHECKIN_WARNING = (
-    "You already completed a check-in today. "
-    "This response applies to the current active plan only."
-)
-
 INTAKE_INJURY_SOURCE = "intake"
 INTAKE_CLEARED_VALUES = frozenset({"1", "true", "yes", "y", "cleared", "clear", "resolved", "done"})
 GUIDED_INJURY_SEVERITY_MAP = {
@@ -252,12 +247,8 @@ def _same_day_checkin_warnings(
     training_day: str,
     include_current_plan: bool = False,
 ) -> list[str]:
-    rows = store.list_today_checkins_for_day(athlete_id, training_day) or []
-    if include_current_plan:
-        has_same_day_checkin = bool(rows)
-    else:
-        has_same_day_checkin = any(str(row.get("plan_id") or "") != plan_id for row in rows)
-    return [TODAY_CHECKIN_WARNING] if has_same_day_checkin else []
+    # A plan switch reuses the day's answers; it never needs a repeat warning.
+    return []
 
 
 def _checked_recent_today_checkins(
@@ -3637,7 +3628,7 @@ def _build_today_command_view(
         decision, _ = _readiness_decision_with_failsafe(
             store, checkin=_stored_readiness_checkin_from(today_checkin or {}), athlete_id=athlete_id,
             plan_row=plan_row, training_day=training_day,
-            phase=str((today_checkin or {}).get("phase") or resolved_plan.get("phase") or ""), open_injuries=open_injuries,
+            phase=str(resolved_plan.get("phase") or ""), open_injuries=open_injuries,
             session_override=support_projection)
         recommendation = {"decision": decision.decision, "reason": decision.message,
                           "triggers": list(decision.triggers), "training_day": training_day}

@@ -342,6 +342,7 @@ export type UsernameChangeRequest = {
 export type PlanActivationState = "eligible" | "fight_date_passed" | "status_ineligible";
 
 export type PlanSummary = {
+  can_delete?: boolean;
   custom_plan_id?: string | null;
   plan_id: string;
   plan_name?: string | null;

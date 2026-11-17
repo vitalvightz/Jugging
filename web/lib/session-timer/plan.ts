@@ -6,6 +6,8 @@ import {
   formatBlockLoad,
   formatEffort,
   formatMeasured,
+  getBlockComponents,
+  type BlockComponentLine,
   isModeLikeReps,
 } from "../structured-plan";
 import type {
@@ -41,6 +43,8 @@ type TimerItemBase = {
   detail: string | null;
   /** The same dose as separate stats. Absent on runs saved by an older timer. */
   stats?: TimerStat[];
+  /** Ordered movements completed together before the between-round rest. */
+  components?: BlockComponentLine[];
   blockType: string | null;
 };
 
@@ -304,6 +308,28 @@ export function blockToTimerItem(
   const isRoundType = blockType !== null && ROUND_BLOCK_TYPES.has(blockType);
   const restRange =
     parseDurationRange(source.rest) ?? (rest ? { min: rest, max: rest } : null);
+
+  // Contrast clusters count complete pairs rather than combat intervals.
+  // Rest starts only after the athlete finishes every movement.
+  const components = getBlockComponents(block);
+  if (components.length && blockType !== "sparring") {
+    const count = rounds ?? sets;
+    return {
+      kind: "sets",
+      id,
+      blockId,
+      planned: count ? { field: rounds ? "rounds" : "sets", min: count } : null,
+      title,
+      detail: components.map(({ name, detail }) => [name, detail].filter(Boolean).join(" — ")).join(" → "),
+      stats: [],
+      components,
+      blockType,
+      sets: count ? { min: count, max: count } : null,
+      holdSec: null,
+      restSec: restRange,
+      unit: rounds ? "round" : "set",
+    };
+  }
 
   // Rounds of a set distance with no time in the plan (6 × 200 m): the athlete
   // taps each round done, rather than running a round clock the plan never set.

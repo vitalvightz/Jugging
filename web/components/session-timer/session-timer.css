@@ -1527,3 +1527,16 @@ html[data-theme="light"] .today-tool-button[data-accent="true"] .today-tool-icon
 .st-discovery-hint:focus-visible { outline: 2px solid var(--st-ink); outline-offset: 2px; }
 @keyframes st-discovery-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .st-discovery-hint { animation: none; } }
+
+/* Keep each cluster movement's reps and load attached to its name. */
+.st-components {
+  list-style: none;
+  padding: 0;
+  margin: 0 auto;
+  max-width: 30rem;
+  text-align: left;
+}
+.st-components li { display: flex; gap: 0.75rem; padding: 0.5rem 0; }
+.st-component-label { color: #999; }
+.st-components strong { display: block; font-size: 1rem; }
+.st-components small { display: block; color: #999; margin-top: 0.25rem; }
