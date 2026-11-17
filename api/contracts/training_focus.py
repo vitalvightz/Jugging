@@ -118,16 +118,6 @@ _HEALTH = re.compile(
     r"blank(ed)? out|lights? (went )?out)\b",
     re.IGNORECASE,
 )
-# A cue is technique or attention only. It never changes the prescribed work.
-_WORKLOAD = re.compile(
-    r"\d|\b(increase\w*|decrease\w*|reduce\w*|add(ing)? (weight|load|sets?|reps?|rounds?|volume)|heavier|lighter|"
-    r"more (sets?|reps?|rounds?|weight|load|volume)|fewer|extra|skip\w*|deload\w*|push through|max(imal|imum)?|"
-    r"failure|ignore\w*|instead of|replace\w*|swap\w*|rest (day|longer)|(less|more|shorter|longer) rest|"
-    r"(faster|slower) pace|(more|less|longer|shorter) (duration|rounds?|sets?)|harder)\b",
-    re.IGNORECASE,
-)
-
-
 def mentions_health(text: str) -> bool:
     return bool(_HEALTH.search(text or ""))
 
@@ -139,7 +129,7 @@ def grounded_focus(inferred: InferredFocus, *, exercise_names: list[str], patter
     text = " ".join((inferred.focus or "").split())
     if not text or len(text) > FOCUS_MAX_CHARS or len(text.split()) > 45 or inferred.scope is None or inferred.category is None:
         return None
-    if mentions_health(text) or _WORKLOAD.search(text):
+    if mentions_health(text):
         return None
     if inferred.category not in categories:
         return None
