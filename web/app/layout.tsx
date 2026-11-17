@@ -18,6 +18,7 @@ import { RoundTimerProvider } from "@/components/session-timer/round-timer-provi
 import { FadeThroughProvider } from "@/components/fade-through";
 import { PageTransition } from "@/components/page-transition";
 import { PerfDiagnostics } from "@/components/perf-diagnostics";
+import { FocusCueAnnouncer } from "@/components/focus-cue-announcer";
 import { ToastProvider } from "@/components/toast-provider";
 import { XpAwardFeedback } from "@/components/xp-award-feedback";
 import { XpProvider } from "@/components/xp-provider";
@@ -121,6 +122,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               <PasswordRecoveryRedirect />
               <ToastProvider>
                 <XpAwardFeedback />
+                <FocusCueAnnouncer />
                 {/* Opt-in speed diagnostics (?perf=1 or Settings); renders nothing otherwise. */}
                 <PerfDiagnostics />
                 <LanguageSwitcher />

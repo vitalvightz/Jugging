@@ -1392,6 +1392,8 @@ export type SparringLogRecord = Omit<SparringLogRequest, "client_request_id" | "
   athlete_id: string;
   training_day: string;
   created_at: string;
+  /** The AI cue drawn from `notes`, when one is ready (History only). */
+  focus_cue?: string | null;
 };
 
 export type SparringLogResponse = {

@@ -5906,6 +5906,17 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
             .eq("athlete_id", athlete_id).eq("id", inference_id).execute())
         return bool(getattr(response, "data", None))
 
+    def list_training_focus_inferences_for_sources(self, athlete_id: str, source_kind: str,
+                                                   source_ids: list[str]) -> list[dict[str, Any]]:
+        """Every inference row (any status) for these notes of one kind."""
+        if not source_ids:
+            return []
+        response = (self.client.table("training_focus_inferences")
+            .select("id,source_kind,source_id,source_revision,status,focus,dismissed_at")
+            .eq("athlete_id", athlete_id).eq("source_kind", source_kind).in_("source_id", source_ids)
+            .limit(len(source_ids)).execute())
+        return getattr(response, "data", None) or []
+
     def list_training_focus_inferences_for_day(self, athlete_id: str, training_day: str) -> list[dict[str, Any]]:
         """Ready, undismissed inferences for one training day (the refresh after its record changes)."""
         response = (self.client.table("training_focus_inferences").select("*")

@@ -73,6 +73,8 @@ import type {
 import type { ActivePlanOverlapAction } from "@/lib/plan-active";
 import { parseXpAwardResponse, type XpAwardResult } from "@/lib/xp";
 import { requestXpRefresh } from "@/lib/xp-events";
+import { watchNoteFocusCue, type NoteFocusSourceKind } from "@/lib/focus-cue-watch";
+import type { NoteFocusCueResponse } from "@/lib/api-schema.generated";
 
 const EXPLICIT_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? null;
 const LOCAL_API_BASE_URL = "http://127.0.0.1:8000";
@@ -651,7 +653,16 @@ export function editExternalTraining(token: string, id: string, body: ExternalTr
 export function saveTrainingTakeaway(token: string, id: string, takeaway: string): Promise<TrainingHistorySession> {
   const payload = JSON.stringify({ takeaway });
   // Setting the same text again is a no-op, so a lost response can be retried.
-  return withTransientRetries(() => readJson(`/api/training/sessions/${encodeURIComponent(id)}/takeaway`, { method: "PUT", token, body: payload }));
+  return withTransientRetries(() => readJson<TrainingHistorySession>(`/api/training/sessions/${encodeURIComponent(id)}/takeaway`, { method: "PUT", token, body: payload }))
+    .then(row => {
+      if (row.takeaway?.trim()) watchNoteFocusCue({ token, kind: "manual_takeaway", sourceId: row.id });
+      return row;
+    });
+}
+
+/** What the AI made of one saved note (polled briefly after the save). */
+export function getNoteFocusCue(token: string, kind: NoteFocusSourceKind, sourceId: string): Promise<NoteFocusCueResponse> {
+  return readJson<NoteFocusCueResponse>(`/api/training/focus-cues/${kind}/${encodeURIComponent(sourceId)}`, { token });
 }
 
 /** Exercises on a manual session: the athlete's own, or with `fighterId` one a coach recorded for that fighter. */
@@ -680,7 +691,11 @@ export type PlanCompletionEdit = { session_rpe?: number | null; pain_after?: num
 export function editPlanCompletion(token: string, id: string, body: PlanCompletionEdit): Promise<TrainingHistorySession> {
   const payload = JSON.stringify(body);
   // Replacing the same three fields again is safe after a lost response.
-  return withTransientRetries(() => readJson(`/api/training/history/unlxck/${encodeURIComponent(id)}`, { method: "PATCH", token, body: payload }));
+  return withTransientRetries(() => readJson<TrainingHistorySession>(`/api/training/history/unlxck/${encodeURIComponent(id)}`, { method: "PATCH", token, body: payload }))
+    .then(row => {
+      if (body.notes?.trim()) watchNoteFocusCue({ token, kind: "plan_completion", sourceId: row.id });
+      return row;
+    });
 }
 
 export function deletePlanCompletion(token: string, id: string): Promise<void> {
@@ -1502,7 +1517,13 @@ export function submitTodaySessionCompletion(
     token,
     body: JSON.stringify(payload),
   }).then((response) => {
-    if (response.completion_status === "done" || response.completion_status === "modified") announceSessionLogged();
+    if (response.completion_status === "done" || response.completion_status === "modified") {
+      announceSessionLogged();
+      // A day-credit completion gets no inference; its poll simply runs out quietly.
+      if (payload.notes?.trim()) {
+        watchNoteFocusCue({ token, kind: "plan_completion", sourceId: response.completion.id });
+      }
+    }
     return response;
   });
 }
@@ -1516,6 +1537,12 @@ export function submitSparringLog(
     method: "POST",
     token,
     body: JSON.stringify(payload),
+  }).then((response) => {
+    // Only notes without the athlete's own focus, and never after being rocked, get a cue.
+    if (payload.notes.trim() && !response.log.focus?.trim() && !payload.rocked) {
+      watchNoteFocusCue({ token, kind: "sparring_log", sourceId: response.log.id });
+    }
+    return response;
   });
 }
 

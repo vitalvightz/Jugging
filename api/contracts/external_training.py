@@ -100,6 +100,8 @@ class TrainingHistorySession(BaseModel):
     notes: str | None = None
     # A manual session's short note on what was learned; never workload.
     takeaway: str = ""
+    # The AI cue drawn from this session's takeaway or notes, when one is ready.
+    focus_cue: str | None = None
     # Live exercise entries on a manual session; None where not counted.
     exercise_count: int | None = None
     # A plan session History may edit (RPE, pain, notes) or remove.

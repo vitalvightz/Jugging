@@ -51,7 +51,14 @@ export function SessionRow({ row, onOpen }: { row: TrainingHistorySession; onOpe
       {coachCredit(row) ? <span>{coachCredit(row)}</span> : null}
     </div>
     {row.takeaway?.trim() ? <p className="history-row-takeaway">{row.takeaway}</p> : null}
+    <FocusCueLine cue={row.focus_cue} />
   </li>;
+}
+
+/** The AI cue drawn from a note, shown under it in History. */
+export function FocusCueLine({ cue }: { cue: string | null | undefined }) {
+  const text = cue?.trim();
+  return text ? <p className="history-row-cue"><span className="sp-stat-label">UNLXCK CUE</span>{text}</p> : null;
 }
 
 /** The session's own status as an icon tone. */

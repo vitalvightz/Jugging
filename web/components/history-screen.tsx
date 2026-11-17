@@ -66,7 +66,7 @@ import { filterTakeaways } from "@/lib/training-summary";
 import { trainingTitle } from "@/lib/training-disciplines";
 import { canRepeatTraining, sortTrainingHistory, type TrainingHistorySession } from "@/lib/training-history";
 import { useTrainingDay } from "@/lib/use-training-day";
-import { SessionDetails, SessionRow, type SessionDetailsCache } from "./session-details";
+import { FocusCueLine, SessionDetails, SessionRow, type SessionDetailsCache } from "./session-details";
 import { ManualExerciseLogger } from "./manual-exercise-logger";
 import { ExerciseLibrary, type ExerciseHistoryCache } from "./exercise-library";
 import type { ExerciseLibraryResponse } from "@/lib/api-schema.generated";
@@ -421,6 +421,7 @@ function SparringRows({ history, sessions, token, onSaved, hasMore, athleteId }:
                   {manual.effort ? <span>{manual.effort.charAt(0).toUpperCase() + manual.effort.slice(1)}</span> : null}
                 </div>
                 {manual.takeaway?.trim() ? <p className="history-row-takeaway">{manual.takeaway}</p> : null}
+                <FocusCueLine cue={manual.focus_cue} />
                 {token && manual.source === "external" ? (
                   <div className="history-session-actions">
                     <button className="history-session-delete" type="button" aria-haspopup="dialog"
@@ -470,6 +471,7 @@ function SparringRows({ history, sessions, token, onSaved, hasMore, athleteId }:
               ) : null}
               {row.focus?.trim() ? <p className="history-row-takeaway">Focus: {row.focus}</p> : null}
               {row.notes ? <p className="muted history-row-note">Notes: {row.notes}</p> : null}
+              <FocusCueLine cue={row.focus_cue} />
               {row.external_session_id && token ? (
                 <div className="history-session-actions">
                   <button className="history-session-delete" type="button" aria-haspopup="dialog"
