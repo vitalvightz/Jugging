@@ -97,3 +97,25 @@ def latest_training_focus(store, athlete_id: str, *, today: str, include_inferre
             "training_day": newest["training_day"] if newest else None,
             "sport": newest["sport"] if newest else None,
             "items": items}
+
+
+def note_focus_cues(store, athlete_id: str, source_kind: str, source_ids: list[str]) -> dict[str, dict]:
+    """What the AI made of each of these notes, keyed by source id.
+
+    ``ready`` carries the cue (``id``, ``focus``); ``pending`` is still being
+    generated; ``none`` means no cue (vague, health, failed or dismissed).
+    A note with no inference row yet is absent: the caller decides what that means.
+    Unlike Today's list there is no age limit: History shows the cue beside its note.
+    """
+    ids = sorted({str(value) for value in source_ids if value})
+    cues: dict[str, dict] = {}
+    for row in store.list_training_focus_inferences_for_sources(athlete_id, source_kind, ids):
+        status = str(row.get("status") or "")
+        focus = str(row.get("focus") or "").strip()
+        if status == "ready" and focus and not row.get("dismissed_at"):
+            cues[str(row["source_id"])] = {"status": "ready", "id": str(row.get("id") or ""), "focus": focus}
+        elif status == "pending":
+            cues[str(row["source_id"])] = {"status": "pending", "id": None, "focus": None}
+        else:
+            cues[str(row["source_id"])] = {"status": "none", "id": None, "focus": None}
+    return cues

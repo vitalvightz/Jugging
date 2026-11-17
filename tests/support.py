@@ -3030,6 +3030,12 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
                 return True
         return False
 
+    def list_training_focus_inferences_for_sources(self, athlete_id: str, source_kind: str,
+                                                   source_ids: list[str]) -> list[dict]:
+        wanted = set(source_ids)
+        return [dict(row) for row in self.training_focus_inferences if row["athlete_id"] == athlete_id
+                and row["source_kind"] == source_kind and str(row["source_id"]) in wanted]
+
     def list_training_focus_inferences_for_day(self, athlete_id: str, training_day: str) -> list[dict]:
         return [dict(row) for row in self.training_focus_inferences if row["athlete_id"] == athlete_id
                 and str(row["training_day"]) == training_day and row["status"] == "ready" and not row.get("dismissed_at")]

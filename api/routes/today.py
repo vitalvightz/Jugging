@@ -32,7 +32,7 @@ from api.contracts.manual_exercises import ManualExerciseEntry, PerformedExercis
 from api.services.manual_exercises import delete_session_exercise, list_session_exercises, save_session_exercise
 from api import server_timing
 from api.services.tracking_xp import reconcile_training_xp
-from api.services.training_focus import latest_training_focus
+from api.services.training_focus import latest_training_focus, note_focus_cues
 from api.services.training_focus_inference import schedule_focus_inference, schedule_focus_refresh
 from api.services.exercise_library import exercise_library, exercise_performances
 
@@ -60,6 +60,7 @@ from api.models import (
     SparringLogRecord,
     SparringLogRequest,
     SparringLogResponse,
+    NoteFocusCueResponse,
     TrainingFocusResponse,
     SparringWindowSummary,
     TodayCheckinRecord,
@@ -276,8 +277,12 @@ def _session_history_title(
 
 
 def history_sessions(store: AppStore, athlete_id: str, *, limit: int, before_day: date | None = None,
-                     include_skipped: bool = False, manual_only: bool = False) -> dict[str, Any]:
-    """One History page for ``athlete_id``: titled sessions and the next cursor."""
+                     include_skipped: bool = False, manual_only: bool = False,
+                     with_focus_cues: bool = False) -> dict[str, Any]:
+    """One History page for ``athlete_id``: titled sessions and the next cursor.
+
+    ``with_focus_cues`` adds the AI cue drawn from each session's takeaway or
+    notes (the athlete's own History, with health consent; never a coach's)."""
     # Pages hold whole training days, so a page can run past ``limit`` rows.
     rows, next_before_day = training_history_page(
         store, athlete_id, limit=limit, before_day=before_day.isoformat() if before_day else None,
@@ -290,9 +295,13 @@ def history_sessions(store: AppStore, athlete_id: str, *, limit: int, before_day
         if row["source"] != "external" and _saved_session_title(row) is None
     } - {""})
     external_ids = [str(row["id"]) for row in rows if row["source"] == "external"]
-    *title_plans, counts = run_reads_concurrently(
+    completion_ids = [str(row["id"]) for row in rows if row["source"] != "external" and row.get("id")]
+    no_cues: dict[str, dict] = {}
+    *title_plans, counts, takeaway_cues, completion_cues = run_reads_concurrently(
         *(partial(_title_plan, store, athlete_id, plan_id) for plan_id in title_plan_ids),
         lambda: store.count_manual_exercises(athlete_id, external_ids),
+        (lambda: note_focus_cues(store, athlete_id, "manual_takeaway", external_ids)) if with_focus_cues else (lambda: no_cues),
+        (lambda: note_focus_cues(store, athlete_id, "plan_completion", completion_ids)) if with_focus_cues else (lambda: no_cues),
     )
     plans = dict(zip(title_plan_ids, title_plans))
     for row in rows:
@@ -310,6 +319,8 @@ def history_sessions(store: AppStore, athlete_id: str, *, limit: int, before_day
     for row in rows:
         if row["source"] == "external":
             row["exercise_count"] = counts.get(str(row["id"]), 0)
+        cue = (takeaway_cues if row["source"] == "external" else completion_cues).get(str(row["id"]))
+        row["focus_cue"] = cue["focus"] if cue and cue["status"] == "ready" else None
     return {"sessions": rows, "next_before_day": next_before_day}
 
 
@@ -388,7 +399,8 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
                               profile: ProfileRecord = Depends(require_profile),
                               store: AppStore = Depends(get_store)):
         return history_sessions(store, profile.athlete_id, limit=limit, before_day=before_day,
-                                include_skipped=include_skipped, manual_only=manual_only)
+                                include_skipped=include_skipped, manual_only=manual_only,
+                                with_focus_cues=evaluate_profile_compliance(profile).health_consent_granted)
 
     # Limited History changes to a finished plan session. Removing it marks the
     # session not done again, so streaks are recounted; earned XP is kept, as
@@ -941,6 +953,22 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
         return TrainingFocusResponse(**latest_training_focus(
             store, profile.athlete_id, today=resolve_training_day(profile.athlete_timezone)))
 
+    @router.get("/api/training/focus-cues/{source_kind}/{source_id}", response_model=NoteFocusCueResponse)
+    def get_note_focus_cue(
+        source_kind: Literal["sparring_log", "manual_takeaway", "plan_completion"],
+        source_id: UUID,
+        profile: ProfileRecord = Depends(require_profile),
+        store: AppStore = Depends(get_store),
+    ) -> NoteFocusCueResponse:
+        """What the AI made of one note the athlete just saved, so the app can
+        answer it. Polled briefly after the save; never generates. A note with
+        no inference yet reads ``pending`` (the background task may not have
+        started); the client stops asking after a short while."""
+        if not evaluate_profile_compliance(profile).health_consent_granted:
+            return NoteFocusCueResponse(status="none")
+        cue = note_focus_cues(store, profile.athlete_id, source_kind, [str(source_id)]).get(str(source_id))
+        return NoteFocusCueResponse(**cue) if cue else NoteFocusCueResponse(status="pending")
+
     @router.delete("/api/today/training-focus/{inference_id}", status_code=204)
     def dismiss_training_focus(
         inference_id: UUID,
@@ -1100,6 +1128,11 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
         """
         today = date.fromisoformat(resolve_training_day(profile.athlete_timezone))
         logs = [_sparring_log_record(row) for row in store.list_sparring_logs(profile.athlete_id, limit=limit)]
+        if evaluate_profile_compliance(profile).health_consent_granted:
+            cues = note_focus_cues(store, profile.athlete_id, "sparring_log", [log.id for log in logs if log.notes.strip()])
+            for log in logs:
+                cue = cues.get(log.id)
+                log.focus_cue = cue["focus"] if cue and cue["status"] == "ready" else None
         recent = [
             _sparring_log_record(row)
             for row in store.list_sparring_logs(

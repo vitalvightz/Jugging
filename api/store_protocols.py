@@ -660,6 +660,9 @@ class InjuryStore(Protocol):
 
     def dismiss_training_focus_inference(self, athlete_id: str, inference_id: str) -> bool: ...
 
+    def list_training_focus_inferences_for_sources(self, athlete_id: str, source_kind: str,
+                                                   source_ids: list[str]) -> list[dict[str, Any]]: ...
+
     def list_training_focus_inferences_for_day(self, athlete_id: str, training_day: str) -> list[dict[str, Any]]: ...
 
     def restamp_training_focus_inference(self, athlete_id: str, inference_id: str, *, source_revision: str,

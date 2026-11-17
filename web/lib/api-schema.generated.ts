@@ -388,6 +388,7 @@ export type CoachHistorySession = {
   modification_reason: string | null;
   notes: string | null;
   takeaway: string;
+  focus_cue: string | null;
   exercise_count: number | null;
   history_editable: boolean;
   coach_exercises_editable: boolean;
@@ -1550,6 +1551,18 @@ export type MorningCheckIn = {
   injury_specific: Record<string, unknown> | null;
 };
 
+/**
+ * What the AI made of one saved note, read right after the save.
+ *
+ * ``pending`` until the background inference finishes (including before it
+ * has started); ``none`` when the note gave no cue; ``ready`` with the cue.
+ */
+export type NoteFocusCueResponse = {
+  status: "none" | "pending" | "ready";
+  id: string | null;
+  focus: string | null;
+};
+
 export type NotificationPreferences = {
   push_enabled: boolean;
   session_reminders: boolean;
@@ -2605,6 +2618,7 @@ export type SparringLogRecord = {
   notes: string;
   focus: string;
   created_at: string;
+  focus_cue: string | null;
 };
 
 /**
@@ -2881,6 +2895,7 @@ export type TrainingHistorySession = {
   modification_reason: string | null;
   notes: string | null;
   takeaway: string;
+  focus_cue: string | null;
   exercise_count: number | null;
   history_editable: boolean;
   coach_exercises_editable: boolean;

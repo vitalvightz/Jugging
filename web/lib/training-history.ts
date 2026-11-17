@@ -48,6 +48,8 @@ export type TrainingHistorySession = {
   notes?: string | null;
   /** A manual session's note on what was learned. */
   takeaway?: string;
+  /** The AI cue drawn from this session's takeaway or notes, when one is ready. */
+  focus_cue?: string | null;
   /** Live exercise entries on a manual session; null/absent when not counted. */
   exercise_count?: number | null;
   /** A connected coach entered this manual session for the athlete. */

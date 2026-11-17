@@ -41,7 +41,7 @@ from api.services.training_history import create_external_training
 from api.store import AppStore
 
 HEALTH_SESSION_TYPES = {"rehab", "recovery"}
-PRIVATE_TEXT = ("notes", "takeaway", "modification_reason")
+PRIVATE_TEXT = ("notes", "takeaway", "modification_reason", "focus_cue")
 MASKED_TITLE = "Programme session"
 # Words that name injury or rehab work. Kept in step with
 # coach_private.health_session in the coach weight-consent migration.

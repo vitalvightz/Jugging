@@ -2419,6 +2419,8 @@ class SparringLogRecord(BaseModel):
     notes: str = ""
     focus: str = ""
     created_at: str = ""
+    # The AI cue drawn from ``notes``, when one is ready (History only).
+    focus_cue: str | None = None
 
 
 class TrainingFocusItem(BaseModel):
@@ -2435,6 +2437,17 @@ class TrainingFocusItem(BaseModel):
     category: str | None = None
     exercise_targets: list[str] = Field(default_factory=list)
     movement_patterns: list[str] = Field(default_factory=list)
+
+
+class NoteFocusCueResponse(BaseModel):
+    """What the AI made of one saved note, read right after the save.
+
+    ``pending`` until the background inference finishes (including before it
+    has started); ``none`` when the note gave no cue; ``ready`` with the cue."""
+
+    status: Literal["pending", "ready", "none"]
+    id: str | None = None
+    focus: str | None = None
 
 
 class TrainingFocusResponse(BaseModel):

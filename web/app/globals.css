@@ -22936,6 +22936,8 @@ button.injury-progress:hover > svg { color: var(--text-primary); }
 .history-saved-line p { margin: 0; }
 /* A manual session's takeaway: the athlete's own words, set apart from the meta. */
 .history-row-takeaway { margin: 0; padding-left: 10px; border-left: 2px solid var(--border-active); color: var(--text-primary); font-size: 0.88rem; line-height: 1.45; overflow-wrap: anywhere; }
+.history-row-cue { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; color: var(--text-primary); font-size: 0.85rem; line-height: 1.45; overflow-wrap: anywhere; }
+.history-row-cue .sp-stat-label { flex: none; }
 .history-takeaway-filter { display: grid; gap: 10px; justify-items: start; }
 .history-takeaway-filter .history-exercise-search { width: 100%; margin-bottom: 0; }
 button.history-chip { min-height: 32px; font: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
