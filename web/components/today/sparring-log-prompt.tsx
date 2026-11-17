@@ -372,10 +372,10 @@ export function SparringLogPrompt({
                 aria-controls={notesId}
                 onClick={() => setNotesOpen((open) => !open)}
               >
-                Add other notes <span aria-hidden="true">{notesOpen ? "−" : "+"}</span>
+                Session Notes <span aria-hidden="true">{notesOpen ? "−" : "+"}</span>
               </button>
               <label className={styles.notes} hidden={!notesOpen}>
-                <span className="sr-only">Notes (optional)</span>
+                <span className="sr-only">Session Notes (optional)</span>
                 <textarea
                   id={notesId}
                   value={notes}

@@ -33,11 +33,12 @@ def test_a_saved_note_reads_back_its_cue(api):
     edit_notes(client, row["id"], "Balance on split squats was poor.")
     cue = read_cue(client, "plan_completion", row["id"])
     assert cue["status"] == "ready" and cue["focus"] == SPLIT_SQUAT["focus"] and cue["id"]
+    assert cue["exercise_name"] == "split squat"
 
 
 def test_a_note_without_an_inference_yet_reads_pending(api):
     client, _, _ = api
-    assert read_cue(client, "manual_takeaway", uuid4()) == {"status": "pending", "id": None, "focus": None}
+    assert read_cue(client, "manual_takeaway", uuid4()) == {"status": "pending", "id": None, "focus": None, "exercise_name": None}
 
 
 def test_no_suggestion_health_and_dismissed_read_none(api):
@@ -49,7 +50,7 @@ def test_no_suggestion_health_and_dismissed_read_none(api):
 
     hurt = lower_body_completion(store, session_id="s-hurt")
     edit_notes(client, hurt["id"], "Knee pain on split squats.")
-    assert read_cue(client, "plan_completion", hurt["id"]) == {"status": "none", "id": None, "focus": None}
+    assert read_cue(client, "plan_completion", hurt["id"]) == {"status": "none", "id": None, "focus": None, "exercise_name": None}
 
     fake.answer = SPLIT_SQUAT
     kept = lower_body_completion(store, session_id="s-kept")

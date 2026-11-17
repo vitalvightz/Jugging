@@ -977,6 +977,9 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
             return NoteFocusCueResponse(status="none")
         cue = (note_focus_cues(store, profile.athlete_id, source_kind, {str(source_id): source["note"]})
                .get(str(source_id))) if source else None
+        if cue and cue.get("status") == "ready" and source_kind == "manual_exercise":
+            # The stored grounding target is normalised; show the athlete's saved exercise name.
+            cue["exercise_name"] = source["row"].get("display_name") or cue.get("exercise_name")
         return NoteFocusCueResponse(**cue) if cue else NoteFocusCueResponse(status="pending")
 
     @router.post("/api/training/focus-cues/manual_exercise/{source_id}/retry", status_code=202)

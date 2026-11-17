@@ -1561,6 +1561,7 @@ export type NoteFocusCueResponse = {
   status: "none" | "pending" | "ready";
   id: string | null;
   focus: string | null;
+  exercise_name?: string | null;
 };
 
 export type NotificationPreferences = {

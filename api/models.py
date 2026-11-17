@@ -2448,6 +2448,7 @@ class NoteFocusCueResponse(BaseModel):
     status: Literal["pending", "ready", "none"]
     id: str | None = None
     focus: str | None = None
+    exercise_name: str | None = Field(default=None, json_schema_extra={"x-response-optional": True})
 
 
 class TrainingFocusResponse(BaseModel):

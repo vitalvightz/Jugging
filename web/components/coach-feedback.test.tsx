@@ -42,7 +42,7 @@ for (const deny of [false, true]) {
   test(`coach edits only the targeted exercise feedback; save denied=${deny}`, async () => {
     const ui = await mount(true, deny);
     try {
-      await ui.click("Edit coach note");
+      await ui.click("Edit feedback");
       const input = ui.host.querySelector("textarea")!;
       await act(async () => {
         Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")!.set!.call(input, "Good depth today.");

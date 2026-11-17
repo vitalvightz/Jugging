@@ -1527,13 +1527,13 @@ export function TodaySessionPanel({
             ) : null}
             {sessionCue ? (
               <p className="today-session-focus today-session-cue today-fade-in">
-                <span className="today-detail-label">UNLXCK CUE</span>
+                <span className="today-detail-label">UNLXCK Coach</span>
                 {sessionCue.text}
                 {sessionCue.id ? (
                   <button
                     type="button"
                     className="today-session-focus-dismiss"
-                    aria-label="Dismiss this UNLXCK cue"
+                    aria-label="Dismiss UNLXCK Coach feedback"
                     onClick={() => dismissShownFocus(sessionCue.id!)}
                   >
                     Dismiss

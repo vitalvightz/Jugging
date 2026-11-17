@@ -20,7 +20,7 @@ const CUE_TOAST_MS = 9_000;
  */
 export function FocusCueAnnouncer({ delaysMs = CUE_POLL_DELAYS_MS }: { delaysMs?: readonly number[] } = {}) {
   const { showToast } = useToast();
-  const [card, setCard] = useState<{ focus: string; kind: NoteFocusSourceKind } | null>(null);
+  const [card, setCard] = useState<{ focus: string; exerciseName?: string | null; kind: NoteFocusSourceKind } | null>(null);
   const pathname = usePathname();
 
   useEffect(() => setCard(null), [pathname]);
@@ -47,7 +47,7 @@ export function FocusCueAnnouncer({ delaysMs = CUE_POLL_DELAYS_MS }: { delaysMs?
             if (cue.status === "ready" && cue.focus) {
               stop();
               if (window.location.pathname === path) {
-                setCard({ focus: cue.focus, kind });
+                setCard({ focus: cue.focus, exerciseName: cue.exercise_name, kind });
               } else {
                 showToast(noteFocusCueMessage(cue.focus), { tone: "info", durationMs: CUE_TOAST_MS });
               }
@@ -78,17 +78,17 @@ export function FocusCueAnnouncer({ delaysMs = CUE_POLL_DELAYS_MS }: { delaysMs?
   return card ? (
     <aside className="unlxck-coach-cue" role="region" aria-label="UNLXCK Coach feedback" aria-live="polite">
       <div className="unlxck-coach-cue-heading">
-        <Image src="/icons/icon-192x192.png" width={40} height={40} alt="" className="unlxck-coach-cue-mark" />
-        <div><strong>UNLXCK COACH</strong><span>Session feedback</span></div>
+        <Image src="/icons/icon-192x192.png" width={24} height={24} alt="" className="unlxck-coach-cue-mark" />
+        <strong>UNLXCK COACH</strong>
         <button type="button" className="unlxck-coach-cue-close" aria-label="Close UNLXCK Coach feedback"
           onClick={() => setCard(null)}>×</button>
       </div>
+      <h2>{card.exerciseName || "Session feedback"}</h2>
       <p>{noteFocusCueMessage(card.focus)}</p>
       <div className="unlxck-coach-cue-footer">
         <span>Saved to History</span>
         <Link href={`/history?tab=${card.kind === "sparring_log" ? "sparring" : "sessions"}`} onClick={() => setCard(null)}>View in History →</Link>
       </div>
-      <button type="button" className="unlxck-coach-cue-dismiss" onClick={() => setCard(null)}>Got it</button>
     </aside>
   ) : null;
 }

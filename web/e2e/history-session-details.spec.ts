@@ -258,3 +258,77 @@ test("History deep links select the correct tab on load and client navigation", 
   await page.evaluate(() => window.history.pushState({}, "", "/history?tab=sparring"));
   await expect(page.getByRole("tab", { name: "Sparring" })).toHaveAttribute("aria-selected", "true");
 });
+
+for (const width of [320, 390, 1280]) {
+  test(`Coach feedback stays compact and dismissible at ${width}px`, async ({ page, baseURL }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await setup(page, baseURL!);
+    const errors: string[] = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.route("**/api/training/focus-cues/manual_exercise/*", route => route.fulfill({
+      contentType: "application/json", body: JSON.stringify({ status: "ready", id: "cue-1",
+        exercise_name: "Assisted Pistol Squat",
+        focus: "Use light support and lower slowly. Reset your balance before each rep." }),
+    }));
+    await page.goto("/history");
+    await expect(page.getByRole("button", { name: /View Strength & Power details/ })).toBeVisible();
+    const showCue = () => page.evaluate(() => window.dispatchEvent(new CustomEvent("unlxck:note-focus-cue-watch", {
+      detail: { token: "history-test", kind: "manual_exercise", sourceId: "exercise-1" },
+    })));
+    await showCue();
+    const card = page.getByRole("region", { name: "UNLXCK Coach feedback", exact: true });
+    await expect(card.getByRole("heading", { name: "Assisted Pistol Squat" })).toBeVisible();
+    await expect(card).not.toContainText("Next time:");
+    await expect(card.getByRole("button")).toHaveCount(1);
+    await expect(card.getByRole("link", { name: "View in History →" })).toHaveAttribute("href", "/history?tab=sessions");
+    const bounds = await card.boundingBox();
+    expect(bounds!.height).toBeLessThan(260);
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+    if (width <= 960) {
+      const clearance = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--mobile-tab-bar-height")));
+      expect(bounds!.y + bounds!.height).toBeLessThan(844 - clearance);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `/tmp/coach-feedback-${width}.png` });
+    await card.getByRole("button", { name: "Close UNLXCK Coach feedback" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(card).toHaveCount(0);
+    await showCue();
+    await expect(card).toBeVisible();
+    await card.getByRole("link").click();
+    await expect(page).toHaveURL(/\/history\?tab=sessions$/);
+    await expect(card).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+}
+
+test("Sparring uses one athlete note style and names AI feedback consistently", async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setup(page, baseURL!);
+  const note = "The jab was great but the hook needs more power";
+  await page.route("**/api/today/sparring-logs*", route => route.fulfill({ contentType: "application/json",
+    body: JSON.stringify({ logs: [{ id: "log-1", external_session_id: "manual", training_day: day,
+      intensity: "hard", rounds_completed: 5, round_seconds: 180, head_contact: "none", rocked: false,
+      focus: note, notes: note, focus_cue: "Turn your hips through each hook." }],
+      current_training_day: day,
+      last_7_days: { rounds: 5, hard_days: 1, heavy_head_contact_sessions: 0 },
+      last_28_days: { sessions: 1, rounds: 5, hard_days: 1, rocked_count: 0 } }),
+  }));
+  await page.route("**/rest/v1/coach_feedback**", route => route.fulfill({ contentType: "application/json",
+    body: JSON.stringify([{ id: "coach-note", coach_name: "Yamila", note: "Good movement.",
+      exercise_ref: "", updated_at: `${day}T12:00:00Z` }]),
+  }));
+  await page.goto("/history?tab=sparring");
+  const row = page.locator(".history-row").filter({ hasText: "Turn your hips through each hook." });
+  await expect(row).toBeVisible();
+  await expect(row.locator(".history-row-takeaway")).toHaveCount(1);
+  await expect(row.locator(".history-row-takeaway")).toHaveText(note);
+  await expect(row.locator(".history-row-cue")).toContainText("UNLXCK Coach");
+  await expect(row).toContainText("Coach Yamila");
+  await expect(row).toContainText("Good movement.");
+  await expect(row).not.toContainText("Notes:");
+  await expect(row).not.toContainText("Focus:");
+  await expect(row).not.toContainText("UNLXCK CUE");
+  await page.screenshot({ path: "/tmp/coach-feedback-sparring.png" });
+});
