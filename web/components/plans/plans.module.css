@@ -348,6 +348,14 @@
   gap: 8px;
 }
 
+/* Confirm and Cancel answer side by side, not as a second stack. */
+.sheetActions > * {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  justify-content: center;
+}
+
 /* Open (and Make active, when offered) share one row. */
 .sheetPrimary {
   display: flex;
