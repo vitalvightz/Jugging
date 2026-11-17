@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import { getNoteFocusCue } from "@/lib/api";
 import {
   CUE_POLL_DELAYS_MS, NOTE_FOCUS_CUE_WATCH_EVENT, noteFocusCueMessage, type NoteFocusCueWatch,
@@ -17,12 +19,14 @@ const CUE_TOAST_MS = 9_000;
  */
 export function FocusCueAnnouncer({ delaysMs = CUE_POLL_DELAYS_MS }: { delaysMs?: readonly number[] } = {}) {
   const { showToast } = useToast();
+  const [card, setCard] = useState<string | null>(null);
 
   useEffect(() => {
     const running = new Map<string, () => void>();
 
     function watch({ token, kind, sourceId }: NoteFocusCueWatch) {
       const key = `${kind}:${sourceId}`;
+      const path = window.location.pathname;
       running.get(key)?.();
       let stopped = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -37,7 +41,11 @@ export function FocusCueAnnouncer({ delaysMs = CUE_POLL_DELAYS_MS }: { delaysMs?
             if (stopped) return;
             if (cue.status === "ready" && cue.focus) {
               stop();
-              showToast(noteFocusCueMessage(cue.focus), { tone: "info", durationMs: CUE_TOAST_MS });
+              if (window.location.pathname === path) {
+                setCard(cue.focus);
+              } else {
+                showToast(noteFocusCueMessage(cue.focus), { tone: "info", durationMs: CUE_TOAST_MS });
+              }
               announceTrainingFocusChanged();
               return;
             }
@@ -62,5 +70,20 @@ export function FocusCueAnnouncer({ delaysMs = CUE_POLL_DELAYS_MS }: { delaysMs?
     };
   }, [showToast, delaysMs]);
 
-  return null;
+  return card ? (
+    <aside className="unlxck-coach-cue" role="region" aria-label="UNLXCK Coach feedback" aria-live="polite">
+      <div className="unlxck-coach-cue-heading">
+        <Image src="/icons/icon-192x192.png" width={40} height={40} alt="" className="unlxck-coach-cue-mark" />
+        <div><strong>UNLXCK COACH</strong><span>Session feedback</span></div>
+        <button type="button" className="unlxck-coach-cue-close" aria-label="Close UNLXCK Coach feedback"
+          onClick={() => setCard(null)}>×</button>
+      </div>
+      <p>{noteFocusCueMessage(card)}</p>
+      <div className="unlxck-coach-cue-footer">
+        <span>Saved to History</span>
+        <Link href="/history" onClick={() => setCard(null)}>View in History →</Link>
+      </div>
+      <button type="button" className="unlxck-coach-cue-dismiss" onClick={() => setCard(null)}>Got it</button>
+    </aside>
+  ) : null;
 }
