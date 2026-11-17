@@ -342,7 +342,7 @@ def test_coach_weight_assessment_matches_athlete_including_active_fight_date(cam
     as_fighter = {"Authorization": "Bearer fighter-token"}
     fight = (current_training_day() + timedelta(days=3)).isoformat()
     # Same active-plan override is consumed by both endpoints.
-    monkeypatch.setattr("api.routes.nutrition.resolve_active_plan", lambda *a, **kw: type("Active", (), {"plan": {"fight_date": fight}})())
+    monkeypatch.setattr("api.routes.nutrition.resolve_active_plan", lambda *a, **kw: type("Active", (), {"plan": {"fight_date": fight}, "source": "explicit"})())
     workspace = client.get("/api/nutrition/current", headers=as_fighter).json()
     body = {key: workspace[key] for key in ("nutrition_profile", "s_and_c_preferences", "nutrition_readiness", "nutrition_coach_controls", "nutrition_monitoring", "shared_camp_context")}
     body["shared_camp_context"].update(current_weight_kg=80, target_weight_kg=70, current_weight_source="manual", current_weight_recorded_at=date.today().isoformat())
