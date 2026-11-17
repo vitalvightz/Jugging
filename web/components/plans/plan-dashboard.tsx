@@ -361,7 +361,8 @@ export function PlanManageSheet({
   const canDelete = plan.can_delete === true;
   const busy = manage.pendingAction !== null || isSettingActive;
   const facts: SummaryLine[] = [
-    ...(plan.fight_date ? [{ label: "Fight date", value: formatPlanFightDate(plan.fight_date) }] : []),
+    // "30 Nov 2026": the weekday would wrap the fact row on a phone.
+    ...(plan.fight_date ? [{ label: "Fight date", value: formatPlanFightDate(plan.fight_date).replace(/^[A-Za-z]{3} (?=\d)/, "") }] : []),
     { label: "Built", value: formatBuiltShort(plan.created_at) },
     {
       label: "Status",
