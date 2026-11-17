@@ -5912,7 +5912,7 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
         if not source_ids:
             return []
         response = (self.client.table("training_focus_inferences")
-            .select("id,source_kind,source_id,status,focus,dismissed_at")
+            .select("id,source_kind,source_id,source_revision,status,focus,dismissed_at")
             .eq("athlete_id", athlete_id).eq("source_kind", source_kind).in_("source_id", source_ids)
             .limit(len(source_ids)).execute())
         return getattr(response, "data", None) or []
