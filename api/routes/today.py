@@ -973,7 +973,7 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
         if not evaluate_profile_compliance(profile).health_consent_granted:
             return NoteFocusCueResponse(status="none")
         source = read_source(store, profile.athlete_id, source_kind, str(source_id))
-        if not source or not source["note"].strip():
+        if (not source and source_kind == "manual_exercise") or (source and not source["note"].strip()):
             return NoteFocusCueResponse(status="none")
         cue = (note_focus_cues(store, profile.athlete_id, source_kind, {str(source_id): source["note"]})
                .get(str(source_id))) if source else None
