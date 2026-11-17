@@ -372,7 +372,7 @@ for (const width of [320, 390, 1280]) {
     await setup(page, baseURL!, { path: "tracking_first", activePlan: true, plan: true });
     await page.goto("/today");
     await expect(page.getByRole("heading", { name: "Today", level: 1 })).toHaveCount(1);
-    await expect(page.getByText("General prep", { exact: true })).toBeVisible();
+    await expect(page.getByText("Autumn camp", { exact: true })).toBeVisible();
     const status = page.getByRole("list", { name: "Today command status" });
     await expect(status).toContainText("Check-in");
     await expect(status).not.toContainText("Not assessed");
