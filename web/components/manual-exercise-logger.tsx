@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useEffect, useId, useRef, useState } from "react";
+import { type FormEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { ApiError, deleteManualExercise, getExerciseLibrary, listManualExercises, saveManualExercise, searchTrainingLibrary } from "@/lib/api";
 import type { LibraryEntry, ManualExerciseEntry, PersonalExercise } from "@/lib/api-schema.generated";
 import { formatAppDate } from "@/lib/date-format";
@@ -66,6 +66,7 @@ export function ManualExerciseLogger({ token, session, reference, onClose, fight
   const fieldId = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const search = useRef<HTMLInputElement>(null);
+  const focusSearchOnCommit = useRef(false);
   const saving = useRef(false);
   const [entries, setEntries] = useState<ManualExerciseEntry[] | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -86,6 +87,14 @@ export function ManualExerciseLogger({ token, session, reference, onClose, fight
   const [unitHint, dismissUnitHint] = useSeenOnce("discovery-weight-unit-seen");
   const [reuse, setReuse] = useState<ManualExerciseEntry[] | null>(null);
   const [reuseState, setReuseState] = useState<"idle" | "loading" | "error">("idle");
+
+  // A frame can run before React commits the reset editor and its search field.
+  useLayoutEffect(() => {
+    if (focusSearchOnCommit.current && !busy) {
+      focusSearchOnCommit.current = false;
+      search.current?.focus();
+    }
+  }, [editor.entryId, busy]);
 
   useEffect(() => {
     const element = dialog.current;
@@ -224,8 +233,8 @@ export function ManualExerciseLogger({ token, session, reference, onClose, fight
   }
 
   function reset(focus = true) {
+    focusSearchOnCommit.current = focus;
     setEditor(fresh(loadUnit)); setErrors({}); setError(null); setQuery("");
-    if (focus) requestAnimationFrame(() => search.current?.focus());
   }
 
   function setValue(field: FieldId, value: string) {
