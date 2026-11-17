@@ -41,6 +41,11 @@ test("a saved note is answered with its cue once it is ready", async () => {
     await act(async () => watchNoteFocusCue({ token: "t", kind: "sparring_log", sourceId: "log-1" }));
     await wait(80);
     assert.match(app.text(), /Next time: Turn your hips through each hook\./);
+    assert.match(app.text(), /UNLXCK COACH/);
+    assert.match(app.text(), /Saved to History/);
+    assert.equal(document.querySelector('a[href="/history"]')?.textContent, "View in History →");
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Close UNLXCK Coach feedback"]')?.click());
+    assert.equal(document.querySelector('[aria-label="UNLXCK Coach feedback"]'), null);
     assert.equal(app.urls.length, 3);
     assert.match(app.urls[0], /\/api\/training\/focus-cues\/sparring_log\/log-1$/);
     assert.equal(refreshed, 1);
