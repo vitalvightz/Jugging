@@ -973,3 +973,51 @@ def test_explicit_sparring_focus_does_not_trigger_the_sparring_window_read(api, 
     monkeypatch.setattr(store, "list_sparring_logs", lambda athlete_id, **kw: windows.append(kw) or real(athlete_id, **kw))
     assert [item["origin"] for item in read_items(client)] == ["athlete"]
     assert all(kw.get("with_focus") for kw in windows)
+
+
+# -- More useful coaching cues and internal mental-skill routing ----------------
+
+def test_longer_coaching_cue_gives_a_specific_how_not_just_the_problem(api):
+    client, store, fake = api
+    coaching = ("Before holding the squat, feel even pressure through both feet. "
+                "Keep that contact as you settle into position, and check whether "
+                "your weight starts shifting to one side.")
+    assert len(coaching) > 90 and len(coaching.split()) <= 45
+    fake.answer = {**SPLIT_SQUAT, "focus": coaching}
+    row = lower_body_completion(store)
+    edit_notes(client, row["id"], "I was falling to the left during split squats.")
+    assert read_items(client)[0]["focus"] == coaching
+    assert store.training_focus_inferences[0]["status"] == "ready"
+
+
+def test_mental_training_cue_can_target_sparring_without_an_exercise(api):
+    client, store, fake = api
+    cue = ("After a mistake, exhale briefly to reset your attention. "
+           "Pick one visible cue from your opponent and focus on the next exchange.")
+    fake.answer = {"focus": cue, "scope": "mental_skill", "category": "sparring",
+                   "sport": "boxing", "exercise_targets": [], "movement_patterns": []}
+    session = manual_session(client, activity="sparring", sport="boxing", session_type="sparring", effort="hard")
+    sparring_detail(client, session["id"], notes="I kept replaying my mistakes and couldn't focus.")
+    [item] = read_items(client)
+    assert item["focus"] == cue and item["scope"] == "mental_skill" and item["sport"] == "boxing"
+
+
+def test_mental_cue_for_strength_does_not_require_exercise_patterns(api):
+    client, store, fake = api
+    fake.answer = {"focus": "Choose one technique word before each lift and bring attention back to it between attempts.",
+                   "scope": "mental_skill", "category": "strength", "sport": None,
+                   "exercise_targets": [], "movement_patterns": []}
+    row = lower_body_completion(store)
+    edit_notes(client, row["id"], "My mind kept wandering in the gym.")
+    [item] = read_items(client)
+    assert item["scope"] == "mental_skill" and item["category"] == "strength"
+
+
+def test_coaching_cue_rejects_more_than_forty_five_words():
+    from api.contracts.training_focus import grounded_focus
+    long_cue = ("Check the pressure through both feet. " * 8).strip()
+    assert len(long_cue) <= 360 and len(long_cue.split()) > 45
+    assert grounded_focus(
+        InferredFocus(focus=long_cue, scope="mental_skill", category="strength"),
+        exercise_names=[], patterns=set(), categories={"strength"}, sports=set(),
+    ) is None
