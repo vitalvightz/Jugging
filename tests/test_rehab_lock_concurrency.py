@@ -643,3 +643,64 @@ def test_independent_standalone_owners_use_existing_postgres_allocation_guard(po
         with pytest.raises(psycopg.Error) as failure, connection.transaction():
             accept(duplicate)
         assert failure.value.sqlstate == "23514" and "rehab_daily_allocation_conflict" in str(failure.value)
+
+
+@pytest.mark.parametrize('checkin_plan', ['previous-plan', 'plan-free', 'same-plan'])
+def test_rehab_start_reuses_daily_readiness_across_plan_switch(postgres_database, checkin_plan):
+    """Real trigger accepts shared readiness but still rejects wrong/stale identity."""
+    import psycopg
+    from psycopg.types.json import Jsonb
+    from copy import deepcopy
+
+    with psycopg.connect(postgres_database) as connection:
+        for migration in ('20261019061051_allow_plan_free_today_checkins.sql',
+                          '20261022184651_standalone_rehab_completions.sql',
+                          '20261117032109_share_daily_readiness_for_rehab.sql'):
+            connection.execute((ROOT / 'supabase/migrations' / migration).read_text())
+        athlete, other_athlete, current_plan, previous_plan = (str(uuid4()) for _ in range(4))
+        connection.execute('insert into profiles values (%s), (%s)', (athlete, other_athlete))
+        connection.execute('insert into plans values (%s), (%s)', (current_plan, previous_plan))
+        bound_plan = {'previous-plan': previous_plan, 'plan-free': None, 'same-plan': current_plan}[checkin_plan]
+        checkin = connection.execute('''insert into today_checkins
+            (athlete_id,plan_id,training_day,sleep,body,pain,phase,recommendation_state)
+            values (%s,%s,'2026-11-17','good','normal','none',%s,'train_as_planned')
+            returning id, updated_at''', (athlete, bound_plan, 'GPP' if bound_plan else None)).fetchone()
+        identity = 'rehab-switch'
+        snapshot = dict(plan_id=current_plan, training_day='2026-11-17', revision='a' * 64,
+            session=dict(session_id=identity, session_type='rehab', blocks=[dict(block_type='rehab', block_id='rehab')]),
+            allocation_limit=1, injury_context=[], evidence_context=dict(exposure_id=None, event_id=None),
+            readiness_context=dict(id=str(checkin[0]), updated_at=checkin[1].isoformat()))
+
+        def start(body=snapshot, owner=athlete):
+            connection.execute('''insert into session_completions
+                (athlete_id,plan_id,session_id,training_day,status,prescription_snapshot)
+                values (%s,%s,%s,'2026-11-17','started',%s)''', (owner, current_plan, identity, Jsonb(body)))
+
+        # Before the fix both cross-plan cases fail, even with valid current answers.
+        if checkin_plan != 'same-plan':
+            with connection.transaction():
+                old_sql = (ROOT / 'supabase/migrations/20261022184651_standalone_rehab_completions.sql').read_text()
+                connection.execute(old_sql[old_sql.index('create or replace function public.preserve_started_prescription()'):])
+                with pytest.raises(psycopg.errors.CheckViolation, match='prescription_revision_conflict'), connection.transaction():
+                    start()
+                connection.execute((ROOT / 'supabase/migrations/20261117032109_share_daily_readiness_for_rehab.sql').read_text())
+
+        for field, value in [('id', str(uuid4())), ('updated_at', '2000-01-01T00:00:00Z')]:
+            bad = deepcopy(snapshot)
+            bad['readiness_context'][field] = value
+            with pytest.raises(psycopg.errors.CheckViolation, match='prescription_revision_conflict'), connection.transaction():
+                start(bad)
+        with pytest.raises(psycopg.errors.CheckViolation, match='prescription_revision_conflict'), connection.transaction():
+            start(owner=other_athlete)
+        with connection.transaction():
+            connection.execute("update today_checkins set training_day='2026-11-16' where id=%s", (checkin[0],))
+            with pytest.raises(psycopg.errors.CheckViolation, match='prescription_revision_conflict'), connection.transaction():
+                start()
+            connection.execute("update today_checkins set training_day='2026-11-17' where id=%s", (checkin[0],))
+        start()
+        saved = connection.execute('select prescription_snapshot from session_completions where athlete_id=%s', (athlete,)).fetchone()[0]
+        assert saved == snapshot
+        with pytest.raises(psycopg.errors.CheckViolation, match='prescription_revision_conflict'), connection.transaction():
+            connection.execute("update session_completions set prescription_snapshot=jsonb_set(prescription_snapshot,'{revision}',%s) where athlete_id=%s",
+                               (Jsonb('b' * 64), athlete))
+        connection.rollback()
