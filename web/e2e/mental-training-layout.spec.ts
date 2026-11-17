@@ -18,11 +18,16 @@ for (const width of [375, 1280]) {
     // Tactical analysis/reflection are prompt-driven: legacy synthetic doses
     // must not become timers, and the original session names stay intact.
     await expect(page.getByRole("heading", { name: "Tactical Focus", exact: true })).toBeVisible();
+    const reflection = page.locator('[data-mental-category="reflect"] > details');
+    await expect(reflection).not.toHaveAttribute("open");
+    await expect(reflection.locator("summary")).toContainText("Self-Review Cues");
+    await reflection.locator("summary").click();
+    await expect(reflection).toHaveAttribute("open");
     await expect(page.getByRole("heading", { name: "Self-Review Cues", exact: true })).toBeVisible();
     for (const category of ["analyse", "reflect"]) {
       const task = page.locator(`[data-mental-category="${category}"]`);
       await expect(task.getByRole("heading")).not.toContainText(/min/);
-      await expect(task.locator("details")).toHaveCount(0);
+      if (category === "analyse") await expect(task.locator("details")).toHaveCount(0);
     }
     await expect(page.locator('[data-mental-category="reflect"] li')).toHaveText(
       "Review the last clean technical work. Write three cues only: one entry, one defensive reset, one composure cue.");

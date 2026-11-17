@@ -46,7 +46,8 @@ for (const width of [390, 1280]) {
     await expect(loading).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
     const commandAfter = await page.locator(".today-shell").boundingBox();
-    expect(Math.abs(commandAfter!.height - commandBefore!.height)).toBeLessThan(2);
+    // #3214 keeps the loading reservation but lets loaded guidance fit its content.
+    expect(commandAfter!.height).toBeLessThan(commandBefore!.height);
     expect(Math.abs(commandAfter!.y - commandBefore!.y)).toBeLessThan(2);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.waitForTimeout(220); // Capture after the opacity reveal.

@@ -60,7 +60,7 @@ async function setup(page: Page, baseURL: string, name: keyof typeof cases, vide
 }
 
 for (const [name, message] of [
-  ["earned_load", "You meet the checks for this LOAD exercise."],
+  ["earned_load", "DYNAMIC exercises aren’t available for this injury in UNLXCK yet."],
   ["missing_permission", "Do today’s rehab, then tap how it feels"],
   ["pending_response", "Do today’s rehab, then tap how it feels"],
   ["worsening", "Your injury got worse"],
@@ -304,9 +304,11 @@ for (const width of [375, 1280]) {
     const { block, errors } = await setup(page, baseURL!, "chest");
     await page.evaluate(() => window.scrollTo(0, 0));
     await shot(page, `${process.env.REHAB_QA_LABEL ?? "after"}-rehab-access-${width}.png`);
-    const access = page.getByRole("navigation", { name: "Your rehab", exact: true });
-    await expect(access).toContainText(block.display_name);
-    await access.getByRole("link", { name: /View rehab/ }).click();
+    const injury = page.locator(".today-injury-item").first();
+    await injury.locator(".today-injury-summary-row").click();
+    const access = injury.getByRole("link", { name: /View rehab/ });
+    await expect(access).toHaveAttribute("href", `#${encodeURIComponent(`rehab-exercise-${block.block_id}`)}`);
+    await access.click();
     const row = page.locator(`[id="rehab-exercise-${block.block_id}"]`);
     await expect(row).toBeInViewport();
     await row.getByRole("button", { name: block.display_name, exact: false }).click();
@@ -320,7 +322,8 @@ for (const width of [375, 1280]) {
 
 test("rehab access never offers held exercises", async ({ page, baseURL }) => {
   await setup(page, baseURL!, "achilles", undefined, true);
-  await expect(page.getByRole("navigation", { name: "Your rehab", exact: true })).toHaveCount(0);
+  await page.locator(".today-injury-summary-row").first().click();
+  await expect(page.getByRole("link", { name: /View rehab/ })).toHaveCount(0);
 });
 
 for (const width of [320, 390, 1280]) {
@@ -355,7 +358,9 @@ for (const width of [320, 390, 1280]) {
     const guideBox = (await guide.boundingBox())!;
     expect(Math.abs(expandedClearance.x - guideBox.x)).toBeLessThan(1);
     expect(Math.abs(expandedClearance.width - guideBox.width)).toBeLessThan(1);
-    await expect(guide).toContainText("Stages are not clearance to train.");
+    await expect(guide).toContainText("Strengthening.");
+    await expect(guide).toContainText("Sport-specific rehab.");
+    await expect(guide.locator("input, select, button")).toHaveCount(0);
     expect(await injury.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
     await shot(page, `injury-stage-guide-${width}.png`);
     await page.getByRole("button", { name: "+ Add another injury", exact: true }).click();

@@ -38,7 +38,8 @@ jobs:
           python -m pytest tests/test_exercise_coaching_release.py tests/test_exercise_coaching_context.py tests/test_measurable_exercise_coaching.py tests/test_concise_exercise_coaching.py -q
 
   build:
-    runs-on: ubuntu-latest
+    # Playwright 1.60 supports Ubuntu 24.04; ubuntu-latest now selects 26.04.
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 

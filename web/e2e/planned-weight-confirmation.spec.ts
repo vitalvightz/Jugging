@@ -70,7 +70,7 @@ for (const width of [320, 390, 1280]) test(`historical Back Squat â†’ preview â†
     await route.fulfill({ json: body });
   });
   await page.goto(`/today?plan=${id}`);
-  await expect(page.locator(".ex-row").filter({ hasText: "Back Squat" })).toContainText("Same as last");
+  await expect(page.locator(".ex-row").filter({ hasText: "Back Squat" })).toContainText("Last 125 kg");
   await page.locator(".st-mini").click();
   const timer = page.locator(".st-root");
   for (const [index, expected] of [115, 120, 125].entries()) {

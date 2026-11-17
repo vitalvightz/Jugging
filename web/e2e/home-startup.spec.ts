@@ -25,7 +25,7 @@ test("Home reads the plan calendar only for a dated camp's countdown", async ({ 
   await page.route("**/api/today", route => route.fulfill({ json: { ...todayFor(PRIMARY), active_plan: { ...todayFor(PRIMARY).active_plan, fight_date: fightDate } } }));
   await page.goto("/");
   await expect(page.locator(".fight-countdown:not(.fight-countdown-skeleton)")).toBeVisible();
-  await expect.poll(() => api.calls.map(call => call.path)).toContain(`/api/plans/${PRIMARY.planId}`);
+  await expect.poll(() => api.calls.map(call => call.path)).toContain(`/api/plans/${PRIMARY.planId}/calendar`);
   await expect(page.locator('.fight-countdown[aria-busy="true"]')).toHaveCount(0);
 });
 
