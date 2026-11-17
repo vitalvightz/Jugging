@@ -161,6 +161,18 @@ function doseStatDisplay(stat: TimerStat): { label: string; value: string } {
 
 /** One quiet prescription row; older saved runs retain their one-line detail. */
 function DoseStats({ item }: { item: TimerItem }) {
+  if (item.components?.length) {
+    return (
+      <ol className="st-components" aria-label="Movements each round">
+        {item.components.map((component) => (
+          <li key={component.label}>
+            <span className="st-component-label">{component.label}</span>
+            <span><strong>{component.name}</strong>{component.detail ? <small>{component.detail}</small> : null}</span>
+          </li>
+        ))}
+      </ol>
+    );
+  }
   if (!item.stats) return item.detail ? <p className="st-detail">{item.detail}</p> : null;
   // A hold's time is on the clock; everything else stays in view.
   if (item.stats.length === 0) return null;

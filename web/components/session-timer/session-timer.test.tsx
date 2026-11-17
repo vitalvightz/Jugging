@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { SessionTimer } from "./session-timer";
+import { blockToTimerItem } from "@/lib/session-timer/plan";
 import type { TimerItem } from "@/lib/session-timer/plan";
 
 const ITEMS: TimerItem[] = [
@@ -184,4 +185,20 @@ test("the next-exercise line keeps every per-set target, not just the first", ()
     restSec: null,
   };
   assert.match(render([ITEMS[0], drill]), /st-next-plan">2 × 10 reps, 5 min</);
+});
+
+
+test("cluster ready screen shows both movements without combat format setup", () => {
+  const item = blockToTimerItem({
+    display_name: "Heavy RDL → Broad Jump", block_type: "strength", rounds: 3,
+    rest: { value: 4, unit: "min" },
+    components: [{ name: "Heavy RDL", reps: 2, load: { display: "85% 1RM" } }, { name: "Broad Jump", reps: 2 }],
+  }, 0)!;
+  const html = render([item]);
+  assert.match(html, /Movements each round/);
+  assert.match(html, /2 reps · 85% 1RM/);
+  assert.match(html, /<strong>Broad Jump<\/strong>/);
+  assert.match(html, /class="st-primary">Start</);
+  assert.match(html, /4:00/);
+  assert.doesNotMatch(html, /Pick a format|Boxing 3\/1|3:00/);
 });
