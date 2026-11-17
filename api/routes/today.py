@@ -33,7 +33,7 @@ from api.services.manual_exercises import delete_session_exercise, list_session_
 from api import server_timing
 from api.services.tracking_xp import reconcile_training_xp
 from api.services.training_focus import latest_training_focus, note_focus_cues
-from api.services.training_focus_inference import schedule_focus_inference, schedule_focus_refresh
+from api.services.training_focus_inference import read_source, schedule_focus_inference, schedule_focus_refresh
 from api.services.exercise_library import exercise_library, exercise_performances
 
 from api.compliance_guards import require_health_feature_access
@@ -295,13 +295,14 @@ def history_sessions(store: AppStore, athlete_id: str, *, limit: int, before_day
         if row["source"] != "external" and _saved_session_title(row) is None
     } - {""})
     external_ids = [str(row["id"]) for row in rows if row["source"] == "external"]
-    completion_ids = [str(row["id"]) for row in rows if row["source"] != "external" and row.get("id")]
+    takeaway_notes = {str(row["id"]): str(row.get("takeaway") or "") for row in rows if row["source"] == "external"}
+    completion_notes = {str(row["id"]): str(row.get("notes") or "") for row in rows if row["source"] != "external" and row.get("id")}
     no_cues: dict[str, dict] = {}
     *title_plans, counts, takeaway_cues, completion_cues = run_reads_concurrently(
         *(partial(_title_plan, store, athlete_id, plan_id) for plan_id in title_plan_ids),
         lambda: store.count_manual_exercises(athlete_id, external_ids),
-        (lambda: note_focus_cues(store, athlete_id, "manual_takeaway", external_ids)) if with_focus_cues else (lambda: no_cues),
-        (lambda: note_focus_cues(store, athlete_id, "plan_completion", completion_ids)) if with_focus_cues else (lambda: no_cues),
+        (lambda: note_focus_cues(store, athlete_id, "manual_takeaway", takeaway_notes)) if with_focus_cues else (lambda: no_cues),
+        (lambda: note_focus_cues(store, athlete_id, "plan_completion", completion_notes)) if with_focus_cues else (lambda: no_cues),
     )
     plans = dict(zip(title_plan_ids, title_plans))
     for row in rows:
@@ -966,7 +967,11 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
         started); the client stops asking after a short while."""
         if not evaluate_profile_compliance(profile).health_consent_granted:
             return NoteFocusCueResponse(status="none")
-        cue = note_focus_cues(store, profile.athlete_id, source_kind, [str(source_id)]).get(str(source_id))
+        source = read_source(store, profile.athlete_id, source_kind, str(source_id))
+        if source and not source["note"].strip():
+            return NoteFocusCueResponse(status="none")
+        cue = (note_focus_cues(store, profile.athlete_id, source_kind, {str(source_id): source["note"]})
+               .get(str(source_id))) if source else None
         return NoteFocusCueResponse(**cue) if cue else NoteFocusCueResponse(status="pending")
 
     @router.delete("/api/today/training-focus/{inference_id}", status_code=204)
@@ -1129,7 +1134,7 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
         today = date.fromisoformat(resolve_training_day(profile.athlete_timezone))
         logs = [_sparring_log_record(row) for row in store.list_sparring_logs(profile.athlete_id, limit=limit)]
         if evaluate_profile_compliance(profile).health_consent_granted:
-            cues = note_focus_cues(store, profile.athlete_id, "sparring_log", [log.id for log in logs if log.notes.strip()])
+            cues = note_focus_cues(store, profile.athlete_id, "sparring_log", {log.id: log.notes for log in logs if log.notes.strip()})
             for log in logs:
                 cue = cues.get(log.id)
                 log.focus_cue = cue["focus"] if cue and cue["status"] == "ready" else None
