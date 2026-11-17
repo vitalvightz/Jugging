@@ -108,6 +108,7 @@ function TrainingBlockBody({ block, context, viewer, byCoach, planned = false }:
     {countOnly ? <p className={styles.quiet}>{countOnly}</p> : detailMeasurements(block.actual).length
       ? <Comparison rows={comparisonRows({}, block.actual)} label={`Recorded: ${context}`} title="Recorded" /> : <p className={styles.quiet}>No measurements recorded.</p>}
     {countOnly ? null : sets}{notes}
+    {viewer !== "coach" ? <FocusCueLine cue={block.focus_cue} /> : null}
   </>;
   const plan = comparisonRows(block.prescribed, {});
   if (block.kind === "guidance") return <><p className={styles.outcome}>Guidance · {block.status ? OUTCOMES[block.status] : "Completion not recorded"}</p>
