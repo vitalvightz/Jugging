@@ -319,19 +319,95 @@
   margin: 0;
 }
 
+/* Manage sheet: the plan's facts read across one tile, not a column. */
+.facts[data-layout="row"] {
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 0;
+  padding: 12px 0;
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  background: var(--bg-surface-alt);
+}
+
+.facts[data-layout="row"] > div {
+  min-width: 0;
+  padding: 0 14px;
+}
+
+.facts[data-layout="row"] > div + div {
+  border-left: 1px solid var(--border-subtle, var(--border-default));
+}
+
+.facts[data-layout="row"] dd {
+  font-size: var(--type-body-sm, 14px);
+}
+
 .sheetActions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.sheetActions[data-stack="true"] {
-  display: grid;
+/* Open (and Make active, when offered) share one row. */
+.sheetPrimary {
+  display: flex;
+  gap: 8px;
 }
 
-.sheetActions[data-stack="true"] > * {
+.sheetPrimary > * {
+  flex: 1 1 0;
+  min-width: 0;
   justify-content: center;
   text-align: center;
+}
+
+/* Secondary actions: one grouped list with hairline dividers instead of a
+   stack of separately bordered buttons. */
+.menuList {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  background: var(--bg-surface-alt);
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: 500 15px/1.2 var(--font-sans);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.menuItem + .menuItem {
+  border-top: 1px solid var(--border-subtle, var(--border-default));
+}
+
+.menuItem[data-tone="danger"] {
+  color: var(--danger-ink);
+}
+
+.menuItem:hover:not(:disabled) {
+  background: var(--bg-panel);
+}
+
+.menuItem:focus-visible {
+  outline: 2px solid var(--brand-red);
+  outline-offset: -2px;
+}
+
+.menuItem:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .inlineForm {

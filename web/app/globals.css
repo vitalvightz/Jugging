@@ -6375,21 +6375,46 @@ button.mobile-step-rail-item {
   right: 0;
   z-index: 25;
   display: grid;
-  gap: 6px;
+  gap: 0;
   min-width: 210px;
-  padding: 8px;
+  padding: 4px 0;
+  overflow: hidden;
   border: 1px solid var(--border-default);
   border-radius: 14px;
   background: rgba(12, 13, 16, 0.98);
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.42);
 }
 
+/* A menu, not a stack of buttons: borderless rows split by hairlines. */
 .plan-action-menu-popover .ghost-button,
 .plan-action-menu-popover .secondary-button {
   width: 100%;
-  min-height: 40px;
+  min-height: 44px;
+  padding: 0 16px;
   justify-content: flex-start;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-weight: 500;
   text-align: left;
+}
+
+.plan-action-menu-popover > * + .ghost-button,
+.plan-action-menu-popover > * + .secondary-button {
+  border-top: 1px solid var(--border-subtle, var(--border-default));
+}
+
+.plan-action-menu-popover .ghost-button:hover:not(:disabled),
+.plan-action-menu-popover .secondary-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.plan-action-menu-popover .plan-created-at {
+  margin: 0;
+  padding: 10px 16px 8px;
+  border-top: 1px solid var(--border-subtle, var(--border-default));
+  font-size: 12px;
 }
 
 .code-block,
