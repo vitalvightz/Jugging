@@ -201,9 +201,6 @@ def test_general_pattern_feedback_is_kept_only_with_grounded_patterns(api):
     {**SPLIT_SQUAT, "scope": "general_quality", "exercise_targets": [], "movement_patterns": []},
     # A category the day does not hold.
     {**SPLIT_SQUAT, "category": "conditioning"},
-    # Workload, not technique.
-    {**SPLIT_SQUAT, "focus": "Add weight to the split squat next time."},
-    {**SPLIT_SQUAT, "focus": "Do 4 sets of split squats."},
     # Health language in the answer.
     {**SPLIT_SQUAT, "focus": "Protect the sore knee on split squats."},
     # An exercise the day lacks.
@@ -848,12 +845,25 @@ def test_warm_up_and_mindset_blocks_are_not_grounding_exercises(api):
 
 @pytest.mark.parametrize("focus", ["Use less rest between rounds.", "Take a faster pace on intervals.",
                                    "Push harder on every split squat."])
-def test_rest_pace_and_intensity_changes_are_rejected(api, focus):
+def test_workload_suggestions_are_not_silently_filtered(api, focus):
     client, store, fake = api
     fake.answer = {**SPLIT_SQUAT, "focus": focus}
     row = lower_body_completion(store)
     edit_notes(client, row["id"], "Balance on split squats was poor.")
-    assert read_items(client) == []
+    assert read_items(client)[0]["focus"] == focus
+
+
+@pytest.mark.parametrize("focus", [
+    "Increase weight on the split squat only when you can control each rep.",
+    "Reduce pressure through the front foot during the split squat.",
+    "Use 4 sets of split squats next time.",
+])
+def test_grounded_cues_allow_load_adjustments_numbers_and_technique(api, focus):
+    client, store, fake = api
+    fake.answer = {**SPLIT_SQUAT, "focus": focus}
+    row = lower_body_completion(store)
+    edit_notes(client, row["id"], "Split squats felt difficult to control.")
+    assert read_items(client)[0]["focus"] == focus
 
 
 def test_a_specific_exercise_cue_names_exactly_one_exercise(api):
@@ -893,13 +903,6 @@ def test_ordinary_words_near_head_impact_terms_still_reach_the_model(api, note):
 def test_head_impact_symptom_wording_is_screened(note):
     from api.contracts.training_focus import mentions_health
     assert mentions_health(note)
-
-
-@pytest.mark.parametrize("focus", ["Do more rounds on the bag.", "Use less duration per interval.",
-                                   "Add more duration to each hold."])
-def test_more_or_less_duration_and_rounds_are_workload(focus):
-    from api.contracts.training_focus import _WORKLOAD
-    assert _WORKLOAD.search(focus)
 
 
 def test_malformed_plan_metadata_does_not_break_inference():
@@ -973,3 +976,62 @@ def test_explicit_sparring_focus_does_not_trigger_the_sparring_window_read(api, 
     monkeypatch.setattr(store, "list_sparring_logs", lambda athlete_id, **kw: windows.append(kw) or real(athlete_id, **kw))
     assert [item["origin"] for item in read_items(client)] == ["athlete"]
     assert all(kw.get("with_focus") for kw in windows)
+
+
+# -- More useful coaching cues and internal mental-skill routing ----------------
+
+def test_longer_coaching_cue_gives_a_specific_how_not_just_the_problem(api):
+    client, store, fake = api
+    coaching = ("Before holding the squat, feel even pressure through both feet. "
+                "Keep that contact as you settle into position, and check whether "
+                "your weight starts shifting to one side.")
+    assert len(coaching) > 90 and len(coaching.split()) <= 45
+    fake.answer = {**SPLIT_SQUAT, "focus": coaching}
+    row = lower_body_completion(store)
+    edit_notes(client, row["id"], "I was falling to the left during split squats.")
+    assert read_items(client)[0]["focus"] == coaching
+    assert store.training_focus_inferences[0]["status"] == "ready"
+
+
+def test_mental_training_cue_can_target_sparring_without_an_exercise(api):
+    client, store, fake = api
+    cue = ("After a mistake, exhale briefly to reset your attention. "
+           "Pick one visible cue from your opponent and focus on the next exchange.")
+    fake.answer = {"focus": cue, "scope": "mental_skill", "category": "sparring",
+                   "sport": "boxing", "exercise_targets": [], "movement_patterns": []}
+    session = manual_session(client, activity="sparring", sport="boxing", session_type="sparring", effort="hard")
+    sparring_detail(client, session["id"], notes="I kept replaying my mistakes and couldn't focus.")
+    [item] = read_items(client)
+    assert item["focus"] == cue and item["scope"] == "mental_skill" and item["sport"] == "boxing"
+
+
+def test_mental_cue_for_strength_does_not_require_exercise_patterns(api):
+    client, store, fake = api
+    fake.answer = {"focus": "Choose one technique word before each lift and bring attention back to it between attempts.",
+                   "scope": "mental_skill", "category": "strength", "sport": None,
+                   "exercise_targets": [], "movement_patterns": []}
+    row = lower_body_completion(store)
+    edit_notes(client, row["id"], "My mind kept wandering in the gym.")
+    [item] = read_items(client)
+    assert item["scope"] == "mental_skill" and item["category"] == "strength"
+
+
+def test_coaching_cue_rejects_more_than_forty_five_words():
+    from api.contracts.training_focus import grounded_focus
+    long_cue = ("Check the pressure through both feet. " * 8).strip()
+    assert len(long_cue) <= 360 and len(long_cue.split()) > 45
+    assert grounded_focus(
+        InferredFocus(focus=long_cue, scope="mental_skill", category="strength"),
+        exercise_names=[], patterns=set(), categories={"strength"}, sports=set(),
+    ) is None
+
+
+def test_clinical_psychology_notes_are_not_training_cues(api):
+    client, store, fake = api
+    fake.answer = {"focus": "Take a calm breath before the next exchange.",
+                   "scope": "mental_skill", "category": "strength", "sport": None,
+                   "exercise_targets": [], "movement_patterns": []}
+    row = lower_body_completion(store)
+    edit_notes(client, row["id"], "I had a panic attack during training.")
+    assert fake.payloads == []
+    assert read_items(client) == []

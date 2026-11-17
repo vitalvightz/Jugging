@@ -243,3 +243,18 @@ for (const width of [320, 390, 1280]) {
     expect(errors).toEqual([]);
   });
 }
+
+test("History deep links select the correct tab on load and client navigation", async ({ page, baseURL }) => {
+  await setup(page, baseURL!);
+  await page.route("**/api/today/sparring-logs?*", route => route.fulfill({ json: {
+    logs: [], current_training_day: day, last_7_days: { sessions: 0, rounds: 0, hard_days: 0, heavy_head_contact_sessions: 0 },
+    last_28_days: { sessions: 0, rounds: 0, hard_days: 0, rocked_count: 0 },
+    last_hard_day: null, last_rocked_day: null,
+  } }));
+  await page.goto("/history?tab=sparring");
+  await expect(page.getByRole("tab", { name: "Sparring" })).toHaveAttribute("aria-selected", "true");
+  await page.evaluate(() => window.history.pushState({}, "", "/history?tab=sessions"));
+  await expect(page.getByRole("tab", { name: "Sessions" })).toHaveAttribute("aria-selected", "true");
+  await page.evaluate(() => window.history.pushState({}, "", "/history?tab=sparring"));
+  await expect(page.getByRole("tab", { name: "Sparring" })).toHaveAttribute("aria-selected", "true");
+});

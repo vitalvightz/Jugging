@@ -23366,3 +23366,35 @@ a, button, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .discovery-hint span { flex: 1; }
 .discovery-hint button { flex: 0 0 44px; width: 44px; height: 44px; margin: -10px -10px -10px 0; border: 0; background: transparent; color: var(--text-muted); font: inherit; font-size: 20px; cursor: pointer; }
 .discovery-hint button:focus-visible { outline: 2px solid var(--brand-red); outline-offset: 2px; }
+
+/* Persistent non-blocking coaching card, above the mobile tab bar. */
+.unlxck-coach-cue {
+  position: fixed;
+  z-index: 120;
+  right: 24px;
+  bottom: 24px;
+  width: min(440px, calc(100vw - 32px));
+  max-height: min(70dvh, 480px);
+  overflow-y: auto;
+  border: 1px solid var(--border-strong);
+  border-top: 2px solid var(--brand-red);
+  border-radius: var(--radius-card);
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, .55);
+  padding: 18px;
+}
+.unlxck-coach-cue-heading { display: flex; align-items: center; gap: 12px; }
+.unlxck-coach-cue-mark { border-radius: 11px; flex: none; }
+.unlxck-coach-cue-heading > div { display: grid; gap: 2px; }
+.unlxck-coach-cue-heading strong { font-size: 13px; letter-spacing: .12em; }
+.unlxck-coach-cue-heading span { font-size: 12px; color: var(--text-secondary); }
+.unlxck-coach-cue-close { margin-left: auto; align-self: flex-start; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 24px; line-height: 1; min-width: 32px; min-height: 32px; }
+.unlxck-coach-cue > p { margin: 16px 0; font-size: 15px; line-height: 1.6; }
+.unlxck-coach-cue-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; color: var(--text-secondary); font-size: 12px; }
+.unlxck-coach-cue-footer a { color: var(--text-primary); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.unlxck-coach-cue-dismiss { width: 100%; margin-top: 16px; min-height: 44px; background: var(--brand-red); border: 1px solid var(--brand-red); border-radius: var(--radius-btn); color: #fff; font-weight: 700; cursor: pointer; }
+.unlxck-coach-cue-dismiss:hover { background: var(--brand-red-hover); }
+@media (max-width: 960px) {
+  .unlxck-coach-cue { left: 16px; right: 16px; width: auto; bottom: calc(var(--mobile-tab-bar-clearance) + 12px); max-height: calc(100dvh - var(--mobile-tab-bar-clearance) - 40px); padding: 16px; }
+}

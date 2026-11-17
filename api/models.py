@@ -2433,7 +2433,7 @@ class TrainingFocusItem(BaseModel):
     focus: str
     training_day: str
     sport: str | None = None
-    scope: Literal["specific_exercise", "movement_pattern", "general_quality", "sport_technique"] | None = None
+    scope: Literal["specific_exercise", "movement_pattern", "general_quality", "sport_technique", "mental_skill"] | None = None
     category: str | None = None
     exercise_targets: list[str] = Field(default_factory=list)
     movement_patterns: list[str] = Field(default_factory=list)

@@ -1491,7 +1491,7 @@ export function TodaySessionPanel({
     ? relevantFocusItem(visibleFocus, focusTarget, (item) => item.origin === "athlete")
     : null;
   const sessionCue = focusBeforeWork
-    ? relevantFocusItem(visibleFocus, focusTarget, (item) => item.origin === "inferred" && item.scope === "sport_technique")
+    ? relevantFocusItem(visibleFocus, focusTarget, (item) => item.origin === "inferred" && (item.scope === "sport_technique" || item.scope === "mental_skill"))
     : null;
 
   return (

@@ -145,6 +145,17 @@ export function inferredFocusFits(item: TrainingFocusItem, target: FocusTarget):
   if (item.scope === "sport_technique") {
     return Boolean(item.sport) && item.sport === target.sport && focusFitsSession(target);
   }
+  if (item.scope === "mental_skill") {
+    if (item.sport && item.sport !== target.sport) return false;
+    if (item.category === "sparring" || item.category === "technique") {
+      return Boolean(item.sport) && focusFitsSession(target);
+    }
+    const category = item.category;
+    return Boolean(category && target.session && (
+      String(target.session.session_type ?? "").toLowerCase().split("_").includes(category) ||
+      target.session.blocks?.some((block) => String(block.block_type ?? "").toLowerCase() === category)
+    ));
+  }
   const names = exerciseNames(target.session);
   if (item.scope === "specific_exercise") {
     const targets = item.exercise_targets.map(focusWords).filter(Boolean);
@@ -206,7 +217,7 @@ export function exerciseCues(
   for (const block of blocks) {
     if (!block.block_id) continue;
     const cue = relevantFocusItem(focus, { session: { blocks: [block] }, contactLeads: false, sport: null },
-      (item) => item.origin === "inferred" && item.scope !== "sport_technique" && !placed.has(item.id));
+      (item) => item.origin === "inferred" && item.scope !== "sport_technique" && item.scope !== "mental_skill" && !placed.has(item.id));
     if (!cue) continue;
     cues[block.block_id] = cue;
     placed.add(cue.id ?? "");

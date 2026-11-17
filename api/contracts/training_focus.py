@@ -32,11 +32,11 @@ def _load() -> list[tuple[str, tuple[str, ...]]]:
 PATTERNS = _load()
 PATTERN_IDS = frozenset(pattern for pattern, _ in PATTERNS)
 
-FocusScope = Literal["specific_exercise", "movement_pattern", "general_quality", "sport_technique"]
+FocusScope = Literal["specific_exercise", "movement_pattern", "general_quality", "sport_technique", "mental_skill"]
 FocusCategory = Literal["strength", "conditioning", "technique", "sparring", "mobility"]
 FocusSourceKind = Literal["sparring_log", "manual_takeaway", "plan_completion"]
 
-FOCUS_MAX_CHARS = 90
+FOCUS_MAX_CHARS = 360
 _NON_WORD = re.compile(r"[^a-z0-9]+")
 
 
@@ -104,6 +104,7 @@ _HEALTH = re.compile(
     r"black(ed)? ?out|knocked (out|down)|rocked|ko|numb\w*|tingl\w*|swell\w*|swollen|sprain\w*|strain(ed)?|"
     r"tweak\w*|pulled (a|my)|bleed\w*|blood\w*|bruis\w*|fractur\w*|broken|tendon\w*|tendin\w*|ligament\w*|"
     r"acl|mcl|physio\w*|doctor\w*|medic\w*|rehab\w*|flare\w*|cramp\w*|blurr\w*|seeing stars|faint\w*|"
+    r"panic attack\w*|self[- ]harm\w*|suicid\w*|depress\w*|severe anxiety|anxiety attack\w*|mental health crisis|"
     r"sick|ill|fever\w*|chest tight\w*|can'?t breathe|migraine\w*|stiff neck|whiplash|"
     # Head impact in any wording: never a training cue, whatever the note asks.
     r"head ?(contact|shots?|hits?|impacts?|knocks?|trauma|injur\w*)|"
@@ -117,16 +118,6 @@ _HEALTH = re.compile(
     r"blank(ed)? out|lights? (went )?out)\b",
     re.IGNORECASE,
 )
-# A cue is technique or attention only. It never changes the prescribed work.
-_WORKLOAD = re.compile(
-    r"\d|\b(increase\w*|decrease\w*|reduce\w*|add(ing)? (weight|load|sets?|reps?|rounds?|volume)|heavier|lighter|"
-    r"more (sets?|reps?|rounds?|weight|load|volume)|fewer|extra|skip\w*|deload\w*|push through|max(imal|imum)?|"
-    r"failure|ignore\w*|instead of|replace\w*|swap\w*|rest (day|longer)|(less|more|shorter|longer) rest|"
-    r"(faster|slower) pace|(more|less|longer|shorter) (duration|rounds?|sets?)|harder)\b",
-    re.IGNORECASE,
-)
-
-
 def mentions_health(text: str) -> bool:
     return bool(_HEALTH.search(text or ""))
 
@@ -136,9 +127,9 @@ def grounded_focus(inferred: InferredFocus, *, exercise_names: list[str], patter
     """The model's answer kept only when every match field is grounded in the
     noted day's context; None otherwise (no suggestion beats a wrong one)."""
     text = " ".join((inferred.focus or "").split())
-    if not text or len(text) > FOCUS_MAX_CHARS or inferred.scope is None or inferred.category is None:
+    if not text or len(text) > FOCUS_MAX_CHARS or len(text.split()) > 45 or inferred.scope is None or inferred.category is None:
         return None
-    if mentions_health(text) or _WORKLOAD.search(text):
+    if mentions_health(text):
         return None
     if inferred.category not in categories:
         return None
@@ -166,8 +157,10 @@ def grounded_focus(inferred: InferredFocus, *, exercise_names: list[str], patter
         # Transfer must name where it applies; a bare "strength" never matches.
         if not chosen:
             return None
-    elif inferred.scope == "sport_technique":
-        if inferred.category not in {"technique", "sparring"}:
+    elif inferred.scope in {"sport_technique", "mental_skill"}:
+        if inferred.scope == "sport_technique" and inferred.category not in {"technique", "sparring"}:
+            return None
+        if inferred.category in {"technique", "sparring"} and not sport:
             return None
         targets, chosen = [], []
     return {"focus": text, "scope": inferred.scope, "category": inferred.category, "sport": sport,

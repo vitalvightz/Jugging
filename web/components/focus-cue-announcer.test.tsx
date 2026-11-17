@@ -41,6 +41,11 @@ test("a saved note is answered with its cue once it is ready", async () => {
     await act(async () => watchNoteFocusCue({ token: "t", kind: "sparring_log", sourceId: "log-1" }));
     await wait(80);
     assert.match(app.text(), /Next time: Turn your hips through each hook\./);
+    assert.match(app.text(), /UNLXCK COACH/);
+    assert.match(app.text(), /Saved to History/);
+    assert.equal(document.querySelector('a[href="/history?tab=sparring"]')?.textContent, "View in History →");
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Close UNLXCK Coach feedback"]')?.click());
+    assert.equal(document.querySelector('[aria-label="UNLXCK Coach feedback"]'), null);
     assert.equal(app.urls.length, 3);
     assert.match(app.urls[0], /\/api\/training\/focus-cues\/sparring_log\/log-1$/);
     assert.equal(refreshed, 1);
@@ -79,4 +84,15 @@ test("History shows a ready cue under its note and nothing otherwise", async () 
     await act(async () => root.render(<FocusCueLine cue={null} />));
     assert.equal(container.querySelector(".history-row-cue"), null);
   } finally { await act(async () => root.render(null)); container.remove(); }
+});
+
+test("plan and manual training cues link to Sessions history", async () => {
+  for (const kind of ["plan_completion", "manual_takeaway"] as const) {
+    const app = await mount([{ status: "ready", id: "cue-1", focus: "Check foot pressure as you lower." }]);
+    try {
+      await act(async () => watchNoteFocusCue({ token: "t", kind, sourceId: "note-1" }));
+      await wait(80);
+      assert.equal(document.querySelector('a[href="/history?tab=sessions"]')?.textContent, "View in History →");
+    } finally { await app.cleanup(); }
+  }
 });
