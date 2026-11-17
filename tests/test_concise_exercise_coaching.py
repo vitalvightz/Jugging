@@ -9,6 +9,7 @@ import pytest
 
 from api.structured_plan_coaching import recover_selected_coaching
 from api.services.effective_structured_plan import resolve_effective_structured_plan
+from api.exercise_identity import reconcile_progression_context
 from fightcamp.coaching_copy import concise_coaching, short_cue
 from fightcamp.exercise_coaching import exercise_coaching
 from fightcamp.exercise_progression import build_progression_context, occurrence_key
@@ -30,7 +31,8 @@ def test_saved_examples_are_idempotent_preserve_dose_and_retain_every_warning(re
     assert original == record["card"]
     assert recover_selected_coaching(after, record["brief"]) == after
     api = resolve_effective_structured_plan({"structured_plan": original, "planning_brief": record["brief"]})
-    assert blocks(api) == blocks(after)
+    # API reads also derive planner-owned progression holds and rep ranges.
+    assert blocks(api) == blocks(reconcile_progression_context(after, record["brief"]))
     for before, current in zip(blocks(original), blocks(after)):
         assert {k: current.get(k) for k in DOSE} == {k: before.get(k) for k in DOSE}
         assert all(option in before.get("regression_options", []) for option in current.get("regression_options", []))

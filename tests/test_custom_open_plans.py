@@ -453,7 +453,7 @@ def test_generated_cards_cannot_claim_athlete_authority_or_private_media(api):
     assert block["sets"] == 3 and block["load"]["value"] == 80
 
 
-def test_readiness_and_severe_injury_still_gate_execution(api):
+def test_readiness_and_severe_injury_warnings_allow_logging(api):
     client, store = api
     _, row, day = current_plan(api)
     session_id = _structured_day_for_training_day(row, day)[0]["sessions"][0]["session_id"]
@@ -463,8 +463,8 @@ def test_readiness_and_severe_injury_still_gate_execution(api):
     response = client.post("/api/today/session-completion", headers=AUTH, json={
         "plan_id": row["id"], "session_id": session_id, "status": "started",
     })
-    assert response.status_code == 409
-    assert not store.session_completions.get("athlete-1")
+    assert response.status_code == 201
+    assert store.get_session_completion("athlete-1", session_id, day)["status"] == "started"
 
 
 @pytest.mark.parametrize("session_type", ["skill", "sparring"])

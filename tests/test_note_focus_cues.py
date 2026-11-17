@@ -7,8 +7,11 @@ from uuid import uuid4
 from api.routes import today as today_routes
 from tests.support import withdraw_health_consent
 from tests.test_training_focus_inference import (  # noqa: F401 - fixture
-    AUTH, SPLIT_SQUAT, api, edit_notes, lower_body_completion, manual_session, save_takeaway, sparring_detail,
+    AUTH, SPLIT_SQUAT, api as focus_api, edit_notes, lower_body_completion, manual_session, save_takeaway, sparring_detail,
 )
+
+# Re-export the shared fixture without an unused import shadowed by test parameters.
+api = focus_api
 
 BOXING = {"focus": "Turn your hips through each hook.", "scope": "sport_technique", "category": "sparring",
           "sport": "boxing", "exercise_targets": [], "movement_patterns": []}

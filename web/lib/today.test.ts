@@ -443,8 +443,8 @@ test("severe injury override supersedes the daily recommendation banner", () => 
   const banner = getInjuryOverrideBanner(stateWithInjuries([makeInjury()]), "Hard sparring");
 
   assert.ok(banner);
-  assert.equal(banner?.chip, "INJURY HOLD");
-  assert.equal(banner?.title, "Session blocked");
+  assert.equal(banner?.chip, "CHECK");
+  assert.equal(banner?.title, "Training caution");
   assert.equal(banner?.displayState, "injury_blocked");
   assert.equal(banner?.tone, "red");
   assert.match(banner?.detail ?? "", /Active severe injury: Chest bruise/);
@@ -457,7 +457,7 @@ test("can't-train-normally keeps the same hold without a severe medical label", 
   const injury = makeInjury({ description: "chest bruise [training_impact:cant_train]" });
   const banner = getInjuryOverrideBanner(stateWithInjuries([injury]), "Hard sparring");
 
-  assert.equal(banner?.chip, "INJURY HOLD");
+  assert.equal(banner?.chip, "CHECK");
   assert.equal(banner?.displayState, "injury_blocked");
   assert.match(banner?.detail ?? "", /^Can't train normally: /);
   assert.doesNotMatch(banner?.detail ?? "", /severe/i);
@@ -562,14 +562,7 @@ test("Today session card uses short preview wording and Next session label", () 
   assert.equal(source.includes('kicker: "Next session"'), true);
   assert.equal(source.includes('kicker: "Next scheduled session"'), false);
   assert.equal(source.includes("Available ${when} after check-in."), true);
-  assert.equal(source.includes("resolvedDecision.blocksCurrentSession"), true);
-  assert.equal(source.includes("resolvedDecision.severeInjuryBlocksCurrentSession"), true);
-  assert.equal(
-    source.includes("Blocked by an active severe injury."),
-    true,
-  );
-  assert.equal(source.includes('href="#today-injury"'), true);
-  assert.equal(source.includes("Open injury check-in"), true);
+
 });
 
 test("Today recommendation styles keep preview neutral, modify amber, and pull-back red", () => {
@@ -782,7 +775,7 @@ test("isHardCombatSession reads load + status, not technical/rest", () => {
 
 test("safe session names the blocked work and lists allowed/blocked", () => {
   const view = getSafeSessionView("Technical sparring");
-  assert.match(view.detail, /Technical sparring is blocked today/);
+  assert.match(view.detail, /Training caution: reconsider technical sparring today/);
   assert.equal(view.title, "Recovery / mobility only");
   assert.equal(view.allowed.length, 5);
   assert.equal(view.allowed.includes("Light bike or walk"), true);
@@ -1014,7 +1007,7 @@ test("safe session copy never contradicts the menu it shows", () => {
 
   // The standard stop day keeps the original coach copy.
   const standard = getSafeSessionView("Technical sparring");
-  assert.match(standard.detail, /Technical sparring is blocked today/);
+  assert.match(standard.detail, /Training caution: reconsider technical sparring today/);
   assert.match(standard.detail, /keep the body moving without adding stress/);
 });
 
@@ -1196,7 +1189,7 @@ test("a severe injury does not block a safe filler session (injury_hold_exempt)"
   const severe = makeInjury({ severity: "severe", status: "open" });
   const normalState: TodayCommandView = { ...BASE_STATE, open_injuries: [severe] };
   // Normally a severe injury forces the INJURY HOLD override banner.
-  assert.equal(getInjuryOverrideBanner(normalState)?.chip, "INJURY HOLD");
+  assert.equal(getInjuryOverrideBanner(normalState)?.chip, "CHECK");
   // On a filler day the backend exempts the hold, so no override banner shows.
   const fillerState: TodayCommandView = {
     ...BASE_STATE,

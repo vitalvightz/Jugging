@@ -3,7 +3,6 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from fastapi import HTTPException
 
 from api.contracts.external_training import ExternalTrainingCreate
 from api.contracts.readiness_message import ReadinessCheckin, ReadinessContext, build_readiness_adjustment
@@ -195,7 +194,7 @@ def test_local_day_and_explicit_backdate_preserve_occurrence(zone, now, day):
 
 
 @pytest.mark.parametrize("restriction", ["neurological", "severe_injury"])
-def test_day_credit_cannot_bypass_current_stop_or_injury(restriction):
+def test_explicit_report_replaces_day_credit_under_advisory_warnings(restriction):
     store = make_store()
     report(store)
     if restriction == "neurological":
@@ -205,10 +204,9 @@ def test_day_credit_cannot_bypass_current_stop_or_injury(restriction):
     else:
         store.create_injury_flag(ATHLETE, {
             "body_area": "knee", "description": "Knee injury", "severity": "severe", "status": "open"})
-    with pytest.raises(HTTPException) as rejected:
-        report(store, "sibling")
-    assert rejected.value.status_code == 409
-    assert store.get_session_completion(ATHLETE, "sibling", DAY)["completion_origin"] == "day_credit"
+    row = report(store, "sibling")
+    assert row["status"] == "done"
+    assert store.get_session_completion(ATHLETE, "sibling", DAY)["completion_origin"] == "reported"
 
 
 def test_route_preserves_daily_xp_streaks_week_progress_and_history(monkeypatch):

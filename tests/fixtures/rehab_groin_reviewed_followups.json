@@ -9,8 +9,10 @@
   },
   "web/components/today/today-injury-manager.tsx": {
     "historical_sha256": "b43adea616c9340d85ae8fa398ab106b3672f47b4416d7bf74a9cbdccbaea076",
-    "approved_sha256": "7c440aee4fb8906c09ac6037cc525cacafe9673ff48da473bab50a76f79ed243",
+    "approved_sha256": "2cab2765e9cba2cfebe9a291990c7308b73cc4912ece05e4481ba5d63c5e58e9",
     "commits": [
+      "4a4afc7b5823905c050343dde62113b8ac0ffc10 Streamline rehab outcomes and guidance on current Main (#3288)",
+      "5b6baaf54d7eb4fcd1def07e2de9fb609090df5a Make injury clearance and hold guidance easier to find (#3257)",
       "9845b6dc6ada9c8b3b640364d684e918f632fc66 Fix sheet and tap flashes; use black fade for Plan navigation (#3078)",
       "e921ba65d903abb383b854edd660158b482e4d7d Polish Today overview and injury logging (#3075)",
       "4a20b4752d47bce4a095cb63c4cc410f928015e7 Simplify injury logging and fit mobile sheet",

@@ -129,8 +129,12 @@ def test_future_work_holds_and_saved_history_is_not_rewritten(mutation):
     held = view(bundle).live_prescription
     if held and held.get("frozen"):
         assert held["safety_hold"]
-    with pytest.raises(HTTPException):
-        execute(bundle, live)
+    if mutation in {"withdraw", "episode"}:
+        # Withdrawn authority / episode identity still requires a fresh session.
+        with pytest.raises(HTTPException):
+            execute(bundle, live)
+    else:
+        assert execute(bundle, live)["status"] == "started"
     assert bundle[0].session_completions[bundle[3]][0]["prescription_snapshot"] == snapshot
 
 

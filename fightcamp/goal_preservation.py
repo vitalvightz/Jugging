@@ -709,7 +709,7 @@ def _other_stimuli(role: dict, pools: dict, phase: str, brief: dict) -> list[dic
         bank_interval = (_number(dose_source.get("work_sec")), _number(dose_source.get("rounds")))
         # The member's own effective dose wins over the bank dose: composition
         # may partition high-load rounds, and the persisted pool is compacted.
-        for field in ("work_sec", "rest_sec", "rounds", "rpe"):
+        for field in ("work_sec", "rest_sec", "rounds", "rpe", "distance_m", "distance_segments_m", "recovery_mode"):
             if member.get(field) is not None:
                 dose_source[field] = member[field]
         if member.get("effective_rounds") is not None:

@@ -40,13 +40,20 @@ def test_current_medical_reports_stop_today_despite_full_clearance(context, text
     assert current.today.decision_tier == "stop"
     assert "medical advice" in current.today.recommendation_reason.lower()
     assert current.live_prescription is None or current.live_prescription["safety_hold"]
-    for status in ("started", "done", "modified"):
-        with pytest.raises(HTTPException) as blocked:
+    if text in {"neck pain", "chest pain", "pain breathing"}:
+        # These reports change the offered rehab session identity. Advisory
+        # warnings do not permit logging the superseded session.
+        with pytest.raises(HTTPException, match="use the current session"):
             today_service.upsert_session_completion(context[0], athlete_id=context[1], athlete_timezone="UTC", now=NOW,
-                payload=dict(plan_id=context[2], session_id="session-1", status=status,
-                             session_rpe=1, modification_reason="Reduced session"))
-        assert blocked.value.status_code == 409
-    assert context[0].get_session_completion(context[1], "session-1", DAY) is None
+                payload=dict(plan_id=context[2], session_id="session-1", status="started"))
+        assert context[0].get_session_completion(context[1], "session-1", DAY) is None
+        return
+    for status in ("started", "done", "modified"):
+        row = today_service.upsert_session_completion(context[0], athlete_id=context[1], athlete_timezone="UTC", now=NOW,
+            payload=dict(plan_id=context[2], session_id="session-1", status=status,
+                         session_rpe=1, modification_reason="Reduced session"))
+        assert row["status"] == status
+    assert context[0].get_session_completion(context[1], "session-1", DAY)["status"] == "modified"
 
 
 @pytest.mark.parametrize("field", ["body_area", "description"])
@@ -91,9 +98,9 @@ def test_new_medical_hold_preserves_frozen_acceptance_and_allows_honest_stop(con
     assert current.today.decision_tier == "stop" and live["safety_hold"]
     assert live["session"] == snapshot["session"] and live["revision"] == snapshot["revision"]
     for status in ("started", "done", "modified"):
-        with pytest.raises(HTTPException) as blocked:
-            execute(context, live, status, session_rpe=1, modification_reason="Reduced session")
-        assert blocked.value.status_code == 409
+        row = execute(context, live, status, session_rpe=1, modification_reason="Reduced session",
+                      rehab_performance="changed")
+        assert row["status"] == status
     stopped = execute(context, live, "modified", modification_reason="Stopped on dizziness", rehab_performance="stopped")
     assert stopped["prescription_snapshot"] == snapshot
     assert stopped["rehab_performance"] == "stopped"

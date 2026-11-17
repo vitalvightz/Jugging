@@ -96,6 +96,9 @@ function installFetchStub(state: BackendState): () => void {
     if (url.includes("/api/generation-jobs/")) {
       return json(state.job);
     }
+    if (url.includes("/api/plans/active")) {
+      return json(null);
+    }
     throw new Error(`unexpected request: ${url}`);
   }) as typeof fetch;
 

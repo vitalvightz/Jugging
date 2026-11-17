@@ -2918,28 +2918,24 @@ class TestSessionCompletion:
         )
 
     @pytest.mark.parametrize("training_status", ["started", "done", "modified"])
-    def test_active_severe_injury_blocks_training_completion(self, training_status):
-        # Server-side hold: a severe injury rejects actually training the session,
-        # so the block is enforced at the API, not just hidden in the UI.
+    def test_active_severe_injury_warning_allows_training_completion(self, training_status):
+        # PR #3211 made the warning advisory; valid logging remains available.
         store = _store_with_plan()
         self._add_severe_injury(store)
         payload = self._payload(status=training_status)
         if training_status == "modified":
             payload["modification_reason"] = "tried anyway"
-        with pytest.raises(HTTPException) as exc:
-            upsert_session_completion(store, athlete_id=ATHLETE, athlete_timezone="", payload=payload)
-        assert exc.value.status_code == 409
-        assert "severe injury" in exc.value.detail.lower()
+        row = upsert_session_completion(store, athlete_id=ATHLETE, athlete_timezone="", payload=payload)
+        assert row["status"] == training_status
 
-    def test_severe_injury_easing_still_blocks_completion(self):
-        # Monitoring status must not open completion.
+    def test_severe_injury_monitoring_allows_completion(self):
+        # Monitoring retains the advisory logging behavior.
         store = _store_with_plan()
         self._add_severe_injury(store, status="monitoring")
-        with pytest.raises(HTTPException) as exc:
-            upsert_session_completion(
-                store, athlete_id=ATHLETE, athlete_timezone="", payload=self._payload(status="done")
-            )
-        assert exc.value.status_code == 409
+        row = upsert_session_completion(
+            store, athlete_id=ATHLETE, athlete_timezone="", payload=self._payload(status="done")
+        )
+        assert row["status"] == "done"
 
     def test_severe_injury_still_allows_skipping_the_session(self):
         # The athlete can still log that they backed off.
@@ -3136,10 +3132,9 @@ class TestRetroLogCompletion:
 
     def test_todays_date_in_training_day_behaves_like_the_normal_flow(self):
         store = _store_with_plan()
-        # The normal flow: today's session needs today's check-in.
-        with pytest.raises(HTTPException) as exc:
-            self._upsert(store, training_day="2026-06-19", status="started")
-        assert exc.value.status_code == 409
+        # Logging remains available before and after today's check-in.
+        row = self._upsert(store, training_day="2026-06-19", status="started")
+        assert row["status"] == "started"
         submit_today_checkin(store, athlete_id=ATHLETE, athlete_timezone="", payload=_checkin_payload(), now=self.NOW)
         row = self._upsert(store, training_day="2026-06-19", status="started")
         assert row["training_day"] == "2026-06-19"
@@ -3185,10 +3180,9 @@ class TestRetroLogCompletion:
         )
         row = self._upsert(store, training_day="2026-06-16")
         assert row["status"] == "done"
-        # The same status logged for today stays blocked.
-        with pytest.raises(HTTPException) as exc:
-            self._upsert(store)
-        assert exc.value.status_code == 409
+        # Advisory warnings also allow the same status to be logged today.
+        row = self._upsert(store)
+        assert row["status"] == "done"
 
     def test_structured_plan_rejects_days_outside_the_plan(self):
         store = self._structured_store()
@@ -3434,19 +3428,17 @@ class TestSessionTimingAuthority:
         assert session_is_today(self._view(store, day=22)) is False
 
 
-class TestCheckInRequiredToLog:
-    """One rule (session_hold): today's session needs today's check-in, for everyone."""
+class TestAdvisoryCheckInLogging:
+    """Check-in guidance stays visible while logging remains available."""
 
     NOW = datetime(2026, 6, 19, 12, 0, tzinfo=timezone.utc)
 
-    def test_logging_today_without_a_check_in_is_refused(self):
+    def test_logging_today_without_a_check_in_is_allowed(self):
         store = _store_with_plan()
         for status in ("started", "done"):
-            with pytest.raises(HTTPException) as exc:
-                upsert_session_completion(store, athlete_id=ATHLETE, athlete_timezone="",
-                                          payload={"plan_id": PLAN, "session_id": "sess-1", "status": status}, now=self.NOW)
-            assert exc.value.status_code == 409
-            assert exc.value.detail == "Complete today's check-in before starting."
+            row = upsert_session_completion(store, athlete_id=ATHLETE, athlete_timezone="",
+                                      payload={"plan_id": PLAN, "session_id": "sess-1", "status": status}, now=self.NOW)
+            assert row["status"] == status
 
     def test_check_in_unlocks_logging(self):
         store = _store_with_plan()

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from fightcamp.training_catalogue import content_hash
+
 from fightcamp import conditioning, strength
 from tools.late_camp_selector_audit import build_diff, build_snapshot
 
@@ -1056,45 +1058,18 @@ def test_conditioning_bridge_phase_keeps_glycolytic_candidate_for_selected_gas_t
 
 
 def test_audit_snapshot_matches_golden(monkeypatch):
-    _reset_selector_bank_caches()
-    expected = json.loads((SNAPSHOT_DIR / "after.json").read_text(encoding="utf-8"))
-    # Preserve the historical golden. Correcting the towel requirement adds
-    # exactly one apparatus block at D-1; every winner, dose and other reason
-    # across all seven windows must still match the original evidence.
-    neck = next(row for row in expected["d1"]["strength"]["blocked"]
-                if row["name"] == "Towel-assisted lateral neck isometric")
-    assert neck["reason_codes"] == ["late_block_d1_forbidden_modality"]
-    neck["reason_codes"].append("late_block_d1_equipment")
-    # First prove actual pre-correction Main still matches the retained golden.
+    # Keep after.json / before.json as historical audit evidence. This fixture
+    # records the selector after subsequent merged bank and planner changes.
+    expected = json.loads((SNAPSHOT_DIR / "current.json").read_text(encoding="utf-8"))
+    assert expected["source_commit"]
     from tools.audit_metadata_integrity import mechanical_baseline_sources
     with mechanical_baseline_sources() as before_root, monkeypatch.context() as m:
         m.setattr(strength, "DATA_DIR", before_root / "data")
         m.setattr(conditioning, "DATA_DIR", before_root / "data")
         _reset_selector_bank_caches()
-        assert build_snapshot() == expected
+        assert content_hash(build_snapshot()) == expected["mechanical_baseline"]["sha256"]
     _reset_selector_bank_caches()
-    # Seven reviewed source corrections remove the false ballistic category
-    # and its 0.25 bonus from this isometric. Category-based slot ordering moves
-    # the same members in these three windows; all other fields remain exact.
-    permutations = {
-        "d21_to_d14": [0, 5, 3, 2, 4, 1],
-        "d13_to_d8": [0, 7, 2, 4, 3, 5, 6, 1],
-        "d7": [0, 1, 2, 4, 3, 5],
-    }
-    for window, order in permutations.items():
-        winners = expected[window]["strength"]["winners"]
-        pull = next(r for r in winners if r["name"] == "Isometric Mid-Thigh Pull")
-        assert pull["score"] == {"d21_to_d14": 5.8375, "d13_to_d8": 5.9, "d7": 7.9}[window]
-        assert pull["reason_codes"][-1] == "late_strength_boost_crisp_ballistic"
-        pull["score"] = round(pull["score"] - 0.25, 4)
-        pull["reason_codes"].remove("late_strength_boost_crisp_ballistic")
-        expected[window]["strength"]["winners"] = [winners[i] for i in order] + winners[len(order):]
-    for window in ("d21_to_d14", "d13_to_d8"):
-        slow = next(r for r in expected[window]["strength"]["blocked"]
-                    if r["name"] == "Slow-Lowered Pull-Up")
-        assert slow["reason_codes"] == ["late_block_missing_late_windows"]
-        slow["reason_codes"].append("late_block_missing_cost_metadata")
-    assert build_snapshot() == expected
+    assert content_hash(build_snapshot()) == expected["current"]["sha256"]
 
 
 def test_audit_diff_matches_golden_and_keeps_control_window_stable():

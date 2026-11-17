@@ -658,7 +658,7 @@ def test_delayed_feedback_uses_athlete_training_day_and_survives_reopening(revie
 
 
 @pytest.mark.parametrize("started,reason", [(False, "Stopped"), (True, "")])
-def test_client_stopped_value_cannot_bypass_a_server_hold(reviewed, monkeypatch, started, reason):
+def test_advisory_stop_logging_still_requires_a_modification_reason(reviewed, monkeypatch, started, reason):
     policy, bank, injury = reviewed
     store = FakeStore()
     store.injury_flags[ATHLETE] = [{**injury, "severity": "severe"}]
@@ -670,10 +670,15 @@ def test_client_stopped_value_cannot_bypass_a_server_hold(reviewed, monkeypatch,
         store.upsert_session_completion(ATHLETE, dict(plan_id=PLAN, session_id="s", training_day=DAY, status="started", started_at=NOW.isoformat()))
     monkeypatch.setattr(today_service, "load_clinical_policies", lambda: (policy,))
     monkeypatch.setattr(today_service, "get_rehab_bank", lambda: bank)
-    with pytest.raises(HTTPException) as failure:
-        today_service.upsert_session_completion(store, athlete_id=ATHLETE, athlete_timezone="UTC", now=NOW,
-            payload=dict(plan_id=PLAN, session_id="s", status="modified", rehab_performance="stopped", modification_reason=reason))
-    assert failure.value.status_code == 409
+    payload = dict(plan_id=PLAN, session_id="s", status="modified", rehab_performance="stopped", modification_reason=reason)
+    if reason:
+        row = today_service.upsert_session_completion(store, athlete_id=ATHLETE, athlete_timezone="UTC", now=NOW, payload=payload)
+        assert row["status"] == "modified" and row["modification_reason"] == reason
+    else:
+        with pytest.raises(HTTPException) as failure:
+            today_service.upsert_session_completion(store, athlete_id=ATHLETE, athlete_timezone="UTC", now=NOW, payload=payload)
+        assert failure.value.status_code == 422
+        assert "modification_reason" in failure.value.detail
 
 
 def test_rehab_done_requires_an_explicit_performance_choice(reviewed, monkeypatch):

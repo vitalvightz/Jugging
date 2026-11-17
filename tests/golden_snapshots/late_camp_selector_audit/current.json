@@ -1,0 +1,260 @@
+{
+  "source_commit": "c1951541457737350d0e11584209ec3b649a2019",
+  "capture_note": "Current selector output after merged catalogue updates and approved CI allocation fixes. Historical before.json and after.json remain unchanged.",
+  "mechanical_baseline": {
+    "sha256": "1ac385a4e2ac0231e11b8eab0a2f9e63c440407436249715a22a412a620d813b",
+    "winners": {
+      "control_d28": {
+        "strength": [
+          "Deadbug (Band-Resisted)",
+          "Wall ISO Deadbug",
+          "Single-Leg Balance (Eyes Closed)"
+        ],
+        "conditioning": [
+          "Snapdown to Quick Hop",
+          "Standing Stance-Set Cue"
+        ]
+      },
+      "d21_to_d14": {
+        "strength": [
+          "Punch-Specific Max Isometric Hold",
+          "Overcoming Split-Squat Isometric",
+          "Isometric Mid-Thigh Pull",
+          "Band Row Speed Focus",
+          "Pressure-Fighter Staggered Body-Shot Med-Ball Throw",
+          "Band-Resisted Jab-Cross Primer",
+          "Jump Squat",
+          "Box Jump",
+          "Trap Bar Deadlift",
+          "Adductor Squeeze Isometric",
+          "Mobility Reset Flow",
+          "Quadruped thread-the-needle",
+          "Wall scap push-up plus",
+          "Serratus wall slide",
+          "Lead-leg single-leg stance with guard",
+          "Four-way manual neck isometric"
+        ],
+        "conditioning": [
+          "Easy Assault Bike",
+          "Bridge Tempo Touch: 2-3 x 90 sec Technical Tempo",
+          "Explosive Boxing Burst Intervals",
+          "Band-Resisted Straight Punch Release"
+        ]
+      },
+      "d13_to_d8": {
+        "strength": [
+          "Punch-Specific Max Isometric Hold",
+          "Staggered-Stance Medicine-Ball Punch Throw",
+          "Band-Resisted Jab-Cross Primer",
+          "Isometric Mid-Thigh Pull",
+          "Band Row Speed Focus",
+          "Pressure-Fighter Staggered Body-Shot Med-Ball Throw",
+          "Overcoming Split-Squat Isometric",
+          "Box Jump",
+          "Jump Squat",
+          "Adductor Squeeze Isometric",
+          "Mobility Reset Flow",
+          "Quadruped thread-the-needle",
+          "Wall scap push-up plus",
+          "Serratus wall slide",
+          "Lead-leg single-leg stance with guard",
+          "Wall angel partial range"
+        ],
+        "conditioning": [
+          "Easy Assault Bike",
+          "Overhead Med Ball Slam (Snappy)",
+          "Pull-Counter-Reset"
+        ]
+      },
+      "d7": {
+        "strength": [
+          "Punch-Specific Max Isometric Hold",
+          "Staggered-Stance Medicine-Ball Punch Throw",
+          "Band Row Speed Focus",
+          "Isometric Mid-Thigh Pull",
+          "Seated Medicine-Ball Punch Throw",
+          "Technical Shadowboxing Tempo",
+          "Adductor Squeeze Isometric"
+        ],
+        "conditioning": [
+          "Easy Assault Bike",
+          "Reactive Med Ball Chest Pass",
+          "Pull-Counter-Reset"
+        ]
+      },
+      "d6_to_d5": {
+        "strength": [
+          "Punch-Specific Max Isometric Hold",
+          "Staggered-Stance Medicine-Ball Punch Throw",
+          "Band Row Speed Focus",
+          "Seated Medicine-Ball Punch Throw",
+          "Technical Shadowboxing Tempo",
+          "Pressure-Fighter Staggered Body-Shot Med-Ball Throw",
+          "Adductor Squeeze Isometric"
+        ],
+        "conditioning": [
+          "Easy Assault Bike",
+          "Reactive Med Ball Chest Pass",
+          "Pull-Counter-Reset"
+        ]
+      },
+      "d4_to_d2": {
+        "strength": [
+          "Staggered-Stance Medicine-Ball Punch Throw",
+          "Band Row Speed Focus",
+          "Seated Medicine-Ball Punch Throw",
+          "Technical Shadowboxing Tempo",
+          "Pressure-Fighter Staggered Body-Shot Med-Ball Throw",
+          "Light Heavy-Bag Technical Tempo",
+          "Adductor Squeeze Isometric"
+        ],
+        "conditioning": [
+          "Easy Assault Bike",
+          "Standing Stance-Set Cue"
+        ]
+      },
+      "d1": {
+        "strength": [
+          "Serratus wall slide",
+          "Standing scapular CARs",
+          "Lead-foot pivot prep",
+          "Wall thoracic rotation sweep",
+          "Toe-yoga tripod reset",
+          "Boxer stance weight-shift hold"
+        ],
+        "conditioning": [
+          "Final Readiness Cue Reset",
+          "Slip-Return Shadow Cue"
+        ]
+      }
+    }
+  },
+  "current": {
+    "sha256": "f6268c7706638a31bc2b4808736e2086bf7f592e6b00bb571e5f62c2bb07f7be",
+    "winners": {
+      "control_d28": {
+        "strength": [
+          "Deadbug (Band-Resisted)",
+          "Wall ISO Deadbug",
+          "Single-Leg Balance (Eyes Closed)"
+        ],
+        "conditioning": [
+          "Snapdown to Quick Hop",
+          "Standing Stance-Set Cue"
+        ]
+      },
+      "d21_to_d14": {
+        "strength": [
+          "Punch-Specific Max Isometric Hold",
+          "Band-Resisted Jab-Cross Primer",
+          "Band Row Speed Focus",
+          "Isometric Mid-Thigh Pull",
+          "Pressure-Fighter Staggered Body-Shot Med-Ball Throw",
+          "Overcoming Split-Squat Isometric",
+          "Jump Squat",
+          "Box Jump",
+          "Trap Bar Deadlift",
+          "Adductor Squeeze Isometric",
+          "Mobility Reset Flow",
+          "Quadruped thread-the-needle",
+          "Wall scap push-up plus",
+          "Serratus wall slide",
+          "Lead-leg single-leg stance with guard",
+          "Four-way manual neck isometric"
+        ],
+        "conditioning": [
+          "Easy Assault Bike",
+          "Bridge Tempo Touch: 2-3 x 90 sec Technical Tempo",
+          "Explosive Boxing Burst Intervals",
+          "Band-Resisted Straight Punch Release"
+        ]
+      },
+      "d13_to_d8": {
+        "strength": [
+          "Punch-Specific Max Isometric Hold",
+          "Box Jump",
+          "Band-Resisted Jab-Cross Primer",
+          "Band Row Speed Focus",
+          "Isometric Mid-Thigh Pull",
+          "Pressure-Fighter Staggered Body-Shot Med-Ball Throw",
+          "Overcoming Split-Squat Isometric",
+          "Staggered-Stance Medicine-Ball Punch Throw",
+          "Jump Squat",
+          "Adductor Squeeze Isometric",
+          "Mobility Reset Flow",
+          "Quadruped thread-the-needle",
+          "Wall scap push-up plus",
+          "Serratus wall slide",
+          "Lead-leg single-leg stance with guard",
+          "Wall angel partial range"
+        ],
+        "conditioning": [
+          "Easy Assault Bike",
+          "Overhead Med Ball Slam (Snappy)",
+          "Pull-Counter-Reset"
+        ]
+      },
+      "d7": {
+        "strength": [
+          "Punch-Specific Max Isometric Hold",
+          "Staggered-Stance Medicine-Ball Punch Throw",
+          "Band Row Speed Focus",
+          "Seated Medicine-Ball Punch Throw",
+          "Isometric Mid-Thigh Pull",
+          "Technical Shadowboxing Tempo",
+          "Adductor Squeeze Isometric"
+        ],
+        "conditioning": [
+          "Easy Assault Bike",
+          "Reactive Med Ball Chest Pass",
+          "Pull-Counter-Reset"
+        ]
+      },
+      "d6_to_d5": {
+        "strength": [
+          "Punch-Specific Max Isometric Hold",
+          "Staggered-Stance Medicine-Ball Punch Throw",
+          "Band Row Speed Focus",
+          "Seated Medicine-Ball Punch Throw",
+          "Technical Shadowboxing Tempo",
+          "Pressure-Fighter Staggered Body-Shot Med-Ball Throw",
+          "Adductor Squeeze Isometric"
+        ],
+        "conditioning": [
+          "Easy Assault Bike",
+          "Reactive Med Ball Chest Pass",
+          "Pull-Counter-Reset"
+        ]
+      },
+      "d4_to_d2": {
+        "strength": [
+          "Staggered-Stance Medicine-Ball Punch Throw",
+          "Band Row Speed Focus",
+          "Seated Medicine-Ball Punch Throw",
+          "Technical Shadowboxing Tempo",
+          "Pressure-Fighter Staggered Body-Shot Med-Ball Throw",
+          "Light Heavy-Bag Technical Tempo",
+          "Adductor Squeeze Isometric"
+        ],
+        "conditioning": [
+          "Easy Assault Bike",
+          "Standing Stance-Set Cue"
+        ]
+      },
+      "d1": {
+        "strength": [
+          "Serratus wall slide",
+          "Standing scapular CARs",
+          "Lead-foot pivot prep",
+          "Wall thoracic rotation sweep",
+          "Toe-yoga tripod reset",
+          "Boxer stance weight-shift hold"
+        ],
+        "conditioning": [
+          "Final Readiness Cue Reset",
+          "Slip-Return Shadow Cue"
+        ]
+      }
+    }
+  }
+}

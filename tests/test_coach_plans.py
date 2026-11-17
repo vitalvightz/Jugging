@@ -145,7 +145,8 @@ def test_draft_assign_preview_activate_history_and_supersede(plans):
     send(client, other)
     assert client.post(f"{ASSIGNMENTS}/{other['id']}/activate", headers=AS_FIGHTER, json={'overlap_action': 'pause'}).status_code == 200
     assert store.plans[plan_id]['status'] == 'ready'
-    assert client.get(ASSIGNMENTS, headers=AS_FIGHTER).json()[0]['assignment_status'] == 'superseded'
+    assignments = client.get(ASSIGNMENTS, headers=AS_FIGHTER).json()
+    assert next(item for item in assignments if item['id'] == row['id'])['assignment_status'] == 'superseded'
     # An old activation retry must not switch back after the next assignment.
     current = store.get_active_plan_id(FIGHTER)
     assert client.post(f"{ASSIGNMENTS}/{row['id']}/activate", headers=AS_FIGHTER, json={}).status_code == 200

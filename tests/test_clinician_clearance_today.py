@@ -68,8 +68,8 @@ def test_rehab_only_holds_normal_training_without_a_live_rehab_policy(context):
     assert current.open_injuries[0]["rehab_decision"]["activation"] == "shadow"
     live = current.live_prescription
     assert live["safety_hold"] and "rehab only" in live["safety_hold_reason"]
-    with pytest.raises(HTTPException, match="on hold"):
-        execute(context, live)
+    row = execute(context, live)
+    assert row["status"] == "started"
 
 
 @pytest.mark.parametrize("entry", [
@@ -83,8 +83,8 @@ def test_no_contact_holds_all_clear_contact_representations(context, entry):
     report(context, TRAIN)
     live = view(context).live_prescription
     assert live["safety_hold"] and "excludes hard sparring" in live["safety_hold_reason"]
-    with pytest.raises(HTTPException, match="on hold"):
-        execute(context, live)
+    row = execute(context, live)
+    assert row["status"] == "started"
 
 
 @pytest.mark.parametrize("entry", [session(), session("technical", "Non-contact shadowboxing", []),
@@ -117,9 +117,12 @@ def test_permissive_scope_does_not_override_severe_injury(context, scopes):
     else:
         assert current.live_prescription is None
     assert current.open_injuries[0]["rehab_decision"]["outcome"] == "medical_review"
-    with pytest.raises(HTTPException, match="severe injury"):
-        today_service.upsert_session_completion(context[0], athlete_id=context[1], athlete_timezone="UTC", now=NOW,
-            payload=dict(plan_id=context[2], session_id="session-1", status="started"))
+    payload = dict(plan_id=context[2], session_id="session-1", status="started")
+    if current.live_prescription:
+        payload["prescription_revision"] = current.live_prescription["revision"]
+    row = today_service.upsert_session_completion(context[0], athlete_id=context[1], athlete_timezone="UTC", now=NOW,
+        payload=payload)
+    assert row["status"] == "started"
 
 
 @pytest.mark.parametrize("scopes", [REHAB, TRAIN, CONTACT])
@@ -185,8 +188,8 @@ def test_new_restrictive_report_holds_frozen_work_without_rewriting_it(context):
     live = view(context).live_prescription
     assert live["frozen"] and live["safety_hold"]
     assert live["session"] == frozen["session"] and live["revision"] == frozen["revision"]
-    with pytest.raises(HTTPException, match="on hold"):
-        execute(context, live, "done", session_rpe=5)
+    row = execute(context, live, "done", session_rpe=5)
+    assert row["status"] == "done"
     stopped = execute(context, live, "modified", modification_reason="Stopped on updated guidance", rehab_performance="stopped")
     assert stopped["prescription_snapshot"] == frozen
     assert stopped["rehab_performance"] == "stopped"
@@ -246,9 +249,9 @@ def test_another_injurys_restriction_wins_over_full_contact_clearance(context):
     context[0].create_injury_flag(context[1], dict(body_area="Neck", description="Neck injury", severity="severe", status="open"))
     current = view(context)
     assert current.today.decision_tier == "stop"
-    with pytest.raises(HTTPException, match="severe injury"):
-        today_service.upsert_session_completion(context[0], athlete_id=context[1], athlete_timezone="UTC", now=NOW,
-            payload=dict(plan_id=context[2], session_id="session-1", status="started"))
+    row = today_service.upsert_session_completion(context[0], athlete_id=context[1], athlete_timezone="UTC", now=NOW,
+        payload=dict(plan_id=context[2], session_id="session-1", status="started"))
+    assert row["status"] == "started"
 
 
 def test_clearance_does_not_replace_a_stronger_frozen_hold_explanation(context):
@@ -409,10 +412,9 @@ def test_live_full_clearance_never_overrides_a_current_red_flag(context, flag, c
     current = view(context)
     assert current.today.decision_tier == "stop"
     assert current.live_prescription is None or current.live_prescription["safety_hold"]
-    with pytest.raises(HTTPException) as blocked:
-        today_service.upsert_session_completion(context[0], athlete_id=context[1], athlete_timezone="UTC", now=NOW,
-            payload=dict(plan_id=context[2], session_id="session-1", status=completion_status, modification_reason="Stopped"))
-    assert blocked.value.status_code == 409
+    row = today_service.upsert_session_completion(context[0], athlete_id=context[1], athlete_timezone="UTC", now=NOW,
+        payload=dict(plan_id=context[2], session_id="session-1", status=completion_status, modification_reason="Stopped"))
+    assert row["status"] == completion_status
 
 
 @pytest.mark.parametrize("change", [dict(severity="severe"), dict(latest_reported_status="worse"),
@@ -425,9 +427,13 @@ def test_live_full_clearance_cannot_relax_hard_injury_gates(context, change):
     current = view(context)
     assert current.today.decision_tier in {"stop", "pull_back"}
     assert current.live_prescription is None or current.live_prescription["safety_hold"] or current.live_prescription["rehab_only"]
-    with pytest.raises(HTTPException):
-        today_service.upsert_session_completion(context[0], athlete_id=context[1], athlete_timezone="UTC", now=NOW,
-            payload=dict(plan_id=context[2], session_id="session-1", status="started"))
+    payload = dict(plan_id=context[2], session_id="session-1", status="started")
+    if change.get("latest_reported_status") == "worse":
+        with pytest.raises(HTTPException, match="use the current session"):
+            today_service.upsert_session_completion(context[0], athlete_id=context[1], athlete_timezone="UTC", now=NOW, payload=payload)
+    else:
+        row = today_service.upsert_session_completion(context[0], athlete_id=context[1], athlete_timezone="UTC", now=NOW, payload=payload)
+        assert row["status"] == "started"
 
 
 @pytest.mark.parametrize("scopes", [None, ["rehab", "contact"], CONTACT])

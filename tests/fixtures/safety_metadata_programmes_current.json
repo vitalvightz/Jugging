@@ -1,0 +1,38 @@
+{
+  "base_commit": "f13aaf2abaa75d8145b62f20b827a141078becf4",
+  "clock_utc": "2026-10-11 09:00",
+  "python_hash_seed": 0,
+  "input_fixture": "tests/fixtures/tag_retirement_plans.json",
+  "plans": [
+    {
+      "case": "boxing_gpp_power_conditioning",
+      "plan_text_sha256": "70fb4fe3d680af8d7fc05b156b5b495785a56f1cf0ce57bcf979eb90b09411a4",
+      "stage2_payload_sha256": "f646056cab00c844bc7316795d92777e6a908dd7008ef8384dfa65b5799f58d7"
+    },
+    {
+      "case": "mma_spp_counter_striker",
+      "plan_text_sha256": "e65fdc1d471b548efa407528f954d76a63106711e5ed7857e97e3544b2f35a3b",
+      "stage2_payload_sha256": "3e04f6d3e3f81a6f2662cdeb45d0e095e5fca89576d112dba7e31c32eb2c8ab5"
+    },
+    {
+      "case": "boxing_taper_shoulder_limited",
+      "plan_text_sha256": "ccd58c54e8c1b32d1b3792913e7112f435839a33014ef153fa74e4095d91b502",
+      "stage2_payload_sha256": "ce542c565d4f05e13180eae08e56f126ebffef8e8a606fa0aad80b9c36a3012e"
+    },
+    {
+      "case": "boxing_final_day",
+      "plan_text_sha256": "2647d9bae8fcdabce010a37bd184d044802a96b64a9c7db7d305f99b07d9e124",
+      "stage2_payload_sha256": "26e1b5b96c81a9e61ab420e9131418a359d5d47e1cf530e165f4d5059e9bffff"
+    },
+    {
+      "case": "mma_taper_no_equipment",
+      "plan_text_sha256": "3a3808f39cb7f6b30a1214070732dd6fe4f9f5cef5b454932ca62cddc3f6d012",
+      "stage2_payload_sha256": "81cdde465d14f53fdafd18f2a263f11bb54b7437d3625cb6813c1488ed120b56"
+    },
+    {
+      "case": "kickboxing_taper_speed",
+      "plan_text_sha256": "1c8ee742503825ecb976d572edfa12f14777c75644b021188e9ae90dfda3788e",
+      "stage2_payload_sha256": "567a1b6b5da3b581748f913404dacf7c3633daea012e9e17d87ac68cef909382"
+    }
+  ]
+}

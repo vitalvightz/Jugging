@@ -996,6 +996,7 @@ def test_stage_pass_clears_future_schedule_on_stop_stage_without_erasing_history
 def test_existing_worker_observes_stage_dates_before_followup_scheduling(monkeypatch):
     calls = []
     monkeypatch.setenv("NOTION_TOKEN", "test")
+    monkeypatch.setattr(sync, "quarantine_duplicate_profiles", lambda: 0)
     for name in ("sync_stage_history", "sync", "sync_scorecard"):
         def record(name=name):
             calls.append(name)
@@ -1011,6 +1012,7 @@ def test_existing_worker_observes_stage_dates_before_followup_scheduling(monkeyp
 def test_worker_isolates_scorecard_failure_and_reports_failed_run(monkeypatch, capsys, failures):
     calls = []
     monkeypatch.setenv("NOTION_TOKEN", "test")
+    monkeypatch.setattr(sync, "quarantine_duplicate_profiles", lambda: 0)
     for name in ("sync_scorecard", "sync_stage_history", "sync"):
         def record(name=name):
             calls.append(name)

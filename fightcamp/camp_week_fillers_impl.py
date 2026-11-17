@@ -277,6 +277,32 @@ def _fill_week(
     # is the authority on occupancy: an occupied day is not a free day here, and
     # sharing one stays with the declared-day pass below.
     placed_day_counts = _role_day_counts(session_roles)
+    injury_shared_added = False
+    if athlete_model.get("has_active_injury") and not any(
+            role.get("role_key") in {"mobility_rehab", "joint_prep"}
+            for role in usage_ledger.get("coverage_roles", [])):
+        # A full training-day budget can still host gentle injury support on
+        # an existing day. Try that before a passive free-day filler spends
+        # the entire week's allowance. Selection and calendar legality remain
+        # with the normal filler owners.
+        for day in clean_list(week.get("declared_training_days")):
+            if placed_day_counts.get(_canonical_day(day), 0) != 1:
+                continue
+            probe = _select_filler_for_day(
+                week, athlete_model, day, weekly_role_map=weekly_role_map,
+                week_ordinal=week_ordinal, usage_ledger=deepcopy(usage_ledger),
+                allow_physical=_week_physical_filler_count(session_roles) < 1,
+            )
+            if probe is None or probe[0].get("role_key") not in {"mobility_rehab", "joint_prep"}:
+                continue
+            insert = _place_filler(
+                week, session_roles, athlete_model, day, weekly_role_map=weekly_role_map,
+                week_ordinal=week_ordinal, usage_ledger=usage_ledger, allow_physical=True,
+            )
+            if insert is not None:
+                added += 1
+                injury_shared_added = True
+                break
     for day_entry in week.get("intentionally_unused_days") or []:
         if added >= cap or not _unused_day_is_fillable(day_entry):
             kept_unused.append(day_entry)
@@ -309,7 +335,7 @@ def _fill_week(
     if added >= cap:
         return
     day_counts = _role_day_counts(session_roles)
-    shared_added = 0
+    shared_added = int(injury_shared_added)
     for day in clean_list(week.get("declared_training_days")):
         if added >= cap or shared_added >= _MAX_SHARED_DAY_FILLERS:
             break

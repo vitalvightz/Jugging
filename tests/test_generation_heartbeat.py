@@ -73,15 +73,14 @@ def test_heartbeat_stops_and_signals_cancellation_when_status_changes_externally
                 "job-1", store, stop_event, on_cancelled=lambda: cancelled_calls.append(None), interval_seconds=0.01
             )
         )
-        await asyncio.sleep(0.03)
-        writes_before_cancel = store.heartbeat_writes
-        store.status = "failed"  # external cancel/recovery flips status
-        await asyncio.sleep(0.05)
-        assert task.done()
-        # No further heartbeat writes happened once the loop noticed the
-        # external status change.
-        assert store.heartbeat_writes == writes_before_cancel
-        stop_event.set()
+        try:
+            store.status = "failed"  # external cancel/recovery flips status
+            # Wait for the observable result, not a 50ms scheduling window.
+            await asyncio.wait_for(task, timeout=5)
+            assert store.heartbeat_writes == 0
+        finally:
+            stop_event.set()
+            await task
 
     asyncio.run(scenario())
 

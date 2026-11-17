@@ -254,9 +254,9 @@ def test_today_concern_holds_training_and_preserves_other_episode(context, froze
     if frozen:
         assert current.live_prescription["frozen"]
         assert current.live_prescription["session"] == snapshot["session"]
-    with pytest.raises(HTTPException):
-        today_service.upsert_session_completion(store, athlete_id=athlete, athlete_timezone="UTC", now=NOW,
-            payload=dict(plan_id=plan, session_id="strength-1", status="done" if frozen else "started"))
+    row = today_service.upsert_session_completion(store, athlete_id=athlete, athlete_timezone="UTC", now=NOW,
+        payload=dict(plan_id=plan, session_id="strength-1", status="done" if frozen else "started"))
+    assert row["status"] == ("done" if frozen else "started")
 
 
 def test_truncated_or_forged_provenance_is_unknown(context):

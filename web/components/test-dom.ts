@@ -4,6 +4,7 @@
 // act() environment. renderToStaticMarkup tests are unaffected by a DOM being
 // present, so this can coexist with the SSR tests in the same run.
 import { JSDOM } from "jsdom";
+import { after } from "node:test";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "http://localhost/",
@@ -56,5 +57,26 @@ Object.defineProperty(globalThis, "navigator", {
 
 // React uses this flag to decide whether act() is required for updates.
 globalAny.IS_REACT_ACT_ENVIRONMENT = true;
+
+// Supabase uses Node's native BroadcastChannel when a DOM is present. Its
+// MessagePort survives React unmounts and otherwise keeps the test worker alive.
+const channels = new Set<BroadcastChannel>();
+const NativeBroadcastChannel = globalThis.BroadcastChannel;
+if (NativeBroadcastChannel) {
+  globalAny.BroadcastChannel = class extends NativeBroadcastChannel {
+    constructor(name: string) {
+      super(name);
+      channels.add(this);
+    }
+    close() {
+      channels.delete(this);
+      super.close();
+    }
+  };
+}
+after(() => {
+  for (const channel of channels) channel.close();
+  window.close();
+});
 
 export { window };
