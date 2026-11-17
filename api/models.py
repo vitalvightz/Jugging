@@ -1626,6 +1626,7 @@ class ProfileRecord(BaseModel):
 
 
 class PlanSummary(BaseModel):
+    can_delete: bool = False
     custom_plan_id: str | None = None
     plan_id: str
     plan_name: str | None = None

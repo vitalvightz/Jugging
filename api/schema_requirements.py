@@ -709,14 +709,13 @@ INDEX_REQUIREMENTS: tuple[IndexRequirement, ...] = (
         label="daily_checkins athlete/date uniqueness",
         accepted_names=("daily_checkins_athlete_date_key",),
     ),
-    # One Today check-in per athlete/plan/training-day; the store's upsert path
+    # One Today check-in per athlete/training-day; the store's upsert path
     # (api/store.py::upsert_today_checkin) depends on this conflict target.
     IndexRequirement(
-        label="today_checkins athlete/plan/training-day uniqueness",
-        accepted_names=("today_checkins_athlete_plan_day_key",),
+        label="today_checkins athlete/training-day uniqueness",
+        accepted_names=("today_checkins_athlete_day_key",),
     ),
-    # One plan-free check-in per athlete-day: the plan-scoped key above treats
-    # NULL plan_ids as distinct, so the upsert RPC targets this partial key.
+    # Retained legacy partial index for compatibility with older deployments.
     IndexRequirement(
         label="today_checkins plan-free athlete/training-day uniqueness",
         accepted_names=("today_checkins_athlete_plan_free_day_key",),
