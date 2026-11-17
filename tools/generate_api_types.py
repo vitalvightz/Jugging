@@ -187,7 +187,8 @@ class _Renderer:
             description = property_schema.get("description") if isinstance(property_schema, dict) else None
             if description:
                 lines.append(_comment(description, inner))
-            present = not self.as_request or name in required
+            # Explicit compatibility fields may be absent from older responses.
+            present = (not self.as_request or name in required) and not property_schema.get("x-response-optional", False)
             optional = "" if present else "?"
             lines.append(f"{inner}{_property_key(name)}{optional}: {self.type_of(property_schema, inner)};\n")
         if isinstance(extra, dict) and extra:

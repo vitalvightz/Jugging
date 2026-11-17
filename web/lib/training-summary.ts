@@ -1,3 +1,4 @@
+import { sessionNotes } from "./training-history";
 import { isWithinLastDays, trainingDaysAgo } from "@/lib/history";
 import type { TrainingActivity, TrainingHistorySession } from "@/lib/training-history";
 import { sportLabel, type TrainingSport } from "@/lib/training-disciplines";
@@ -78,7 +79,7 @@ export function formatTrainingDuration(minutes: number): string {
 /** Rows whose takeaway matches `query` (case-insensitive), newest first as given. */
 export function filterTakeaways(rows: readonly TrainingHistorySession[], query: string): TrainingHistorySession[] {
   const needle = query.trim().toLowerCase();
-  return rows.filter(row => row.takeaway?.trim() && (!needle || row.takeaway.toLowerCase().includes(needle)
+  return rows.filter(row => sessionNotes(row).length && (!needle || sessionNotes(row).some(note => note.toLowerCase().includes(needle))
     || row.title.toLowerCase().includes(needle)));
 }
 

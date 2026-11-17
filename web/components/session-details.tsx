@@ -1,5 +1,7 @@
 "use client";
 
+import { sessionNotes } from "@/lib/training-history";
+import { TRAINING_FOCUS_CHANGED_EVENT } from "@/lib/training-focus";
 import { useEffect, useId, useRef, useState, type ReactNode, type CSSProperties } from "react";
 import { CoachFeedback } from "./coach-feedback";
 import { getSessionDetails } from "@/lib/api";
@@ -50,7 +52,7 @@ export function SessionRow({ row, onOpen }: { row: TrainingHistorySession; onOpe
       {row.session_rpe != null ? <span>RPE {row.session_rpe}/10</span> : null}
       {coachCredit(row) ? <span>{coachCredit(row)}</span> : null}
     </div>
-    {row.takeaway?.trim() ? <p className="history-row-takeaway">{row.takeaway}</p> : null}
+    {sessionNotes(row).map(note => <p key={note} className="history-row-takeaway">{note}</p>)}
     <FocusCueLine cue={row.focus_cue} />
   </li>;
 }
@@ -341,6 +343,16 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
   const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    if (viewer === "coach") return;
+    const refresh = () => {
+      cache.delete(`${row.source}:${row.id}`);
+      setError(false);
+      setAttempt(value => value + 1);
+    };
+    window.addEventListener(TRAINING_FOCUS_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(TRAINING_FOCUS_CHANGED_EVENT, refresh);
+  }, [cache, row.source, row.id, viewer]);
+  useEffect(() => {
     const element = dialog.current;
     if (!element) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -405,9 +417,8 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
               feedback={details.athlete_id && block.feedback_ref ? <CoachFeedback key={`${row.id}:${block.feedback_ref}`} token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} exerciseRef={block.feedback_ref} editable={viewer === "coach" && details.coach_feedback_allowed} /> : undefined}
               open={expanded.has(index)} onToggle={() => setOpen(new Set(expanded.has(index) ? [...expanded].filter(item => item !== index) : [...expanded, index]))} />)}</ol>
           </section> : null}
-          {record.notes || record.takeaway ? <section className={styles.section}><h3>Notes</h3>
-            {record.notes ? <p className={styles.note}>{record.notes}</p> : null}
-            {record.takeaway ? <p className={styles.note}>Takeaway: {record.takeaway}</p> : null}</section> : null}
+          {record.notes || record.takeaway ? <section className={styles.section}><h3>Session Notes</h3>
+            {sessionNotes(record).map(note => <p key={note} className={styles.note}>{note}</p>)}</section> : null}
         </div> : null}
         {details && record && !run ? <div className={styles.recordContent}>
           {record.pain_after != null ? <p className={styles.note}>Pain after: {record.pain_after}/10</p> : null}
@@ -427,10 +438,9 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
             {details.sparring.id && details.athlete_id ? <CoachFeedback token={token} athleteId={details.athlete_id} source="sparring" targetId={details.sparring.id} editable={viewer === "coach" && details.coach_feedback_allowed} /> : null}
             {details.sparring.notes ? <p className={styles.note}>{details.sparring.notes}</p> : null}</section> : null}
           {details.message ? <p className={styles.quiet}>{details.message}</p> : null}
-          {record.notes || record.modification_reason || record.takeaway ? <section className={styles.section}><h3>Notes</h3>
+          {record.notes || record.modification_reason || record.takeaway ? <section className={styles.section}><h3>Session Notes</h3>
             {record.modification_reason ? <p className={styles.note}>Modification: {record.modification_reason}</p> : null}
-            {record.notes ? <p className={styles.note}>{record.notes}</p> : null}
-            {record.takeaway ? <p className={styles.note}>Takeaway: {record.takeaway}</p> : null}</section> : null}
+            {sessionNotes(record).map(note => <p key={note} className={styles.note}>{note}</p>)}</section> : null}
         </div> : null}
       </AutoHeight>
     </div>

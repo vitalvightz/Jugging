@@ -1,4 +1,6 @@
 "use client";
+import { sessionNotes } from "@/lib/training-history";
+import { TRAINING_FOCUS_CHANGED_EVENT } from "@/lib/training-focus";
 import { CoachFeedback } from "./coach-feedback";
 
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -55,7 +57,7 @@ import type {
   TodayCheckinHistoryRecord,
 } from "@/lib/types";
 import { LogTraining, manualSparringDraft } from "./log-training";
-import { TakeawayEditor } from "./session-takeaway";
+import { SessionNotesEditor } from "./session-takeaway";
 import { PlanSessionEditor } from "./plan-session-editor";
 import { runSummary } from "@/lib/run-time";
 import { markHistoryHintSeen } from "@/lib/history-hint";
@@ -210,7 +212,7 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
     ? countRecentBy(rows.filter(row => row.source === "external" || row.completion_origin === "reported"),
       { day: (row) => row.training_day, key: (row) => row.status, today, days: 7 })
     : null;
-  const takeawayCount = rows.filter(row => row.takeaway?.trim()).length;
+  const takeawayCount = rows.filter(row => sessionNotes(row).length).length;
   const shown = takeawaysOnly ? filterTakeaways(rows, search) : rows;
   return (
     <div className="history-tab-body">
@@ -230,10 +232,10 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
         <div className="history-takeaway-filter">
           <button type="button" className="history-chip" aria-pressed={takeawaysOnly}
             onClick={() => { setTakeawaysOnly(value => !value); setSearch(""); }}>
-            Takeaways · {takeawayCount}
+            Session Notes · {takeawayCount}
           </button>
           {takeawaysOnly ? (
-            <label className="history-exercise-search">Search takeaways
+            <label className="history-exercise-search">Search session notes
               <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="e.g. jab, guard, footwork" />
             </label>
           ) : null}
@@ -258,7 +260,7 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
         </section>
       ))}
       {!rows.length && !selectedDay ? <p className="muted">No sessions logged yet. Choose a training day to add completed activity.</p> : null}
-      {takeawaysOnly && !shown.length ? <p className="muted">No matching takeaways in the loaded history.</p> : null}
+      {takeawaysOnly && !shown.length ? <p className="muted">No matching session notes in the loaded history.</p> : null}
       <details className="history-trends"><summary>Training summary & trends</summary>
       {today ? <TrainingSummaryCard rows={rows} today={today} loadedFrom={loadedFrom}
         loading={loadingMore} error={moreError} onLoadMore={onMore}>
@@ -292,7 +294,7 @@ function SessionRows({ rows, today, token, onUpdate, onDelete, loadedFrom, loadi
           {selected.source === "external" ? <>
             <LogTraining onSparringFollowUp={followUpSparring} accessToken={token} entry={selected} historyMode onSaved={row => { onUpdate(row); setSelected(null); }} />
             {canRepeatTraining(selected) ? <LogTraining onSparringFollowUp={followUpSparring} accessToken={token} repeatEntry={selected} historyMode onSaved={row => { onUpdate(row); setSelected(null); }} /> : null}
-            <TakeawayEditor token={token} row={selected} onSaved={row => { onUpdate(row); setSelected(null); }} />
+            <SessionNotesEditor token={token} row={selected} onSaved={row => { onUpdate(row); setSelected(null); }} />
             {selected.activity === "sparring" && sparringLogs ? <button type="button" className="history-session-delete" onClick={() => {
               const log = sparringLogs.get(selected.id);
               setSparringDraft(log ? sparringReportDraft(selected.id, selected.title, log) : manualSparringDraft(selected)); setSelected(null);
@@ -421,7 +423,7 @@ function SparringRows({ history, sessions, token, onSaved, hasMore, athleteId }:
                   {manual.duration_minutes ? <span>{manual.duration_minutes} min</span> : null}
                   {manual.effort ? <span>{manual.effort.charAt(0).toUpperCase() + manual.effort.slice(1)}</span> : null}
                 </div>
-                {manual.takeaway?.trim() ? <p className="history-row-takeaway">{manual.takeaway}</p> : null}
+                {sessionNotes(manual).map(note => <p key={note} className="history-row-takeaway">{note}</p>)}
                 <FocusCueLine cue={manual.focus_cue} />
                 {token && manual.source === "external" ? (
                   <div className="history-session-actions">
@@ -638,6 +640,11 @@ function HistoryContent() {
   const token = session?.access_token ?? null;
   const userId = session?.user_id ?? null;
   const [detailsCache] = useState<SessionDetailsCache>(() => new Map());
+  useEffect(() => {
+    const invalidate = () => detailsCache.clear();
+    window.addEventListener(TRAINING_FOCUS_CHANGED_EVENT, invalidate);
+    return () => window.removeEventListener(TRAINING_FOCUS_CHANGED_EVENT, invalidate);
+  }, [detailsCache]);
   // The training day for the "last 7 days" counts, in the athlete's own
   // timezone so it matches the server-stamped days on every row even when the
   // device is set elsewhere. useTrainingDay only supplies the client-only

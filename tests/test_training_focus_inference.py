@@ -1115,3 +1115,55 @@ def test_manual_exercise_health_note_is_not_sent_to_model(api):
     cue = client.get(f"/api/training/focus-cues/manual_exercise/{entry_id}", headers=AUTH)
     assert cue.status_code == 200 and cue.json()["status"] == "none"
 
+
+
+def test_manual_exercise_thirtieth_note_stays_in_bounded_context(api):
+    client, store, fake = api
+    session = manual_session(client)
+    for index in range(29):
+        response = client.put(f"/api/training/sessions/{session['id']}/exercises/{uuid4()}", headers=AUTH,
+            json={"exercise": {"name": f"Exercise {index}"}, "format": "strength",
+                  "actual": {"sets": 1, "reps": 8}, "notes": "", "revision": 0})
+        assert response.status_code in {200, 201}, response.text
+    _manual_exercise_note(client, session["id"], str(uuid4()), "Keep my left hand up when throwing my right")
+    assert len(fake.payloads) == 1
+    exercises = fake.payloads[0]["context"]["noted_session"]["exercises"]
+    assert len(exercises) == inference._MAX_BLOCKS
+    assert exercises[0]["name"] == "Heavy Bag Power Intervals"
+
+
+def test_existing_manual_note_retry_is_explicit_and_idempotent(api, monkeypatch):
+    client, store, fake = api
+    session = manual_session(client)
+    entry_id = str(uuid4())
+    monkeypatch.setattr(inference, "get_focus_inferrer", lambda: None)
+    _manual_exercise_note(client, session["id"], entry_id, "Keep my left hand up when throwing my right")
+    monkeypatch.setattr(inference, "get_focus_inferrer", lambda: fake)
+    path = f"/api/training/focus-cues/manual_exercise/{entry_id}/retry"
+    assert not fake.payloads
+    assert client.post(path, headers=AUTH).status_code == 202
+    assert client.post(path, headers=AUTH).status_code == 202
+    assert len(fake.payloads) == 1
+    withdraw_health_consent(store)
+    assert client.post(path, headers=AUTH).status_code == 403
+    assert len(fake.payloads) == 1
+
+
+@pytest.mark.skipif(not __import__("os").getenv("RUN_LIVE_FOCUS_TEST"),
+                    reason="Opt in with RUN_LIVE_FOCUS_TEST=1 and OPENAI_API_KEY; calls the real model")
+def test_live_heavy_bag_note_in_strength_session_without_sport(monkeypatch):
+    real = inference.get_focus_inferrer()
+    assert real is not None, "OPENAI_API_KEY is required"
+    client, store, _ = _build_client()
+    monkeypatch.setattr(inference, "get_focus_inferrer", lambda: None)
+    session = manual_session(client)
+    entry_id = str(uuid4())
+    _manual_exercise_note(client, session["id"], entry_id,
+                          "I need to keep my left hand up when using my right")
+    source = inference.read_source(store, ATHLETE_ID, "manual_exercise", entry_id)
+    context = inference.build_context(store, ATHLETE_ID, "manual_exercise", source)
+    assert context["payload"]["noted_session"].get("sport") is None
+    inference.run_focus_inference(store, ATHLETE_ID, "manual_exercise", entry_id, inferrer=real)
+    cue = client.get(f"/api/training/focus-cues/manual_exercise/{entry_id}", headers=AUTH).json()
+    assert cue["status"] == "ready", cue
+    assert cue["focus"].strip()

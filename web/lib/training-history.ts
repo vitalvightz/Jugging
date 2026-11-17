@@ -85,3 +85,8 @@ export function latestRepeatableTraining(rows: TrainingHistorySession[]): Traini
   // Stable sorting retains the API's creation-time ordering within a day.
   return sortTrainingHistory(rows).find(canRepeatTraining);
 }
+
+/** Athlete notes, including historical takeaways; display identical text once. */
+export function sessionNotes(row: Pick<TrainingHistorySession, "notes" | "takeaway">): string[] {
+  return [...new Set([row.notes?.trim(), row.takeaway?.trim()].filter((text): text is string => Boolean(text)))];
+}

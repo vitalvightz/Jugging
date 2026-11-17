@@ -979,6 +979,25 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
                .get(str(source_id))) if source else None
         return NoteFocusCueResponse(**cue) if cue else NoteFocusCueResponse(status="pending")
 
+    @router.post("/api/training/focus-cues/manual_exercise/{source_id}/retry", status_code=202)
+    def retry_manual_exercise_focus(
+        source_id: UUID,
+        background_tasks: BackgroundTasks,
+        profile: ProfileRecord = Depends(require_profile),
+        store: AppStore = Depends(get_store),
+    ):
+        """Explicit athlete request for a saved note; never scans historical notes.
+
+        The normal revision claim makes repeated requests idempotent.
+        """
+        require_health_feature_access(profile)
+        source = read_source(store, profile.athlete_id, "manual_exercise", str(source_id))
+        if not source or not source["note"].strip():
+            raise HTTPException(status_code=404, detail="Exercise note not found")
+        schedule_focus_inference(background_tasks, store, profile.athlete_id, "manual_exercise",
+                                 source_id, note=source["note"], health_consent_granted=True)
+        return {"status": "accepted"}
+
     @router.delete("/api/today/training-focus/{inference_id}", status_code=204)
     def dismiss_training_focus(
         inference_id: UUID,

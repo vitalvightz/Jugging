@@ -37,13 +37,13 @@ test("the post-save prompt saves a trimmed takeaway on its own endpoint", async 
     assert.match(ui.container.textContent ?? "", /Session saved/);
     assert.match(ui.container.textContent ?? "", /Boxing · 60 minutes · Hard/);
     assert.match(ui.container.textContent ?? "", /Optional — skip anytime/);
-    assert.equal(ui.button("Add takeaway →").disabled, true);
+    assert.equal(ui.button("Add session notes →").disabled, true);
     const input = ui.container.querySelector("input")!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!.call(input, "  Right hand up  ");
       input.dispatchEvent(new window.Event("input", { bubbles: true }));
     });
-    await act(async () => ui.button("Add takeaway →").click());
+    await act(async () => ui.button("Add session notes →").click());
     await act(async () => { await Promise.resolve(); });
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url, "/api/training/sessions/box-1/takeaway");

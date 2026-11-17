@@ -2553,7 +2553,7 @@ export type SessionDetailBlock = {
   status: "as_prescribed" | "changed" | "done_as_shown" | "modified" | "skipped" | "stopped" | null;
   reason: string | null;
   notes: string | null;
-  focus_cue: string | null;
+  focus_cue?: string | null;
   completed_dose: ExposureDose | null;
   responses: ExposureResponse[];
 };

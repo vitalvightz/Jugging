@@ -96,3 +96,13 @@ test("a window counts as loaded only when every day in it is fully loaded", () =
   assert.equal(summaryWindowLoaded("2026-09-22", TODAY, 28), true);
   assert.equal(summaryWindowLoaded("2026-09-23", TODAY, 28), false);
 });
+
+test("session notes include athlete notes and historical takeaways without duplicates", () => {
+  const rows = [row({ id: "notes", notes: "Guard stayed up" }),
+    row({ id: "legacy", takeaway: "Old takeaway" }),
+    row({ id: "both", notes: "New note", takeaway: "Old reminder" }),
+    row({ id: "blank", notes: "  ", takeaway: " " })];
+  assert.deepEqual(filterTakeaways(rows, "").map(item => item.id), ["notes", "legacy", "both"]);
+  assert.deepEqual(filterTakeaways(rows, "guard").map(item => item.id), ["notes"]);
+  assert.deepEqual(filterTakeaways(rows, "reminder").map(item => item.id), ["both"]);
+});
