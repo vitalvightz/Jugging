@@ -2,10 +2,11 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getNoteFocusCue } from "@/lib/api";
 import {
-  CUE_POLL_DELAYS_MS, NOTE_FOCUS_CUE_WATCH_EVENT, noteFocusCueMessage, type NoteFocusCueWatch,
+  CUE_POLL_DELAYS_MS, NOTE_FOCUS_CUE_WATCH_EVENT, noteFocusCueMessage, type NoteFocusCueWatch, type NoteFocusSourceKind,
 } from "@/lib/focus-cue-watch";
 import { announceTrainingFocusChanged } from "@/lib/training-focus";
 import { useToast } from "./toast-provider";
@@ -19,7 +20,10 @@ const CUE_TOAST_MS = 9_000;
  */
 export function FocusCueAnnouncer({ delaysMs = CUE_POLL_DELAYS_MS }: { delaysMs?: readonly number[] } = {}) {
   const { showToast } = useToast();
-  const [card, setCard] = useState<string | null>(null);
+  const [card, setCard] = useState<{ focus: string; kind: NoteFocusSourceKind } | null>(null);
+  const pathname = usePathname();
+
+  useEffect(() => setCard(null), [pathname]);
 
   useEffect(() => {
     const running = new Map<string, () => void>();
@@ -42,7 +46,7 @@ export function FocusCueAnnouncer({ delaysMs = CUE_POLL_DELAYS_MS }: { delaysMs?
             if (cue.status === "ready" && cue.focus) {
               stop();
               if (window.location.pathname === path) {
-                setCard(cue.focus);
+                setCard({ focus: cue.focus, kind });
               } else {
                 showToast(noteFocusCueMessage(cue.focus), { tone: "info", durationMs: CUE_TOAST_MS });
               }
@@ -78,10 +82,10 @@ export function FocusCueAnnouncer({ delaysMs = CUE_POLL_DELAYS_MS }: { delaysMs?
         <button type="button" className="unlxck-coach-cue-close" aria-label="Close UNLXCK Coach feedback"
           onClick={() => setCard(null)}>×</button>
       </div>
-      <p>{noteFocusCueMessage(card)}</p>
+      <p>{noteFocusCueMessage(card.focus)}</p>
       <div className="unlxck-coach-cue-footer">
         <span>Saved to History</span>
-        <Link href="/history" onClick={() => setCard(null)}>View in History →</Link>
+        <Link href={`/history?tab=${card.kind === "sparring_log" ? "sparring" : "sessions"}`} onClick={() => setCard(null)}>View in History →</Link>
       </div>
       <button type="button" className="unlxck-coach-cue-dismiss" onClick={() => setCard(null)}>Got it</button>
     </aside>
