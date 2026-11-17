@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+from api.routes import today as today_routes
 from tests.support import withdraw_health_consent
 from tests.test_training_focus_inference import (  # noqa: F401 - fixture
     AUTH, SPLIT_SQUAT, api, edit_notes, lower_body_completion, manual_session, save_takeaway, sparring_detail,
@@ -97,3 +98,64 @@ def test_sparring_history_shows_the_cue_from_its_notes(api):
     assert response.status_code == 200, response.text
     [shown] = [item for item in response.json()["logs"] if item["id"] == log["id"]]
     assert shown["focus_cue"] == BOXING["focus"]
+
+
+def test_edited_or_cleared_plan_note_never_shows_an_old_cue(api, monkeypatch):
+    client, store, fake = api
+    fake.answer = SPLIT_SQUAT
+    row = lower_body_completion(store)
+    edit_notes(client, row["id"], "Balance on split squats was poor.")
+    assert read_cue(client, "plan_completion", row["id"])["status"] == "ready"
+
+    # Simulate the window between saving the edit and its background inference.
+    monkeypatch.setattr(today_routes, "schedule_focus_inference", lambda *args, **kwargs: None)
+    edit_notes(client, row["id"], "Balance felt better today.")
+    assert read_cue(client, "plan_completion", row["id"])["status"] == "pending"
+    assert history(client)[str(row["id"])]["focus_cue"] is None
+
+    edit_notes(client, row["id"], "")
+    assert read_cue(client, "plan_completion", row["id"])["status"] == "none"
+    assert history(client)[str(row["id"])]["focus_cue"] is None
+
+
+def test_edited_or_cleared_manual_takeaway_never_shows_an_old_cue(api, monkeypatch):
+    client, store, fake = api
+    fake.answer = {"focus": "Keep your hips square on each lunge.", "scope": "specific_exercise",
+                   "category": "strength", "sport": None, "exercise_targets": ["walking lunge"], "movement_patterns": []}
+    manual = manual_session(client)
+    client.put(f"/api/training/sessions/{manual['id']}/exercises/{uuid4()}", headers=AUTH,
+               json={"exercise": {"name": "Walking Lunge"}, "format": "strength", "actual": {"sets": 3, "reps": 10}})
+    save_takeaway(client, manual["id"], "Hips kept twisting on lunges.")
+    assert read_cue(client, "manual_takeaway", manual["id"])["status"] == "ready"
+
+    monkeypatch.setattr(today_routes, "schedule_focus_inference", lambda *args, **kwargs: None)
+    save_takeaway(client, manual["id"], "Hips were steady this session.")
+    assert read_cue(client, "manual_takeaway", manual["id"])["status"] == "pending"
+    assert history(client)[manual["id"]]["focus_cue"] is None
+
+    save_takeaway(client, manual["id"], "")
+    assert read_cue(client, "manual_takeaway", manual["id"])["status"] == "none"
+    assert history(client)[manual["id"]]["focus_cue"] is None
+
+
+def test_edited_or_cleared_sparring_notes_never_show_an_old_cue(api, monkeypatch):
+    client, store, fake = api
+    fake.answer = BOXING
+    session = manual_session(client, activity="sparring", sport="boxing", session_type="sparring", effort="hard")
+    log = sparring_detail(client, session["id"], notes="Hooks were all arm, no power.")
+    assert read_cue(client, "sparring_log", log["id"])["status"] == "ready"
+
+    def shown():
+        response = client.get("/api/today/sparring-logs", headers=AUTH)
+        assert response.status_code == 200, response.text
+        return next(item for item in response.json()["logs"] if item["id"] == log["id"])
+
+    monkeypatch.setattr(today_routes, "schedule_focus_inference", lambda *args, **kwargs: None)
+    edited = sparring_detail(client, session["id"], notes="Hooks were much cleaner.", detail_revision=2)
+    assert edited["id"] == log["id"]
+    assert read_cue(client, "sparring_log", log["id"])["status"] == "pending"
+    assert shown()["focus_cue"] is None
+
+    sparring_detail(client, session["id"], notes="", detail_revision=3)
+    assert read_cue(client, "sparring_log", log["id"])["status"] == "none"
+    assert shown()["focus_cue"] is None
