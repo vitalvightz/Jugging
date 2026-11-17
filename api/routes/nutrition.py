@@ -29,11 +29,23 @@ def _sync_weight_from_log(*, update, previous_log, today):
 
 
 def _active_plan_fight_date(store: AppStore, profile: ProfileRecord) -> str | None:
-    plan = resolve_active_plan(
-        store,
-        profile.athlete_id,
-        current_training_day=current_training_day(athlete_timezone=profile.athlete_timezone),
-    ).plan
+    # Only the fight date is used. An eligible pointer is decided from the
+    # plan's summary columns (status and fight date), as GET /api/plans/active
+    # does; every other outcome keeps the full resolution, including
+    # auto-activation and its checks on the whole row.
+    from api.routes.plans import _SummaryPlanReads
+
+    training_day = current_training_day(athlete_timezone=profile.athlete_timezone)
+    summary = resolve_active_plan(
+        _SummaryPlanReads(store), profile.athlete_id,
+        current_training_day=training_day, auto_activate=False,
+    )
+    if summary.source == "explicit":
+        plan = summary.plan
+    elif summary.source == "read_failure":
+        plan = None  # authority reads fail closed, as before
+    else:
+        plan = resolve_active_plan(store, profile.athlete_id, current_training_day=training_day).plan
     return str(plan.get("fight_date") or "") if plan else None
 
 
