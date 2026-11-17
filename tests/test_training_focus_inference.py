@@ -201,9 +201,6 @@ def test_general_pattern_feedback_is_kept_only_with_grounded_patterns(api):
     {**SPLIT_SQUAT, "scope": "general_quality", "exercise_targets": [], "movement_patterns": []},
     # A category the day does not hold.
     {**SPLIT_SQUAT, "category": "conditioning"},
-    # Workload, not technique.
-    {**SPLIT_SQUAT, "focus": "Add weight to the split squat next time."},
-    {**SPLIT_SQUAT, "focus": "Do 4 sets of split squats."},
     # Health language in the answer.
     {**SPLIT_SQUAT, "focus": "Protect the sore knee on split squats."},
     # An exercise the day lacks.
@@ -848,12 +845,25 @@ def test_warm_up_and_mindset_blocks_are_not_grounding_exercises(api):
 
 @pytest.mark.parametrize("focus", ["Use less rest between rounds.", "Take a faster pace on intervals.",
                                    "Push harder on every split squat."])
-def test_rest_pace_and_intensity_changes_are_rejected(api, focus):
+def test_workload_suggestions_are_not_silently_filtered(api, focus):
     client, store, fake = api
     fake.answer = {**SPLIT_SQUAT, "focus": focus}
     row = lower_body_completion(store)
     edit_notes(client, row["id"], "Balance on split squats was poor.")
-    assert read_items(client) == []
+    assert read_items(client)[0]["focus"] == focus
+
+
+@pytest.mark.parametrize("focus", [
+    "Increase weight on the split squat only when you can control each rep.",
+    "Reduce pressure through the front foot during the split squat.",
+    "Use 4 sets of split squats next time.",
+])
+def test_grounded_cues_allow_load_adjustments_numbers_and_technique(api, focus):
+    client, store, fake = api
+    fake.answer = {**SPLIT_SQUAT, "focus": focus}
+    row = lower_body_completion(store)
+    edit_notes(client, row["id"], "Split squats felt difficult to control.")
+    assert read_items(client)[0]["focus"] == focus
 
 
 def test_a_specific_exercise_cue_names_exactly_one_exercise(api):
@@ -893,13 +903,6 @@ def test_ordinary_words_near_head_impact_terms_still_reach_the_model(api, note):
 def test_head_impact_symptom_wording_is_screened(note):
     from api.contracts.training_focus import mentions_health
     assert mentions_health(note)
-
-
-@pytest.mark.parametrize("focus", ["Do more rounds on the bag.", "Use less duration per interval.",
-                                   "Add more duration to each hold."])
-def test_more_or_less_duration_and_rounds_are_workload(focus):
-    from api.contracts.training_focus import _WORKLOAD
-    assert _WORKLOAD.search(focus)
 
 
 def test_malformed_plan_metadata_does_not_break_inference():
