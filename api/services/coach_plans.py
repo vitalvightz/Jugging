@@ -27,6 +27,28 @@ def saved_input(row):
 
 def assignment_view(store, row):
     active = store.get_active_plan_id(row['fighter_id']) if row.get('accepted_at') else None
+    return _with_status(row, active)
+
+
+def assignment_views(store, rows):
+    """``assignment_view`` for a list, reading each fighter's active plan once.
+
+    Each accepted row needs its fighter's active-plan pointer. A list is one
+    fighter's assignments, so reading it per row repeated the same round trip.
+    """
+    pointers = {}
+    views = []
+    for row in rows:
+        active = None
+        if row.get('accepted_at'):
+            if row['fighter_id'] not in pointers:
+                pointers[row['fighter_id']] = store.get_active_plan_id(row['fighter_id'])
+            active = pointers[row['fighter_id']]
+        views.append(_with_status(row, active))
+    return views
+
+
+def _with_status(row, active):
     return {**row, 'assignment_status': (
         'active' if row.get('accepted_at') and row.get('published_plan_id') and str(active) == str(row.get('published_plan_id')) else
         'superseded' if row.get('accepted_at') else 'declined' if row.get('declined_at') else

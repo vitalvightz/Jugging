@@ -21,7 +21,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from api.contracts.custom_plans import CustomPlanInput, CoachPlan
-from api.services.coach_plans import coach_plan_fields, assignment_view, saved_input
+from api.services.coach_plans import coach_plan_fields, assignment_view, assignment_views, saved_input
 from api.services.custom_plans import schedule_issues
 from api.compliance import evaluate_profile_compliance
 from api.contracts.external_training import ExternalTrainingCreate, TrainingHistoryResponse, TrainingHistorySession
@@ -143,6 +143,19 @@ def _coach_row(row: Mapping[str, Any], fighter: ConnectedFighter) -> dict[str, A
     return safe
 
 
+class _RuntimePlanReads:
+    """A store whose owner-scoped plan read carries the runtime brief only."""
+
+    def __init__(self, store: AppStore):
+        self._store = store
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._store, name)
+
+    def get_plan_for_athlete(self, plan_id: str, athlete_id: str) -> dict[str, Any] | None:
+        return self._store.get_plan_runtime_for_athlete(plan_id, athlete_id)
+
+
 def build_coach_router(*, require_profile, get_store) -> APIRouter:
     router = APIRouter(tags=["coach"])
 
@@ -177,7 +190,7 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
 
     @router.get('/api/coach/fighters/{athlete_id}/plans', response_model=list[CoachPlan])
     def coach_plans(fighter: ConnectedFighter = Depends(connected_fighter), store: AppStore = Depends(get_store)):
-        return [assignment_view(store, row) for row in store.list_coach_plans(fighter.coach.athlete_id, fighter.profile.athlete_id)]
+        return assignment_views(store, store.list_coach_plans(fighter.coach.athlete_id, fighter.profile.athlete_id))
 
     @router.post('/api/coach/fighters/{athlete_id}/plans', response_model=CoachPlan, status_code=201)
     def create_coach_plan(body: CustomPlanInput, request_id: UUID,
@@ -355,7 +368,17 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
                      store: AppStore = Depends(get_store)):
         athlete = fighter.profile
         today = current_training_day(athlete_timezone=athlete.athlete_timezone)
-        plan = resolve_active_plan(store, athlete.athlete_id, current_training_day=today).plan
+        # Only the calendar is read here, so an eligible pointer is read with
+        # the runtime brief (no candidate_pools), as the plan calendar does.
+        # Every other outcome keeps the full resolution, auto-activation included.
+        runtime = resolve_active_plan(_RuntimePlanReads(store), athlete.athlete_id,
+                                      current_training_day=today, auto_activate=False)
+        if runtime.source == "explicit":
+            plan = runtime.plan
+        elif runtime.source == "read_failure":
+            plan = None  # authority reads fail closed, as before
+        else:
+            plan = resolve_active_plan(store, athlete.athlete_id, current_training_day=today).plan
         if not plan:
             return []
         structured = plan.get("structured_plan")
