@@ -104,6 +104,7 @@ _HEALTH = re.compile(
     r"black(ed)? ?out|knocked (out|down)|rocked|ko|numb\w*|tingl\w*|swell\w*|swollen|sprain\w*|strain(ed)?|"
     r"tweak\w*|pulled (a|my)|bleed\w*|blood\w*|bruis\w*|fractur\w*|broken|tendon\w*|tendin\w*|ligament\w*|"
     r"acl|mcl|physio\w*|doctor\w*|medic\w*|rehab\w*|flare\w*|cramp\w*|blurr\w*|seeing stars|faint\w*|"
+    r"panic attack\w*|self[- ]harm\w*|suicid\w*|depress\w*|severe anxiety|anxiety attack\w*|mental health crisis|"
     r"sick|ill|fever\w*|chest tight\w*|can'?t breathe|migraine\w*|stiff neck|whiplash|"
     # Head impact in any wording: never a training cue, whatever the note asks.
     r"head ?(contact|shots?|hits?|impacts?|knocks?|trauma|injur\w*)|"
