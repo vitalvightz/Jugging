@@ -18,9 +18,9 @@ test("loud samples are clipped instead of wrapping around", () => {
   assert.equal(view.getInt16(46, true), -0x8000);
 });
 
-test("photos are scaled to fit 2048 px without being enlarged", () => {
-  assert.deepEqual(fitWithin(4032, 3024), { width: 2048, height: 1536 });
-  assert.deepEqual(fitWithin(3024, 4032), { width: 1536, height: 2048 });
+test("photos are scaled to fit 1280 px without being enlarged", () => {
+  assert.deepEqual(fitWithin(4032, 3024), { width: 1280, height: 960 });
+  assert.deepEqual(fitWithin(3024, 4032), { width: 960, height: 1280 });
   assert.deepEqual(fitWithin(800, 600), { width: 800, height: 600 });
 });
 

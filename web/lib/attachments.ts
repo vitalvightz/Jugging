@@ -4,7 +4,8 @@
  * both again in isolation before anyone can open them, so this is a
  * convenience and size limit, never the security boundary.
  */
-export const PHOTO_MAX_SIDE = 2048;
+// Matches the server rebuild limit (supabase/functions/process-attachment/sanitize.ts).
+export const PHOTO_MAX_SIDE = 1280;
 export const PHOTO_MAX_INPUT_BYTES = 25 * 1024 * 1024;
 export const VOICE_RATE = 16_000;
 export const VOICE_MAX_SECONDS = 60;

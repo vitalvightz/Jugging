@@ -56,7 +56,7 @@ function check(name, ok, detail = "") {
 }
 const has = (bytes, text) => Buffer.from(bytes).includes(Buffer.from(text));
 
-function photo(width = 2048, height = 2048, noise = false) {
+function photo(width = 1280, height = 1280, noise = false) {
   const data = new Uint8Array(width * height * 4);
   for (let i = 0; i < data.length; i += 4) { data[i] = (i / 4) % 256; data[i + 1] = 120; data[i + 2] = 200; data[i + 3] = 255; }
   if (noise) {
@@ -99,11 +99,11 @@ try {
 
   // Independent maximum-size uploads must also work concurrently. This is a
   // production functional gate; CPU/peak-memory evidence still comes from logs.
-  const noisy = photo(2048, 2048, true);
+  const noisy = photo(1280, 1280, true);
   const maxAssets = [await reserve("photo", noisy), await reserve("photo", noisy)];
   const concurrentMax = await Promise.all(maxAssets.map(processAsset));
-  check("concurrent high-entropy 2048 x 2048 photos are rebuilt", concurrentMax.every(result =>
-    result.status === 200 && result.body.status === "ready" && result.body.width === 2048 && result.body.height === 2048),
+  check("concurrent high-entropy 1280 x 1280 photos are rebuilt", concurrentMax.every(result =>
+    result.status === 200 && result.body.status === "ready" && result.body.width === 1280 && result.body.height === 1280),
     JSON.stringify(concurrentMax));
 
   // 2. HTML pretending to be a JPEG.
