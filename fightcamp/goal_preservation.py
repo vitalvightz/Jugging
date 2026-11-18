@@ -408,12 +408,12 @@ def strength_intensity(text: str) -> dict:
     return {}
 
 
-def _slot_allowed(slot: dict, role: dict, brief: dict) -> bool:
+def _slot_allowed(slot: dict, role: dict, brief: dict, *, check_preferences: bool = True) -> bool:
     selected = slot.get("selected") or {}
     if not selected or selected.get("restriction_hits", 0) or selected.get("blocked"):
         return False
     names = role.get("preferred_exercise_names") or []
-    if names and selected.get("name") not in names:
+    if check_preferences and names and selected.get("name") not in names:
         return False
     day = role_d_day({}, role)
     allowed_by_day = (brief.get("late_fight_plan_spec") or {}).get("allowed_exercises_by_day") or {}
@@ -682,7 +682,10 @@ def _other_stimuli(role: dict, pools: dict, phase: str, brief: dict) -> list[dic
                 or member.get("slot_group", "conditioning_slots") != "conditioning_slots"):
             continue
         slot = _member_slot(member, pools, phase, "conditioning_slots")
-        if slot is None or not _slot_allowed(slot, role, brief):
+        # A preference steers selection; it is not a restriction on the exact
+        # final member selected from the closed pool. Fallback aerobic work can
+        # legitimately differ from the preferred names. Keep every safety gate.
+        if slot is None or not _slot_allowed(slot, role, brief, check_preferences=False):
             continue
         selected = slot["selected"]
         member_system = str(slot.get("role") or system or "").lower()

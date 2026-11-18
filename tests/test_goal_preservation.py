@@ -486,3 +486,23 @@ def test_malformed_timed_dose_returns_mismatch_without_exception():
     witness = {"work_sec": 120, "rounds": 3}
     assert _goal_witness_dose_matches(witness, "prose with no structured dose") is False
     assert _goal_witness_dose_matches(witness, "3 rounds") is False
+
+
+@pytest.mark.parametrize('restricted', [False, True])
+def test_selected_aerobic_fallback_counts_but_still_obeys_safety(restricted):
+    from fightcamp.goal_preservation import _other_stimuli
+    slot = {'slot_id': 'run', 'role': 'aerobic', 'selected': {
+        'name': '5K Steady Run', 'distance_m': 5000, 'duration': '5 km continuous', 'prescription': '5 km continuous',
+        'restriction_hits': int(restricted),
+    }}
+    role = _role(day=40, category='conditioning', preferred_system='aerobic',
+                 preferred_exercise_names=['Assault Bike Easy Gas Tank Ride'],
+                 selected_exercise_assignments=[{'slot_id': 'run', 'slot_group': 'conditioning_slots',
+                                                'name': '5K Steady Run', 'distance_m': 5000}])
+    evidence = _other_stimuli(role, {'GPP': {'conditioning_slots': [slot]}}, 'GPP', {'restrictions': []})
+    if restricted:
+        assert evidence == []
+    else:
+        assert len(evidence) == 1
+        assert 'energy_system_training' in evidence[0]['intents']
+        assert evidence[0]['distance_m'] == 5000
