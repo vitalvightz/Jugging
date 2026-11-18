@@ -96,11 +96,12 @@ EXERCISES, in written order (warm-up and cool-down lines written as exercises st
 - "5 km run" -> distance 5, distance_unit km. "400m" -> distance 400, distance_unit m. "2 miles" -> distance 2, distance_unit mi. Never convert between units.
 - load: the written weight or intensity ("140kg", "70% 1RM", "zone 2", "bodyweight").
 - rpe: only a single written RPE number. An RPE range ("RPE 7-8") goes in load as written.
+- tempo: a written lifting tempo ("3-1-1-0", "31X1", "3-sec eccentric", "2-sec pause"), as written; otherwise null.
 - prescription: when the written dose doesn't fit the fields above ("AMRAP 10 min", "EMOM 12", "build to a heavy single", "3-4 sets"), the dose exactly as written. Ranges like "8-10 reps" go here too.
 - equipment: written equipment ("trap bar", "18oz gloves"), otherwise null.
 - cues: the coach's technique cues for this exercise, one per item, verbatim ("drive through the floor", "chin down").
 - stop_rules: written stop or safety rules for this exercise ("stop if shoulder pain").
-- notes: any other instruction written next to the exercise (tempo words, progression notes, "last set to failure"), verbatim; otherwise null.
+- notes: any other instruction written next to the exercise (progression notes, "last set to failure"), verbatim; otherwise null.
 
 REFERENCES TO EARLIER TRAINING
 - References to earlier training ("Same as Day 1", "Repeat Day 2", "As above", "Same exercises, sets, and reps as Week 1", "Same workout as Nov 20", "Same 3-minute round protocol", "Repeat ankle + hip drills"): never an exercise of that name. A session written only as an adjustment of earlier training ("Cut 1 set from every exercise and drop weights by 15%") is a reference to the same session in the previous week, with refers_to_day "previous week". Return one item in exercises at that place with name set to the reference exactly as written, refers_to_day set to the day, week, date or session it names as written ("Day 1", "Monday", "Week 1", "Nov 20", "above" for "as above", "previous week" when it names no day but repeats this session from an earlier week; null when it names none), refers_to_section set to the part it names when it is only part of that day ("Warm-up", "ankle + hip drills"; null for the whole day), group set to the heading it is written under, notes set to any change or adjustment written with it, verbatim ("increase reps slightly if easier", "Adjustment: Add 2.5–5 kg to Trap Bar Deadlift"), and every other field empty. A whole session written only as "Same as Day 2, increase reps slightly if easier" is a session whose exercises are that single reference item. refers_to_day and refers_to_section are null for every other exercise.
@@ -120,7 +121,7 @@ def response_schema() -> dict[str, Any]:
     exercise = {
         "type": "object", "additionalProperties": False,
         "required": ["name", "sets", "reps", "seconds", "rounds", "work_seconds", "rest_seconds", "blocks", "block_rest_seconds",
-                     "distance", "distance_unit", "per_side", "load", "rpe", "prescription", "equipment", "cues", "stop_rules",
+                     "distance", "distance_unit", "per_side", "load", "rpe", "tempo", "prescription", "equipment", "cues", "stop_rules",
                      "notes", "stages", "group", "refers_to_day", "refers_to_section"],
         "properties": {
             "name": {"type": "string"},
@@ -128,7 +129,7 @@ def response_schema() -> dict[str, Any]:
             "rounds": nullable("integer"), "work_seconds": nullable("integer"), "rest_seconds": nullable("integer"),
             "blocks": nullable("integer"), "block_rest_seconds": nullable("integer"),
             "distance": nullable("number"), "distance_unit": {"type": ["string", "null"], "enum": [*DISTANCE_UNITS, None]},
-            "per_side": nullable("boolean"), "load": nullable("string"), "rpe": nullable("number"),
+            "per_side": nullable("boolean"), "load": nullable("string"), "rpe": nullable("number"), "tempo": nullable("string"),
             "prescription": nullable("string"), "equipment": nullable("string"),
             "cues": strings, "stop_rules": strings, "notes": nullable("string"),
             "stages": strings, "group": nullable("string"),
@@ -189,6 +190,7 @@ class ReadExercise(BaseModel):
     per_side: bool | None = None
     load: str | None = None
     rpe: float | None = None
+    tempo: str | None = None
     prescription: str | None = None
     equipment: str | None = None
     cues: list[str] = Field(default_factory=list)
@@ -522,7 +524,10 @@ def dose_from(item: ReadExercise, flag=lambda message: None) -> CustomDose:
     load = _clean(item.load)
     if load and len(load) > 80:
         load = None  # Kept whole in the notes by _exercise.
-    common = {"rest_seconds": rest, "load_or_intensity": load, "rpe": rpe, "per_side": True if item.per_side else None}
+    tempo = _clean(item.tempo)
+    tempo = tempo if tempo and len(tempo) <= 40 else None  # A longer one stays in the notes.
+    common = {"rest_seconds": rest, "load_or_intensity": load, "rpe": rpe, "tempo": tempo,
+              "per_side": True if item.per_side else None}
     sets, reps, seconds = _int(item.sets, 1, 100), _int(item.reps, 1, 1000), _int(item.seconds, 1, 36_000)
     rounds, work = _int(item.rounds, 1, 100), _int(item.work_seconds, 1, 36_000)
     distance = float(item.distance) if isinstance(item.distance, (int, float)) and 0 < item.distance <= 100_000 else None
@@ -598,6 +603,8 @@ def _exercise(item: ReadExercise, flag) -> dict | None:
         equipment = None
     if item.rpe is not None and dose.rpe is None:
         notes.append(f"RPE as written: {_number(item.rpe)}")
+    if _clean(item.tempo) and not dose.tempo:
+        notes.append(f"Tempo: {_clean(item.tempo)}")
     if item.rest_seconds is not None and dose.rest_seconds is None:
         notes.append(f"Rest as written: {_number(item.rest_seconds)}s")
     notes += [f"Cue: {line}" for line in extra_cues] + [f"Stop rule: {line}" for line in extra_stops]

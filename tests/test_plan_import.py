@@ -1047,3 +1047,12 @@ def test_a_second_look_that_is_no_better_is_dropped_and_a_clean_reading_gets_non
     clean = TwoReadings(_one_exercise(4, 6), None)
     _import(clean)
     assert clean.reviews == [None], "no second call when every check passes"
+
+def test_a_written_tempo_goes_in_the_builders_tempo_field():
+    reading = ReadPlan.model_validate({"name": "Plan", "weeks": [{"repeat": 1, "sessions": [{
+        "days": ["Monday"], "name": "Strength", "session_type": "strength_power",
+        "exercises": [{"name": "Back squat", "sets": 4, "reps": 5, "tempo": "3-1-1-0"},
+                      {"name": "Bench press", "sets": 3, "reps": 8, "tempo": "x" * 50}]}]}]})
+    exercises = build_draft(reading, date.fromisoformat(MONDAY)).plan["sessions"][0]["exercises"]
+    assert exercises[0]["dose"]["tempo"] == "3-1-1-0"
+    assert exercises[1]["dose"].get("tempo") is None and "Tempo: " + "x" * 50 in exercises[1]["notes"]
