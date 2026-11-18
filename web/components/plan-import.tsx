@@ -80,7 +80,7 @@ export function PlanImport({ accessToken, timezone, onReview, onCancel, forFight
     <header className={styles.head}>
       <p className="kicker">Import</p>
       <h1 id="plan-import-heading">Bring in {forFighter ? `${forFighter}'s` : "your"} plan</h1>
-      <p className={styles.lede}>Upload a PDF, a Word file or screenshots, or paste the programme. We read the sessions and exercises, then you check and edit everything before it&apos;s saved.</p>
+      <p className={styles.lede}>Upload your training programme or paste it below. We’ll turn it into an editable plan for you to review.</p>
     </header>
 
     {stage.step === "done" ? <Result stage={stage} onReview={days => onReview({ plan: withDays(stage.result.plan, stage.result.needs_day, days), name: stage.name, flags: stage.result.flags })}
@@ -118,10 +118,13 @@ export function PlanImport({ accessToken, timezone, onReview, onCancel, forFight
           accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp,image/heic,image/heif"
           onChange={event => take(event.target.files)} />
         {problem ? <p className={styles.problem} role="alert">{problem}</p> : null}
-        <ul className={styles.notes}>
-          <li>PDF and Word files stay on this device: only their text is sent. Screenshots are sent once to read them and aren&apos;t kept.</li>
-          <li>For a scanned or paper plan, take screenshots or photos of each page.</li>
-        </ul>
+        <details className={styles.handling}>
+          <summary>How your files are handled</summary>
+          <ul className={styles.notes}>
+            <li>PDF and Word files stay on this device: only their text is sent. Screenshots are sent once to read them and aren&apos;t kept.</li>
+            <li>For a scanned or paper plan, take screenshots or photos of each page.</li>
+          </ul>
+        </details>
         <button type="button" className={styles.cancel} onClick={() => { request.current?.abort(); onCancel(); }}>
           {busy ? "Cancel import" : "Back"}</button>
       </>}
