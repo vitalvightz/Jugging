@@ -79,10 +79,16 @@ class CustomDose(DraftModel):
         return self
 
 
+# What part of training an exercise is, when the session type doesn't say it
+# (a sparring drill in a "Boxing + Conditioning" day). None: from the session.
+ExerciseBlockType = Literal["preparation", "strength", "plyometric_power", "conditioning", "skill", "sparring", "cooldown_recovery"]
+
+
 class CustomExerciseInput(DraftModel):
     id: UUID
     origin: Literal["catalogue"] = "catalogue"
     catalogue_id: str = Field(min_length=1, max_length=250)
+    block_type: ExerciseBlockType | None = Field(None, json_schema_extra={"x-response-optional": True})
     dose: CustomDose = Field(default_factory=CustomDose)
     coaching_cues: list[Annotated[str, StringConstraints(max_length=500)]] | None = Field(None, max_length=10)
     stop_rules: list[Annotated[str, StringConstraints(max_length=500)]] | None = Field(None, max_length=10)
@@ -92,6 +98,7 @@ class ManualExerciseInput(DraftModel):
     id: UUID
     origin: Literal["manual"]
     exercise_type: Literal["strength", "bodyweight", "power", "other"] | None = None
+    block_type: ExerciseBlockType | None = Field(None, json_schema_extra={"x-response-optional": True})
     name: Name
     equipment: str | None = Field(None, max_length=120)
     notes: str | None = Field(None, max_length=2000)

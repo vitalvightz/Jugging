@@ -47,6 +47,9 @@ MAX_IMAGE_BYTES = 1_500_000
 JPEG_PREFIX = "data:image/jpeg;base64,"
 SESSION_TYPES = ("mixed", "strength_power", "conditioning", "skill", "sparring", "recovery", "rest")
 DISTANCE_UNITS = ("m", "km", "mi", "yd")
+# The reader's kind of exercise, as the builder's block type.
+EXERCISE_KINDS = {"warm_up": "preparation", "strength": "strength", "power": "plyometric_power", "conditioning": "conditioning",
+                  "skill": "skill", "sparring": "sparring", "recovery": "cooldown_recovery"}
 # What people write for a weekday or a distance unit, mapped to the builder's values.
 DAY_NAMES = {**{day.lower(): day for day in WEEKDAYS}, **{alias: day for day, aliases in {
     "Monday": ("mon", "mo"), "Tuesday": ("tue", "tues", "tu"), "Wednesday": ("wed", "weds", "we"),
@@ -80,7 +83,7 @@ STRUCTURE
 - A week the programme writes as a rest, recovery, deload or off week with no sessions listed is still a week object, with rest true and no sessions, so every week keeps its date. This holds for the first week too. rest is false for every other week.
 - days: every weekday written for the session, as full names, in order. One written day is a list of one. Several days written for the same session ("Tue/Thu/Sat", "Monday/Wed", "Mon, Wed & Fri", "Monday-Friday") are ONE session with all those days: ["Tuesday", "Thursday", "Saturday"]; a range covers every day in it. "Day 1", "Session A", "AM" are not weekdays: days is empty, and keep that label in the session name (e.g. "Day 1 - Strength").
 - every_week: a weekly schedule or overview ("Weekly Schedule Overview", "Each week: ...") can name sessions that recur every week but are not written out in the week sections, such as "Tue/Thu/Sat: Boxing skill work, sparring and roadwork" or "Sunday: Complete rest". Put each of those, once, in every_week (with its days), not in the weeks. An overview line that only summarises a session the week sections write out in full (e.g. "Monday: Upper Body Push/Pull" when every week has its own Monday session) is NOT repeated anywhere: leave it out. A written rest day is a session with session_type rest and no exercises. No overview: every_week is empty.
-- session_type: strength_power (lifting, plyos), conditioning (runs, intervals, circuits), skill (pads, bag, drilling, technique), sparring, recovery (mobility, stretching, easy aerobic), rest (rest days written in the programme), otherwise mixed.
+- session_type, from what the session mostly is: strength_power (lifting, plyos), conditioning (runs, intervals, circuits, roadwork), skill (pads, bag, drilling, technique, light/technical sparring), sparring (hard or full sparring), recovery (mobility, stretching, easy aerobic), rest (rest days written in the programme). mixed only when no one kind leads ("Boxing + Conditioning" with sparring and bag rounds is skill or sparring, not mixed).
 - instructions: the coach's session-level instructions or focus written for that session as a whole (e.g. "Focus: head movement, stay off the ropes"), verbatim; otherwise null.
 - date: the calendar date written for the session. As YYYY-MM-DD when the programme gives the year; when no year is written, the date exactly as written ("Wed, Nov 18"), never with a guessed year. null when no date is written.
 - A table or list that maps day labels to weekdays ("Mon (Day 1)", "Tue (Day 2)"): give each "Day N" session those weekdays in days. Rows in such a table for days with no session written out below ("Sat: Recovery / Freestyle (Optional)", "Sun: Full Rest") go in every_week.
@@ -96,6 +99,7 @@ EXERCISES, in written order (warm-up and cool-down lines written as exercises st
 - "5 km run" -> distance 5, distance_unit km. "400m" -> distance 400, distance_unit m. "2 miles" -> distance 2, distance_unit mi. Never convert between units.
 - load: the written weight or intensity ("140kg", "70% 1RM", "zone 2", "bodyweight").
 - rpe: only a single written RPE number. An RPE range ("RPE 7-8") goes in load as written.
+- kind: what this exercise is, whatever the session is: warm_up (warm-up and activation items), strength (lifts, carries, core and accessory lifting), power (jumps, throws, plyos, med ball), conditioning (runs, bike, intervals, circuits, roadwork, skipping for fitness), skill (pads, bag, shadow boxing, drilling, technical or light sparring), sparring (hard or full sparring), recovery (cool-down, stretching, mobility, breathing). Judge by the coach's words: "bag work 6 x 30s high output" is skill, "light technical rounds" is skill, "hard sparring" is sparring. null only when it can't be told.
 - tempo: a written lifting tempo ("3-1-1-0", "31X1", "3-sec eccentric", "2-sec pause"), as written; otherwise null.
 - prescription: when the written dose doesn't fit the fields above ("AMRAP 10 min", "EMOM 12", "build to a heavy single", "3-4 sets"), the dose exactly as written. Ranges like "8-10 reps" go here too.
 - equipment: written equipment ("trap bar", "18oz gloves"), otherwise null.
@@ -121,7 +125,7 @@ def response_schema() -> dict[str, Any]:
     exercise = {
         "type": "object", "additionalProperties": False,
         "required": ["name", "sets", "reps", "seconds", "rounds", "work_seconds", "rest_seconds", "blocks", "block_rest_seconds",
-                     "distance", "distance_unit", "per_side", "load", "rpe", "tempo", "prescription", "equipment", "cues", "stop_rules",
+                     "distance", "distance_unit", "per_side", "load", "rpe", "tempo", "kind", "prescription", "equipment", "cues", "stop_rules",
                      "notes", "stages", "group", "refers_to_day", "refers_to_section"],
         "properties": {
             "name": {"type": "string"},
@@ -130,6 +134,7 @@ def response_schema() -> dict[str, Any]:
             "blocks": nullable("integer"), "block_rest_seconds": nullable("integer"),
             "distance": nullable("number"), "distance_unit": {"type": ["string", "null"], "enum": [*DISTANCE_UNITS, None]},
             "per_side": nullable("boolean"), "load": nullable("string"), "rpe": nullable("number"), "tempo": nullable("string"),
+            "kind": {"type": ["string", "null"], "enum": [*EXERCISE_KINDS, None]},
             "prescription": nullable("string"), "equipment": nullable("string"),
             "cues": strings, "stop_rules": strings, "notes": nullable("string"),
             "stages": strings, "group": nullable("string"),
@@ -191,6 +196,7 @@ class ReadExercise(BaseModel):
     load: str | None = None
     rpe: float | None = None
     tempo: str | None = None
+    kind: str | None = None
     prescription: str | None = None
     equipment: str | None = None
     cues: list[str] = Field(default_factory=list)
@@ -517,10 +523,10 @@ def dose_from(item: ReadExercise, flag=lambda message: None) -> CustomDose:
     the builder can't hold (RPE 15) is flagged and kept in the notes by _exercise."""
     rest = _int(item.rest_seconds, 0, 3600)
     if item.rest_seconds is not None and rest is None:
-        flag(f"Rest of {_number(item.rest_seconds)}s doesn't fit the rest field, so it's kept in the notes.")
+        flag(f"Rest {_number(item.rest_seconds)}s is too long for the rest field. It's in the notes.")
     rpe = item.rpe if isinstance(item.rpe, (int, float)) and not isinstance(item.rpe, bool) and 1 <= item.rpe <= 10 else None
     if item.rpe is not None and rpe is None:
-        flag(f"RPE {_number(item.rpe)} isn't between 1 and 10, so it's kept in the notes.")
+        flag(f"RPE {_number(item.rpe)} isn't 1-10. It's in the notes.")
     load = _clean(item.load)
     if load and len(load) > 80:
         load = None  # Kept whole in the notes by _exercise.
@@ -557,7 +563,7 @@ def dose_from(item: ReadExercise, flag=lambda message: None) -> CustomDose:
         except ValidationError:
             pass
     if not present and not prescription:
-        flag("No sets, reps, time or distance written. Add the dose, or leave it open.")
+        flag("No dose written. Add one or leave it open.")
     try:
         return CustomDose.model_validate(common)
     except ValidationError:
@@ -576,7 +582,7 @@ def _exercise(item: ReadExercise, flag) -> dict | None:
     if not full_name:
         written = _written_dose(item) or _clean(item.prescription) or _clean(item.notes, 80)
         if written:
-            flag(f"An exercise with no name wasn't brought in: \u201c{written}\u201d. Add it by hand if it matters.")
+            flag(f"Skipped an exercise with no name: \u201c{written}\u201d.")
         return None
     name = full_name[:100]
     # A warm-up, cooldown, stretch or mobility line is done, not dosed: no dose is not a gap.
@@ -615,11 +621,11 @@ def _exercise(item: ReadExercise, flag) -> dict | None:
         notes.append(f"Repeat: {blocks} blocks of these rounds" + (f", {_duration(between)} rest between blocks" if between else ""))
         flag(f"Written as {blocks} blocks of {_number(item.rounds) + ' rounds' if item.rounds else 'rounds'}"
              + (f" with {_duration(between)} rest between blocks" if between else "")
-             + ". The dose shows one block; the repeat is in the notes.")
+             + ". The dose is one block; the repeat is in the notes.")
     stages = [line for line in (_clean(value, 300) for value in item.stages) if line]
     if stages:
         notes.append("Each round, in order:\n" + "\n".join(stages))
-        flag(f"Each round has {len(stages)} timed {'part' if len(stages) == 1 else 'parts'}. {'It is' if len(stages) == 1 else 'They are'} in the notes, in order.")
+        flag(f"{len(stages)} timed {'part' if len(stages) == 1 else 'parts'} per round, listed in the notes.")
     group = _clean(item.group, 200)
     if group:
         notes.append(f"Part of: {group}")
@@ -627,7 +633,7 @@ def _exercise(item: ReadExercise, flag) -> dict | None:
     if text and len(text) > 2000:
         flag("Notes were longer than 2,000 characters and were shortened.")
         text = text[:2000]
-    return {"id": str(uuid4()), "origin": "manual", "name": name, "equipment": equipment, "notes": text,
+    return {"id": str(uuid4()), "origin": "manual", "block_type": EXERCISE_KINDS.get(item.kind or ""), "name": name, "equipment": equipment, "notes": text,
             "coaching_cues": cues, "stop_rules": stops, "dose": dose.model_dump(exclude_none=True)}
 
 
@@ -739,7 +745,7 @@ class SourceCheck:
             return
         window = self.window(name)
         if window is None:
-            flag("Couldn't find this exercise's line in the file to double-check its numbers. Check its dose.")
+            flag("Couldn't find its line to check the numbers. Check the dose.")
             return
         # A circuit's rounds are written on its heading, not on each exercise's line.
         group = _clean(item.group)
@@ -820,7 +826,7 @@ class SourceCheck:
         elif says_per_side and not item.per_side and (item.reps or item.seconds):
             problems.append("the line says each side")
         if problems:
-            flag(f"Check the dose: {'; '.join(problems)} in \u201c{window[:120]}\u201d.")
+            flag(f"Check the dose: {'; '.join(problems)}.")
 
 
 ROLE_WORDS = {"count": "the number of sets or rounds", "reps": "reps", "work": "a work time", "rest": "a rest time", "rpe": "an RPE"}
@@ -965,7 +971,7 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
 
     for item in every_week:
         if not session_days(item):
-            flag("Every week", f"“{_clean(item.name, 80) or 'A session'}” has no day written, so it wasn't added. Add it by hand if it matters.")
+            flag("Every week", f"“{_clean(item.name, 80) or 'A session'}” has no day, so it wasn't added.")
 
     def session(item: ReadSession, index: int, label: str, scheduled: date | None, day: str | None = None) -> dict:
         kind = item.session_type if item.session_type in SESSION_TYPES else "mixed"
@@ -979,7 +985,7 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
         exercises = []
         for group in dict.fromkeys(_clean(e.group, 200) for e in item.exercises[:MAX_EXERCISES]):
             if group and re.search(r"\brounds?\b", group, re.I):
-                flag(where, f"\u201c{group}\u201d is a circuit. Each of its exercises has the circuit's rounds as its sets, and the heading (with any rest between rounds) is in their notes.")
+                flag(where, f"Circuit \u201c{group}\u201d: its rounds are each exercise's sets.")
         for exercise in item.exercises[:MAX_EXERCISES]:
             def say(message, e=exercise, where=where):
                 flag(f"{where} \u00b7 {_clean(e.name, 60)}" if _clean(e.name) else where, message)
@@ -1035,7 +1041,7 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
             first = stated - timedelta(days=stated.weekday())
         else:
             first = start
-            flag("Plan", f"No upcoming start date written, so it starts Monday {first.day} {first.strftime('%b')}. Change the start date in the builder if needed.")
+            flag("Plan", f"No start date written, so it starts Monday {first.day} {first.strftime('%b')}.")
         for number, week in enumerate(expanded):
             items = slots(week, f"{labels[number]} \u00b7 ") if week.sessions else []
             if len(items) > MAX_SESSIONS_PER_WEEK:
@@ -1065,7 +1071,7 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
         written_layout_flags(source, len(expanded), placed, flag)
     corrections_flags(read, flag, source or "")
     if source is not None and not source.strip():
-        flag("Plan", "Read from screenshots, so the numbers couldn't be double-checked against text. Compare each dose with your screenshots.")
+        flag("Plan", "Read from screenshots, so doses weren't double-checked. Compare them with your screenshots.")
     for line in read.skipped[:10]:
         if _clean(line):
             flag("Not placed", f"\u201c{_clean(line, 300)}\u201d")
@@ -1108,12 +1114,12 @@ def written_layout_flags(source: str, weeks: int, days: set[str], flag) -> None:
     but the reading doesn't have, and a training day the text never names."""
     numbers = [int(n) for pair in WEEK_NUMBERS.findall(source) for n in pair if n]
     if numbers and weeks < max(numbers) <= MAX_WEEKS:
-        flag("Plan", f"The programme writes Week {max(numbers)}, but {weeks} {'week was' if weeks == 1 else 'weeks were'} read. Check that no week is missing.")
+        flag("Plan", f"The programme mentions Week {max(numbers)}, but only {weeks} {'week was' if weeks == 1 else 'weeks were'} read.")
     written: set[str] = set()
     for first, last in WRITTEN_DAYS.findall(source):
         written.update(_days(f"{first}-{last}" if last else first))
     for day in sorted(days - written, key=WEEKDAYS.index) if written else []:
-        flag("Plan", f"{day} isn't written in the programme, but a session was placed on it. Check its day.")
+        flag("Plan", f"A session was placed on {day}, which the programme never names. Check its day.")
 
 
 def resolve_references(read: ReadPlan, flag) -> ReadPlan:
@@ -1160,7 +1166,7 @@ def resolve_references(read: ReadPlan, flag) -> ReadPlan:
                         if pool:
                             break
                 if len(pool) > 1:
-                    flag(where, f"\u201c{written}\u201d could mean more than one earlier session, so nothing was copied. Add those exercises by hand.")
+                    flag(where, f"\u201c{_clean(written, 60)}\u201d matches more than one earlier session. Nothing copied.")
                     continue
                 sources, target = pool, target or "the earlier week"
                 section = None if not section or _words(section) <= GENERIC_REFERENCE else section
@@ -1174,19 +1180,19 @@ def resolve_references(read: ReadPlan, flag) -> ReadPlan:
                         sources, tied = named[:1], len(named) > 1
                         break
                 if tied:
-                    flag(where, f"\u201c{written}\u201d could mean more than one {target} in that week, so nothing was copied. Add those exercises by hand.")
+                    flag(where, f"\u201c{_clean(written, 60)}\u201d matches more than one {target}. Nothing copied.")
                     continue
             else:
                 sources = earlier
             if not sources:
-                flag(where, f"\u201c{written}\u201d refers to {target or 'earlier training'}, which couldn't be found, so nothing was copied. Add those exercises by hand.")
+                flag(where, f"Couldn't find {target or 'the earlier session'} for \u201c{_clean(written, 60)}\u201d. Nothing copied.")
                 continue
             picked = _referenced(sources, section, item.group) if section or (not target) else sources[0].exercises
             if picked is None:
-                flag(where, f"\u201c{written}\u201d could mean more than one earlier part, so nothing was copied. Add those exercises by hand.")
+                flag(where, f"\u201c{_clean(written, 60)}\u201d matches more than one earlier part. Nothing copied.")
                 continue
             if not picked:
-                flag(where, f"\u201c{written}\u201d couldn't be matched to earlier exercises, so nothing was copied. Add them by hand.")
+                flag(where, f"Couldn't match \u201c{_clean(written, 60)}\u201d to earlier exercises. Nothing copied.")
                 continue
             change = _clean(item.notes)
             progression = read_progression(change)
@@ -1203,8 +1209,8 @@ def resolve_references(read: ReadPlan, flag) -> ReadPlan:
                 copy.copied = True
                 resolved.append(copy)
             if change and re.search(r"\d", change):
-                done = f" Applied: {'; '.join(applied)}." if applied else ""
-                flag(where, f"Copied from {label} with a written change: \u201c{change}\u201d.{done} Anything else in the change is in the notes, so update those doses if needed.")
+                done = f" Updated {len(applied)} {'dose' if len(applied) == 1 else 'doses'} to match." if applied else ""
+                flag(where, f"Copied from {label}: \u201c{_clean(change, 80)}\u201d.{done} Check the rest by hand.")
         session.exercises = resolved
     return read
 

@@ -19,11 +19,11 @@ export function customPlanInput(plan: PlanLike, fresh = false): CustomPlanInput 
       notes: s.notes?.trim() || null,
       exercises: s.exercises.map(e => e.origin === "manual"
         ? {
-            id: id(e.id), origin: e.origin, name: e.name, equipment: e.equipment, exercise_type: e.exercise_type, notes: e.notes,
+            id: id(e.id), origin: e.origin, name: e.name, equipment: e.equipment, exercise_type: e.exercise_type, block_type: e.block_type ?? null, notes: e.notes,
             media_id: e.media_id, community_id: e.community_id, community_revision_id: e.community_revision_id,
             dose: e.dose, coaching_cues: e.coaching_cues, stop_rules: e.stop_rules,
           }
-        : { id: id(e.id), origin: "catalogue" as const, catalogue_id: e.catalogue_id, dose: e.dose, coaching_cues: e.coaching_cues, stop_rules: e.stop_rules }),
+        : { id: id(e.id), origin: "catalogue" as const, catalogue_id: e.catalogue_id, block_type: e.block_type ?? null, dose: e.dose, coaching_cues: e.coaching_cues, stop_rules: e.stop_rules }),
     })),
   };
 }

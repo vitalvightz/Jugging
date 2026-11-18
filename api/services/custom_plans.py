@@ -129,7 +129,7 @@ def custom_open_plan_result(draft: dict, profile, *, training_day: str) -> dict:
                 content_type = snapshot.get("content_type") or {
                     "strength": "strength", "bodyweight": "strength", "power": "power",
                 }.get(exercise.get("exercise_type"))
-                block_type = {"conditioning": "conditioning", "skill": "skill",
+                block_type = exercise.get("block_type") or {"conditioning": "conditioning", "skill": "skill",
                               "strength": "strength", "power": "plyometric_power",
                               "speed": "speed"}.get(content_type) or {
                                   "strength_power": "strength", "conditioning": "conditioning",

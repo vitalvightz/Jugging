@@ -674,6 +674,7 @@ export type CustomExercise = {
   id: string;
   origin: "catalogue";
   catalogue_id: string;
+  block_type?: "conditioning" | "cooldown_recovery" | "plyometric_power" | "preparation" | "skill" | "sparring" | "strength" | null;
   dose: CustomDose;
   coaching_cues: string[] | null;
   stop_rules: string[] | null;
@@ -685,6 +686,7 @@ export type CustomExerciseInput = {
   id: string;
   origin?: "catalogue";
   catalogue_id: string;
+  block_type?: "conditioning" | "cooldown_recovery" | "plyometric_power" | "preparation" | "skill" | "sparring" | "strength" | null;
   dose?: CustomDoseRequest;
   coaching_cues?: string[] | null;
   stop_rules?: string[] | null;
@@ -1562,6 +1564,7 @@ export type ManualExercise = {
   id: string;
   origin: "manual";
   exercise_type: "bodyweight" | "other" | "power" | "strength" | null;
+  block_type?: "conditioning" | "cooldown_recovery" | "plyometric_power" | "preparation" | "skill" | "sparring" | "strength" | null;
   name: string;
   equipment: string | null;
   notes: string | null;
@@ -1591,6 +1594,7 @@ export type ManualExerciseInput = {
   id: string;
   origin: "manual";
   exercise_type?: "bodyweight" | "other" | "power" | "strength" | null;
+  block_type?: "conditioning" | "cooldown_recovery" | "plyometric_power" | "preparation" | "skill" | "sparring" | "strength" | null;
   name: string;
   equipment?: string | null;
   notes?: string | null;
