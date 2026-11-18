@@ -10,6 +10,7 @@
   display: grid;
   gap: 12px;
 }
+.header > :global(.ghost-button) { width: auto; justify-self: start; min-height: 44px; padding: 8px 12px; }
 .header h1:focus { outline: none; }
 .header h1 {
   font-size: clamp(24px, 5vw, 34px);
@@ -394,7 +395,7 @@
 
 .historyToolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .historyToolbar button { min-height: 40px; }
-.historyToolbar span { margin-left: auto; color: var(--text-secondary); font-size: 12px; }
+.historyToolbar > span { margin-left: auto; color: var(--text-secondary); font-size: 12px; }
 .scheduleSettings { display: grid; grid-template-columns: 2fr 1.4fr .6fr; gap: 12px; }
 .editor select { min-height: 44px; width: 100%; padding: 10px; color: var(--text-primary); background: var(--bg-input); border: 1px solid var(--border-default); border-radius: var(--radius-btn); font: inherit; }
 .calendarEditorLayout { display: grid; gap: 20px; min-width: 0; align-items: start; }
@@ -403,13 +404,18 @@
 .sessionPanel > .addSession { justify-self: start; }
 .calendarEditorLayout > div { min-width: 0; }
 .datedCalendar { min-width: 0; padding: 16px; background: var(--bg-panel); border: 1px solid var(--border-default); border-radius: 16px; }
-.calendarToolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; margin-bottom: 16px; }
-.calendarToolbar > strong { font-size: 12px; color: var(--text-secondary); }
-.calendarToolbar > div { display: flex; gap: 6px; }
-.calendarToolbar button, .calendarFooter button { min-height: 40px; padding: 8px 10px; border: 1px solid var(--border-default); border-radius: 8px; background: var(--bg-input); color: var(--text-primary); font: inherit; font-size: 12px; cursor: pointer; }
+.calendarToolbar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; margin-bottom: 16px; }
+.calendarEditorLayout .calendarHeader { position: sticky; top: 72px; z-index: 2; background: var(--bg-panel); }
+@media (min-width: 1024px) {
+  .calendarEditorLayout .calendarHeader { top: 16px; }
+}
+.calendarToolbar > strong { min-width: 0; text-align: center; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+.calendarToolbar > div { display: flex; gap: 6px; min-width: 0; }
+.calendarToolbar button, .calendarFooter button { min-height: 44px; padding: 8px 10px; border: 1px solid var(--border-default); border-radius: 8px; background: var(--bg-input); color: var(--text-primary); font: inherit; font-size: 12px; cursor: pointer; }
 .calendarToolbar button[aria-pressed="true"] { background: #84152d; border-color: #bf2446; }
+.calendarWeekdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; padding-bottom: 8px; }
 .calendarGrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
-.calendarColumn { font-size: 10px; color: var(--text-secondary); text-align: center; padding-bottom: 6px; }
+.calendarColumn { font-size: 12px; color: var(--text-secondary); text-align: center; padding-bottom: 6px; }
 .calendarDate { min-width: 0; min-height: 120px; padding: 4px; border: 1px solid var(--border-default); border-radius: 8px; background: var(--bg-input); }
 .calendarGrid[data-view="month"] .calendarDate { min-height: 76px; }
 .calendarDate[data-selected="true"] { border-color: #d82a4b; background: #221319; }
@@ -419,16 +425,17 @@
 .calendarDate[data-rest="true"] { border-style: dotted; background: transparent; }
 .datedCalendar[data-readonly="true"] .dateSelect:not(button) { cursor: default; }
 .dateSelect > span { font-size: 15px; font-weight: 600; }
-.dateSelect small { color: var(--text-secondary); font-size: 9px; }
+.dateSelect small { color: var(--text-secondary); font-size: 11px; overflow-wrap: anywhere; }
 /* Match the training history key in cards, selected-day rows and mobile dots. */
 .calendarSession, .selectedDaySessions li { --session-colour: var(--training-general); }
 .calendarSession[data-type="strength_power"], .calendarSession[data-type="conditioning"], .selectedDaySessions li[data-type="strength_power"], .selectedDaySessions li[data-type="conditioning"] { --session-colour: var(--training-strength); }
 .calendarSession[data-type="sparring"], .selectedDaySessions li[data-type="sparring"] { --session-colour: var(--training-sparring); }
 .calendarSession[data-type="recovery"], .selectedDaySessions li[data-type="recovery"] { --session-colour: var(--training-rehab); }
 .calendarSession { display: grid; gap: 5px; width: 100%; min-height: 44px; padding: 8px 5px; margin-top: 5px; border: 1px solid color-mix(in srgb, var(--session-colour) 30%, var(--border-default)); border-left: 3px solid var(--session-colour); border-radius: 6px; background: color-mix(in srgb, var(--session-colour) 8%, var(--bg-input)); color: var(--text-primary); text-align: left; cursor: grab; }
-.calendarSession strong { overflow: hidden; text-overflow: ellipsis; font-size: 10px; font-weight: 550; }
-.calendarSession small { font-size: 9px; color: #b5aab3; overflow-wrap: anywhere; }
-.calendarAdd { width: 100%; min-height: 36px; margin-top: 5px; padding: 5px 2px; border: 0; background: transparent; color: var(--text-secondary); font-size: 9px; cursor: pointer; }
+.calendarSession strong { min-width: 0; overflow-wrap: anywhere; font-size: 12px; line-height: 1.4; font-weight: 550; }
+.calendarSession small { font-size: 11px; color: #b5aab3; overflow-wrap: anywhere; }
+.calendarSession[data-attention="true"] small::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--progress-gold); }
+.calendarAdd { width: 100%; min-height: 44px; margin-top: 5px; padding: 5px 2px; border: 0; background: transparent; color: var(--text-secondary); font-size: 11px; cursor: pointer; }
 .copyBanner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid #6a2637; border-radius: 10px; background: #221319; }
 .copyBanner p { display: grid; gap: 2px; margin: 0; min-width: 0; font-size: 12px; }
 .copyBanner p strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
@@ -458,9 +465,9 @@
 .quickControls { display: flex; gap: 8px; flex-wrap: wrap; padding: 6px 0; }
 .quickControls button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--border-default); border-radius: 7px; background: var(--bg-input); color: var(--text-secondary); font-size: 11px; }
 .quickDose { padding: 14px; border: 1px solid var(--border-default); border-radius: 10px; background: var(--bg-panel); }
-@media (min-width: 1100px) {
-  .calendarEditorLayout { grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); }
-  .calendarEditorLayout > div:first-child { position: sticky; top: 24px; }
+@media (min-width: 1600px) {
+  .calendarEditorLayout { grid-template-columns: minmax(0, 2fr) minmax(340px, 1fr); }
+  .calendarEditorLayout > .sessionPanel { position: sticky; top: 24px; }
   .calendarEditorLayout .dayView { grid-template-columns: minmax(0, 1fr); }
   .calendarEditorLayout .emptyDay { padding: 20px 12px; }
 }
@@ -475,21 +482,21 @@
   .calendarSession strong { font-size: 8px; line-height: 1.5; }
   .dateSelect { padding: 4px; }
   .dateSelect small { font-size: 8px; }
-  .calendarToolbar { gap: 8px; }
-  .calendarToolbar > strong { order: 3; flex-basis: 100%; font-size: 11px; }
+  .calendarToolbar { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .calendarToolbar > strong { grid-column: 1 / -1; grid-row: 2; font-size: 11px; }
   .copyBanner > div { flex: 1 1 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .calendarPaste { flex-basis: 100%; min-height: 24px; font-size: 9px; }
   .calendarFooter span { display: none; }
   .dayActions { flex: 1 1 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .copyBanner > div[data-move] { grid-template-columns: minmax(0, 1fr); }
-  /* Month view on phones: coloured indicators + counts; names show for the selected date below. */
-  .calendarGrid[data-view="month"] .calendarDate { display: flex; flex-wrap: wrap; align-content: flex-start; min-height: 64px; padding: 2px; }
-  .calendarGrid[data-view="month"] .dateSelect { flex-basis: 100%; min-height: 36px; padding: 3px; }
-  .calendarGrid[data-view="month"] .dateSelect > span { font-size: 13px; }
-  .calendarGrid[data-view="month"] .calendarSession { display: grid; place-items: center; width: 24px; height: 24px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 99px; background: transparent; }
-  .calendarGrid[data-view="month"] .calendarSession::before { content: ""; width: 9px; height: 9px; border-radius: 99px; background: var(--session-colour); }
-  .calendarGrid[data-view="month"] .calendarSession strong { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .historyToolbar span { flex-basis: 100%; margin: 0; }
+  /* Phone calendars use dots and counts; readable names appear under the selected date. */
+  .calendarGrid .calendarDate { display: flex; flex-wrap: wrap; align-content: flex-start; min-height: 76px; padding: 2px; }
+  .calendarGrid .dateSelect { flex-basis: 100%; min-height: 44px; padding: 3px; }
+  .calendarGrid .dateSelect > span { font-size: 13px; }
+  .calendarGrid .calendarSession { display: grid; place-items: center; width: 24px; height: 24px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 99px; background: transparent; }
+  .calendarGrid .calendarSession::before { content: ""; width: 9px; height: 9px; border-radius: 99px; background: var(--session-colour); }
+  .calendarGrid .calendarSession strong { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .historyToolbar > span { flex-basis: 100%; margin: 0; }
   .sessionActions { flex-wrap: wrap; }
 }
 
@@ -511,9 +518,9 @@
 .reviewContent p { margin: 0; color: var(--text-secondary); font-size: 14px; line-height: 1.5; }
 .reviewContent h3 { margin: 0 0 4px; font-size: 17px; overflow-wrap: anywhere; }
 .reviewIssues { list-style: none; padding: 0; margin: 8px 0 0; }
-.reviewIssues li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border-default); }
+.reviewIssues li { display: grid; grid-template-columns: minmax(0, 1fr) 64px; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border-default); }
 .reviewIssues li > span { min-width: 0; overflow-wrap: anywhere; }
-.reviewIssues :global(.ghost-button) { flex: 0 0 auto; width: auto; min-height: 44px; padding: 8px 14px; }
+.reviewIssues :global(.ghost-button) { box-sizing: border-box; width: 100%; min-height: 44px; padding: 8px 14px; }
 .scheduleToggle:global(.ghost-button) { display: none; }
 @media (max-width: 767px) {
   .builder { gap: 16px; }
