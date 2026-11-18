@@ -7,8 +7,9 @@
 //     node scripts/verify-attachment-pipeline.mjs [owner-profile-uuid]
 //
 // It uploads test files for that profile (default: the first admin), checks each one is
-// rebuilt or rejected, then removes everything it created. Nothing is attached
-// to any record and nothing is shown to anyone.
+// rebuilt or rejected, then removes everything it created, including its entries
+// in the upload log, so a check never uses up that person's upload allowance.
+// Nothing is attached to any record and nothing is shown to anyone.
 import jpeg from "jpeg-js";
 
 let [ownerId] = process.argv.slice(2);
@@ -26,6 +27,8 @@ if (!ownerId) {
 }
 const created = [];
 let failures = 0;
+// A little before the first reservation, so clock drift can't leave a log entry behind.
+const startedAt = new Date(Date.now() - 60_000).toISOString();
 
 async function rpc(name, args) {
   const response = await fetch(`${url}/rest/v1/rpc/${name}`, { method: "POST", headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify(args) });
@@ -184,7 +187,8 @@ try {
   for (const asset of created) {
     let removed = true;
     for (const [bucket, path] of [["attachment-intake", asset.intake_path],
-      ["attachment-ready", `${asset.owner_id}/${asset.id}/clean.jpg`], ["attachment-ready", `${asset.owner_id}/${asset.id}/clean.wav`],
+      ["attachment-ready", `${asset.owner_id}/${asset.id}/clean.jpg`], ["attachment-ready", `${asset.owner_id}/${asset.id}/thumb.jpg`],
+      ["attachment-ready", `${asset.owner_id}/${asset.id}/clean.wav`],
       ["attachment-ready", `${asset.owner_id}/${asset.id}/clean.pdf`],
       ...[1, 2].flatMap(page => [["attachment-intake", `${asset.intake_path}/00${page}.jpg`],
         ["attachment-ready", `${asset.owner_id}/${asset.id}/pages/00${page}.jpg`]])]) {
@@ -198,6 +202,12 @@ try {
       const response = await fetch(`${url}/rest/v1/attachment_assets?id=eq.${asset.id}`, { method: "DELETE", headers: auth });
       if (!response.ok) { failures++; console.error("Could not remove test row", asset.id); }
     }
+  }
+  // Give back the upload allowance these checks used.
+  if (created.length) {
+    const response = await fetch(`${url}/rest/v1/attachment_upload_log?owner_id=eq.${ownerId}&created_at=gte.${encodeURIComponent(startedAt)}`,
+      { method: "DELETE", headers: auth });
+    if (!response.ok) console.error("Could not clear the test uploads from the upload log:", response.status);
   }
   console.log(failures ? `\n${failures} check(s) failed. Keep uploads switched off.` : "\nAll checks passed.");
   process.exitCode = failures ? 1 : 0;

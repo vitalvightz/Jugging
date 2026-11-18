@@ -1,0 +1,103 @@
+/* A chat-style voice note: round play button, waveform, time, speed. */
+.player {
+  --voice-accent: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 48px;
+  flex-wrap: wrap;
+}
+.player[data-tone="coach"] { --voice-accent: var(--progress-gold); }
+
+.play {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--voice-accent);
+  color: var(--bg-surface);
+  cursor: pointer;
+}
+.play:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.playIcon {
+  width: 0;
+  height: 0;
+  margin-left: 3px;
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  border-left: 11px solid currentColor;
+}
+.pauseIcon {
+  width: 11px;
+  height: 13px;
+  border-right: 4px solid currentColor;
+  border-left: 4px solid currentColor;
+}
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.wave {
+  display: flex;
+  flex: 1 1 120px;
+  align-items: center;
+  gap: 2px;
+  min-width: 96px;
+  height: 32px;
+  cursor: pointer;
+  touch-action: none;
+}
+.wave:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 4px; border-radius: 4px; }
+.bar {
+  flex: 1 1 0;
+  min-width: 2px;
+  max-width: 4px;
+  border-radius: 2px;
+  background: var(--border-strong);
+  transition: background-color 120ms linear, height 200ms ease-out;
+}
+.wave[data-real] .bar { background: color-mix(in srgb, var(--voice-accent) 32%, transparent); }
+.bar[data-played] { background: var(--voice-accent) !important; }
+
+.time {
+  flex: none;
+  min-width: 34px;
+  color: var(--text-secondary);
+  font-size: var(--type-meta);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.rate {
+  flex: none;
+  min-width: 40px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--type-meta);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.rate:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.failed { flex-basis: 100%; color: var(--danger-ink); font-size: var(--type-meta); }
+
+@media (prefers-reduced-motion: reduce) {
+  .bar { transition: none; }
+  .spinner { animation-duration: 2s; }
+}
