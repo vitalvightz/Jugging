@@ -4,7 +4,6 @@ import "./test-dom";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { TrainingVideos, videoProblem } from "./training-videos";
-import { queuedVideos, queueVideo, setVideoQueueStorage, type QueuedVideo } from "@/lib/video-queue";
 
 const video = (id: string) => ({ id, created_at: "2026-11-18T10:00:00Z", media: {
   id: `media-${id}`, provider: "uploaded", video_id: null, asset_id: `asset-${id}`, start_s: 0, end_s: 12,
@@ -22,11 +21,17 @@ async function mount(element: (token: string) => React.ReactElement, { uploads =
     const method = init?.method ?? "GET";
     calls.push({ url, method });
     if (url.includes("/api/private-media/settings")) return Response.json({ uploads_available: uploads, youtube_available: false });
+    if (url.includes("/play")) {
+      const id = url.split("/").at(-2)!;
+      const row = current.find(item => item.id === id);
+      return row ? Response.json({ ...row, media: { ...row.media, url: `https://signed.example/${id}.mp4` } })
+        : Response.json({ detail: "Video not available." }, { status: 404 });
+    }
     if (method === "DELETE") { current = current.filter(row => !url.endsWith(row.id)); return new Response(null, { status: 204 }); }
     return Response.json(current);
   };
   // Settings are cached per token, so each test signs in fresh.
-  const token = `x.${Buffer.from(JSON.stringify({ sub: "athlete-1", n: Math.random() })).toString("base64url")}.y`;
+  const token = `token-${Math.random()}`;
   await act(async () => root.render(element(token)));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
   const button = (label: string) => [...host.querySelectorAll("button")].find(item => item.textContent === label || item.getAttribute("aria-label") === label);
@@ -46,14 +51,15 @@ test("an athlete sees their videos on an exercise, a single-line Attach, and the
   } finally { ui.close(); }
 });
 
-test("opening a video re-reads fresh links, and the athlete can remove it", async () => {
+test("nothing loads until a video is asked for; then one short link for that video only", async () => {
   const ui = await mount(token => <TrainingVideos token={token} label="Back squat" target={{ source: "external", target_id: "session" }} />);
   try {
-    const reads = () => ui.calls.filter(call => call.method === "GET" && call.url.includes("/api/training/attachments?")).length;
-    const before = reads();
+    assert.equal(ui.host.querySelector("video"), null, "no preview frames load from the list");
+    assert.ok(!ui.calls.some(call => call.url.includes("/play")));
     await act(async () => ui.button("Play video 1 for Back squat")!.click());
-    assert.equal(reads(), before + 1);
-    assert.ok(ui.host.querySelector("video.ex-demo-player"));
+    assert.deepEqual(ui.calls.filter(call => call.url.includes("/play")).map(call => call.url.split("/api/")[1]),
+      ["training/attachments/a/play"]);
+    assert.equal(ui.host.querySelector("video.ex-demo-player")?.getAttribute("src"), "https://signed.example/a.mp4");
     await act(async () => ui.button("Remove video")!.click());
     assert.ok(ui.calls.some(call => call.method === "DELETE" && call.url.endsWith("/api/training/attachments/a")));
     assert.equal(ui.host.querySelectorAll("ul li").length, 1);
@@ -66,9 +72,11 @@ test("a coach watches through the consented coach route and gets no attach or re
     target={{ source: "sparring", target_id: "report" }} />);
   try {
     assert.ok(ui.calls.some(call => call.url.includes("/api/coach/fighters/fighter/training/attachments?")));
+    assert.equal(ui.host.querySelector("video"), null);
     assert.ok(!ui.calls.some(call => call.url.includes("/api/private-media/settings")));
     assert.equal(ui.button("Attach video"), undefined);
     await act(async () => ui.button("Play video 1 for Sparring")!.click());
+    assert.ok(ui.calls.some(call => call.url.includes("/api/coach/fighters/fighter/training/attachments/a/play")));
     assert.equal(ui.button("Remove video"), undefined);
   } finally { ui.close(); }
 });
@@ -95,45 +103,21 @@ test("only short phone videos are accepted before uploading", () => {
   assert.match(videoProblem(file("video/mp4", 21 * 1024 * 1024))!, /over 20 MB/);
 });
 
-function memoryQueue() {
-  const rows = new Map<string, QueuedVideo>();
-  setVideoQueueStorage({ all: async () => [...rows.values()], put: async row => { rows.set(row.id, row); },
-    remove: async id => { rows.delete(id); }, clear: async () => rows.clear() });
-  return rows;
-}
-function setOnline(online: boolean) {
-  Object.defineProperty(window.navigator, "onLine", { configurable: true, get: () => online });
-}
 
-test("offline, a picked video is held on the device and shows as Queued", async () => {
-  memoryQueue();
-  const ui = await mount(token => <TrainingVideos token={token} label="Back squat" target={{ source: "external", target_id: "session", exercise_ref: "squat" }} />,
-    { rows: [] });
-  setOnline(false);
+test("Attach stays hidden when the server can't confirm uploads are on", async () => {
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  const before = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.includes("/api/private-media/settings")) return Response.json({ detail: "down" }, { status: 503 });
+    return Response.json([video("a")]);
+  };
   try {
-    const input = ui.host.querySelector<HTMLInputElement>('input[type="file"]')!;
-    Object.defineProperty(input, "files", { configurable: true, value: [new File(["v"], "squat.mp4", { type: "video/mp4" })] });
-    await act(async () => { input.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    await act(async () => root.render(<TrainingVideos token={`token-${Math.random()}`} label="Back squat" target={{ source: "external", target_id: "session" }} />));
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-    assert.equal((await queuedVideos("athlete-1", { source: "external", target_id: "session", exercise_ref: "squat" })).length, 1);
-    assert.match(ui.host.textContent ?? "", /Queued/);
-    assert.match(ui.host.textContent ?? "", /1 video uploads when you're back online/);
-    assert.match(ui.host.textContent ?? "", /1 of 6/);
-    assert.ok(!ui.calls.some(call => call.url.includes("/api/private-media/uploads")), "nothing sent while offline");
-  } finally { setOnline(true); ui.close(); setVideoQueueStorage(null); }
-});
-
-test("a held video the server refused shows why and can be removed", async () => {
-  const rows = memoryQueue();
-  const target = { source: "external" as const, target_id: "session", exercise_ref: "" };
-  const held = await queueVideo("athlete-1", new File(["v"], "long.mp4", { type: "video/mp4" }), target);
-  rows.set(held.id, { ...held, failed: "That video could not be used. Use a clip of 30 seconds or less." });
-  const ui = await mount(token => <TrainingVideos token={token} label="Pads" target={target} />, { rows: [] });
-  try {
-    assert.match(ui.host.querySelector('[role="alert"]')?.textContent ?? "", /30 seconds or less/);
-    await act(async () => ui.button("Remove video that could not be attached to Pads")!.click());
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-    assert.equal(rows.size, 0);
-    assert.equal(ui.host.querySelector('[role="alert"]'), null);
-  } finally { ui.close(); setVideoQueueStorage(null); }
+    assert.ok(host.querySelector("ul li"), "existing videos still listed");
+    assert.equal(host.querySelector('input[type="file"]'), null);
+    assert.ok(![...host.querySelectorAll("button")].some(button => button.textContent === "Attach video"));
+  } finally { act(() => root.unmount()); host.remove(); globalThis.fetch = before; }
 });

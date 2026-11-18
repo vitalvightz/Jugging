@@ -114,6 +114,14 @@ export function attachTrainingVideo(token: string, mediaId: string, target: Atta
 export function removeTrainingAttachment(token: string, id: string) {
   return requestVoid(`/api/training/attachments/${encodeURIComponent(id)}`, { token, method: "DELETE" });
 }
+/** A 60-second link for one video, issued only when someone presses play. */
+export function playTrainingAttachment(token: string, id: string) {
+  return readJson<TrainingAttachment>(`/api/training/attachments/${encodeURIComponent(id)}/play`, { token, cache: "no-store" });
+}
+export function playFighterTrainingAttachment(token: string, athleteId: string, id: string) {
+  return readJson<TrainingAttachment>(
+    `/api/coach/fighters/${encodeURIComponent(athleteId)}/training/attachments/${encodeURIComponent(id)}/play`, { token, cache: "no-store" });
+}
 /** A coach reads a fighter's videos only while the fighter shares injury status. */
 export function listFighterTrainingAttachments(token: string, athleteId: string, target: AttachmentTarget, signal?: AbortSignal) {
   return readJson<TrainingAttachment[]>(

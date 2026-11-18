@@ -81,6 +81,12 @@ class PrivateMediaStoreMixin:
                     .order("created_at").execute())
         return list(getattr(response, "data", None) or [])
 
+    def get_training_attachment(self, athlete_id, attachment_id):
+        response = (self.client.table("training_attachments").select("*").eq("athlete_id", athlete_id)
+                    .eq("id", attachment_id).limit(1).execute())
+        rows = getattr(response, "data", None) or []
+        return rows[0] if rows else None
+
     def delete_training_attachment(self, athlete_id, attachment_id):
         response = (self.client.table("training_attachments").delete()
                     .eq("athlete_id", athlete_id).eq("id", attachment_id).execute())

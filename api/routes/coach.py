@@ -22,7 +22,8 @@ from pydantic import BaseModel, Field
 
 from api.contracts.custom_plans import CustomPlanInput, CoachPlan
 from api.contracts.training_attachments import AttachmentSource, TrainingAttachment
-from api.services.training_attachments import attachment_views
+from api.services.training_attachments import attachment_views, playable
+from api.routes.training_attachments import NO_STORE as TRAINING_ATTACHMENT_NO_STORE
 from api.services.coach_notifications import notify_fighter_of_feedback, notify_fighter_of_plan
 from api.services.coach_plans import coach_plan_fields, assignment_view, assignment_views, saved_input
 from api.services.custom_plans import schedule_issues
@@ -278,6 +279,18 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
             return []
         rows = store.list_training_attachments(fighter.profile.athlete_id, source, str(target_id), exercise_ref)
         return attachment_views(store, fighter.profile.athlete_id, rows)
+
+    @router.get("/api/coach/fighters/{athlete_id}/training/attachments/{attachment_id}/play",
+                response_model=TrainingAttachment)
+    def fighter_attachment_play(attachment_id: UUID, response: Response,
+                                fighter: ConnectedFighter = Depends(connected_fighter),
+                                store: AppStore = Depends(get_store)):
+        """A link for one video, issued only while the connection and the
+        fighter's injury sharing are both still on at this request."""
+        response.headers.update(TRAINING_ATTACHMENT_NO_STORE)
+        if not fighter.share_injuries:
+            raise HTTPException(404, "Video not available.")
+        return playable(store, fighter.profile.athlete_id, attachment_id)
 
     @router.post('/api/coach/fighters/{athlete_id}/feedback/notify', status_code=202)
     def notify_feedback(body: FeedbackNotice, background_tasks: BackgroundTasks,

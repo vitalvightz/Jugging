@@ -33,13 +33,16 @@
   cursor: pointer;
 }
 
-.thumb video {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  pointer-events: none;
+.thumb {
+  align-content: center;
+  gap: 8px;
+  background: linear-gradient(160deg, var(--bg-surface-alt), var(--bg-surface));
+}
+
+.thumbLabel {
+  color: var(--text-secondary);
+  font-size: var(--type-meta);
+  white-space: nowrap;
 }
 
 .thumb[aria-pressed="true"] { border-color: var(--text-secondary); }
@@ -72,9 +75,6 @@
   white-space: nowrap;
 }
 
-.pending { grid-auto-flow: row; align-content: center; gap: 6px; }
-.pending[data-failed] { cursor: pointer; border-color: var(--brand-red); color: var(--text-primary); font: inherit; font-size: var(--type-meta); }
-.note { margin: 0; color: var(--text-muted); font-size: var(--type-body-sm); }
 
 .player { display: grid; gap: 8px; }
 .playerActions { display: flex; justify-content: flex-end; gap: 20px; }

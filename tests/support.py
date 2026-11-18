@@ -2202,6 +2202,10 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         return [copy.deepcopy(r) for r in self.training_attachments if r['athlete_id'] == athlete_id
                 and r['source'] == source and r['target_id'] == target_id and r['exercise_ref'] == exercise_ref]
 
+    def get_training_attachment(self, athlete_id: str, attachment_id: str) -> dict | None:
+        return next((dict(r) for r in self.training_attachments
+                     if r['id'] == attachment_id and r['athlete_id'] == athlete_id), None)
+
     def delete_training_attachment(self, athlete_id: str, attachment_id: str) -> bool:
         before = len(self.training_attachments)
         self.training_attachments = [r for r in self.training_attachments
