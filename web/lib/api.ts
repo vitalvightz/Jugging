@@ -624,6 +624,11 @@ export function getFighterWeight(token: string, athleteId: string): Promise<Coac
   return readJson(`${fighterPath(athleteId)}/weight`, { token });
 }
 
+/** Tell the fighter about a note this coach just saved. The API reads the note back as the coach's own. */
+export function notifyFighterOfFeedback(token: string, athleteId: string, body: { source: string; target_id: string; exercise_ref?: string }): Promise<void> {
+  return requestVoid(`${fighterPath(athleteId)}/feedback/notify`, { method: "POST", token, body: JSON.stringify(body) });
+}
+
 export function getExerciseLibrary(token: string): Promise<ExerciseLibraryResponse> {
   return readJson("/api/history/exercise-library", { token });
 }

@@ -44,6 +44,7 @@ import {
   coachCheckInValues,
   coachRecoveryTone,
   completed,
+  coachInviteShare,
   connectionSharing,
   formatList,
   dayOffset,
@@ -243,7 +244,7 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
       {connections?.length === 0 ? (
         <p className={styles.empty}>
           {coach
-            ? "No invitations yet. Athletes accept in Settings → Coach access."
+            ? "No invitations yet. After you invite, share the invite on WhatsApp so your athlete can accept."
             : "No coach invitations yet."}
         </p>
       ) : null}
@@ -283,6 +284,7 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
                   Allow session logging
                 </button>
               ) : null}
+              {coach && pending ? <InviteShare connection={c} /> : null}
               {!coach && pending ? (
                 <button
                   className="cta"
@@ -314,6 +316,28 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
           </article>
         );
       })}
+    </>
+  );
+}
+
+function InviteShare({ connection }: { connection: Connection }) {
+  const [copied, setCopied] = useState<"" | "copied" | "failed">("");
+  const share = coachInviteShare(connection, window.location.origin);
+  return (
+    <>
+      <a className="cta" href={share.whatsapp} target="_blank" rel="noopener noreferrer">
+        Share on WhatsApp
+      </a>
+      <button
+        type="button"
+        className="ghost-button"
+        onClick={() => {
+          navigator.clipboard.writeText(share.text).then(() => setCopied("copied"), () => setCopied("failed"));
+        }}
+      >
+        {copied === "copied" ? "Copied" : "Copy invite"}
+      </button>
+      {copied === "failed" ? <small role="alert">Copy failed. Share on WhatsApp instead.</small> : null}
     </>
   );
 }

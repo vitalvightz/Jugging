@@ -1179,6 +1179,12 @@ export type ExternalTrainingTakeaway = {
   takeaway?: string;
 };
 
+export type FeedbackNotice = {
+  source: "external" | "sparring" | "unlxck";
+  target_id: string;
+  exercise_ref?: string;
+};
+
 export type FeedbackRecord = {
   id: string;
   surface: "daily_recommendation" | "global" | "plan" | "session";

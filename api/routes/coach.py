@@ -16,11 +16,12 @@ from datetime import date
 from typing import Any, Literal, Mapping
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from api.contracts.custom_plans import CustomPlanInput, CoachPlan
+from api.services.coach_notifications import notify_fighter_of_feedback, notify_fighter_of_plan
 from api.services.coach_plans import coach_plan_fields, assignment_view, assignment_views, saved_input
 from api.services.custom_plans import schedule_issues
 from api.compliance import evaluate_profile_compliance
@@ -116,6 +117,12 @@ def _is_health_session(row: Mapping[str, Any]) -> bool:
 
 class CoachHistorySession(TrainingHistorySession):
     training_category: Literal["strength", "sparring", "rehab", "training"] = "training"
+
+
+class FeedbackNotice(BaseModel):
+    source: Literal["unlxck", "external", "sparring"]
+    target_id: UUID
+    exercise_ref: str = Field(default="", max_length=200)
 
 
 class CoachHistoryResponse(TrainingHistoryResponse):
@@ -243,7 +250,8 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
         return assignment_view(store, updated)
 
     @router.post('/api/coach/fighters/{athlete_id}/plans/{plan_id}/assign', response_model=CoachPlan)
-    def assign_coach_plan(row=Depends(authored_plan), fighter: ConnectedFighter = Depends(connected_fighter),
+    def assign_coach_plan(background_tasks: BackgroundTasks, row=Depends(authored_plan),
+                          fighter: ConnectedFighter = Depends(connected_fighter),
                           store: AppStore = Depends(get_store)):
         # Recheck schedule, exercise availability and private attachments at send.
         fields = coach_plan_fields(store, saved_input(row), row, coach_id=fighter.coach.athlete_id)
@@ -251,7 +259,30 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
         if issues:
             raise HTTPException(422, ' '.join(issues))
         updated = store.coach_plan_command(fighter.coach.athlete_id, fighter.profile.athlete_id, row['id'], 'assign')
+        # Only the send that moves a draft out tells the fighter; a repeat is a no-op.
+        if not row.get('assigned_at'):
+            background_tasks.add_task(notify_fighter_of_plan, store, coach_id=fighter.coach.athlete_id,
+                                      athlete_id=fighter.profile.athlete_id, plan=dict(updated))
         return assignment_view(store, updated)
+
+    @router.post('/api/coach/fighters/{athlete_id}/feedback/notify', status_code=202)
+    def notify_feedback(body: FeedbackNotice, background_tasks: BackgroundTasks,
+                        fighter: ConnectedFighter = Depends(connected_fighter),
+                        store: AppStore = Depends(get_store)):
+        """Tell the fighter about a note this coach has just saved.
+
+        The note itself is written through the consent-checked database call.
+        This only reads it back as this coach's own row, so a coach can never
+        push about a note they did not write or a fighter they cannot see.
+        """
+        note = store.get_coach_feedback(athlete_id=fighter.profile.athlete_id, coach_id=fighter.coach.athlete_id,
+                                        source=body.source, target_id=str(body.target_id),
+                                        exercise_ref=body.exercise_ref)
+        if not note:
+            raise HTTPException(status_code=404, detail="Feedback not found.")
+        background_tasks.add_task(notify_fighter_of_feedback, store, coach_id=fighter.coach.athlete_id,
+                                  athlete_id=fighter.profile.athlete_id, feedback=dict(note))
+        return Response(status_code=202)
 
     def writable_fighter(fighter: ConnectedFighter = Depends(connected_fighter)) -> ConnectedFighter:
         # The athlete's own logging needs this consent too; a coach cannot

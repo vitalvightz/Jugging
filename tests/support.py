@@ -514,6 +514,7 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
     def __init__(self, admin_emails: set[str] | None = None):
         self.profiles: dict[str, dict] = {}
         self.coach_connections: list[dict] = []
+        self.coach_feedback: list[dict] = []
         self.intakes: dict[str, list[dict]] = {}
         self.plans: dict[str, dict] = {}
         self.active_plan_ids: dict[str, str] = {}
@@ -800,6 +801,15 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
     def get_accepted_coach_connection(self, coach_id: str, athlete_id: str) -> dict | None:
         return next((row for row in self.coach_connections if row["coach_id"] == coach_id
                      and row["athlete_id"] == athlete_id and row["status"] == "accepted"), None)
+
+    def list_accepted_coach_connections_for_athlete(self, athlete_id: str) -> list[dict]:
+        return [row for row in self.coach_connections if row["athlete_id"] == athlete_id and row["status"] == "accepted"]
+
+    def get_coach_feedback(self, *, athlete_id: str, coach_id: str, source: str, target_id: str,
+                           exercise_ref: str) -> dict | None:
+        return next((row for row in self.coach_feedback if row["athlete_id"] == athlete_id and row["coach_id"] == coach_id
+                     and row["source"] == source and row["target_id"] == target_id
+                     and row["exercise_ref"] == exercise_ref), None)
 
     def get_latest_intake(self, athlete_id: str) -> dict | None:
         items = self.intakes.get(athlete_id, [])

@@ -1,6 +1,7 @@
 "use client";
 import { DiscoveryHint } from "@/components/once-hint";
 import { useEffect, useState } from "react";
+import { notifyFighterOfFeedback } from "@/lib/api";
 import { coachRpc } from "@/lib/coach";
 import { formatAppDate } from "@/lib/date-format";
 import styles from "./coach-feedback.module.css";
@@ -32,6 +33,8 @@ export function CoachFeedback({ token, athleteId, source, targetId, exerciseRef 
     try {
       await coachRpc(token, "save_coach_feedback", { p_athlete_id: athleteId, p_source: source, p_target_id: targetId, p_exercise_ref: exerciseRef, p_note: draft.trim() });
       setEditing(false); setAttempt(value => value + 1);
+      // Best-effort: the note is saved whether or not the fighter is pinged.
+      notifyFighterOfFeedback(token, athleteId, { source, target_id: targetId, exercise_ref: exerciseRef }).catch(() => undefined);
     } catch { setError(true); }
     finally { setBusy(false); }
   }
