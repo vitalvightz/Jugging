@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Checks the deployed photo/voice pipeline end to end, against a real project.
-// Run before switching ATTACHMENT_PHOTOS_ENABLED / ATTACHMENT_VOICE_ENABLED on:
+// Checks the deployed photo/voice/PDF pipeline end to end, against a real project.
+// Run before switching ATTACHMENT_PHOTOS_ENABLED / ATTACHMENT_VOICE_ENABLED /
+// ATTACHMENT_PDFS_ENABLED on:
 //
 //   SUPABASE_URL=https://<ref>.supabase.co SUPABASE_SERVICE_ROLE_KEY=... \
 //     node scripts/verify-attachment-pipeline.mjs [owner-profile-uuid]
@@ -127,7 +128,51 @@ try {
   const long = await reserve("voice", wav(62));
   check("a voice note over 60 seconds is rejected", (await processAsset(long)).body?.status === "rejected");
 
-  // 5. Someone without the service key gets nothing.
+  // 5. PDFs (when the PDF migration is applied): pages are rebuilt one by one
+  // into a new image-only PDF; one bad page rejects the whole document.
+  const pdfs = await fetch(`${url}/rest/v1/rpc/attachment_document_pages`, { method: "POST",
+    headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify({ p_asset_id: crypto.randomUUID() }) });
+  if (pdfs.status === 404) {
+    console.log("SKIP  PDF checks (PDF migration not applied yet)");
+  } else {
+    async function reserveDocument(pages) {
+      const [asset] = await rpc("reserve_attachment_document", { p_owner_id: ownerId,
+        p_size_bytes: pages.reduce((sum, page) => sum + page.length, 0), p_page_count: pages.length, p_file_name: "Verify plan.pdf" });
+      created.push(asset);
+      for (const [index, bytes] of pages.entries()) {
+        const put = await fetch(`${url}/storage/v1/object/attachment-intake/${asset.intake_path}/${String(index + 1).padStart(3, "0")}.jpg`,
+          { method: "POST", body: bytes, headers: { ...auth, "Content-Type": "image/jpeg" } });
+        if (!put.ok) throw new Error(`page upload: ${put.status} ${await put.text()}`);
+      }
+      return asset;
+    }
+    const call = async body => {
+      const response = await fetch(`${url}/functions/v1/process-attachment`, { method: "POST",
+        headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      return { status: response.status, body: await response.json() };
+    };
+    const document = await reserveDocument([photo(900, 1273), photo(1000, 1414)]);
+    const pages = await Promise.all([call({ asset_id: document.id, page: 1 }), call({ asset_id: document.id, page: 2 })]);
+    check("each PDF page is rebuilt", pages.every(result => result.body?.status === "page_ready"), JSON.stringify(pages.map(r => r.body)));
+    const again = await call({ asset_id: document.id, page: 1 });
+    check("a PDF page is claimed only once", again.status === 409, String(again.status));
+    const [first, second] = await Promise.all([call({ asset_id: document.id, assemble: true }), call({ asset_id: document.id, assemble: true })]);
+    check("a PDF is assembled exactly once", [first.status, second.status].sort().join(",") === "200,409", `${first.status},${second.status}`);
+    const built = await readClean(document, "pdf");
+    const text = built ? Buffer.from(built).toString("latin1") : "";
+    check("the rebuilt PDF holds only page images", !!built && text.startsWith("%PDF-") && (text.match(/\/Subtype \/Image/g) ?? []).length === 2
+      && !has(built, "GPSLatitude") && !has(built, "<html") && !text.includes("/JavaScript") && !text.includes("/OpenAction"));
+
+    const bad = await reserveDocument([photo(900, 1273), new Uint8Array(Buffer.from("%PDF-1.7 /JavaScript (app.alert(1))".padEnd(3000, " ")))]);
+    const badPages = await Promise.all([call({ asset_id: bad.id, page: 1 }), call({ asset_id: bad.id, page: 2 })]);
+    check("a disguised page rejects the whole PDF", badPages.some(result => result.body?.status === "rejected"), JSON.stringify(badPages.map(r => r.body)));
+    const badAssembly = await call({ asset_id: bad.id, assemble: true });
+    check("a rejected PDF is never assembled", badAssembly.status === 409 && (await readClean(bad, "pdf")) === null, String(badAssembly.status));
+    const big = await reserveDocument([photo(1600, 1600)]);
+    check("a page over 2 megapixels is rejected", (await call({ asset_id: big.id, page: 1 })).body?.status === "rejected");
+  }
+
+  // 6. Someone without the service key gets nothing.
   const outsider = await fetch(`${url}/functions/v1/process-attachment`, { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ asset_id: voice.id }) });
   check("callers without the service key are refused", outsider.status === 401, String(outsider.status));
@@ -139,7 +184,10 @@ try {
   for (const asset of created) {
     let removed = true;
     for (const [bucket, path] of [["attachment-intake", asset.intake_path],
-      ["attachment-ready", `${asset.owner_id}/${asset.id}/clean.jpg`], ["attachment-ready", `${asset.owner_id}/${asset.id}/clean.wav`]]) {
+      ["attachment-ready", `${asset.owner_id}/${asset.id}/clean.jpg`], ["attachment-ready", `${asset.owner_id}/${asset.id}/clean.wav`],
+      ["attachment-ready", `${asset.owner_id}/${asset.id}/clean.pdf`],
+      ...[1, 2].flatMap(page => [["attachment-intake", `${asset.intake_path}/00${page}.jpg`],
+        ["attachment-ready", `${asset.owner_id}/${asset.id}/pages/00${page}.jpg`]])]) {
       try {
         const response = await fetch(`${url}/storage/v1/object/${bucket}`, { method: "DELETE", headers: { ...auth, "Content-Type": "application/json" },
           body: JSON.stringify({ prefixes: [path] }) });

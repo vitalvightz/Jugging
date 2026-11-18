@@ -131,16 +131,24 @@ export function reserveFileUpload(token: string, kind: "photo" | "voice", sizeBy
     token, method: "POST", body: JSON.stringify({ kind, size_bytes: sizeBytes }),
   });
 }
-/** The server has the upload rebuilt in isolation; only the clean copy is ever usable. */
-export function processFileUpload(token: string, assetId: string) {
-  return readJson<FileUploadResult>(`/api/attachments/uploads/${encodeURIComponent(assetId)}/process`, { token, method: "POST" });
+/** A PDF is reserved as its page images; the name is only shown and offered as the download name. */
+export function reserveDocumentUpload(token: string, sizeBytes: number, pageCount: number, fileName: string) {
+  return readJson<FileUploadPermission>("/api/attachments/uploads", {
+    token, method: "POST", body: JSON.stringify({ kind: "pdf", size_bytes: sizeBytes, page_count: pageCount, file_name: fileName }),
+  });
+}
+/** The server has the upload rebuilt in isolation; only the clean copy is ever usable.
+ * A PDF is rebuilt one page per call, then assembled by a call without a page. */
+export function processFileUpload(token: string, assetId: string, page?: number) {
+  const query = page ? `?page=${page}` : "";
+  return readJson<FileUploadResult>(`/api/attachments/uploads/${encodeURIComponent(assetId)}/process${query}`, { token, method: "POST" });
 }
 export function attachTrainingFile(token: string, assetId: string, target: AttachmentTarget) {
   return readJson<TrainingAttachment>("/api/training/attachments", {
     token, method: "POST", body: JSON.stringify({ asset_id: assetId, exercise_ref: "", ...target }),
   });
 }
-/** A coach's voice feedback on a fighter's record (needs the fighter's media sharing). */
+/** A coach's voice feedback or shared PDF on a fighter's record (needs the fighter's media sharing). */
 export function attachFighterVoiceNote(token: string, athleteId: string, assetId: string, target: AttachmentTarget) {
   return readJson<TrainingAttachment>(`/api/coach/fighters/${encodeURIComponent(athleteId)}/training/attachments`, {
     token, method: "POST", body: JSON.stringify({ asset_id: assetId, exercise_ref: "", ...target }),

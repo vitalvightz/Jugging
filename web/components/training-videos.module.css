@@ -310,3 +310,98 @@
 
 .menuItem:hover, .menuItem:focus-visible { background: var(--bg-surface-alt); outline: none; }
 .menuItem svg { color: var(--text-secondary); }
+
+/* PDFs: one quiet row each. Name and details on the left, Download on the
+   right. Nothing previews or opens inline; the link only ever downloads. */
+.docs { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; container-type: inline-size; }
+
+.doc {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 8px 8px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  background: var(--bg-surface-alt);
+}
+
+.docPending { grid-template-columns: auto minmax(0, 1fr); border-style: dashed; }
+
+.docIcon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+
+.docText { display: grid; gap: 2px; min-width: 0; }
+
+.docName, .docMeta {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.docName { color: var(--text-primary); font-size: var(--type-body-sm); font-weight: 600; }
+.docMeta { color: var(--text-muted); font-size: var(--type-meta); font-variant-numeric: tabular-nums; }
+
+.docDownload, .docRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: var(--type-body-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.docDownload {
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.docDownload:hover:not(:disabled) { background: var(--bg-surface); }
+.docDownload:disabled { opacity: 0.55; cursor: progress; }
+
+.docRemove {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+}
+
+.docRemove:hover { color: var(--text-primary); }
+.docDownload:focus-visible, .docRemove:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+
+/* Narrow rows keep the name readable: Download becomes an icon button. */
+@container (max-width: 360px) {
+  .docDownload { padding: 0; }
+  .docDownloadLabel { display: none; }
+  .doc { gap: 10px; padding-left: 12px; }
+}
+
+/* Desktop: rows keep a readable width instead of stretching across the sheet. */
+@media (min-width: 900px) {
+  .docs { max-width: 560px; }
+}
+
+/* The narrowest phones give the name the icon's space. */
+@container (max-width: 300px) {
+  .doc { grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; }
+  .docPending { grid-template-columns: minmax(0, 1fr); }
+  .docIcon { display: none; }
+  .docRemove { min-width: 32px; }
+}

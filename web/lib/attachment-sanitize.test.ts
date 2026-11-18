@@ -163,7 +163,7 @@ test("the rebuilt PDF holds only page images", async () => {
   }
   assert.equal(source.match(/\/Subtype \/Image/g)?.length, 2);
   const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const doc = await getDocument({ data: new Uint8Array(pdf), isEvalSupported: false }).promise;
+  const doc = await getDocument({ data: new Uint8Array(pdf), useWasm: false }).promise;
   assert.equal(doc.numPages, 2);
   const [first, second] = [await doc.getPage(1), await doc.getPage(2)];
   assert.ok(first.view[3] > first.view[2] && second.view[2] > second.view[3]);
