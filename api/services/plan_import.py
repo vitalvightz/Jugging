@@ -24,7 +24,7 @@ import time
 from difflib import SequenceMatcher
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Any, Literal, Protocol
+from typing import Any, Protocol
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -764,7 +764,9 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None) -> PlanI
             flag(where, f"Only the first {MAX_EXERCISES} of {len(item.exercises)} exercises were brought in.")
         exercises = []
         for exercise in item.exercises[:MAX_EXERCISES]:
-            say = (lambda message, e=exercise: flag(f"{where} \u00b7 {_clean(e.name, 60)}" if _clean(e.name) else where, message))
+            def say(message, e=exercise, where=where):
+                flag(f"{where} \u00b7 {_clean(e.name, 60)}" if _clean(e.name) else where, message)
+
             built = _exercise(exercise, say)
             if built and checker:
                 checker.check(exercise, say)
