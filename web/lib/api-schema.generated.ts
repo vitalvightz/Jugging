@@ -285,6 +285,7 @@ export type AthleteProfileInput = {
  */
 export type AttachmentFile = {
   url: string | null;
+  thumb_url: string | null;
   width: number | null;
   height: number | null;
   duration_ms: number | null;

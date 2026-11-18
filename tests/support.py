@@ -2258,6 +2258,9 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
     def attachment_signed_url(self, path: str, *, expires_in: int, download: str | None = None) -> str:
         raise HTTPException(503, 'Attachment storage is unavailable.')
 
+    def attachment_signed_urls(self, paths: list[str], *, expires_in: int) -> dict[str, str]:
+        return {}
+
     def process_attachment(self, asset_id: str, *, page: int | None = None, assemble: bool = False) -> dict:
         raise HTTPException(503, 'Checking is unavailable. Try again in a minute.')
 

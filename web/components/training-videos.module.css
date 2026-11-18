@@ -175,19 +175,53 @@
 
 .thumb svg { color: var(--text-secondary); width: 26px; height: 26px; }
 
-/* A photo opens at a readable size, never cropped, never taller than the screen. */
-.photo {
-  display: block;
+/* A real preview fills the tile; the button's name still says which photo it is. */
+.thumbImage {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  max-height: 70vh;
-  object-fit: contain;
-  border-radius: 14px;
-  background: var(--bg-surface-alt);
+  height: 100%;
+  object-fit: cover;
   user-select: none;
 }
+.thumb:hover .thumbImage { filter: brightness(1.08); }
+
+/* An opened photo keeps its shape, reserves its space and is never taller than 60% of the screen. */
+.photoFrame {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--bg-surface-alt);
+}
+.photoPreview,
+.photo {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+}
+/* The preview is small, so soften it slightly instead of showing blocky pixels. */
+.photoPreview { filter: blur(6px); transform: scale(1.04); }
+.photo { opacity: 0; transition: opacity 180ms ease-out; }
+.photoFrame[data-loaded] .photo { opacity: 1; }
+.photoLoading {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(10, 10, 11, 0.62);
+  color: #fff;
+  font-size: var(--type-meta);
+}
+@media (prefers-reduced-motion: reduce) { .photo { transition: none; } }
 
 @media (min-width: 900px) {
-  .player:has(.photo) { grid-template-columns: minmax(0, 560px) minmax(0, 280px); }
+  .player:has(.photoFrame) { grid-template-columns: minmax(0, 560px) minmax(0, 280px); }
 }
 
 /* Voice notes are full-width rows: easier to tap and to tell apart. */
@@ -451,4 +485,13 @@
 /* Desktop: Attach lines up with the right edge of the files under it. */
 @media (min-width: 900px) {
   .videos[data-headed] { max-width: 560px; }
+}
+
+/* In a headed section (at most 560px wide) the photo gets the full width and
+   its note and actions sit underneath, rather than squeezing it into half. */
+@media (min-width: 900px) {
+  .videos[data-headed] .player,
+  .videos[data-headed] .player:has(.photoFrame) { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .videos[data-headed] .playerSide { flex-direction: row; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 0; }
+  .videos[data-headed] .playerActions { flex: none; }
 }

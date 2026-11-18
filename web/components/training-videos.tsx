@@ -172,6 +172,7 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
   const photoInput = useRef<HTMLInputElement>(null);
   const pdfInput = useRef<HTMLInputElement>(null);
   const recorder = useRef<VoiceRecorder | null>(null);
+  const opening = useRef<string | null>(null);
   const athlete = viewer === "athlete";
   const { source, target_id: targetId, exercise_ref: exerciseRef = "" } = target;
   const key: AttachmentTarget = { source, target_id: targetId, exercise_ref: exerciseRef };
@@ -337,10 +338,17 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
       }
       return;
     }
+    // A photo opens at once on its thumbnail; the full photo sharpens over it when it arrives.
+    if (kindOf(row) === "photo") setOpened(row);
+    opening.current = row.id;
     try {
-      setOpened(athlete ? await playTrainingAttachment(token, row.id)
-        : await playFighterTrainingAttachment(token, athleteId ?? "", row.id));
+      const fresh = athlete ? await playTrainingAttachment(token, row.id)
+        : await playFighterTrainingAttachment(token, athleteId ?? "", row.id);
+      // A slow answer for a file the person has already moved on from is dropped.
+      if (opening.current !== row.id) return;
+      setOpened({ ...fresh, file: fresh.file ? { ...fresh.file, thumb_url: fresh.file.thumb_url ?? row.file?.thumb_url ?? null } : fresh.file });
     } catch (error) {
+      if (opening.current !== row.id) return;
       setOpened(null);
       setProblem(describeLoadFailure(error, `${NOUN[kindOf(row)]} unavailable. Try again.`));
     }
@@ -414,26 +422,31 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
         <button type="button" className={styles.thumb} aria-pressed={opened?.id === row.id}
           aria-label={`${kindOf(row) === "photo" ? "Open photo" : "Play video"} ${numbered(row)} for ${label}`}
           onClick={() => void open(row)}>
-          {/* No preview: nothing loads until the file is asked for. */}
-          {kindOf(row) === "photo" ? <PhotoIcon /> : <span className={styles.play} aria-hidden="true" />}
-          <span className={styles.thumbLabel} aria-hidden="true">{NOUN[kindOf(row)]} {numbered(row)}</span>
+          {/* Photos show a small preview rebuilt from the clean file; videos load nothing until played. */}
+          {kindOf(row) === "photo" && row.file?.thumb_url
+            // A plain <img>: next/image would route the private, short-lived link through the image optimizer.
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img className={styles.thumbImage} src={row.file.thumb_url} alt="" loading="lazy" decoding="async"
+                referrerPolicy="no-referrer" draggable={false} />
+            : <>
+              {kindOf(row) === "photo" ? <PhotoIcon /> : <span className={styles.play} aria-hidden="true" />}
+              <span className={styles.thumbLabel} aria-hidden="true">{NOUN[kindOf(row)]} {numbered(row)}</span>
+            </>}
         </button>
       </li>)}
       {pendingTile ? <li><span className={styles.pending} role="status">{stage}</span></li> : null}
     </ul> : null}
     {visualOpen ? <div className={styles.player}>
-      {kindOf(visualOpen) === "photo" && visualOpen.file?.url
-        // A plain <img>: next/image would route the private, short-lived link through the image optimizer.
-        // eslint-disable-next-line @next/next/no-img-element
-        ? <img className={styles.photo} src={visualOpen.file.url} alt={`Photo ${numbered(rows.find(r => r.id === visualOpen.id) ?? visualOpen)} for ${label}`}
-            referrerPolicy="no-referrer" draggable={false} />
+      {kindOf(visualOpen) === "photo"
+        ? <PhotoFrame key={visualOpen.id} file={visualOpen.file}
+            alt={`Photo ${numbered(rows.find(r => r.id === visualOpen.id) ?? visualOpen)} for ${label}`} />
         : visualOpen.media ? <PrivateVideoPlayer key={visualOpen.media.url ?? visualOpen.id} media={visualOpen.media} name={label} kind="Form check" /> : null}
       <div className={styles.playerSide}>
         {athlete ? <p className={styles.who}>Only you and coaches you share photos and voice notes with can see this.</p> : null}
         <div className={styles.playerActions}>
           {visualOpen.removable ? <button type="button" className={styles.textAction} onClick={() => void remove(visualOpen)}>
             Remove {NOUN[kindOf(visualOpen)].toLowerCase()}</button> : null}
-          <button type="button" className={styles.textAction} onClick={() => setOpened(null)}>Close</button>
+          <button type="button" className={styles.textAction} onClick={() => { opening.current = null; setOpened(null); }}>Close</button>
         </div>
       </div>
     </div> : null}
@@ -453,7 +466,7 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
             </button>}
           {playing ? <div className={styles.noteActions}>
             {row.removable ? <button type="button" className={styles.textAction} onClick={() => void remove(row)}>Remove</button> : null}
-            <button type="button" className={styles.textAction} onClick={() => setOpened(null)}>Close</button>
+            <button type="button" className={styles.textAction} onClick={() => { opening.current = null; setOpened(null); }}>Close</button>
           </div> : null}
         </li>;
       })}
@@ -523,6 +536,28 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
 }
 
 export const TrainingAttachments = TrainingVideos;
+
+/**
+ * An opened photo: its space is reserved from the known size (no jump), it is
+ * never taller than about 60% of the screen, the thumbnail shows at once and
+ * the full photo fades in over it once it has loaded.
+ */
+function PhotoFrame({ file, alt }: { file: TrainingAttachment["file"]; alt: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const width = file?.width || 4;
+  const height = file?.height || 3;
+  return <div className={styles.photoFrame} data-loaded={loaded || undefined}
+    style={{ aspectRatio: `${width} / ${height}`, maxWidth: `min(100%, calc(60vh * ${width / height}))` }}>
+    {/* Plain <img>s: next/image would route the private, short-lived links through the image optimizer. */}
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    {file?.thumb_url ? <img className={styles.photoPreview} src={file.thumb_url} alt="" aria-hidden="true"
+      referrerPolicy="no-referrer" draggable={false} /> : null}
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    {file?.url ? <img className={styles.photo} src={file.url} alt={alt} decoding="async" referrerPolicy="no-referrer"
+      draggable={false} onLoad={() => setLoaded(true)} /> : null}
+    {!loaded ? <span className={styles.photoLoading} role="status">Loading photo…</span> : null}
+  </div>;
+}
 
 /** "photos, voice notes or PDFs" for the kinds on offer. */
 function describeKinds(kinds: Kind[]) {

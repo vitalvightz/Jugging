@@ -43,6 +43,17 @@ test("a photo is rebuilt from pixels: EXIF, GPS and hidden text are gone", () =>
   assert.deepEqual(jpegFrameSize(clean.bytes), { width: 64, height: 48 });
 });
 
+test("a photo comes with a small, clean thumbnail drawn from the rebuilt pixels", () => {
+  const big = withExif(photo(1280, 960));
+  const clean = cleanPhoto(big, codec);
+  assert.deepEqual([clean.thumb.width, clean.thumb.height], [LIMITS.thumbMaxSide, 270]);
+  assert.deepEqual(jpegFrameSize(clean.thumb.bytes), { width: 360, height: 270 });
+  assert.ok(clean.thumb.bytes.length < clean.bytes.length / 3);
+  assert.ok(!contains(clean.thumb.bytes, "GPSLatitude") && !contains(clean.thumb.bytes, "Exif"));
+  // A photo already smaller than a thumbnail is never scaled up.
+  assert.deepEqual([cleanPhoto(photo(), codec).thumb.width, cleanPhoto(photo(), codec).thumb.height], [64, 48]);
+});
+
 test("an HTML payload appended to a real JPEG (polyglot) does not survive", () => {
   const polyglot = concat(photo(), text("<html><body><script>fetch('/steal')</script></body></html>"));
   const clean = cleanPhoto(polyglot, codec);

@@ -165,3 +165,33 @@ def test_coach_voice_feedback_needs_media_sharing_and_the_coach_removes_only_the
     assert client.delete(f"{path}/{note['id']}", headers=AS_COACH).status_code == 204
     assert not any(row["id"] == note["id"] for row in store.training_attachments)
     assert len(signed) == 1
+
+
+def test_lists_show_photo_thumbnails_signed_together_and_fall_back_for_older_photos(media):
+    client, store, _, target, signed, _ = media
+    batches: list[tuple[list[str], int]] = []
+    stored = set()
+
+    def sign_many(paths, *, expires_in):
+        batches.append((list(paths), expires_in))
+        return {path: f"{SIGNED}{path}?ttl={expires_in}" for path in paths if path in stored}
+    store.attachment_signed_urls = sign_many
+    first, _ = _upload(client, AS_FIGHTER)
+    second, _ = _upload(client, AS_FIGHTER)
+    voice, _ = _upload(client, AS_FIGHTER, kind="voice")
+    for asset in (first, second, voice):
+        client.post(URL, headers=AS_FIGHTER, json={"asset_id": asset["asset_id"], "source": "external", "target_id": target})
+    # The newer photo has a thumbnail; the older one was rebuilt before thumbnails existed.
+    stored.add(f"{FIGHTER}/{second['asset_id']}/thumb.jpg")
+    stored.add(f"{FIGHTER}/{first['asset_id']}/clean.jpg")
+    batches.clear()
+    rows = client.get(URL, headers=AS_FIGHTER, params={"source": "external", "target_id": target}).json()
+    thumbs = {row["kind"]: [] for row in rows}
+    for row in rows:
+        thumbs[row["kind"]].append(row["file"]["thumb_url"])
+    assert thumbs["photo"] == [f"{SIGNED}{FIGHTER}/{first['asset_id']}/clean.jpg?ttl=120",
+                               f"{SIGNED}{FIGHTER}/{second['asset_id']}/thumb.jpg?ttl=120"]
+    assert thumbs["voice"] == [None]
+    # One request for all thumbnails, one for the fallback; full files are never signed by a list.
+    assert [len(paths) for paths, _ in batches] == [2, 1] and signed == []
+    assert all(row["file"]["url"] is None for row in rows)

@@ -194,6 +194,19 @@ class PrivateMediaStoreMixin:
             raise HTTPException(503, "Unable to open this file. Try again.")
         return url
 
+    def attachment_signed_urls(self, paths, *, expires_in):
+        """Short-lived links for several rebuilt files at once (photo thumbnails
+        in a list). Files that don't exist are simply left out."""
+        if not paths:
+            return {}
+        try:
+            items = self.client.storage.from_("attachment-ready").create_signed_urls(list(paths), expires_in)
+        except Exception:  # noqa: BLE001 - previews are optional; the list still works without them
+            logger.warning("[attachments] thumbnail signing failed")
+            return {}
+        return {item["path"]: item.get("signedURL") or item.get("signedUrl")
+                for item in items or [] if not item.get("error") and (item.get("signedURL") or item.get("signedUrl"))}
+
     def process_attachment(self, asset_id, *, page=None, assemble=False):
         """Rebuild one upload (or one PDF page, or assemble a PDF) in the
         process-attachment Edge Function, never in this process."""

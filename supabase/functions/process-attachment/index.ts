@@ -100,6 +100,10 @@ async function cleanup(key: string) {
       if (asset.status === "rejected" && asset.ready_path) {
         await remove(key, "attachment-ready", [asset.ready_path]);
       }
+      if (asset.status === "rejected" && asset.kind === "photo") {
+        // A photo's thumbnail is written before it is ready, so remove it even if it never finished.
+        await remove(key, "attachment-ready", [`${asset.owner_id}/${asset.id}/thumb.jpg`]);
+      }
       await rpc(key, "ack_attachment_cleanup", { p_asset_id: asset.id, p_all_removed: asset.status === "rejected" });
     } catch { console.error("Attachment cleanup will retry", asset.id); }
   }
@@ -114,6 +118,8 @@ async function process(key: string, assetId: string) {
     const base = `${asset.owner_id}/${asset.id}`;
     if (asset.kind === "photo") {
       const clean = cleanPhoto(original, codec, asset.size_bytes);
+      // The thumbnail goes first: a photo is never ready without its preview.
+      await upload(key, `${base}/thumb.jpg`, clean.thumb.bytes, "image/jpeg");
       await upload(key, `${base}/clean.jpg`, clean.bytes, "image/jpeg");
       await rpc(key, "finish_attachment", { p_asset_id: asset.id, p_token: asset.processing_token, p_ready_path: `${base}/clean.jpg`,
         p_width: clean.width, p_height: clean.height, p_duration_ms: null });

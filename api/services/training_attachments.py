@@ -1,6 +1,7 @@
 """Turn attachment rows into views for one viewer.
 
-Lists never carry a playable link: a 60-second link to the sanitized file is
+Lists carry only photo thumbnails (small previews rebuilt from the clean
+pixels, on 2-minute links). A 60-second link to the full sanitized file is
 issued only by a play route, for one attachment, after ownership (and, for a
 coach, the live connection and media-sharing consent) is checked on that
 request. Photos, voice notes and PDFs are only ever served from the approved
@@ -17,6 +18,7 @@ from api.services.private_media import media_preview
 
 logger = logging.getLogger(__name__)
 LINK_SECONDS = 60
+THUMB_SECONDS = 120
 CONTENT_TYPES = {"photo": "image/jpeg", "voice": "audio/wav"}
 FLAGS = {"photo": "ATTACHMENT_PHOTOS_ENABLED", "voice": "ATTACHMENT_VOICE_ENABLED", "pdf": "ATTACHMENT_PDFS_ENABLED"}
 SIZE_LIMITS = {"photo": 8 * 1024 * 1024, "voice": 2 * 1024 * 1024, "pdf": 8 * 1024 * 1024}
@@ -79,7 +81,30 @@ def attachment_views(store, athlete_id, rows, *, viewer_id=None, sign=False):
                 logger.info("[attachments] skipped attachment status=%s", exc.status_code)
                 continue
         views.append(view)
+    _add_thumbnails(store, views, assets, rows)
     return views
+
+
+def thumb_path(asset):
+    """Where the Edge Function writes a photo's thumbnail, beside its clean file."""
+    return f"{asset['ready_path'].rsplit('/', 1)[0]}/thumb.jpg"
+
+
+def _add_thumbnails(store, views, assets, rows):
+    """Signs every photo's thumbnail in one request. Photos rebuilt before
+    thumbnails existed fall back to their full clean file."""
+    by_id = {row["id"]: assets.get(str(row.get("asset_id"))) for row in rows if row.get("asset_id")}
+    photos = [(view, by_id[view["id"]]) for view in views if view.get("kind") == "photo" and by_id.get(view["id"])]
+    if not photos:
+        return
+    signer = getattr(store, "attachment_signed_urls", None)
+    if signer is None:
+        return
+    thumbs = signer([thumb_path(asset) for _, asset in photos], expires_in=THUMB_SECONDS)
+    missing = [asset["ready_path"] for _, asset in photos if thumb_path(asset) not in thumbs]
+    fallback = signer(missing, expires_in=THUMB_SECONDS) if missing else {}
+    for view, asset in photos:
+        view["file"]["thumb_url"] = thumbs.get(thumb_path(asset)) or fallback.get(asset["ready_path"])
 
 
 def playable(store, athlete_id, attachment_id, *, viewer_id=None):

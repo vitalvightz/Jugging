@@ -48,6 +48,9 @@ class AttachmentFile(BaseModel):
     """A rebuilt photo, voice note or PDF. url is set only on a play response;
     for a PDF it is a download-only link that carries the display name."""
     url: str | None = None
+    # A photo's small preview, rebuilt from the same clean pixels: a 2-minute
+    # link, issued with the list after the same ownership and consent checks.
+    thumb_url: str | None = None
     width: int | None = None
     height: int | None = None
     duration_ms: int | None = None

@@ -10,7 +10,11 @@ export const LIMITS = {
   // Sized so a worst-case (high-entropy) photo rebuilds well inside the Edge
   // Function limits (2 s CPU, 256 MB): about 0.6 s and 120 MB measured with jpeg-js.
   photoMaxSide: 1280,
-  photoQuality: 82,
+  photoQuality: 80,
+  // A small preview of the rebuilt photo, made from the same clean pixels, so
+  // lists can show real thumbnails (about 15-30 KB) instead of grey boxes.
+  thumbMaxSide: 360,
+  thumbQuality: 72,
   voiceBytes: 2 * 1024 * 1024,
   voiceSampleRate: 16000,
   voiceMinMs: 300,
@@ -38,6 +42,7 @@ export type JpegCodec = {
 };
 
 export type CleanPhoto = { bytes: Uint8Array; width: number; height: number };
+export type CleanPhotoWithThumb = CleanPhoto & { thumb: CleanPhoto };
 export type CleanVoice = { bytes: Uint8Array; durationMs: number };
 
 // Baseline and progressive Huffman JPEGs only (what phones and canvas produce).
@@ -75,7 +80,7 @@ const PHOTO_RULES: ImageRules = { maxBytes: LIMITS.photoBytes, maxSide: LIMITS.p
 const PAGE_RULES: ImageRules = { maxBytes: LIMITS.pageBytes, maxSide: LIMITS.pageMaxSide,
   maxPixels: LIMITS.pageMaxPixels, quality: LIMITS.pageQuality, tooLarge: "Page is too large" };
 
-function rebuildJpeg(bytes: Uint8Array, codec: JpegCodec, rules: ImageRules, declaredSize?: number): CleanPhoto {
+function rebuildJpeg(bytes: Uint8Array, codec: JpegCodec, rules: ImageRules, declaredSize?: number): CleanPhoto & { pixels: Uint8Array } {
   if (!bytes.length || bytes.length > rules.maxBytes) throw new Rejected(rules.tooLarge);
   if (declaredSize !== undefined && bytes.length !== declaredSize) throw new Rejected("Upload size mismatch");
   const frame = jpegFrameSize(bytes);
@@ -98,16 +103,46 @@ function rebuildJpeg(bytes: Uint8Array, codec: JpegCodec, rules: ImageRules, dec
   pixels.set(data);
   for (let i = 3; i < pixels.length; i += 4) pixels[i] = 255;
   const encoded = codec.encode({ width, height, data: pixels }, rules.quality).data;
-  return { bytes: new Uint8Array(encoded), width, height };
+  return { bytes: new Uint8Array(encoded), width, height, pixels };
 }
 
-export function cleanPhoto(bytes: Uint8Array, codec: JpegCodec, declaredSize?: number): CleanPhoto {
-  return rebuildJpeg(bytes, codec, PHOTO_RULES, declaredSize);
+/** Box-averages clean RGBA pixels down so the long side is at most maxSide. */
+export function downscale(pixels: Uint8Array, width: number, height: number, maxSide: number): DecodedImage {
+  const scale = Math.min(1, maxSide / Math.max(width, height));
+  const w = Math.max(1, Math.round(width * scale));
+  const h = Math.max(1, Math.round(height * scale));
+  const out = new Uint8Array(w * h * 4);
+  for (let y = 0; y < h; y += 1) {
+    const y0 = Math.floor((y * height) / h);
+    const y1 = Math.max(y0 + 1, Math.floor(((y + 1) * height) / h));
+    for (let x = 0; x < w; x += 1) {
+      const x0 = Math.floor((x * width) / w);
+      const x1 = Math.max(x0 + 1, Math.floor(((x + 1) * width) / w));
+      let r = 0, g = 0, b = 0;
+      for (let sy = y0; sy < y1; sy += 1) {
+        let at = (sy * width + x0) * 4;
+        for (let sx = x0; sx < x1; sx += 1, at += 4) { r += pixels[at]; g += pixels[at + 1]; b += pixels[at + 2]; }
+      }
+      const n = (y1 - y0) * (x1 - x0);
+      const to = (y * w + x) * 4;
+      out[to] = r / n; out[to + 1] = g / n; out[to + 2] = b / n; out[to + 3] = 255;
+    }
+  }
+  return { width: w, height: h, data: out };
+}
+
+/** The rebuilt photo, plus a small thumbnail drawn from the same clean pixels. */
+export function cleanPhoto(bytes: Uint8Array, codec: JpegCodec, declaredSize?: number): CleanPhotoWithThumb {
+  const { pixels, ...photo } = rebuildJpeg(bytes, codec, PHOTO_RULES, declaredSize);
+  const small = downscale(pixels, photo.width, photo.height, LIMITS.thumbMaxSide);
+  const thumb = { bytes: new Uint8Array(codec.encode(small, LIMITS.thumbQuality).data), width: small.width, height: small.height };
+  return { ...photo, thumb };
 }
 
 /** One PDF page image, rebuilt from decoded pixels exactly like a photo. */
 export function cleanPage(bytes: Uint8Array, codec: JpegCodec): CleanPhoto {
-  return rebuildJpeg(bytes, codec, PAGE_RULES);
+  const { pixels: _pixels, ...page } = rebuildJpeg(bytes, codec, PAGE_RULES);
+  return page;
 }
 
 /**
