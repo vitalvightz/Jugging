@@ -751,6 +751,9 @@ class SourceCheck:
         group = _clean(item.group)
         read = read_dose_line(f"{window} ({group})" if group else window)
         problems: list[str] = []
+        # The line after the exercise's own name: where its own numbers are.
+        first = next((t for t in _tokens(name) if t in window.lower()), None)
+        after = window[window.lower().index(first):] if first else ""
 
         def written_as(value: float, *skip: str) -> str | None:
             """What else this number is on the line, if it's anything."""
@@ -759,9 +762,26 @@ class SourceCheck:
                     return role
             return None
 
-        def verify(label: str, value, role: str, *, seconds: bool = False, also: tuple[str, ...] = ()):
+        def verify(label: str, value, role: str, *, seconds: bool = False, also: tuple[str, ...] = (), field: str | None = None):
             if not isinstance(value, (int, float)) or isinstance(value, bool):
                 return
+
+            def unwritten():
+                # A number written nowhere on the line is fixed from the line when
+                # the line gives exactly one value for it ("3x8" read as 3x10
+                # becomes 3x8). Otherwise it is left as read and flagged.
+                value = None
+                if field:
+                    written = read.roles.get(role) or set()
+                    value = next(iter(written)) if len(written) == 1 else None
+                    # Only a number written after the exercise's own name: a section
+                    # heading's time ("Warm-up (10 min): jump rope, ...") is never given to it.
+                    if value is not None and not any(f"{v:g}" in after for v in (value, value / 60)):
+                        value = None
+                if value is not None:
+                    setattr(item, field, int(value) if value == int(value) else value)
+                else:
+                    problems.append(f"{shown} isn't written")
             expected = set().union(*(read.roles[r] for r in (role, *also)))
             if any(abs(value - n) < 1e-9 for n in expected):
                 return
@@ -771,21 +791,21 @@ class SourceCheck:
             if expected and other:
                 problems.append(f"{shown} is written as {ROLE_WORDS[other]}")
             elif expected:
-                problems.append(f"{shown} isn't written")
+                unwritten()
             elif not any(f"{value:g}" == n or (seconds and f"{value / 60:g}" == n) for n in read.bare):
-                problems.append(f"{shown} isn't written")
+                unwritten()
             elif other and not expected:
                 # The line doesn't make this role clear, but the number is there as something else.
                 problems.append(f"{shown} is written as {ROLE_WORDS[other]}")
 
-        verify("sets", item.sets, "count")
-        verify("rounds", item.rounds, "count")
-        verify("reps", item.reps, "reps")
-        verify("time", item.seconds, "work", seconds=True)
-        verify("work time", item.work_seconds, "work", seconds=True)
+        verify("sets", item.sets, "count", field="sets")
+        verify("rounds", item.rounds, "count", field="rounds")
+        verify("reps", item.reps, "reps", field="reps")
+        verify("time", item.seconds, "work", seconds=True, field="seconds")
+        verify("work time", item.work_seconds, "work", seconds=True, field="work_seconds")
         # With blocks, the written rest is the rest between blocks; the rounds' own
         # recovery ("15 sec on -> 45 sec recovery") reads as a time.
-        verify("rest", item.rest_seconds, "rest", seconds=True, also=("work",) if not read.roles["rest"] or item.blocks else ())
+        verify("rest", item.rest_seconds, "rest", seconds=True, also=("work",) if not read.roles["rest"] or item.blocks else (), field="rest_seconds")
         # Repeated blocks: the repeat is written ("a second block", "x2 blocks"), never folded into rounds.
         repeats = re.search(r"\b(?:repeat\w*|blocks?)\b", re.sub(r"repeat\w*\s*\d+\s*x?\s*=\s*(?:1|one)\s+round", "", window, flags=re.I), re.I)
         if isinstance(item.blocks, int) and item.blocks > 1:
@@ -821,10 +841,11 @@ class SourceCheck:
         # "each side" is only true if the line says so (and left out if it does).
         says_per_side = bool(PER_SIDE.search(window))
         # "each way" / "per direction" (neck holds) may be read either way.
+        # The line decides: per side is set or cleared to match it.
         if item.per_side and not says_per_side and not EACH_WAY.search(window):
-            problems.append("per side isn't written")
+            item.per_side = None
         elif says_per_side and not item.per_side and (item.reps or item.seconds):
-            problems.append("the line says each side")
+            item.per_side = True
         if problems:
             flag(f"Check the dose: {'; '.join(problems)}.")
 
@@ -990,10 +1011,12 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
             def say(message, e=exercise, where=where):
                 flag(f"{where} \u00b7 {_clean(e.name, 60)}" if _clean(e.name) else where, message)
 
+            # Numbers are checked against the written line first, so one that
+            # isn't written is removed before the exercise is built.
+            if checker and not exercise.copied and _clean(exercise.name):
+                checker.check(exercise, say)
             # A copy made from a reference was flagged where it was first written.
             built = _exercise(exercise, (lambda message: None) if exercise.copied else say)
-            if built and checker and not exercise.copied:
-                checker.check(exercise, say)
             if built and matcher:
                 found = matcher.match(built["name"])
                 swapped = linked(built, found) if found else None

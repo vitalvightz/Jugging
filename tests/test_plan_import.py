@@ -466,9 +466,11 @@ def test_a_number_the_reader_changed_without_saying_is_caught_from_the_source():
         ReadExercise(name="Landmine press", prescription="3 x 6-9"),  # a range changed
         ReadExercise(name="Turkish get-up", sets=2, reps=3),  # not in the programme at all
     ])])])
-    flags = [(f.where, f.message) for f in build_draft(reading, date(2026, 11, 23), source).flags]
+    draft = build_draft(reading, date(2026, 11, 23), source)
+    # A number written nowhere is fixed from the line (10 back to the written 8), not flagged.
+    assert draft.plan["sessions"][0]["exercises"][0]["dose"]["reps"] == 8
+    flags = [(f.where, f.message) for f in draft.flags]
     assert flags == [
-        ("Strength · Bulgarian split squat", "Check the dose: reps 10 isn't written."),
         ("Strength · Landmine press", "Check the dose: 9 isn't written."),
         ("Strength · Turkish get-up", "Couldn't find its line to check the numbers. Check the dose."),
     ]
@@ -518,10 +520,9 @@ def test_units_loads_and_sides_must_match_the_line():
     assert _flags_for("Deadlift 4x5 @ 140kg", ReadExercise(name="Deadlift", sets=4, reps=5, load="140lb")) == [
         "Check the dose: load 140lb isn't written."]
     assert _flags_for("Lunge 3x10 each leg", ReadExercise(name="Lunge", sets=3, reps=10, per_side=True)) == []
-    assert _flags_for("Lunge 3x10", ReadExercise(name="Lunge", sets=3, reps=10, per_side=True)) == [
-        "Check the dose: per side isn't written."]
-    assert _flags_for("Lunge 3x10 each leg", ReadExercise(name="Lunge", sets=3, reps=10)) == [
-        "Check the dose: the line says each side."]
+    # Per side is set to what the line says, without a flag.
+    assert _flags_for("Lunge 3x10", ReadExercise(name="Lunge", sets=3, reps=10, per_side=True)) == []
+    assert _flags_for("Lunge 3x10 each leg", ReadExercise(name="Lunge", sets=3, reps=10)) == []
     assert _flags_for("Press 4x6 @ RPE 8", ReadExercise(name="Press", sets=4, reps=6, rpe=8)) == []
     assert _flags_for("Press 4x6", ReadExercise(name="Press", sets=4, reps=6, rpe=8)) == [
         "Check the dose: RPE 8 isn't written as an RPE."]
@@ -536,8 +537,7 @@ def test_each_exercise_on_a_shared_line_is_checked_against_its_own_part():
           ReadExercise(name="Plank", sets=3, seconds=45)]
     assert _flags_for(source, *ok) == []
     # Pull ups given the squat's reps: 5 is on the line, but not in the pull-ups part.
-    assert _flags_for(source, ReadExercise(name="Pull ups", sets=3, reps=5)) == [
-        "Check the dose: reps 5 isn't written."]
+    assert _flags_for(source, ReadExercise(name="Pull ups", sets=3, reps=5)) == [], "fixed to its own part's 8"
 
 
 def test_warm_ups_cooldowns_and_mobility_need_no_dose_and_are_not_flagged_for_it(api):
@@ -1033,17 +1033,17 @@ def _import(reader, text="Monday Strength\nBench press 4x6\n"):
 
 def test_a_reading_that_fails_its_checks_gets_one_second_look_and_keeps_the_better_one():
     plan_import.reset_import_limits()
-    reader = TwoReadings(_one_exercise(4, 8), _one_exercise(4, 6))
+    reader = TwoReadings(_one_exercise(6, 4), _one_exercise(4, 6))  # 4x6 read as 6 sets of 4
     result = _import(reader)
-    assert reader.reviews[0] is None and "reps 8" in reader.reviews[1]
+    assert reader.reviews[0] is None and "sets 6" in reader.reviews[1]
     assert result.plan["sessions"][0]["exercises"][0]["dose"]["reps"] == 6
     assert not [f for f in result.flags if f.message.startswith("Check the dose")]
 
 
 def test_a_second_look_that_is_no_better_is_dropped_and_a_clean_reading_gets_none():
     plan_import.reset_import_limits()
-    reader = TwoReadings(_one_exercise(4, 8), _one_exercise(5, 9))
-    assert _import(reader).plan["sessions"][0]["exercises"][0]["dose"]["reps"] == 8
+    reader = TwoReadings(_one_exercise(6, 4), _one_exercise(6, 4))
+    assert _import(reader).plan["sessions"][0]["exercises"][0]["dose"]["reps"] == 4
     clean = TwoReadings(_one_exercise(4, 6), None)
     _import(clean)
     assert clean.reviews == [None], "no second call when every check passes"
@@ -1071,3 +1071,17 @@ def test_each_exercise_keeps_its_own_kind_whatever_the_session_is():
     CustomPlanInput.model_validate(plan)
     assert [e.get("block_type") for e in plan["sessions"][0]["exercises"]] == [
         "preparation", "skill", "sparring", "skill", None]
+
+
+def test_a_number_is_fixed_from_its_own_line_or_left_and_flagged():
+    """As imported live: jump rope got 180s from nowhere under "Warm-up (10 min)"."""
+    source = "Day 1 – Upper Body Strength\n• Warm-up (10 min): Jump rope, leg swings, hip openers, med ball slams 2×8\n• Plank 3x45s"
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("Day 1", "Monday", exercises=[
+        ReadExercise(name="Jump rope", seconds=180, group="Warm-up (10 min)"),
+        ReadExercise(name="Plank", sets=3, seconds=30)])])])
+    draft = build_draft(reading, date(2026, 11, 23), source)
+    jump, plank = draft.plan["sessions"][0]["exercises"]
+    # No time of its own is written, so it is left as read and flagged (never given the heading's 10 min).
+    assert jump["dose"]["duration_seconds"] == 180
+    assert plank["dose"]["duration_seconds"] == 45, "fixed from its own line"
+    assert [f.message for f in draft.flags if f.message.startswith("Check the dose")] == ["Check the dose: time 180s isn't written."]
