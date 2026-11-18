@@ -23,9 +23,8 @@ import pytest
 from api.contracts.custom_plans import WEEKDAYS, CustomPlanInput
 from api.services import plan_import
 from api.services.coach_plans import saved_input
-from api.services.plan_import import (
-    PlanImportRequest, ReadCorrection, ReadExercise, ReadPlan, ReadSession, ReadWeek, build_draft, dose_from, response_schema,
-)
+from api.services.plan_import import PlanImportRequest, build_draft, dose_from
+from api.services.plan_import_reading import ReadCorrection, ReadExercise, ReadPlan, ReadSession, ReadWeek, response_schema
 from tests.support import _build_client
 from tests.test_coach_fighter_access import AS_COACH, BASE
 from tests.test_coach_fighter_access import camp  # noqa: F401 - shared pytest fixture
@@ -43,7 +42,7 @@ class FakeReader:
     def __init__(self, plan: ReadPlan | Exception):
         self.plan, self.texts, self.images = plan, [], []
 
-    def read(self, text, images=()):
+    def read(self, text, images=(), review=None):
         self.texts.append(text)
         self.images = list(images)
         if isinstance(self.plan, Exception):
@@ -199,7 +198,7 @@ def test_the_coach_programme_arrives_exactly_as_written(api):
     assert [s["scheduled_date"] for s in plan["sessions"][4:8]] == ["2026-11-30", "2026-11-30", "2026-12-02", "2026-12-05"]
     assert [e["name"] for e in plan["sessions"][4]["exercises"]] == [e["name"] for e in strength]
     assert body["flags"] == [
-        {"where": "Plan", "message": "No upcoming start date written, so it starts Monday 23 Nov. Change the start date in the builder if needed."},
+        {"where": "Plan", "message": "No start date written, so it starts Monday 23 Nov."},
         {"where": "Not placed", "message": "“Sauna 2x a week if cutting”"},
     ]
 
@@ -247,7 +246,7 @@ def test_weekly_plans_leave_unwritten_days_open_for_the_builder_to_ask(api):
     pads = next(s for s in plan["sessions"] if s["name"] == "Day 3 - Pads")["exercises"][0]
     assert dose(pads) == {"mode": "reps"}
     assert body["flags"] == [
-        {"where": "Day 3 - Pads · Pads", "message": "No sets, reps, time or distance written. Add the dose, or leave it open."},
+        {"where": "Day 3 - Pads · Pads", "message": "No dose written. Add one or leave it open."},
     ]
     # Once the person picks the days, it saves with nothing left open.
     saved = client.post("/api/custom-plans", json=place(body, "Tuesday"), headers=AUTH).json()
@@ -259,7 +258,7 @@ def test_values_the_builder_cannot_hold_are_kept_as_written_or_flagged():
     # Out of range: flagged and kept in the notes as written, never clamped to a made-up value.
     assert dose_from(ReadExercise(name="x", sets=3, reps=5, rpe=15), flags.append).model_dump(exclude_none=True) == {
         "mode": "reps", "sets": 3, "reps": 5}
-    assert flags == ["RPE 15 isn't between 1 and 10, so it's kept in the notes."]
+    assert flags == ["RPE 15 isn't 1-10. It's in the notes."]
     built = plan_import._exercise(ReadExercise(name="x", sets=3, reps=5, rpe=15, rest_seconds=-30, notes="heavy"), lambda m: None)
     assert built["notes"] == "heavy\nRPE as written: 15\nRest as written: -30s"
     # Values that don't fit one mode keep the whole written dose as text.
@@ -439,7 +438,7 @@ def test_list_labels_are_left_out_of_names_and_nameless_exercises_are_flagged_no
     assert [e["name"] for e in exercises] == ["Back squat", "Nordic curl", "Sled push", "Plank", "T-bar row", "1.5 mile run"]
     assert exercises[2]["dose"]["distance_unit"] == "m"
     assert [(f.where, f.message) for f in result.flags] == [
-        ("Lower", "An exercise with no name wasn't brought in: “4 × 6”. Add it by hand if it matters.")]
+        ("Lower", "Skipped an exercise with no name: “4 × 6”.")]
 
 
 def test_two_sessions_on_one_day_and_same_named_sessions_stay_separate():
@@ -466,11 +465,13 @@ def test_a_number_the_reader_changed_without_saying_is_caught_from_the_source():
         ReadExercise(name="Landmine press", prescription="3 x 6-9"),  # a range changed
         ReadExercise(name="Turkish get-up", sets=2, reps=3),  # not in the programme at all
     ])])])
-    flags = [(f.where, f.message) for f in build_draft(reading, date(2026, 11, 23), source).flags]
+    draft = build_draft(reading, date(2026, 11, 23), source)
+    # A number written nowhere is fixed from the line (10 back to the written 8), not flagged.
+    assert draft.plan["sessions"][0]["exercises"][0]["dose"]["reps"] == 8
+    flags = [(f.where, f.message) for f in draft.flags]
     assert flags == [
-        ("Strength · Bulgarian split squat", "Check the dose: reps 10 isn't written in “Bulgarian split squat 3x8 each side, RPE 7”."),
-        ("Strength · Landmine press", "Check the dose: 9 isn't written in “Landmine press 3 x 6-8”."),
-        ("Strength · Turkish get-up", "Couldn't find this exercise's line in the file to double-check its numbers. Check its dose."),
+        ("Strength · Landmine press", "Check the dose: 9 isn't written."),
+        ("Strength · Turkish get-up", "Couldn't find its line to check the numbers. Check the dose."),
     ]
 
 
@@ -482,7 +483,7 @@ def test_the_real_programme_passes_the_source_check_with_no_false_alarms(api):
 
 def test_screenshots_say_their_numbers_could_not_be_double_checked():
     result = build_draft(READING, date(2026, 11, 23), "")
-    assert ("Plan", "Read from screenshots, so the numbers couldn't be double-checked against text. Compare each dose with your screenshots.") in [
+    assert ("Plan", "Read from screenshots, so doses weren't double-checked. Compare them with your screenshots.") in [
         (f.where, f.message) for f in result.flags]
 
 
@@ -494,40 +495,39 @@ def _flags_for(source, *exercises):
 def test_swapped_numbers_are_caught_by_what_they_mean_not_just_whether_they_exist():
     # 3 x 8 read as 8 sets of 3.
     assert _flags_for("Squat 3x8", ReadExercise(name="Squat", sets=8, reps=3)) == [
-        "Check the dose: sets 8 is written as reps; reps 3 is written as the number of sets or rounds in “Squat 3x8”."]
+        "Check the dose: sets 8 is written as reps; reps 3 is written as the number of sets or rounds."]
     # 6 rounds of 3 min read as 3 rounds of 6 min.
     assert _flags_for("Pads 6 x 3 min rounds, 1 min rest", ReadExercise(name="Pads", rounds=3, work_seconds=360, rest_seconds=60)) == [
-        "Check the dose: rounds 3 is written as a work time; work time 360s is written as the number of sets or rounds in “Pads 6 x 3 min rounds, 1 min rest”."]
+        "Check the dose: rounds 3 is written as a work time; work time 360s is written as the number of sets or rounds."]
     # Work and rest swapped.
     assert _flags_for("Pads 6 x 3 min rounds, 1 min rest", ReadExercise(name="Pads", rounds=6, work_seconds=60, rest_seconds=180)) == [
-        "Check the dose: work time 60s is written as a rest time; rest 180s is written as a work time in “Pads 6 x 3 min rounds, 1 min rest”."]
+        "Check the dose: work time 60s is written as a rest time; rest 180s is written as a work time."]
     # The right reading raises nothing.
     assert _flags_for("Squat 3x8", ReadExercise(name="Squat", sets=3, reps=8)) == []
     assert _flags_for("Pads 6 x 3 min rounds, 1 min rest", ReadExercise(name="Pads", rounds=6, work_seconds=180, rest_seconds=60)) == []
     # Minutes read as seconds-by-mistake: 3 min is 180s, not 3s.
     assert _flags_for("Plank 3 x 30s", ReadExercise(name="Plank", sets=3, seconds=30)) == []
     assert _flags_for("Plank 3 x 30s", ReadExercise(name="Plank", sets=3, seconds=3)) == [
-        "Check the dose: time 3s is written as the number of sets or rounds in “Plank 3 x 30s”."]
+        "Check the dose: time 3s is written as the number of sets or rounds."]
 
 
 def test_units_loads_and_sides_must_match_the_line():
     assert _flags_for("Easy run 5 km", ReadExercise(name="Easy run", distance=5, distance_unit="km")) == []
     assert _flags_for("Easy run 5 km", ReadExercise(name="Easy run", distance=5, distance_unit="mi")) == [
-        "Check the dose: distance 5 mi has a different unit in “Easy run 5 km”."]
+        "Check the dose: distance 5 mi has a different unit."]
     assert _flags_for("Deadlift 4x5 @ 140kg", ReadExercise(name="Deadlift", sets=4, reps=5, load="140kg")) == []
     assert _flags_for("Deadlift 4x5 @ 140kg", ReadExercise(name="Deadlift", sets=4, reps=5, load="140lb")) == [
-        "Check the dose: load 140lb isn't written in “Deadlift 4x5 @ 140kg”."]
+        "Check the dose: load 140lb isn't written."]
     assert _flags_for("Lunge 3x10 each leg", ReadExercise(name="Lunge", sets=3, reps=10, per_side=True)) == []
-    assert _flags_for("Lunge 3x10", ReadExercise(name="Lunge", sets=3, reps=10, per_side=True)) == [
-        "Check the dose: per side isn't written in “Lunge 3x10”."]
-    assert _flags_for("Lunge 3x10 each leg", ReadExercise(name="Lunge", sets=3, reps=10)) == [
-        "Check the dose: the line says each side in “Lunge 3x10 each leg”."]
+    # Per side is set to what the line says, without a flag.
+    assert _flags_for("Lunge 3x10", ReadExercise(name="Lunge", sets=3, reps=10, per_side=True)) == []
+    assert _flags_for("Lunge 3x10 each leg", ReadExercise(name="Lunge", sets=3, reps=10)) == []
     assert _flags_for("Press 4x6 @ RPE 8", ReadExercise(name="Press", sets=4, reps=6, rpe=8)) == []
     assert _flags_for("Press 4x6", ReadExercise(name="Press", sets=4, reps=6, rpe=8)) == [
-        "Check the dose: RPE 8 isn't written as an RPE in “Press 4x6”."]
+        "Check the dose: RPE 8 isn't written as an RPE."]
     # A range read as one number collapses what the coach wrote.
     assert _flags_for("Curl 3 x 6-8", ReadExercise(name="Curl", sets=3, reps=8)) == [
-        "Check the dose: reps 8 was written as the range 6-8 in “Curl 3 x 6-8”."]
+        "Check the dose: reps 8 was written as the range 6-8."]
 
 
 def test_each_exercise_on_a_shared_line_is_checked_against_its_own_part():
@@ -536,8 +536,7 @@ def test_each_exercise_on_a_shared_line_is_checked_against_its_own_part():
           ReadExercise(name="Plank", sets=3, seconds=45)]
     assert _flags_for(source, *ok) == []
     # Pull ups given the squat's reps: 5 is on the line, but not in the pull-ups part.
-    assert _flags_for(source, ReadExercise(name="Pull ups", sets=3, reps=5)) == [
-        "Check the dose: reps 5 isn't written in “pull ups 3x8”."]
+    assert _flags_for(source, ReadExercise(name="Pull ups", sets=3, reps=5)) == [], "fixed to its own part's 8"
 
 
 def test_warm_ups_cooldowns_and_mobility_need_no_dose_and_are_not_flagged_for_it(api):
@@ -549,7 +548,7 @@ def test_warm_ups_cooldowns_and_mobility_need_no_dose_and_are_not_flagged_for_it
     body = run_import(client, monkeypatch, reading, text="Fri: Sparring 3 x 3 min, 1 min rest\nCooldown\nWarm-up\nHip mobility flow 5 min\nBack squat")
     # Only the lift with no dose is a gap; the cooldown, warm-up and mobility need none.
     assert [(f["where"], f["message"]) for f in body["flags"]] == [
-        ("Sparring · Back squat", "No sets, reps, time or distance written. Add the dose, or leave it open.")]
+        ("Sparring · Back squat", "No dose written. Add one or leave it open.")]
     saved = client.post("/api/custom-plans", json=body["plan"], headers=AUTH).json()
     incomplete = {e["name"]: e["incomplete"] for s in saved["sessions"] for e in s["exercises"]}
     assert incomplete == {"Hard sparring": False, "Cooldown": False, "Warm-up": False, "Hip mobility flow": False, "Back squat": True}
@@ -702,7 +701,7 @@ def _dose(exercise):
 
 
 def test_several_days_written_together_are_each_scheduled():
-    from api.services.plan_import import _days
+    from api.services.plan_import_reading import _days
     assert _days("Tue/Thu/Sat") == ["Tuesday", "Thursday", "Saturday"]
     assert _days("Monday/Wed") == ["Monday", "Wednesday"]
     assert _days("Mon, Wed & Fri") == ["Monday", "Wednesday", "Friday"]
@@ -757,8 +756,8 @@ def test_repeated_conditioning_blocks_and_timed_rounds_are_kept_not_flattened():
     stages = championship["notes"].split("Each round, in order:\n")[1].split("\n")
     assert [line[:9] for line in stages] == ["0:00–0:30", "0:30–1:00", "1:00–2:00", "2:00–2:30", "2:30–3:00"]
     messages = [f.message for f in draft.flags]
-    assert "Written as 2 blocks of 6 rounds with 2 min rest between blocks. The dose shows one block; the repeat is in the notes." in messages
-    assert "Each round has 5 timed parts. They are in the notes, in order." in messages
+    assert "Written as 2 blocks of 6 rounds with 2 min rest between blocks. The dose is one block; the repeat is in the notes." in messages
+    assert "5 timed parts per round, listed in the notes." in messages
     # A circuit's rounds are each exercise's sets, read off the circuit heading.
     finisher = {e["name"]: _dose(e) for e in weeks[0]["Monday"][0]["exercises"] if "Clinch Finisher" in (e["notes"] or "")}
     assert finisher["Heavy Sandbag Bear-Hug Hold"] == {"mode": "duration", "sets": 3, "duration_seconds": 30}
@@ -839,29 +838,29 @@ def test_a_reference_that_cant_be_resolved_or_is_ambiguous_is_flagged_not_guesse
     missing = _session("Day 3", "Wednesday", exercises=[ReadExercise(name="Same as Day 7", refers_to_day="Day 7")])
     draft = build_draft(plan(day1, missing), date.fromisoformat(MONDAY), None)
     assert [e["name"] for e in draft.plan["sessions"][1]["exercises"]] == []
-    assert any("Day 7, which couldn't be found" in f.message for f in draft.flags)
+    assert any("Couldn't find Day 7" in f.message for f in draft.flags)
     # "Hip + ankle drills" could be the warm-up or the mobility: never guessed.
     unclear = _session("Day 3", "Wednesday", exercises=[ReadExercise(name="Repeat hip + ankle drills", refers_to_section="hip + ankle drills")])
     day1b = _session("Day 1 - Mobility", "Monday", exercises=[
         ReadExercise(name="Hip and ankle circles", seconds=60, group="Warm-up"), ReadExercise(name="Hip and ankle rocks", seconds=60, group="Mobility")])
     draft = build_draft(plan(day1b, unclear), date.fromisoformat(MONDAY), None)
     assert draft.plan["sessions"][1]["exercises"] == []
-    assert any("could mean more than one earlier part" in f.message for f in draft.flags)
+    assert any("matches more than one earlier part" in f.message for f in draft.flags)
     # A change with numbers is kept and flagged, never applied.
     numbered = _session("Day 4", "Thursday", exercises=[ReadExercise(name="Same as Day 1 but 4 rounds", refers_to_day="Day 1", notes="but 4 rounds")])
     draft = build_draft(plan(day1, numbered), date.fromisoformat(MONDAY), None)
     copied = draft.plan["sessions"][1]["exercises"]
     assert [e["dose"]["duration_seconds"] for e in copied] == [60, 60]
-    assert any("with a written change" in f.message for f in draft.flags)
+    assert any("Copied from" in f.message for f in draft.flags)
 
 
 def test_a_missing_week_or_a_day_the_programme_never_names_is_flagged():
-    from api.services.plan_import import written_layout_flags
+    from api.services.plan_import_check import written_layout_flags
     found = []
     written_layout_flags("Week 1\nMon: squats 3x5\nWeek 2\nMon: squats 3x3\nWeek 3\nMon - Fri: walk 20 min", 2,
                          {"Monday", "Wednesday", "Sunday"}, lambda where, message: found.append(message))
-    assert found == ["The programme writes Week 3, but 2 weeks were read. Check that no week is missing.",
-                     "Sunday isn't written in the programme, but a session was placed on it. Check its day."]
+    assert found == ["The programme mentions Week 3, but only 2 weeks were read.",
+                     "A session was placed on Sunday, which the programme never names. Check its day."]
 
 
 def test_both_regression_programmes_save_and_reload_as_custom_plans(api):
@@ -893,7 +892,7 @@ def test_a_reference_uses_this_week_then_the_nearest_earlier_week_and_flags_a_ti
     tied = ReadPlan(weeks=[ReadWeek(sessions=[monday("AM lift", 3), monday("PM lift", 4)]), ReadWeek(sessions=[same_as_monday()])])
     draft = build_draft(tied, date.fromisoformat(MONDAY), None)
     assert [s["exercises"] for s in draft.plan["sessions"] if s["name"] == "Repeat"] == [[]]
-    assert any("could mean more than one Monday in that week" in f.message for f in draft.flags)
+    assert any("matches more than one Monday" in f.message for f in draft.flags)
 
 
 
@@ -984,5 +983,123 @@ def test_short_dated_plan_without_a_year_copies_every_week():
     assert sets(sessions[9]) == [n - 1 for n in sets(sessions[0])] and sets(sessions[10]) == [n - 1 for n in sets(sessions[1])]
     assert [s["exercises"][0]["dose"].get("rounds") for s in sessions[2::3]] == [4, 5, 6, 3]
     messages = " ".join(f.message for f in draft.flags)
-    for wrong in ("couldn't be found", "couldn't be matched", "No upcoming start date", "per side isn't written", "only one block was read"):
+    for wrong in ("Couldn't find", "couldn't be matched", "No start date", "per side isn't written", "only one block was read"):
         assert wrong not in messages
+
+
+def test_the_source_check_quotes_the_exercise_line_not_a_title_or_coaching_note():
+    """As imported live: Plank quoted the title ("...Plan"), band rotations quoted a
+    coaching note further down, and "2x30s each" was flagged as not per side."""
+    source = """Strength & Conditioning Plan – 2 Weeks (Boxer)
+Day 1 – Upper Body Strength
+• Band external rotations 3x12 each side
+• Bench press 4x6
+• Core: plank 3x45s, side plank 2x30s each
+Notes
+• Shoulder health is non-negotiable for a boxer: face pulls, external rotations, and band work every upper day."""
+    reading = ReadPlan.model_validate({"name": "S&C", "weeks": [{"repeat": 1, "sessions": [{
+        "days": ["Monday"], "name": "Day 1 – Upper Body Strength", "session_type": "strength_power", "exercises": [
+            {"name": "Band external rotations", "sets": 3, "reps": 12, "per_side": True},
+            {"name": "Bench press", "sets": 4, "reps": 6},
+            {"name": "Plank", "sets": 3, "seconds": 45},
+            {"name": "side plank", "sets": 2, "seconds": 30, "per_side": True}]}]}]})
+    draft = build_draft(reading, date.fromisoformat(MONDAY), source)
+    assert not [f.message for f in draft.flags if "Check the dose" in f.message or "Couldn't find" in f.message]
+
+
+
+# -- Second look: one retry with the failed checks, kept only if it is better --
+
+class TwoReadings:
+    def __init__(self, first, second):
+        self.readings, self.reviews = [first, second], []
+
+    def read(self, text, images=(), review=None):
+        self.reviews.append(review)
+        return self.readings[len(self.reviews) - 1]
+
+
+def _one_exercise(sets, reps):
+    return ReadPlan.model_validate({"name": "Plan", "weeks": [{"repeat": 1, "sessions": [{
+        "days": ["Monday"], "name": "Strength", "session_type": "strength_power",
+        "exercises": [{"name": "Bench press", "sets": sets, "reps": reps}]}]}]})
+
+
+def _import(reader, text="Monday Strength\nBench press 4x6\n"):
+    body = plan_import.PlanImportRequest(text=text, start_date=date.fromisoformat(MONDAY))
+    return plan_import.import_plan("owner", body, reader=reader)
+
+
+def test_a_reading_that_fails_its_checks_gets_one_second_look_and_keeps_the_better_one():
+    plan_import.reset_import_limits()
+    reader = TwoReadings(_one_exercise(6, 4), _one_exercise(4, 6))  # 4x6 read as 6 sets of 4
+    result = _import(reader)
+    assert reader.reviews[0] is None and "sets 6" in reader.reviews[1]
+    assert result.plan["sessions"][0]["exercises"][0]["dose"]["reps"] == 6
+    assert not [f for f in result.flags if f.message.startswith("Check the dose")]
+
+
+def test_a_second_look_that_is_no_better_is_dropped_and_a_clean_reading_gets_none():
+    plan_import.reset_import_limits()
+    reader = TwoReadings(_one_exercise(6, 4), _one_exercise(6, 4))
+    assert _import(reader).plan["sessions"][0]["exercises"][0]["dose"]["reps"] == 4
+    clean = TwoReadings(_one_exercise(4, 6), None)
+    _import(clean)
+    assert clean.reviews == [None], "no second call when every check passes"
+
+def test_a_written_tempo_goes_in_the_builders_tempo_field():
+    reading = ReadPlan.model_validate({"name": "Plan", "weeks": [{"repeat": 1, "sessions": [{
+        "days": ["Monday"], "name": "Strength", "session_type": "strength_power",
+        "exercises": [{"name": "Back squat", "sets": 4, "reps": 5, "tempo": "3-1-1-0"},
+                      {"name": "Bench press", "sets": 3, "reps": 8, "tempo": "x" * 50}]}]}]})
+    exercises = build_draft(reading, date.fromisoformat(MONDAY)).plan["sessions"][0]["exercises"]
+    assert exercises[0]["dose"]["tempo"] == "3-1-1-0"
+    assert exercises[1]["dose"].get("tempo") is None and "Tempo: " + "x" * 50 in exercises[1]["notes"]
+
+
+def test_each_exercise_keeps_its_own_kind_whatever_the_session_is():
+    """As imported live: sparring and bag rounds in a "Boxing + Conditioning" day showed as Accessory."""
+    reading = ReadPlan.model_validate({"name": "Plan", "weeks": [{"repeat": 1, "sessions": [{
+        "days": ["Saturday"], "name": "Day 4 – Boxing + Conditioning", "session_type": "mixed", "exercises": [
+            {"name": "Jump rope", "seconds": 300, "kind": "warm_up"},
+            {"name": "Sparring/technical rounds", "prescription": "as scheduled at gym", "kind": "skill"},
+            {"name": "Hard sparring", "rounds": 6, "work_seconds": 180, "kind": "sparring"},
+            {"name": "bag work", "sets": 6, "seconds": 30, "kind": "skill"},
+            {"name": "Stretch", "kind": None}]}]}]})
+    plan = build_draft(reading, date.fromisoformat(MONDAY)).plan
+    CustomPlanInput.model_validate(plan)
+    assert [e.get("block_type") for e in plan["sessions"][0]["exercises"]] == [
+        "preparation", "skill", "sparring", "skill", None]
+
+
+def test_a_number_is_fixed_from_its_own_line_or_left_and_flagged():
+    """As imported live: jump rope got 180s from nowhere under "Warm-up (10 min)"."""
+    source = "Day 1 – Upper Body Strength\n• Warm-up (10 min): Jump rope, leg swings, hip openers, med ball slams 2×8\n• Plank 3x45s"
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("Day 1", "Monday", exercises=[
+        ReadExercise(name="Jump rope", seconds=180, group="Warm-up (10 min)"),
+        ReadExercise(name="Plank", sets=3, seconds=30)])])])
+    draft = build_draft(reading, date(2026, 11, 23), source)
+    jump, plank = draft.plan["sessions"][0]["exercises"]
+    # No time of its own is written, so it is left as read and flagged (never given the heading's 10 min).
+    assert jump["dose"]["duration_seconds"] == 180
+    assert plank["dose"]["duration_seconds"] == 45, "fixed from its own line"
+    assert [f.message for f in draft.flags if f.message.startswith("Check the dose")] == ["Check the dose: time 180s isn't written."]
+
+
+def test_a_second_look_that_drops_an_exercise_is_never_kept():
+    """Dropping the hard-to-read exercise would make the second reading look cleaner."""
+    plan_import.reset_import_limits()
+    first = ReadPlan.model_validate({"name": "Plan", "weeks": [{"repeat": 1, "sessions": [{
+        "days": ["Monday"], "name": "Strength", "session_type": "strength_power", "exercises": [
+            {"name": "Bench press", "sets": 6, "reps": 4}, {"name": "Row", "sets": 3, "reps": 8}]}]}]})
+    reader = TwoReadings(first, _one_exercise(4, 6))  # fixed the bench press, but lost the row
+    result = _import(reader, "Monday Strength\nBench press 4x6\nRow 3x8\n")
+    assert len(reader.reviews) == 2
+    assert [e["name"] for e in result.plan["sessions"][0]["exercises"]] == ["Bench press", "Row"]
+
+
+def test_the_exercise_line_with_a_dose_beats_a_heading_that_names_it():
+    source = "Day 1 – Plank\nPlank 3x45s"
+    assert _flags_for(source, ReadExercise(name="Plank", sets=3, seconds=45)) == []
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("S", "Monday", exercises=[ReadExercise(name="Plank", sets=3, seconds=30)])])])
+    assert build_draft(reading, date(2026, 11, 23), source).plan["sessions"][0]["exercises"][0]["dose"]["duration_seconds"] == 45
