@@ -357,11 +357,11 @@ def test_the_accuracy_check_finds_no_differences_against_its_own_hand_checked_re
     and catches a wrong day, a changed dose and an invented exercise."""
     from tools.plan_import_eval import FIXTURES as CASES, cases, compare
     found = list(cases(CASES / "eval"))
-    assert [name for name, *_ in found] == ["coach_programme", "strength_block", "typos", "whatsapp_week"]
+    assert [name for name, *_ in found] == ["coach_programme", "boxing_clinch_3week", "boxing_prep_references", "strength_block", "typos", "whatsapp_week"]
     for _, text, _, truth in found:
         assert text.strip()
         assert compare(truth, truth, text)["errors"] == []
-    truth = found[3][3]
+    truth = found[5][3]
     wrong = truth.model_copy(deep=True)
     wrong.weeks[0].sessions[0].day = "Tuesday"
     wrong.weeks[0].sessions[2].exercises[0].reps = 6
@@ -676,3 +676,221 @@ def test_an_imported_warm_up_with_a_written_dose_is_treated_like_any_exercise(ap
     assert warm["dose"] == squat["dose"], "a name never changes how a written dose is read"
     saved = client.post("/api/custom-plans", json=body["plan"], headers=AUTH).json()
     assert [e["incomplete"] for e in saved["sessions"][0]["exercises"]] == [False, False]
+
+
+
+# -- Regression: a three-week boxing programme (tests/fixtures/plan_import/eval) ---
+
+EVAL = Path(__file__).parent / "fixtures" / "plan_import" / "eval"
+
+
+def _fixture_draft(name):
+    reading = ReadPlan.model_validate_json((EVAL / f"{name}.json").read_text())
+    source = (EVAL / f"{name}.txt").read_text()
+    draft = build_draft(reading, date.fromisoformat(MONDAY), source)
+    CustomPlanInput.model_validate(draft.plan)
+    weeks: dict[int, dict[str, list[dict]]] = {}
+    for s in draft.plan["sessions"]:
+        when = date.fromisoformat(s["scheduled_date"])
+        week = (when - date.fromisoformat(draft.plan["start_date"])).days // 7
+        weeks.setdefault(week, {}).setdefault(WEEKDAYS[when.weekday()], []).append(s)
+    return draft, weeks
+
+
+def _dose(exercise):
+    return {k: v for k, v in exercise["dose"].items() if v is not None}
+
+
+def test_several_days_written_together_are_each_scheduled():
+    from api.services.plan_import import _days
+    assert _days("Tue/Thu/Sat") == ["Tuesday", "Thursday", "Saturday"]
+    assert _days("Monday/Wed") == ["Monday", "Wednesday"]
+    assert _days("Mon, Wed & Fri") == ["Monday", "Wednesday", "Friday"]
+    assert _days("Monday-Friday") == ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+    assert _days("Day 1") == [] and _days("AM") == []
+    # An older reading with the days in one string is read the same way.
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("Boxing", "Tue/Thu/Sat", session_type="skill", exercises=[
+        ReadExercise(name="Pads", rounds=6, work_seconds=180, rest_seconds=60)])])])
+    draft = build_draft(reading, date.fromisoformat(MONDAY), None)
+    assert [s["weekday"] for s in draft.plan["sessions"]] == ["Tuesday", "Thursday", "Saturday"]
+    assert draft.needs_day == [], "days written are never asked for"
+
+
+def test_the_three_week_boxing_programme_keeps_its_schedule():
+    draft, weeks = _fixture_draft("boxing_clinch_3week")
+    assert draft.weeks == 3 and sorted(weeks) == [0, 1, 2]
+    assert draft.needs_day == []
+    for week in weeks.values():
+        # Tue/Thu/Sat boxing every week, Sunday rest every week, nothing else added.
+        assert sorted(week) == sorted(WEEKDAYS)
+        for day in ("Tuesday", "Thursday", "Saturday"):
+            assert [s["name"] for s in week[day]] == ["Boxing skill work, sparring, and low-intensity aerobic roadwork"]
+        assert [(s["session_type"], s["exercises"]) for s in week["Sunday"]] == [("rest", [])]
+        # The overview's Monday/Wednesday/Friday lines don't double the week's own sessions.
+        assert all(len(week[day]) == 1 for day in ("Monday", "Wednesday", "Friday"))
+    names = {w: {d: [e["name"] for e in week[d][0]["exercises"]] for d in ("Monday", "Wednesday", "Friday")} for w, week in weeks.items()}
+    assert names[0]["Monday"][0] == "Neutral-Grip Floor Press or Swiss Bar Bench"
+    assert names[1]["Monday"][0] == "Weighted Neutral-Grip Pull-Ups"
+    assert names[2]["Monday"][0] == "Speed Floor Press"
+    assert names[1]["Wednesday"][0] == names[0]["Wednesday"][0] == "Trap Bar Deadlift"
+    assert len({tuple(names[w]["Friday"]) for w in weeks}) == 3
+
+
+def test_the_boxing_programme_keeps_each_week_s_own_prescriptions():
+    _, weeks = _fixture_draft("boxing_clinch_3week")
+    deadlift = [_dose(weeks[w]["Wednesday"][0]["exercises"][0]) for w in (0, 1)]
+    assert deadlift == [{"mode": "reps", "sets": 4, "reps": 5}, {"mode": "reps", "sets": 4, "reps": 3, "load_or_intensity": "85–88% 1RM"}]
+    taper = {e["name"]: _dose(e) for e in weeks[2]["Wednesday"][0]["exercises"]}
+    assert taper["Zercher Carry"] == {"mode": "distance", "sets": 2, "distance": 20, "distance_unit": "m", "load_or_intensity": "Moderate weight, brisk pace"}
+    assert taper["Reverse Lunges"]["sets"] == 2 and taper["Reverse Lunges"]["reps"] == 5 and taper["Reverse Lunges"]["per_side"] is True
+    week1_zercher = next(e for e in weeks[0]["Wednesday"][0]["exercises"] if e["name"] == "Zercher Carry")
+    assert _dose(week1_zercher) == {"mode": "distance", "sets": 3, "distance": 30, "distance_unit": "m"}
+
+
+def test_repeated_conditioning_blocks_and_timed_rounds_are_kept_not_flattened():
+    draft, weeks = _fixture_draft("boxing_clinch_3week")
+    inside = weeks[0]["Friday"][0]["exercises"][-1]
+    assert _dose(inside) == {"mode": "intervals", "rounds": 6, "work_seconds": 15, "rest_seconds": 45}
+    assert "Repeat: 2 blocks of these rounds, 2 min rest between blocks" in inside["notes"]
+    championship = weeks[1]["Friday"][0]["exercises"][-1]
+    assert _dose(championship) == {"mode": "intervals", "rounds": 3, "work_seconds": 180, "rest_seconds": 60}
+    stages = championship["notes"].split("Each round, in order:\n")[1].split("\n")
+    assert [line[:9] for line in stages] == ["0:00–0:30", "0:30–1:00", "1:00–2:00", "2:00–2:30", "2:30–3:00"]
+    messages = [f.message for f in draft.flags]
+    assert "Written as 2 blocks of 6 rounds with 2 min rest between blocks. The dose shows one block; the repeat is in the notes." in messages
+    assert "Each round has 5 timed parts. They're in the notes, in order." in messages
+    # A circuit's rounds are each exercise's sets, read off the circuit heading.
+    finisher = {e["name"]: _dose(e) for e in weeks[0]["Monday"][0]["exercises"] if "Clinch Finisher" in (e["notes"] or "")}
+    assert finisher["Heavy Sandbag Bear-Hug Hold"] == {"mode": "duration", "sets": 3, "duration_seconds": 30}
+
+
+def test_the_boxing_programme_passes_its_own_source_check_with_nothing_invented():
+    draft, weeks = _fixture_draft("boxing_clinch_3week")
+    assert not [f for f in draft.flags if f.message.startswith(("Check the dose", "Couldn't find", "Written twice"))]
+    # Only written numbers: every dose number appears in the programme text.
+    source = (EVAL / "boxing_clinch_3week.txt").read_text()
+    for week in weeks.values():
+        for sessions in week.values():
+            for exercise in sessions[0]["exercises"]:
+                for key in ("sets", "reps", "rounds", "distance"):
+                    if exercise["dose"].get(key):
+                        assert f"{exercise['dose'][key]:g}" in source, (exercise["name"], key)
+
+
+def test_a_wrong_reading_of_the_boxing_programme_is_caught():
+    reading = ReadPlan.model_validate_json((EVAL / "boxing_clinch_3week.json").read_text())
+    source = (EVAL / "boxing_clinch_3week.txt").read_text()
+    wrong = reading.model_copy(deep=True)
+    # Week 3's taper read with week 1's deadlift numbers, and the two blocks folded into 12 rounds.
+    wrong.weeks[2].sessions[1].exercises[0].sets = 3
+    friday = wrong.weeks[0].sessions[2].exercises[-1]
+    friday.rounds, friday.blocks, friday.block_rest_seconds = 12, None, None
+    flags = {f.where: f.message for f in build_draft(wrong, date.fromisoformat(MONDAY), source).flags}
+    assert flags["Week 3 \u00b7 Lower Ballistics & Core \u00b7 Trap Bar Jump Squats"].startswith("Check the dose: sets 3")
+    assert "only one block was read" in flags["Week 1 \u00b7 Rotational Explosiveness & Pocket Conditioning \u00b7 \"Inside Fighting\" Conditioning"]
+
+
+def test_the_same_session_written_twice_on_a_day_is_brought_in_once():
+    boxing = _session("Boxing", "Tuesday", session_type="skill", exercises=[ReadExercise(name="Pads", rounds=6, work_seconds=180, rest_seconds=60)])
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[boxing, boxing.model_copy(deep=True)])])
+    draft = build_draft(reading, date.fromisoformat(MONDAY), None)
+    assert len(draft.plan["sessions"]) == 1
+    assert [f.message for f in draft.flags] == ["Written twice on Tuesday, so it was brought in once."]
+
+
+# -- Regression: references to earlier days ("Same as Day 1") ---------------------
+
+def test_same_as_day_references_copy_the_named_day_and_keep_the_change_as_a_note():
+    draft, weeks = _fixture_draft("boxing_prep_references")
+    week = weeks[0]
+    names = {day: [e["name"] for e in week[day][0]["exercises"]] for day in week}
+    # No exercise is ever a reference.
+    assert not [n for ns in names.values() for n in ns if re.match(r"(?i)(same as|repeat|as above)", n)]
+    # Day 3's warm-up is Day 1's warm-up; its mobility is Day 1's ankle and hip mobility.
+    assert names["Wednesday"] == ["Jumping jacks", "Arm swings, hip & ankle rolls", "High knees or march",
+                                  "Ankle mobility & hip mobility YouTube routines", "Mirror stance, jab, cross"]
+    day1 = {e["name"]: e for e in week["Monday"][0]["exercises"]}
+    day3 = {e["name"]: e for e in week["Wednesday"][0]["exercises"]}
+    assert day3["Jumping jacks"]["dose"] == day1["Jumping jacks"]["dose"]
+    assert "As Day 1 (Warm-up)" in day3["Jumping jacks"]["notes"]
+    # The section it's written under keeps its own time; no exercise gets one invented.
+    assert _dose(day3["Ankle mobility & hip mobility YouTube routines"]) == {"mode": "text", "prescription": "Within Mobility Flow (15 mins)"}
+    # Day 4 is Day 2 in full, with the coach's progression note and no new numbers.
+    assert names["Thursday"] == names["Tuesday"]
+    for d2, d4 in zip(week["Tuesday"][0]["exercises"], week["Thursday"][0]["exercises"]):
+        assert d4["dose"] == d2["dose"]
+        assert "As Day 2" in d4["notes"] and "Progression: increase reps slightly if easier" in d4["notes"]
+    assert names["Saturday"] == [] and week["Sunday"][0]["session_type"] == "rest"
+    assert [f.message for f in draft.flags if "Plan" != f.where] == []
+
+
+def test_section_durations_are_kept_without_inventing_exercise_times():
+    _, weeks = _fixture_draft("boxing_prep_references")
+    core = [e for e in weeks[0]["Friday"][0]["exercises"] if e["name"] in ("Bicycle crunch", "Mountain climbers", "Plank", "Leg raises")]
+    assert [_dose(e) for e in core] == [{"mode": "text", "prescription": "Within Core Routine (15 mins)"}] * 4
+    assert all("Part of: Core Routine (15 mins)" in e["notes"] for e in core)
+
+
+def test_a_reference_that_cant_be_resolved_or_is_ambiguous_is_flagged_not_guessed():
+    def plan(*sessions):
+        return ReadPlan(weeks=[ReadWeek(sessions=list(sessions))])
+    day1 = _session("Day 1 - Mobility", "Monday", exercises=[
+        ReadExercise(name="Hip circles", seconds=60, group="Warm-up"), ReadExercise(name="Ankle rocks", seconds=60, group="Mobility")])
+    missing = _session("Day 3", "Wednesday", exercises=[ReadExercise(name="Same as Day 7", refers_to_day="Day 7")])
+    draft = build_draft(plan(day1, missing), date.fromisoformat(MONDAY), None)
+    assert [e["name"] for e in draft.plan["sessions"][1]["exercises"]] == []
+    assert any("Day 7, which couldn't be found" in f.message for f in draft.flags)
+    # "Hip + ankle drills" could be the warm-up or the mobility: never guessed.
+    unclear = _session("Day 3", "Wednesday", exercises=[ReadExercise(name="Repeat hip + ankle drills", refers_to_section="hip + ankle drills")])
+    day1b = _session("Day 1 - Mobility", "Monday", exercises=[
+        ReadExercise(name="Hip and ankle circles", seconds=60, group="Warm-up"), ReadExercise(name="Hip and ankle rocks", seconds=60, group="Mobility")])
+    draft = build_draft(plan(day1b, unclear), date.fromisoformat(MONDAY), None)
+    assert draft.plan["sessions"][1]["exercises"] == []
+    assert any("could mean more than one earlier part" in f.message for f in draft.flags)
+    # A change with numbers is kept and flagged, never applied.
+    numbered = _session("Day 4", "Thursday", exercises=[ReadExercise(name="Same as Day 1 but 4 rounds", refers_to_day="Day 1", notes="but 4 rounds")])
+    draft = build_draft(plan(day1, numbered), date.fromisoformat(MONDAY), None)
+    copied = draft.plan["sessions"][1]["exercises"]
+    assert [e["dose"]["duration_seconds"] for e in copied] == [60, 60]
+    assert any("comes with a change" in f.message for f in draft.flags)
+
+
+def test_a_missing_week_or_a_day_the_programme_never_names_is_flagged():
+    from api.services.plan_import import written_layout_flags
+    found = []
+    written_layout_flags("Week 1\nMon: squats 3x5\nWeek 2\nMon: squats 3x3\nWeek 3\nMon - Fri: walk 20 min", 2,
+                         {"Monday", "Wednesday", "Sunday"}, lambda where, message: found.append(message))
+    assert found == ["The programme writes Week 3, but 2 weeks were read. Check that no week is missing.",
+                     "Sunday isn't written in the programme, but a session was placed on it. Check its day."]
+
+
+def test_both_regression_programmes_save_and_reload_as_custom_plans(api):
+    client, _, _ = api
+    for name in ("boxing_clinch_3week", "boxing_prep_references"):
+        draft, _ = _fixture_draft(name)
+        saved = client.post("/api/custom-plans", json=draft.plan, headers=AUTH)
+        assert saved.status_code == 201, saved.text
+        body = saved.json()
+        assert len(body["sessions"]) == 21
+        assert {s["session_type"] for s in body["sessions"] if not s["exercises"]} <= {"rest", "recovery"}
+
+
+def test_a_reference_uses_this_week_then_the_nearest_earlier_week_and_flags_a_tie():
+    def monday(name, sets):
+        return _session(name, "Monday", exercises=[ReadExercise(name="Back squat", sets=sets, reps=5)])
+
+    def same_as_monday(day="Wednesday"):
+        return _session("Repeat", day, exercises=[ReadExercise(name="Same as Monday", refers_to_day="Monday")])
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[monday("Week 1 Monday", 3)]),
+                              ReadWeek(sessions=[monday("Week 2 Monday", 4)]),
+                              ReadWeek(sessions=[monday("Week 3 Monday", 5), same_as_monday()]),
+                              ReadWeek(sessions=[same_as_monday()])])
+    draft = build_draft(reading, date.fromisoformat(MONDAY), None)
+    copies = [s["exercises"][0]["dose"]["sets"] for s in draft.plan["sessions"] if s["name"] == "Repeat"]
+    # Week 3 copies its own Monday; week 4 has none, so the nearest earlier week's (week 3).
+    assert copies == [5, 5]
+    # Two Mondays in the nearest week: never guessed.
+    tied = ReadPlan(weeks=[ReadWeek(sessions=[monday("AM lift", 3), monday("PM lift", 4)]), ReadWeek(sessions=[same_as_monday()])])
+    draft = build_draft(tied, date.fromisoformat(MONDAY), None)
+    assert [s["exercises"] for s in draft.plan["sessions"] if s["name"] == "Repeat"] == [[]]
+    assert any("could mean more than one Monday in that week" in f.message for f in draft.flags)
