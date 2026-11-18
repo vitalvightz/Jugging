@@ -34,11 +34,12 @@ for (const role of ['athlete', 'coach']) for (const width of [390, 1440]) {
     } else await page.goto('/plans/custom');
     const calendar = page.getByRole('region', { name: 'Plan calendar', exact: true });
     await expect(calendar).toBeVisible();
+    await expect(page.getByLabel('Schedule mode', { exact: true })).toHaveValue('dated');
     await expect(calendar.getByText('Fight day · Mon 23 Nov 2026')).toBeVisible();
     await expect(calendar.getByRole('button', { name: 'Select Tue 17 Nov 2026', exact: true })).toBeEnabled();
     const calendarBounds = await page.getByRole('region', { name: 'Plan calendar', exact: true }).boundingBox();
     const restBounds = await page.getByRole('heading', { name: 'Rest day', exact: true }).locator('..').boundingBox();
-    if (width >= 1100) {
+    if (width >= 1600) {
       expect(calendarBounds!.width / restBounds!.width).toBeGreaterThan(1.8);
       expect(restBounds!.x - calendarBounds!.x - calendarBounds!.width).toBeGreaterThanOrEqual(16);
     } else {

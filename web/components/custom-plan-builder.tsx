@@ -803,7 +803,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
           </label>
           <button type="button" className={`ghost-button ${styles.scheduleToggle}`} aria-expanded={scheduleOpen} aria-controls={scheduleId} onClick={() => setScheduleOpen(open => !open)}>Schedule settings</button>
           <div id={scheduleId} className={styles.scheduleSettings} data-expanded={scheduleOpen}>
-            <label>Schedule<select aria-label="Schedule mode" value={draft.schedule_mode ?? 'weekly'} onChange={event => selectScheduleMode(event.target.value as 'weekly' | 'dated')}><option value="dated">Calendar</option><option value="weekly">Weekly</option></select></label>
+            <label>Schedule<select aria-label="Schedule mode" value={draft.schedule_mode ?? 'weekly'} onChange={event => selectScheduleMode(event.target.value as 'weekly' | 'dated')}><option value="dated">Calendar</option><option value="weekly">Repeating week</option></select></label>
             {isDated ? <><label>Start date<input type="date" value={startInput ?? draft.start_date!} onChange={event => setStartInput(event.target.value)} onBlur={() => { const next = startInput; setStartInput(undefined); if (next && next !== draft.start_date) resizeDates(next, Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!) + 86400000) / 604800000)); }} /></label><label>Weeks<input aria-label="Plan duration in weeks" type="number" min={1} max={12} value={Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!) + 86400000) / 604800000)} onChange={event => resizeDates(draft.start_date!, Number(event.target.value))} /></label></> : null}
           </div>
           <div className={isDated ? styles.calendarEditorLayout : styles.weeklyEditorLayout}>
