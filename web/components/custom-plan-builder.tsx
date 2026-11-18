@@ -20,6 +20,7 @@ import type {
   CustomDoseSuggestion,
   CustomExercise,
   CustomSession,
+  CustomPlanInput,
   LibraryEntry,
   LibraryPreview,
   ManualExercise,
@@ -60,6 +61,14 @@ const SESSION_TYPES: Array<[CustomSession["session_type"], string]> = [
   ["mixed", "Workout"], ["strength_power", "Strength / power"], ["conditioning", "Conditioning"],
   ["skill", "Light technical / skill"], ["sparring", "Hard sparring"], ["recovery", "Recovery"], ["rest", "Off / Rest"],
 ];
+/** A draft read from a plan file: every exercise is as written (manual), nothing saved yet. */
+function importedPlanDraft(plan: CustomPlanInput): Draft {
+  return orderedDraft({ ...plan, sessions: (plan.sessions ?? []).map(session => ({
+    ...session, scheduled_date: session.scheduled_date ?? null,
+    weekday: session.weekday ?? (session.scheduled_date ? calendarWeekday(session.scheduled_date) as Session["weekday"] : null),
+    exercises: (session.exercises ?? []).map(exercise => ({ ...exercise, incomplete: false }) as Exercise),
+  })) });
+}
 function orderedDraft(draft: Draft): Draft {
   const day = (session: Session) => session.weekday ? weekdays.indexOf(session.weekday) : 7;
   return { ...draft, sessions: [...draft.sessions].sort((a, b) => (a.scheduled_date ?? "").localeCompare(b.scheduled_date ?? "") || day(a) - day(b)) };
@@ -116,7 +125,7 @@ function PencilIcon() {
     </svg>
   );
 }
-export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessionDate, onboarding = null, coachFighterId, onCoachClose, initialPlan, athleteTimezone, fightDate }: { fightDate?: string | null; athleteTimezone?: string; initialPlan?: CustomPlan; onCoachClose?: () => void; coachFighterId?: string; accessToken: string; planId?: string; addSessionDay?: string | null; addSessionDate?: string | null; onboarding?: MeResponse | null }) {
+export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessionDate, onboarding = null, coachFighterId, onCoachClose, initialPlan, importedDraft, athleteTimezone, fightDate }: { importedDraft?: { plan: CustomPlanInput; name: string }; fightDate?: string | null; athleteTimezone?: string; initialPlan?: CustomPlan; onCoachClose?: () => void; coachFighterId?: string; accessToken: string; planId?: string; addSessionDay?: string | null; addSessionDate?: string | null; onboarding?: MeResponse | null }) {
   const router = useRouter();
   const requestId = useRef(crypto.randomUUID());
   const savedPlansHref = coachFighterId ? "/coach/plans" : "/plans#custom-plans";
@@ -127,6 +136,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   const fadeNavigate = useFadeNavigate();
   const [draft, setDraft] = useState<Draft>(() => {
     if (initialPlan) return orderedDraft({ ...initialPlan, id: undefined, name: `${initialPlan.name} revision`.slice(0, 100) });
+    if (importedDraft) return importedPlanDraft(importedDraft.plan);
     const start = nextCalendarMonday(athleteTimezone ?? onboarding?.profile.athlete_timezone ?? 'UTC');
     return { name: "My Training Plan", schedule_mode: 'dated', start_date: start, end_date: addCalendarDays(start, 27),
       sessions: planId ? [] : datedCopy(customSchedulePrefill(onboarding), start, addCalendarDays(start, 27)) };
@@ -140,7 +150,8 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   const [loading, setLoading] = useState(!!planId),
     [retry, setRetry] = useState(0),
     [pending, setPending] = useState(false),
-    [dirty, setDirty] = useState(false);
+    // An imported plan is unsaved until it is saved here.
+    [dirty, setDirty] = useState(!!importedDraft);
   const [opened, setOpened] = useState(!planId);
   const [chosenDay, setChosenDay] = useState<Weekday>();
   // The add sheet remembers what it added this visit, so their doses can be set right there.
@@ -190,7 +201,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   const touched = useRef(new Set<string>());
   const latest = useRef(draft);
   const undoStack = useRef<Draft[]>([]), redoStack = useRef<Draft[]>([]);
-  const savedSnapshot = useRef(JSON.stringify(draft));
+  const savedSnapshot = useRef(importedDraft ? "" : JSON.stringify(draft));
   const [historyVersion, setHistoryVersion] = useState(0);
   useEffect(() => { latest.current = draft; });
   // Read only once an exercise is open, for last time's weight.
@@ -746,6 +757,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
           {error}
         </p>
       ) : null}
+      {importedDraft && dirty && !message ? <p role="status">Imported from {importedDraft.name}. Check each session, then save.</p> : null}
       {message ? (
         <p role="status">
           {message} {onCoachClose ? <button type="button" className="ghost-button" onClick={() => void closeCoach()}>View saved plans</button> : <Link href={savedPlansHref}>View saved plans</Link>}

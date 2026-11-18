@@ -5,6 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 
 from api.contracts.custom_plans import CustomDoseSuggestion, CustomPlan, CustomPlanInput, CoachPlan
 from api.services.custom_plans import plan_fields, publish_custom_plan, source_suggestion
+from api.services.plan_import import PlanImportRequest, PlanImportResult
 from api.models import PlanSummary
 from api.routes.plans import PlanActivationRequest, reconcile_plan_activation
 from api.plan_mappers import _map_plan_summary
@@ -66,6 +67,13 @@ def build_custom_plans_router(*, require_profile, get_store):
             background_tasks.add_task(notify_coach_of_plan_response, store, plan=dict(row),
                                       fighter_name=profile.full_name, accepted=True)
         return _map_plan_summary(plan)
+
+    @router.post("/import", response_model=PlanImportResult)
+    def import_custom_plan(body: PlanImportRequest, profile=Depends(require_profile)):
+        """Read the text of a plan file into a draft. Nothing is saved: the draft
+        opens in the builder, and only a save there stores it."""
+        from api.services import plan_import
+        return plan_import.import_plan(str(profile.athlete_id), body, reader=plan_import.get_plan_reader())
 
     @router.get("/source-suggestion", response_model=CustomDoseSuggestion)
     def suggest(catalogue_id: str, profile=Depends(require_profile)):

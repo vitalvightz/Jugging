@@ -1,0 +1,72 @@
+/* Plan import: one calm column on phones; on desktop the drop area gets room. */
+.root { width: min(100%, 640px); box-sizing: border-box; margin: 0 auto; padding: 0 clamp(2px, 2vw, 20px) 32px; }
+.head { margin: clamp(10px, 3vh, 24px) 0 24px; }
+.head h1 { margin: 10px 0; font-family: var(--font-display), sans-serif; font-size: clamp(28px, 8vw, 40px); font-weight: 700; line-height: 1.05; letter-spacing: -.035em; }
+.lede { max-width: 480px; margin: 0; color: var(--text-secondary); font-size: 15px; line-height: 1.5; }
+
+.drop {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 12px;
+  min-height: 220px;
+  padding: 28px 20px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: 18px;
+  background: var(--bg-surface-alt);
+  text-align: center;
+  transition: border-color 140ms, background 140ms;
+}
+.drop[data-over] { border-color: var(--text-primary); background: var(--bg-surface); }
+.drop[data-busy] { border-style: solid; border-color: var(--border-default); }
+.fileIcon { width: 36px; height: 36px; fill: none; stroke: var(--text-secondary); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.hint { color: var(--text-muted); font-size: 13px; }
+.link { min-height: 44px; padding: 0 8px; border: 0; background: none; color: var(--text-primary); font: inherit; font-size: 14px; font-weight: 600;
+  text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.link:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; border-radius: 6px; }
+.paste { display: grid; gap: 10px; }
+.paste label { font-size: 14px; font-weight: 600; }
+.paste textarea { box-sizing: border-box; width: 100%; min-height: 220px; padding: 14px; border: 1px solid var(--border-strong); border-radius: 14px;
+  background: var(--bg-surface-alt); color: var(--text-primary); font: inherit; font-size: 15px; line-height: 1.5; resize: vertical; }
+.paste textarea:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; }
+
+.progress { display: grid; justify-items: center; gap: 8px; width: 100%; color: var(--text-secondary); font-size: 14px; }
+.fileName { max-width: 100%; overflow: hidden; color: var(--text-primary); font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.spinner { width: 28px; height: 28px; border: 2.5px solid var(--border-default); border-top-color: var(--text-primary); border-radius: 50%; animation: spin 800ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.steps { display: grid; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; text-align: left; font-size: 13px; }
+.steps li { display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
+.steps li::before { content: ""; flex: none; width: 8px; height: 8px; border: 1.5px solid currentColor; border-radius: 50%; }
+.steps li[data-state="done"] { color: var(--text-secondary); }
+.steps li[data-state="done"]::before { background: currentColor; }
+.steps li[data-state="now"] { color: var(--text-primary); font-weight: 600; }
+
+.problem { margin: 14px 0 0; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--brand-red) 45%, transparent); border-radius: 12px;
+  color: var(--text-primary); font-size: 14px; line-height: 1.45; }
+.notes { display: grid; gap: 6px; margin: 18px 0 0; padding: 0 0 0 18px; color: var(--text-muted); font-size: 13px; line-height: 1.45; }
+.cancel { min-height: 44px; margin-top: 12px; padding: 0 4px; border: 0; background: none; color: var(--text-secondary); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
+.cancel:hover { color: var(--text-primary); }
+.cancel:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; border-radius: 6px; }
+
+.result { display: grid; gap: 16px; }
+.summary { padding: 20px; border: 1px solid var(--border-default); border-radius: 18px; background: var(--bg-surface-alt); }
+.found { display: flex; gap: 6px; min-width: 0; margin: 0; color: var(--text-secondary); font-size: 13px; white-space: nowrap; }
+.counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 16px 0 0; }
+.counts div { display: grid; gap: 2px; min-width: 0; }
+.counts dt { color: var(--text-muted); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.counts dd { margin: 0; font-family: var(--font-display), sans-serif; font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.planName { margin: 14px 0 0; padding-top: 14px; border-top: 1px solid var(--border-default); font-weight: 600; overflow-wrap: anywhere; }
+.warn, .check { margin: 0; color: var(--text-secondary); font-size: 14px; line-height: 1.5; }
+.skipped { border: 1px solid var(--border-default); border-radius: 14px; padding: 0 14px; }
+.skipped summary { min-height: 44px; display: flex; align-items: center; font-size: 14px; font-weight: 600; cursor: pointer; }
+.skipped ul { margin: 0 0 12px; padding-left: 18px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+
+@media (min-width: 900px) {
+  .drop { min-height: 280px; }
+}
+@media (max-width: 359px) {
+  .counts dd { font-size: 24px; }
+  .summary { padding: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } .drop { transition: none; } }

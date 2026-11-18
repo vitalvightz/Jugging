@@ -2021,6 +2021,22 @@ export type PlanDetail = {
   rehab_label_policy: RehabLabelPolicy;
 };
 
+export type PlanImportRequest = {
+  text?: string;
+  images?: string[];
+  file_name?: string | null;
+  start_date: string;
+};
+
+export type PlanImportResult = {
+  plan: Record<string, unknown>;
+  weeks: number;
+  sessions: number;
+  exercises: number;
+  skipped: string[];
+  shortened: boolean;
+};
+
 /** Top-level plan metadata (Section B). */
 export type PlanMetadata = {
   plan_id: string | null;

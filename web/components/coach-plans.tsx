@@ -2,12 +2,13 @@
 import { DiscoveryHint } from "@/components/once-hint";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import type { CoachPlan, CoachPlannedSession } from "@/lib/api-schema.generated";
+import type { CoachPlan, CoachPlannedSession, CustomPlanInput } from "@/lib/api-schema.generated";
 import { weekStart, dayOffset, humanize, type Fighter } from "@/lib/coach";
 import { sharePlanWithFighters, type ShareAttempts } from "@/lib/custom-plan-share";
 import { deleteCoachPlan, assignCoachPlan, listCoachPlans, getFighterPlan, retractCoachPlan } from "@/lib/api";
 import { CustomPlanCalendar } from "./custom-plan-calendar";
 import { CustomPlanBuilder } from "./custom-plan-builder";
+import { PlanImport } from "./plan-import";
 import { AssignedPlanPreview } from "./assigned-plan-preview";
 import { StatusIcon } from "./record-icons";
 import { formatAppDate, formatAppDateRange } from "@/lib/date-format";
@@ -37,6 +38,7 @@ export function CoachPlans({ token, fighters }: { token: string; fighters: Fight
           {fighters.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
         </select>
       </label>
+      {fighter && !editorOpen ? <button type="button" className={styles.desktopImportPlan} onClick={() => setEditing("import")}>Import Plan</button> : null}
       {fighter && !editorOpen ? <button type="button" className={styles.desktopCreatePlan} aria-label="Create New Plan" onClick={() => setEditing("")}><PlanIcon name="plus" />Create Plan</button> : null}
     </div>
     {!fighters.length ? <p className={styles.empty}>Connect a fighter to create a plan.</p> : null}
@@ -53,6 +55,8 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // A plan read from a coach's PDF or Word file, opened in the builder unsaved.
+  const [imported, setImported] = useState<{ plan: CustomPlanInput; name: string } | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     listCoachPlans(token, fighter.id, controller.signal).then(rows => { if (!controller.signal.aborted) { setPlans(rows); setError(""); } })
@@ -65,6 +69,11 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
       .catch(() => { if (active) { setSchedule(undefined); setError("Progress unavailable."); } });
     return () => { active = false; };
   }, [token, fighter, attempt, refresh]);
+  if (editing === "import") return <PlanImport accessToken={token} timezone={fighter.timezone} forFighter={fighter.name}
+    onCancel={() => setEditing(null)} onReview={(plan, name) => { setImported({ plan, name }); setEditing("imported"); }} />;
+  if (editing === "imported" && imported) return <CustomPlanBuilder accessToken={token} coachFighterId={fighter.id}
+    athleteTimezone={fighter.timezone} fightDate={fighter.fight_date} importedDraft={imported}
+    onCoachClose={() => { setImported(null); setEditing(null); setAttempt(n => n + 1); }} />;
   if (editing !== null) return <CustomPlanBuilder accessToken={token} coachFighterId={fighter.id} athleteTimezone={fighter.timezone} fightDate={fighter.fight_date} initialPlan={editing.startsWith("revision:") ? plans?.find(plan => plan.id === editing.slice(9)) : undefined} planId={editing.startsWith("revision:") ? undefined : editing || undefined} onCoachClose={() => { setEditing(null); setAttempt(n => n + 1); }} />;
   // Put the current prescription first, retaining the saved order of other plans.
   const ordered = plans?.toSorted((a, b) => Number(b.assignment_status === "active") - Number(a.assignment_status === "active"));
@@ -133,6 +142,7 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
       </div> : null}
     </article>)}
     <button type="button" className={styles.newPlanAction} onClick={() => { setEditing(""); }}><PlanIcon name="plus" />Create New Plan</button>
+    <button type="button" className={styles.importPlanAction} onClick={() => { setEditing("import"); }}>Import a plan</button>
   </>;
 }
 
