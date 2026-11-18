@@ -46,6 +46,7 @@ for (const role of ['athlete', 'coach']) for (const width of [390, 1440]) {
     }
     await page.screenshot({ path: test.info().outputPath(`dated-empty-${role}-${width}.png`), fullPage: true });
     await page.getByLabel('Plan name', { exact: true }).fill(`Dated ${role} block`);
+    if (width < 768) await page.getByRole('button', { name: 'Schedule settings', exact: true }).click();
     await page.getByLabel('Start date', { exact: true }).fill('2026-11-16');
     await page.getByRole('button', { name: width <= 600 ? 'Add session on Monday' : 'Add session on 2026-11-16', exact: true }).click();
     const session = page.getByRole('dialog', { name: 'New session', exact: true });
@@ -129,6 +130,7 @@ for (const role of ['athlete', 'coach']) for (const width of [390, 1440]) {
       await expect(page.getByText(/Draft saved/)).toBeVisible();
       expect(coachSaved.size).toBe(2);
       page.once('dialog', dialog => dialog.accept());
+      if (page.viewportSize()!.width < 768 && await page.getByRole('button', { name: 'Schedule settings', exact: true }).getAttribute('aria-expanded') === 'false') await page.getByRole('button', { name: 'Schedule settings', exact: true }).click();
       await page.getByLabel('Schedule mode', { exact: true }).selectOption('weekly');
       await expect(page.getByText('Fight day · Mon 23 Nov 2026')).toBeVisible();
       await page.getByRole('button', { name: 'Save draft', exact: true }).click();

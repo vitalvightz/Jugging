@@ -8,8 +8,10 @@ import { useSheetExit } from "@/lib/use-sheet-exit";
 /** Injury details stay off the daily card; reuse the app's iOS scroll lock.
  * `variant="screen"` fills the viewport for a full screen (Today's session
  * preview). Sheets stack: only the topmost one answers Escape and Tab. */
-export function InjuryDetailSheet({ title, children, onClose, busy = false, variant = "sheet", closeLabel = "Close", panelClassName, entrance = "rise" }: {
+export function InjuryDetailSheet({ title, children, onClose, busy = false, inactive = false, variant = "sheet", closeLabel = "Close", panelClassName, entrance = "rise" }: {
   title: string; children: ReactNode; onClose: () => void; busy?: boolean;
+  /** A stacked editor temporarily owns focus and screen reader navigation. */
+  inactive?: boolean;
   variant?: "sheet" | "screen"; closeLabel?: string;
   /** "push": this sheet replaces another (a menu choosing Edit), so it slides
    * in from the right over a backdrop that is already there, rather than
@@ -26,6 +28,7 @@ export function InjuryDetailSheet({ title, children, onClose, busy = false, vari
   const state = useRef({ busy, onClose: dismiss });
   useEffect(() => { state.current = { busy, onClose: dismiss }; }, [busy, dismiss]);
   useEffect(() => {
+    const currentPanel = panel.current;
     const previous = document.activeElement as HTMLElement | null;
     const release = lockOverlayScroll();
     // iOS's keyboard changes the visual viewport without resizing the layout
@@ -70,11 +73,14 @@ export function InjuryDetailSheet({ title, children, onClose, busy = false, vari
       window.visualViewport?.removeEventListener("resize", fit);
       window.visualViewport?.removeEventListener("scroll", fit);
       window.removeEventListener("resize", fit);
-      release(); previous?.focus({ preventScroll: true });
+      release();
+      // Fixing the last issue can remove its trigger while an editor is open.
+      const target = previous?.isConnected ? previous : Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]')).filter(dialog => dialog !== currentPanel && !dialog.closest('[inert]')).at(-1);
+      target?.focus({ preventScroll: true });
     };
   }, []);
   if (typeof document === "undefined") return null;
-  return createPortal(<div className="injury-sheet-backdrop" data-variant={variant} data-entrance={entrance} data-closing={closing || undefined} onClick={() => { if (!busy) dismiss(); }}>
+  return createPortal(<div inert={inactive} aria-hidden={inactive || undefined} className="injury-sheet-backdrop" data-variant={variant} data-entrance={entrance} data-closing={closing || undefined} onClick={() => { if (!busy) dismiss(); }}>
     <div className={`injury-sheet${panelClassName ? ` ${panelClassName}` : ""}`} data-variant={variant} data-entrance={entrance} ref={panel} role="dialog" aria-modal="true" aria-labelledby={titleId}
       aria-busy={busy} tabIndex={-1} onClick={event => event.stopPropagation()}>
       <div className="injury-sheet-header"><h2 id={titleId}>{title}</h2>
