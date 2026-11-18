@@ -6,7 +6,7 @@ import { ExerciseLogProvider } from "./exercise-log";
 import { personalPerformance } from "@/lib/weight-recommendation";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatAppDate, formatAppDateRange } from "@/lib/date-format";
 import { customPlanInput } from "@/lib/custom-plan-share";
 import { trackProductEvent, productEventIdentity, deleteCustomPlan, getCommunityExercise, getCustomDoseSuggestion, getCustomPlan, getExerciseLibrary, getTrainingLibraryEntry, publishCustomPlan, saveCustomPlan } from "@/lib/api";
@@ -141,8 +141,13 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   const fadeNavigate = useFadeNavigate();
   const [draft, setDraft] = useState<Draft>(() => {
     if (initialPlan) return orderedDraft({ ...initialPlan, id: undefined, name: `${initialPlan.name} revision`.slice(0, 100) });
-    if (importedDraft) return importedPlanDraft(importedDraft);
     const start = nextCalendarMonday(athleteTimezone ?? onboarding?.profile.athlete_timezone ?? 'UTC');
+    if (importedDraft) {
+      const imported = importedPlanDraft(importedDraft);
+      // Calendar is the default view: an undated import is laid out as dated weeks.
+      if (imported.schedule_mode === 'dated' && imported.start_date && imported.end_date) return imported;
+      return { ...imported, schedule_mode: 'dated', start_date: start, end_date: addCalendarDays(start, 27), sessions: datedCopy(imported.sessions, start, addCalendarDays(start, 27)) };
+    }
     return { name: "My Training Plan", schedule_mode: 'dated', start_date: start, end_date: addCalendarDays(start, 27),
       sessions: planId ? [] : datedCopy(customSchedulePrefill(onboarding), start, addCalendarDays(start, 27)) };
   });
@@ -168,8 +173,6 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   // One added exercise is open at a time: the newest, so its dose can be set at once; the rest stay one line each.
   const [openAdded, setOpenAdded] = useState<string>();
   const [reviewOpen, setReviewOpen] = useState(false);
-  const [scheduleOpen, setScheduleOpen] = useState(false);
-  const scheduleId = useId();
   const [quickDose, setQuickDose] = useState<string | null>(null);
   // A typed date passes through partial values; commit once on leaving the field, not per keystroke.
   const [startInput, setStartInput] = useState<string>();
@@ -848,9 +851,11 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
               onChange={(e) => { const name = e.target.value; change(current => ({ ...current, name })); }}
             />
           </label>
-          <button type="button" className={`ghost-button ${styles.scheduleToggle}`} aria-expanded={scheduleOpen} aria-controls={scheduleId} onClick={() => setScheduleOpen(open => !open)}>Schedule settings</button>
-          <div id={scheduleId} className={styles.scheduleSettings} data-expanded={scheduleOpen}>
-            <label>Schedule<select aria-label="Schedule mode" value={draft.schedule_mode ?? 'weekly'} onChange={event => selectScheduleMode(event.target.value as 'weekly' | 'dated')}><option value="dated">Calendar</option><option value="weekly">Repeating week</option></select></label>
+          <div className={styles.viewToggle} role="group" aria-label="Plan view">
+            <button type="button" aria-pressed={isDated} onClick={() => selectScheduleMode('dated')}>Calendar</button>
+            <button type="button" aria-pressed={!isDated} onClick={() => selectScheduleMode('weekly')}>Week</button>
+          </div>
+          <div className={styles.scheduleSettings}>
             {isDated ? <><label>Start date<input type="date" value={startInput ?? draft.start_date!} onChange={event => setStartInput(event.target.value)} onBlur={() => { const next = startInput; setStartInput(undefined); if (next && next !== draft.start_date) resizeDates(next, Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!) + 86400000) / 604800000)); }} /></label><label>Weeks<input aria-label="Plan duration in weeks" type="number" min={1} max={12} value={Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!) + 86400000) / 604800000)} onChange={event => resizeDates(draft.start_date!, Number(event.target.value))} /></label></> : null}
           </div>
           <div className={isDated ? styles.calendarEditorLayout : styles.weeklyEditorLayout}>

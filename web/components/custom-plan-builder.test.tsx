@@ -76,7 +76,7 @@ test("rest days offer a pencil control that opens a new session", async () => {
         <ToastProvider><CustomPlanBuilder accessToken="test-token" /></ToastProvider>
       </AppRouterContext.Provider>,
     ));
-    await act(async () => type(host.querySelector('[aria-label="Schedule mode"]')!, "weekly"));
+    await act(async () => (host.querySelector('[aria-label="Plan view"] button:last-child') as HTMLButtonElement).click());
     assert.match(host.textContent!, /Keep this day for recovery\./);
     const addSession = host.querySelector<HTMLButtonElement>('[aria-label="Add session on Monday"]')!;
     await act(async () => addSession.click());
@@ -102,7 +102,7 @@ test("a new session only joins the plan once confirmed, and the bin removes it",
         <ToastProvider><CustomPlanBuilder accessToken="test-token" /></ToastProvider>
       </AppRouterContext.Provider>,
     ));
-    await act(async () => type(host.querySelector('[aria-label="Schedule mode"]')!, "weekly"));
+    await act(async () => (host.querySelector('[aria-label="Plan view"] button:last-child') as HTMLButtonElement).click());
     assert.doesNotMatch(host.textContent!, /Unassigned|No day set/);
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Add session on Monday"]')!.click());
     await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Close"], .injury-sheet-close')?.click());
@@ -193,7 +193,7 @@ async function mountBuilder(props: { accessToken: string; planId?: string; weekl
       <ToastProvider><CustomPlanBuilder {...builderProps} /></ToastProvider>
     </AppRouterContext.Provider>,
   ));
-  if (!props.planId && weekly) await act(async () => type(host.querySelector('[aria-label="Schedule mode"]')!, "weekly"));
+  if (!props.planId && weekly) await act(async () => (host.querySelector('[aria-label="Plan view"] button:last-child') as HTMLButtonElement).click());
   return { host, unmount: async () => { await act(async () => root.unmount()); host.remove(); } };
 }
 /** New session on `day` through the session sheet, which hands straight on to the add sheet. */

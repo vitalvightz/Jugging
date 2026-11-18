@@ -396,7 +396,11 @@
 .historyToolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .historyToolbar button { min-height: 40px; }
 .historyToolbar > span { margin-left: auto; color: var(--text-secondary); font-size: 12px; }
-.scheduleSettings { display: grid; grid-template-columns: 2fr 1.4fr .6fr; gap: 12px; }
+.scheduleSettings { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+.scheduleSettings:empty { display: none; }
+.viewToggle { display: inline-flex; justify-self: start; padding: 3px; gap: 3px; background: var(--bg-input); border: 1px solid var(--border-default); border-radius: var(--radius-btn); }
+.viewToggle button { min-height: 40px; padding: 0 18px; color: var(--text-secondary, inherit); background: transparent; border: 0; border-radius: calc(var(--radius-btn) - 3px); font: inherit; font-weight: 600; cursor: pointer; }
+.viewToggle button[aria-pressed="true"] { color: #fff; background: var(--brand-red); }
 .editor select { min-height: 44px; width: 100%; padding: 10px; color: var(--text-primary); background: var(--bg-input); border: 1px solid var(--border-default); border-radius: var(--radius-btn); font: inherit; }
 .calendarEditorLayout { display: grid; gap: 20px; min-width: 0; align-items: start; }
 .weeklyEditorLayout { display: grid; gap: 20px; min-width: 0; }
@@ -474,7 +478,6 @@
 }
 @media (max-width: 600px) {
   .scheduleSettings { grid-template-columns: 2fr 1fr; }
-  .scheduleSettings > label:first-child { grid-column: 1 / -1; }
   .datedCalendar { padding: 10px; }
   .calendarGrid { gap: 2px; }
   .calendarDate { padding: 1px; min-height: 74px; }
@@ -522,7 +525,6 @@
 .reviewIssues li { display: grid; grid-template-columns: minmax(0, 1fr) 64px; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border-default); }
 .reviewIssues li > span { min-width: 0; overflow-wrap: anywhere; }
 .reviewIssues :global(.ghost-button) { box-sizing: border-box; width: 100%; min-height: 44px; padding: 8px 14px; }
-.scheduleToggle:global(.ghost-button) { display: none; }
 @media (max-width: 767px) {
   .builder { gap: 16px; }
   .saveBar { width: calc(100% - 24px); gap: 4px 8px; padding: 6px 10px 10px; }
@@ -532,11 +534,9 @@
   .historyToolbar button > span:first-child { font-size: 20px; }
   .historyToolbar .historyLabel { display: none; }
   .historyToolbar > span { flex: 1 1 auto; margin-left: auto; text-align: right; }
-  .scheduleToggle:global(.ghost-button) { display: block; width: auto; justify-self: start; min-height: 44px; padding: 8px 14px; font-size: 14px; }
   /* Keep one-line actions on one line at phone widths. */
   .saveActions :global(.cta) { padding: 0 12px; font-size: 15px; }
   .addSession { white-space: nowrap; font-size: 14px; }
-  .scheduleSettings[data-expanded="false"] { display: none; }
   .session :global(.sp-session-head) { flex-wrap: wrap; gap: 8px; }
   .sessionActions :global(.ghost-button) { width: auto; min-height: 44px; padding: 8px 10px; font-size: 13px; }
   .quickControls button { min-height: 44px; }
