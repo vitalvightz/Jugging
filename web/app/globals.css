@@ -17705,6 +17705,18 @@ html[data-app-surface="workspace"][data-theme="dark"] .desktop-nav-toggle {
 
   .mobile-tab-bar-label {
     line-height: 1;
+    /* One line always: "Log session" wrapped under its icon on narrow phones. */
+    white-space: nowrap;
+  }
+
+  .mobile-tab-bar-item {
+    min-width: 0;
+  }
+
+  @media (max-width: 400px) {
+    .mobile-tab-bar-item {
+      letter-spacing: 0.04em;
+    }
   }
 
   /* Lift the generation status bar (and its reopen pill) above the tab bar
