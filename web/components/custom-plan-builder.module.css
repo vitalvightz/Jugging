@@ -403,6 +403,7 @@
 .sessionPanel { display: grid; gap: 16px; min-width: 0; }
 .sessionPanel > .addSession { justify-self: start; }
 .calendarEditorLayout > div { min-width: 0; }
+.calendarEditorLayout > div:first-child, .weeklyEditorLayout > div:first-child { scroll-margin-top: 80px; }
 .datedCalendar { min-width: 0; padding: 16px; background: var(--bg-panel); border: 1px solid var(--border-default); border-radius: 16px; }
 .calendarToolbar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; margin-bottom: 16px; }
 .calendarEditorLayout .calendarHeader { position: sticky; top: 72px; z-index: 2; background: var(--bg-panel); }
@@ -485,7 +486,7 @@
   .calendarToolbar { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
   .calendarToolbar > strong { grid-column: 1 / -1; grid-row: 2; font-size: 11px; }
   .copyBanner > div { flex: 1 1 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .calendarPaste { flex-basis: 100%; min-height: 24px; font-size: 9px; }
+  .calendarPaste { flex-basis: 100%; min-height: 44px; font-size: 11px; }
   .calendarFooter span { display: none; }
   .dayActions { flex: 1 1 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .copyBanner > div[data-move] { grid-template-columns: minmax(0, 1fr); }
@@ -537,3 +538,9 @@
   .sessionActions :global(.ghost-button) { width: auto; min-height: 44px; padding: 8px 10px; font-size: 13px; }
   .quickControls button { min-height: 44px; }
 }
+
+.quickControls .copyExerciseButton { width: 44px; min-height: 44px; display: grid; place-items: center; padding: 8px; }
+.copyExerciseButton svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.calendarGrid[data-copying="true"] .calendarDate:not([data-outside="true"]), .dayTile[data-copying="true"] { border-color: var(--brand-red); }
+
+.copyExerciseButton[aria-pressed="true"], .editButton[aria-pressed="true"] { border-color: var(--brand-red); color: var(--text-primary); }
