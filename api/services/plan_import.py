@@ -18,11 +18,13 @@ import binascii
 import json
 import logging
 import os
+import re
 import threading
 import time
+from difflib import SequenceMatcher
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Any, Literal, Protocol
+from typing import Any, Protocol
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -42,8 +44,17 @@ MAX_IMAGE_BYTES = 1_500_000
 JPEG_PREFIX = "data:image/jpeg;base64,"
 SESSION_TYPES = ("mixed", "strength_power", "conditioning", "skill", "sparring", "recovery", "rest")
 DISTANCE_UNITS = ("m", "km", "mi", "yd")
-# Only for dated plans, which need a date for every session: a session whose
-# day isn't written goes on the next of these, and is flagged.
+# What people write for a weekday or a distance unit, mapped to the builder's values.
+DAY_NAMES = {**{day.lower(): day for day in WEEKDAYS}, **{alias: day for day, aliases in {
+    "Monday": ("mon", "mo"), "Tuesday": ("tue", "tues", "tu"), "Wednesday": ("wed", "weds", "we"),
+    "Thursday": ("thu", "thur", "thurs", "th"), "Friday": ("fri", "fr"), "Saturday": ("sat", "sa"),
+    "Sunday": ("sun", "su")}.items() for alias in aliases}}
+UNIT_NAMES = {"m": "m", "meter": "m", "meters": "m", "metre": "m", "metres": "m", "mtrs": "m",
+              "km": "km", "k": "km", "kms": "km", "kilometer": "km", "kilometers": "km", "kilometre": "km", "kilometres": "km",
+              "mi": "mi", "mile": "mi", "miles": "mi", "yd": "yd", "yds": "yd", "yard": "yd", "yards": "yd"}
+# List labels in front of an exercise name: "A1.", "B2)", "1.", "-", "•".
+# A decimal is not a label: "1.5 mile run" keeps its number.
+LIST_LABEL = re.compile(r"^\s*(?:[A-Za-z]\d{1,2}\s*[.):-]|\d{1,2}\s*[.):](?!\d)|[-•*–—·])\s*")
 
 INSTRUCTIONS = """You convert a combat-sports coach's or athlete's written training programme into structured JSON.
 
@@ -51,10 +62,13 @@ The programme comes as text copied from a PDF, Word file or message, and/or as s
 
 THE ONE RULE: COPY, NEVER INVENT
 - Every value you return must be written in the programme. If something is not written, return null (or an empty list). Never guess days, sets, reps, times, loads, RPE, rest or equipment, and never add exercises.
-- Keep the coach's own words for names and instructions (fix obvious typos only).
+- Keep the coach's own words for names and instructions.
+- Correct spelling mistakes in names, cues, stop rules, notes and instructions ("bulgarain split sqaut" -> "Bulgarian split squat", "shadwo boxing" -> "shadow boxing", "kettelbell" -> "kettlebell"). Only spelling: never change numbers, units, loads, meaning or the coach's tone, and leave slang, abbreviations ("DB", "RDL", "KB") and names you don't recognise as written. List every correction in corrections as {written, corrected}, using the words as they appear.
+- Leave list labels and bullets ("A1.", "B2)", "1.", "-", "•") out of exercise names.
 
 STRUCTURE
 - A week template that the programme says repeats ("weeks 1-4", "repeat for 6 weeks", "x4 weeks") is ONE week object with repeat set to that number. Identical consecutive weeks are also one week object with repeat > 1. Different weeks are separate objects, in order. No weeks mentioned: one week, repeat 1.
+- A week the programme writes as a rest, recovery, deload or off week with no sessions listed is still a week object, with rest true and no sessions, so every week keeps its date. This holds for the first week too. rest is false for every other week.
 - day: only a written weekday ("Mon", "Tuesday"). "Day 1", "Session A", "AM" are not weekdays: day is null, and keep that label in the session name (e.g. "Day 1 - Strength").
 - session_type: strength_power (lifting, plyos), conditioning (runs, intervals, circuits), skill (pads, bag, drilling, technique), sparring, recovery (mobility, stretching, easy aerobic), rest (rest days written in the programme), otherwise mixed.
 - instructions: the coach's session-level instructions or focus written for that session as a whole (e.g. "Focus: head movement, stay off the ropes"), verbatim; otherwise null.
@@ -62,9 +76,10 @@ STRUCTURE
 EXERCISES, in written order (warm-up and cool-down lines written as exercises stay as exercises)
 - "3x5" -> sets 3, reps 5. "3x8 each side" -> reps 8, sets 3, per_side true. "5x3 min" -> sets 5, seconds 180. "30 sec hold" -> seconds 30.
 - Rounds of work: "6 x 3 min rounds, 1 min rest" -> rounds 6, work_seconds 180, rest_seconds 60.
-- "5 km run" -> distance 5, distance_unit km. "400m" -> distance 400, distance_unit m.
+- A pair like "5x3" with no unit is sets x reps only for lifts and bodyweight work. For rounds-based work (pads, bag, sparring, intervals) never assume the second number is minutes or reps: put the text as written in prescription (and any written rest in rest_seconds). Never swap the two numbers of a pair: "3x8" is sets 3, reps 8.
+- "5 km run" -> distance 5, distance_unit km. "400m" -> distance 400, distance_unit m. "2 miles" -> distance 2, distance_unit mi. Never convert between units.
 - load: the written weight or intensity ("140kg", "70% 1RM", "zone 2", "bodyweight").
-- rpe: only a written RPE number.
+- rpe: only a single written RPE number. An RPE range ("RPE 7-8") goes in load as written.
 - prescription: when the written dose doesn't fit the fields above ("AMRAP 10 min", "EMOM 12", "build to a heavy single", "3-4 sets"), the dose exactly as written. Ranges like "8-10 reps" go here too.
 - equipment: written equipment ("trap bar", "18oz gloves"), otherwise null.
 - cues: the coach's technique cues for this exercise, one per item, verbatim ("drive through the floor", "chin down").
@@ -91,7 +106,7 @@ def response_schema() -> dict[str, Any]:
             "name": {"type": "string"},
             "sets": nullable("integer"), "reps": nullable("integer"), "seconds": nullable("integer"),
             "rounds": nullable("integer"), "work_seconds": nullable("integer"), "rest_seconds": nullable("integer"),
-            "distance": nullable("number"), "distance_unit": nullable("string"),
+            "distance": nullable("number"), "distance_unit": {"type": ["string", "null"], "enum": [*DISTANCE_UNITS, None]},
             "per_side": nullable("boolean"), "load": nullable("string"), "rpe": nullable("number"),
             "prescription": nullable("string"), "equipment": nullable("string"),
             "cues": strings, "stop_rules": strings, "notes": nullable("string"),
@@ -109,8 +124,9 @@ def response_schema() -> dict[str, Any]:
         },
     }
     week = {
-        "type": "object", "additionalProperties": False, "required": ["repeat", "sessions"],
-        "properties": {"repeat": {"type": "integer"}, "sessions": {"type": "array", "items": session}},
+        "type": "object", "additionalProperties": False, "required": ["repeat", "rest", "sessions"],
+        "properties": {"repeat": {"type": "integer"}, "rest": {"type": "boolean"},
+                       "sessions": {"type": "array", "items": session}},
     }
     return {
         "type": "json_schema", "name": "imported_plan", "strict": True,
@@ -158,7 +174,14 @@ class ReadSession(BaseModel):
 
 class ReadWeek(BaseModel):
     repeat: int = 1
+    # The programme writes this week as a rest, recovery or off week.
+    rest: bool = False
     sessions: list[ReadSession] = Field(default_factory=list)
+
+
+class ReadCorrection(BaseModel):
+    written: str = ""
+    corrected: str = ""
 
 
 class ReadPlan(BaseModel):
@@ -166,6 +189,7 @@ class ReadPlan(BaseModel):
     start_date: str | None = None
     weeks: list[ReadWeek] = Field(default_factory=list)
     skipped: list[str] = Field(default_factory=list)
+    corrections: list[ReadCorrection] = Field(default_factory=list)
 
 
 # -- API contract --
@@ -312,6 +336,39 @@ def _clean(value: str | None, limit: int | None = None) -> str | None:
     return (text[:limit] if limit else text).strip() or None
 
 
+def _day(value: str | None) -> str | None:
+    """A written weekday in any common spelling ("Thurs", "weds."), else None."""
+    return DAY_NAMES.get(str(value or "").strip().rstrip(".").lower())
+
+
+def _unit(value: str | None) -> str | None:
+    return UNIT_NAMES.get(str(value or "").strip().rstrip(".").lower())
+
+
+def _numbers(text: str) -> list[str]:
+    return re.findall(r"\d+(?:[.,]\d+)?", text)
+
+
+def corrections_flags(read: "ReadPlan", flag, source: str = "") -> None:
+    """Spelling the reader corrected, listed so the person can see every change.
+    A "correction" that changes a number, doesn't look like the written word, or
+    (for pasted or file text) quotes a word that isn't in the programme is called
+    out on its own."""
+    written_text = " ".join(source.split()).lower()
+    fixed = []
+    for item in read.corrections[:30]:
+        written, corrected = _clean(item.written, 80), _clean(item.corrected, 80)
+        if not written or not corrected or written == corrected:
+            continue
+        similar = SequenceMatcher(None, written.lower(), corrected.lower()).ratio() >= 0.6
+        if _numbers(written) != _numbers(corrected) or not similar or (written_text and written.lower() not in written_text):
+            flag("Spelling", f"Check this change: \u201c{written}\u201d became \u201c{corrected}\u201d.")
+        else:
+            fixed.append(f"\u201c{written}\u201d \u2192 \u201c{corrected}\u201d")
+    if fixed:
+        flag("Spelling", "Corrected: " + ", ".join(fixed) + ".")
+
+
 def _int(value, low: int, high: int) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and low <= value <= high else None
 
@@ -362,7 +419,7 @@ def dose_from(item: ReadExercise, flag=lambda message: None) -> CustomDose:
     sets, reps, seconds = _int(item.sets, 1, 100), _int(item.reps, 1, 1000), _int(item.seconds, 1, 36_000)
     rounds, work = _int(item.rounds, 1, 100), _int(item.work_seconds, 1, 36_000)
     distance = float(item.distance) if isinstance(item.distance, (int, float)) and 0 < item.distance <= 100_000 else None
-    unit = item.distance_unit if item.distance_unit in DISTANCE_UNITS else None
+    unit = _unit(item.distance_unit)
     written = {"sets": item.sets, "reps": item.reps, "seconds": item.seconds, "rounds": item.rounds,
                "work_seconds": item.work_seconds, "distance": item.distance}
     present = {key for key, value in written.items() if value is not None}
@@ -403,8 +460,11 @@ def _lines(values: list[str], *, limit: int = 10, length: int = 500) -> tuple[li
 
 
 def _exercise(item: ReadExercise, flag) -> dict | None:
-    full_name = _clean(item.name)
+    full_name = _clean(LIST_LABEL.sub("", item.name or "", count=1)) or _clean(item.name)
     if not full_name:
+        written = _written_dose(item) or _clean(item.prescription) or _clean(item.notes, 80)
+        if written:
+            flag(f"An exercise with no name wasn't brought in: \u201c{written}\u201d. Add it by hand if it matters.")
         return None
     name = full_name[:100]
     dose = dose_from(item, flag)
@@ -434,7 +494,228 @@ def _exercise(item: ReadExercise, flag) -> dict | None:
             "coaching_cues": cues, "stop_rules": stops, "dose": dose.model_dump(exclude_none=True)}
 
 
-def build_draft(read: ReadPlan, start: date) -> PlanImportResult:
+def _tokens(text: str) -> list[str]:
+    return [word for word in re.findall(r"[a-z]+", text.lower()) if len(word) >= 3]
+
+
+def _same_word(a: str, b: str) -> bool:
+    """"squat" and "squats", "pad" and "pads": one word starts the other."""
+    return a.startswith(b) or b.startswith(a)
+
+
+class SourceCheck:
+    """Checks the reader's numbers against the programme text itself.
+
+    The reader's own correction list can't be the only safeguard: a model could
+    change "3x8" into "3x10" without saying so. For each exercise, find the line
+    of the source it came from (by its name, before any spelling fix) and check
+    that every number in its dose is written on that line (or, for a heading
+    line with no numbers, on the line or two after).
+    A number that isn't, or an exercise whose line can't be found, is flagged."""
+
+    def __init__(self, source: str, corrections: list[ReadCorrection]):
+        self.lines = [" ".join(line.split()) for line in source.replace("\r", "").split("\n")]
+        self.lines = [line for line in self.lines if line]
+        self.undo = [(c.corrected.lower(), c.written.lower()) for c in corrections if c.corrected and c.written]
+
+    def window(self, name: str) -> str | None:
+        """The source line that names this exercise."""
+        written = name.lower()
+        for corrected, original in self.undo:
+            written = written.replace(corrected, original)
+        wanted = set(_tokens(written)) | set(_tokens(name))
+        if not wanted or not self.lines:
+            return None
+        best, best_score = None, 0.0
+        for index, line in enumerate(self.lines):
+            have = _tokens(line)
+            hits = sum(1 for word in set(_tokens(written) or _tokens(name)) if any(_same_word(word, other) for other in have))
+            score = hits / max(1, len(set(_tokens(written) or _tokens(name))))
+            if score > best_score:
+                best, best_score = index, score
+        if best is None or best_score < 0.5:
+            return None
+        # The dose is on the exercise's own line. Only a line with no numbers
+        # (a heading such as "WEDNESDAY - Pads") borrows the next line or two.
+        window = [self._own_clauses(self.lines[best], set(_tokens(written) or _tokens(name)))]
+        for line in self.lines[best + 1:best + 3]:
+            if _numbers(" ".join(window)):
+                break
+            window.append(line)
+        return " ".join(window)
+
+    @staticmethod
+    def _own_clauses(line: str, wanted: set[str]) -> str:
+        """One line can hold several exercises ("squats 3x5 @ 100, pull ups 3x8"):
+        keep this exercise's clause, and any clauses after it that carry no
+        dose of their own ("..., rest 2-3 min")."""
+        if len(DOSE_PAIR.findall(line)) < 2:
+            return line
+        clauses = [c.strip() for c in re.split(r"[,;]", line) if c.strip()]
+        scores = [sum(1 for word in wanted if any(_same_word(word, other) for other in _tokens(c))) for c in clauses]
+        if not scores or max(scores) == 0:
+            return line
+        start = scores.index(max(scores))
+        end = start + 1
+        while end < len(clauses) and not DOSE_PAIR.search(clauses[end]):
+            end += 1
+        return ", ".join(clauses[start:end])
+
+    def check(self, item: ReadExercise, flag) -> None:
+        """Every number in the dose, matched to what it is on the source line:
+        sets or rounds, reps, work time, rest, distance and its unit, load and
+        its unit, RPE. A value written as something else ("3 x 8" read as
+        8 sets of 3) or not written at all is flagged. A role the line doesn't
+        make clear is only checked for being written at all."""
+        name = _clean(item.name) or ""
+        numeric = [item.sets, item.reps, item.rounds, item.rpe, item.distance, item.seconds, item.work_seconds, item.rest_seconds]
+        if not any(isinstance(v, (int, float)) for v in numeric) and not _numbers(" ".join(filter(None, [item.load, item.prescription]))):
+            return
+        window = self.window(name)
+        if window is None:
+            flag("Couldn't find this exercise's line in the file to double-check its numbers. Check its dose.")
+            return
+        read = read_dose_line(window)
+        problems: list[str] = []
+
+        def written_as(value: float, *skip: str) -> str | None:
+            """What else this number is on the line, if it's anything."""
+            for role, numbers in read.roles.items():
+                if role not in skip and any(abs(value - n) < 1e-9 for n in numbers):
+                    return role
+            return None
+
+        def verify(label: str, value, role: str, *, seconds: bool = False, also: tuple[str, ...] = ()):
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                return
+            expected = set().union(*(read.roles[r] for r in (role, *also)))
+            if any(abs(value - n) < 1e-9 for n in expected):
+                return
+            shown = f"{label} {value:g}{'s' if seconds else ''}"
+            # A time written in minutes is also checked as minutes.
+            other = written_as(value, role, *also) or (written_as(value / 60, role, *also) if seconds else written_as(value * 60, "count", "reps", "rpe"))
+            if expected and other:
+                problems.append(f"{shown} is written as {ROLE_WORDS[other]}")
+            elif expected:
+                problems.append(f"{shown} isn't written")
+            elif not any(f"{value:g}" == n or (seconds and f"{value / 60:g}" == n) for n in read.bare):
+                problems.append(f"{shown} isn't written")
+            elif other and not expected:
+                # The line doesn't make this role clear, but the number is there as something else.
+                problems.append(f"{shown} is written as {ROLE_WORDS[other]}")
+
+        verify("sets", item.sets, "count")
+        verify("rounds", item.rounds, "count")
+        verify("reps", item.reps, "reps")
+        verify("time", item.seconds, "work", seconds=True)
+        verify("work time", item.work_seconds, "work", seconds=True)
+        verify("rest", item.rest_seconds, "rest", seconds=True, also=("work",) if not read.roles["rest"] else ())
+        if isinstance(item.rpe, (int, float)) and not any(abs(item.rpe - n) < 1e-9 for n in read.roles["rpe"]):
+            problems.append(f"RPE {item.rpe:g} isn't written as an RPE")
+        # Distance: the number and its unit together.
+        if isinstance(item.distance, (int, float)):
+            unit = _unit(item.distance_unit)
+            pairs = read.distances
+            if pairs and not any(abs(item.distance - n) < 1e-9 and (unit is None or unit == u) for n, u in pairs):
+                if any(abs(item.distance - n) < 1e-9 for n, _ in pairs):
+                    problems.append(f"distance {item.distance:g} {unit} has a different unit")
+                else:
+                    problems.append(f"distance {item.distance:g} {unit or ''} isn't written".replace("  ", " "))
+            elif not pairs and f"{item.distance:g}" not in read.bare:
+                problems.append(f"distance {item.distance:g} isn't written")
+        # Load: weights keep their unit; anything else just has to be written.
+        for number, unit in WEIGHT.findall((item.load or "").replace(",", ".")):
+            if (float(number), _weight_unit(unit)) not in read.weights:
+                problems.append(f"load {number}{unit} isn't written")
+        loose = [n for n in _numbers(" ".join(filter(None, [re.sub(WEIGHT, "", (item.load or "")), item.prescription])))]
+        problems += [f"{n} isn't written" for n in loose
+                     if n.replace(",", ".") not in read.bare and f"{float(n.replace(',', '.')):g}" not in read.bare]
+        # A single reps number read out of a written range collapses what the coach wrote.
+        if isinstance(item.reps, int) and read.rep_ranges:
+            problems.append(f"reps {item.reps} was written as the range {read.rep_ranges[0]}")
+        # "each side" is only true if the line says so (and left out if it does).
+        says_per_side = bool(PER_SIDE.search(window))
+        if item.per_side and not says_per_side:
+            problems.append("per side isn't written")
+        elif says_per_side and not item.per_side and (item.reps or item.seconds):
+            problems.append("the line says each side")
+        if problems:
+            flag(f"Check the dose: {'; '.join(problems)} in \u201c{window[:120]}\u201d.")
+
+
+ROLE_WORDS = {"count": "the number of sets or rounds", "reps": "reps", "work": "a work time", "rest": "a rest time", "rpe": "an RPE"}
+TIME_UNITS = r"(?:hours?|hrs?|h|minutes?|mins?|seconds?|secs?|s)"
+DIST_UNITS = r"(?:kms?|k|miles?|mi|metres?|meters?|m|yards?|yds?)"
+DOSE_PAIR = re.compile(r"\d\s*(?:x|\u00d7|\*)\s*\d", re.I)
+AXB = re.compile(rf"(?<![\d.])(\d+)\s*(?:x|\u00d7|\*)\s*(\d+(?:\.\d+)?)(?:\s*[-\u2013]\s*(\d+(?:\.\d+)?))?\s*(?:({TIME_UNITS})\b|({DIST_UNITS})\b)?", re.I)
+TIME = re.compile(rf"(?<![\d.])(\d+(?:\.\d+)?)(?:\s*[-\u2013]\s*(\d+(?:\.\d+)?))?\s*({TIME_UNITS})\b", re.I)
+DISTANCE = re.compile(rf"(?<![\d.])(\d+(?:\.\d+)?)\s*({DIST_UNITS})\b", re.I)
+WEIGHT = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*(kgs?|lbs?|pounds?|%)", re.I)
+RPE_AT = re.compile(r"\brpe\s*:?\s*(\d+(?:\.\d+)?)(?:\s*[-\u2013]\s*(\d+(?:\.\d+)?))?|@\s*(\d+(?:\.\d+)?)\b(?!\s*(?:kgs?|lbs?|%))", re.I)
+PER_SIDE = re.compile(r"\b(?:each|per|every)\s+(?:side|leg|arm|hand|foot)\b|/\s*(?:side|leg|arm|hand|foot)\b|\bboth\s+(?:sides|legs|arms)\b|\balternating\b", re.I)
+REST_AFTER = re.compile(r"^\W{0,3}(?:rest|off|easy|recover\w*|walk\w*|break)\b", re.I)
+REST_BEFORE = re.compile(r"\brest\w*\W{0,3}(?:of\W{0,2})?$", re.I)
+
+
+def _weight_unit(unit: str) -> str:
+    unit = unit.lower()
+    return "kg" if unit.startswith("kg") else "%" if unit == "%" else "lb"
+
+
+@dataclass
+class DoseLine:
+    roles: dict[str, set[float]]
+    distances: set[tuple[float, str]]
+    weights: set[tuple[float, str]]
+    bare: set[str]
+    rep_ranges: list[str]
+
+
+def read_dose_line(text: str) -> DoseLine:
+    """What each number on a source line is, by position and unit:
+    "3 x 8" is 3 sets of 8 reps; "6 x 3 min" is 6 rounds of 180s; "1 min rest"
+    is a rest; "5 km" is a distance; "140kg" is a weight."""
+    text = text.replace(",", ".") if re.search(r"\d,\d", text) else text
+    roles: dict[str, set[float]] = {"count": set(), "reps": set(), "work": set(), "rest": set(), "rpe": set()}
+    distances: set[tuple[float, str]] = set()
+    weights: set[tuple[float, str]] = set()
+    ranges: list[str] = []
+    for first, second, upper, time_unit, dist_unit in AXB.findall(text):
+        roles["count"].add(float(first))
+        if dist_unit:
+            continue  # the distance pattern below reads it
+        if not time_unit:
+            if upper:
+                ranges.append(f"{second}-{upper}")
+            else:
+                roles["reps"].add(float(second))
+    for number, kind in re.findall(r"(\d+)\s*(sets?|rounds?|reps?)\b", text, re.I):
+        roles["reps" if kind.lower().startswith("rep") else "count"].add(float(number))
+    for number in re.findall(r"sets?\s+of\s+(\d+)", text, re.I):
+        roles["reps"].add(float(number))
+    for match in TIME.finditer(text):
+        low, high, unit = match.group(1), match.group(2), match.group(3).lower()
+        factor = 3600 if unit.startswith(("h", "hr")) else 60 if unit.startswith("m") else 1
+        after, before = text[match.end():match.end() + 12], text[max(0, match.start() - 10):match.start()]
+        # The words straight after (or "rest" straight before) say whether it is rest.
+        role = "rest" if REST_AFTER.match(after) or REST_BEFORE.search(before) else "work"
+        for value in filter(None, (low, high)):
+            roles[role].add(float(value) * factor)
+    for number, unit in DISTANCE.findall(text):
+        distances.add((float(number), _unit(unit) or unit.lower()))
+    for number, unit in WEIGHT.findall(text):
+        weights.add((float(number), _weight_unit(unit)))
+    for low, high, at in RPE_AT.findall(text):
+        for value in filter(None, (low, high, at)):
+            roles["rpe"].add(float(value))
+    bare = {f"{float(n):g}" for n in re.findall(r"(?<![\d.])\d+(?:\.\d+)?", text)}
+    return DoseLine(roles, distances, weights, bare, ranges)
+
+
+def build_draft(read: ReadPlan, start: date, source: str | None = None) -> PlanImportResult:
+    """The Custom Build draft for what was read. ``source`` is the programme text,
+    used to double-check names and numbers: "" for screenshots (nothing to check
+    against, which is flagged), None to skip the checks."""
     start = start - timedelta(days=start.weekday())
     flags: list[ImportFlag] = []
     flagged: set[tuple[str, str]] = set()
@@ -445,8 +726,11 @@ def build_draft(read: ReadPlan, start: date) -> PlanImportResult:
             flagged.add((where, message))
             flags.append(ImportFlag(where=where, message=message))
 
-    written_weeks = [week for week in read.weeks if week.sessions]
-    if not written_weeks:
+    # A rest week the programme writes keeps its place wherever it is, first
+    # week included, so every week keeps its date. An empty week that isn't
+    # written as rest is not something the coach wrote, and is left out.
+    written_weeks = [week for week in read.weeks if week.sessions or week.rest]
+    if not any(week.sessions for week in written_weeks):
         raise HTTPException(422, "No training sessions were found in that programme.")
     # Each written week, repeated as written. A repeated week is flagged once,
     # under its week range ("Weeks 1-3"), not once per copy.
@@ -462,8 +746,12 @@ def build_draft(read: ReadPlan, start: date) -> PlanImportResult:
         if first_number > last:
             break
         labels += [f"Week {first_number}" if first_number == last else f"Weeks {first_number}-{last}"] * (last - first_number + 1)
+        if not week.sessions:
+            flag(labels[-1], "Written as a rest week, so it has no sessions.")
     name = _clean(read.name, 100) or "Imported plan"
     dated = len(expanded) > 1
+    # Pasted or file text can be checked line by line; screenshots can't.
+    checker = SourceCheck(source, read.corrections) if source and source.strip() else None
 
     def session(item: ReadSession, index: int, label: str, scheduled: date | None) -> dict:
         kind = item.session_type if item.session_type in SESSION_TYPES else "mixed"
@@ -476,10 +764,15 @@ def build_draft(read: ReadPlan, start: date) -> PlanImportResult:
             flag(where, f"Only the first {MAX_EXERCISES} of {len(item.exercises)} exercises were brought in.")
         exercises = []
         for exercise in item.exercises[:MAX_EXERCISES]:
-            built = _exercise(exercise, lambda message, e=exercise: flag(f"{where} \u00b7 {_clean(e.name, 60)}", message))
+            def say(message, e=exercise, where=where):
+                flag(f"{where} \u00b7 {_clean(e.name, 60)}" if _clean(e.name) else where, message)
+
+            built = _exercise(exercise, say)
+            if built and checker:
+                checker.check(exercise, say)
             if built:
                 exercises.append(built)
-        day = item.day if item.day in WEEKDAYS else None
+        day = _day(item.day)
         return {"id": str(uuid4()), "name": title[:100], "weekday": None if scheduled else day,
                 "scheduled_date": scheduled.isoformat() if scheduled else None, "session_type": kind,
                 "notes": notes[:2000] if notes else None, "exercises": exercises}
@@ -500,7 +793,7 @@ def build_draft(read: ReadPlan, start: date) -> PlanImportResult:
             items = items[:MAX_SESSIONS_PER_WEEK]
         for index, item in enumerate(items):
             sessions.append(session(item, index, "", None))
-            if item.day not in WEEKDAYS:
+            if not _day(item.day):
                 needs_day(item, sessions[-1]["name"], sessions[-1])
         body = {"name": name, "schedule_mode": "weekly", "sessions": sessions}
     else:
@@ -521,13 +814,16 @@ def build_draft(read: ReadPlan, start: date) -> PlanImportResult:
                 items = items[:MAX_SESSIONS_PER_WEEK]
             monday = first + timedelta(days=7 * number)
             for index, item in enumerate(items):
-                day = item.day if item.day in WEEKDAYS else None
+                day = _day(item.day)
                 # No day written: never guessed. It waits on Monday until the person picks its day.
                 sessions.append(session(item, index, f"{labels[number]} \u00b7 ", monday + timedelta(days=WEEKDAYS.index(day or "Monday"))))
                 if not day:
                     needs_day(item, f"{labels[number]} \u00b7 {sessions[-1]['name']}", sessions[-1])
         body = {"name": name, "schedule_mode": "dated", "start_date": first.isoformat(),
                 "end_date": (first + timedelta(days=7 * len(expanded) - 1)).isoformat(), "sessions": sessions}
+    corrections_flags(read, flag, source or "")
+    if source is not None and not source.strip():
+        flag("Plan", "Read from screenshots, so the numbers couldn't be double-checked against text. Compare each dose with your screenshots.")
     for line in read.skipped[:10]:
         if _clean(line):
             flag("Not placed", f"\u201c{_clean(line, 300)}\u201d")
@@ -575,7 +871,7 @@ def import_plan(owner_id: str, body: PlanImportRequest, *, reader: PlanReader | 
     except Exception as exc:  # noqa: BLE001 - the model or network; never leak details
         logger.warning("plan import model call failed: %s", type(exc).__name__)
         raise HTTPException(502, "That plan couldn't be read just now. Try again in a minute.") from exc
-    result = build_draft(read, body.start_date)
+    result = build_draft(read, body.start_date, text)
     if shortened:
         result.flags.insert(0, ImportFlag(where="Plan", message=f"The programme was longer than {MAX_TEXT_CHARS:,} characters, so only the first part was read."))
     return result

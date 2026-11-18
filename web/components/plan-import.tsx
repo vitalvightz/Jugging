@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ApiError, importPlanText, type PlanImportResult } from "@/lib/api";
 import type { CustomPlanInput, ImportFlag, NeedsDay } from "@/lib/api-schema.generated";
 import { addCalendarDays, calendarMonday, calendarWeekdays, nextCalendarMonday } from "@/lib/custom-plan-calendar";
@@ -8,7 +8,8 @@ import { describeLoadFailure } from "@/lib/connectivity";
 import { MAX_SCREENSHOTS, PLAN_TEXT_MAX_CHARS, PlanFileError, extractPlanText, planFileKind, screenshotData } from "@/lib/plan-text";
 import styles from "./plan-import.module.css";
 
-type Stage = { step: "pick" } | { step: "reading" | "building"; name: string; kind: "file" | "images" | "paste" }
+type Busy = { step: "reading" | "building"; name: string; kind: "file" | "images" | "paste"; lines?: string[]; shots?: string[] };
+type Stage = { step: "pick" } | Busy
   | { step: "done"; name: string; result: PlanImportResult };
 
 /**
@@ -47,12 +48,13 @@ export function PlanImport({ accessToken, timezone, onReview, onCancel, forFight
     try {
       if (files.length > 1 && images.length !== files.length) throw new PlanFileError("Choose one PDF or Word file, or up to 4 screenshots.");
       if (images.length > MAX_SCREENSHOTS) throw new PlanFileError(`Choose up to ${MAX_SCREENSHOTS} screenshots.`);
-      setStage({ step: "reading", name, kind: images.length ? "images" : "text" in source ? "paste" : "file" });
+      setStage({ step: "reading", name, kind: images.length ? "images" : "text" in source ? "paste" : "file",
+        lines: "text" in source ? previewLines(source.text) : undefined });
       const text = "text" in source ? source.text.slice(0, PLAN_TEXT_MAX_CHARS) : images.length ? "" : await extractPlanText(files[0]);
       if ("text" in source && text.replace(/\s/g, "").length < 20) throw new PlanFileError("Paste the whole programme: sessions, days and exercises.");
       const shots = await Promise.all(images.map(screenshotData));
       if (controller.signal.aborted) return;
-      setStage({ step: "building", name, kind: images.length ? "images" : "text" in source ? "paste" : "file" });
+      setStage({ step: "building", name, kind: images.length ? "images" : "text" in source ? "paste" : "file", lines: previewLines(text), shots });
       const result = await importPlanText(accessToken, {
         text, images: shots, file_name: name.slice(0, 200), start_date: nextCalendarMonday(timezone ?? "UTC"),
       }, controller.signal);
@@ -74,8 +76,6 @@ export function PlanImport({ accessToken, timezone, onReview, onCancel, forFight
   }
 
   const busy = stage.step === "reading" || stage.step === "building";
-  const first = busy && stage.kind === "images" ? "Prepare the screenshots on this device"
-    : busy && stage.kind === "paste" ? "Take the pasted text" : "Read the file on this device";
   return <section className={styles.root} aria-labelledby="plan-import-heading">
     <header className={styles.head}>
       <p className="kicker">Import</p>
@@ -98,16 +98,7 @@ export function PlanImport({ accessToken, timezone, onReview, onCancel, forFight
         : <div className={styles.drop} data-over={over || undefined} data-busy={busy || undefined}
           onDragOver={event => { event.preventDefault(); if (!busy) setOver(true); }} onDragLeave={() => setOver(false)}
           onDrop={event => { event.preventDefault(); setOver(false); if (!busy) take(event.dataTransfer.files); }}>
-          {busy ? <div className={styles.progress} role="status" aria-live="polite">
-            <span className={styles.spinner} aria-hidden="true" />
-            <strong className={styles.fileName}>{stage.name}</strong>
-            <span>{stage.step === "reading" ? "Getting it ready…" : "Building weeks and sessions… this can take up to a minute."}</span>
-            <ol className={styles.steps} aria-label="Import steps">
-              <li data-state={stage.step === "reading" ? "now" : "done"}>{first}</li>
-              <li data-state={stage.step === "building" ? "now" : "next"}>Turn it into sessions</li>
-              <li data-state="next">You check and save</li>
-            </ol>
-          </div> : <>
+          {busy ? <ImportProgress stage={stage} /> : <>
             <svg className={styles.fileIcon} viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></svg>
             <button type="button" className="cta" onClick={() => input.current?.click()}>Choose a file</button>
             <span className={styles.hint}>PDF, Word (.docx) or up to {MAX_SCREENSHOTS} screenshots</span>
@@ -129,6 +120,64 @@ export function PlanImport({ accessToken, timezone, onReview, onCancel, forFight
           {busy ? "Cancel import" : "Back"}</button>
       </>}
   </section>;
+}
+
+/** The first lines of the programme, shown being read while it's processed. */
+function previewLines(text: string) {
+  return text.split("\n").map(line => line.replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 9)
+    .map(line => line.length > 64 ? `${line.slice(0, 63)}…` : line);
+}
+
+const TICKER: Record<Busy["step"], string[]> = {
+  reading: ["Opening it on this device", "Pulling out the text", "Lining up the pages"],
+  building: ["Finding the weeks and sessions", "Reading sets, reps and rounds", "Matching each session to its day",
+    "Keeping the coach's cues and notes", "Fixing spelling, never the numbers", "Flagging anything unclear"],
+};
+
+/** The programme being read: its own lines (or screenshots) under a scan, a
+ * running clock, and what's happening now. Motion stops for reduced motion. */
+function ImportProgress({ stage }: { stage: Busy }) {
+  const [seconds, setSeconds] = useState(0);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      setSeconds(Math.floor((Date.now() - started) / 1000));
+      setTick(Math.floor((Date.now() - started) / 2400));
+    }, 400);
+    return () => window.clearInterval(timer);
+  }, [stage.name]);
+  const messages = TICKER[stage.step];
+  const message = messages[tick % messages.length];
+  const lines = stage.lines?.length ? stage.lines : null;
+  const shots = stage.shots?.length ? stage.shots : null;
+  const clock = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  const phase = stage.step === "reading" ? 0 : 1;
+  return <div className={styles.progress} role="status" aria-live="polite">
+    <div className={styles.progressHead}>
+      <span className={styles.live}><i aria-hidden="true" />{stage.step === "reading" ? "Reading" : "Building"}</span>
+      <span className={styles.clock} aria-hidden="true">{clock}</span>
+    </div>
+    <div className={styles.doc} data-kind={shots ? "images" : lines ? "lines" : "blank"} aria-hidden="true"
+      style={{ "--n": lines?.length ?? 7 } as CSSProperties}>
+      {shots ? <div className={styles.shots}>{shots.map((shot, index) =>
+        // eslint-disable-next-line @next/next/no-img-element -- a local data URL, never fetched
+        <img key={index} src={shot} alt="" />)}</div>
+        : lines ? lines.map((line, index) => <span key={index} className={styles.line} style={{ "--i": index } as CSSProperties}>{line}</span>)
+        : Array.from({ length: 7 }, (_, index) => <span key={index} className={styles.bar} style={{ "--i": index, width: `${[72, 54, 88, 40, 66, 80, 48][index]}%` } as CSSProperties} />)}
+      <span className={styles.scan} />
+    </div>
+    <p className={styles.progressTitle}>
+      {stage.step === "reading" ? "Getting it ready" : "Building weeks and sessions"}
+      <span className={styles.fileName}>{stage.name}</span>
+    </p>
+    <p key={message} className={styles.ticker}>{message}…</p>
+    <ol className={styles.rail} aria-label="Import steps">
+      {["Read", "Build", "You check"].map((label, index) =>
+        <li key={label} data-state={index < phase ? "done" : index === phase ? "now" : "next"}><span>{label}</span></li>)}
+    </ol>
+    <p className={styles.wait}>{stage.step === "building" ? "Usually under a minute. Nothing is saved until you check it." : "This stays on your device."}</p>
+  </div>;
 }
 
 type Weekday = (typeof calendarWeekdays)[number];

@@ -8,11 +8,15 @@ drafts with the same code the app uses, and counts the differences:
 
 * sessions and exercises missed or invented,
 * wrong days, session types and session notes,
-* exercise fields that differ (dose, cues, stop rules, equipment, notes).
+* exercise fields that differ (dose, cues, stop rules, equipment, notes),
+* numbers the app's own source check flags in the model's reading.
 
 Run it before launch and after any change to the import prompt or model:
 
     OPENAI_API_KEY=... python tools/plan_import_eval.py [--cases DIR] [--json]
+
+or, on GitHub, run the "Plan Import Accuracy" workflow (it needs an
+OPENAI_API_KEY repository secret).
 
 It calls the model, so it counts toward the API bill (one call per case), and
 it is not part of the test suite.
@@ -51,11 +55,13 @@ def sessions(reading: ReadPlan) -> dict[tuple[int, str], dict]:
     """The first week's sessions, keyed by order and name, as the app would draft them."""
     draft = build_draft(reading, START)
     waiting = {sid for group in draft.needs_day for sid in group.session_ids}
-    first = draft.plan["sessions"][:len(reading.weeks[0].sessions) if reading.weeks else 0]
+    # The first week with training (a rest week first has none).
+    size = next((len(week.sessions) for week in reading.weeks if week.sessions), 0)
+    first = draft.plan["sessions"][:size]
     return {(i, s["name"].lower()): {**s, "day": None if s["id"] in waiting else s["weekday"]} for i, s in enumerate(first)}
 
 
-def compare(truth: ReadPlan, read: ReadPlan) -> dict:
+def compare(truth: ReadPlan, read: ReadPlan, source: str = "") -> dict:
     errors: list[str] = []
     counts = {"sessions": 0, "exercises": 0, "fields": 0, "errors": 0}
     want, got = sessions(truth), sessions(read)
@@ -87,6 +93,10 @@ def compare(truth: ReadPlan, read: ReadPlan) -> dict:
                     errors.append(f"{expected['name']} · {exercise['name']}: {key} expected {left!r}, read {right!r}")
         errors += [f"{expected['name']}: invented exercise {extra['name']!r}" for extra in have.values()]
     errors += [f"invented session {extra['name']!r}" for extra in by_name.values()]
+    # What the app itself would flag after checking the model's numbers against the text.
+    if source:
+        errors += [f"source check: {flag.where}: {flag.message}" for flag in build_draft(read, START, source).flags
+                   if flag.message.startswith(("Check the dose", "Couldn't find"))]
     counts["errors"] = len(errors)
     return {"counts": counts, "errors": errors}
 
@@ -103,7 +113,7 @@ def main() -> int:
     report, total = {}, {"sessions": 0, "exercises": 0, "fields": 0, "errors": 0}
     for name, text, images, truth in cases(args.cases):
         try:
-            result = compare(truth, reader.read(text.strip(), images))
+            result = compare(truth, reader.read(text.strip(), images), text)
         except Exception as exc:  # A failed read is a result too.
             result = {"counts": {"sessions": 0, "exercises": 0, "fields": 0, "errors": 1}, "errors": [f"read failed: {exc}"]}
         report[name] = result

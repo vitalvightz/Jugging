@@ -8,6 +8,19 @@ test("short holds and interval work stay in seconds on custom cards", () => {
   assert.equal(doseSummary({ ...blankDose("intervals"), rounds: 6, work_seconds: 20 }), "6 × 20s");
 });
 
+test("a partly written dose shows what is there and names what's missing", () => {
+  assert.equal(doseSummary({ ...blankDose("intervals"), rounds: 3 }), "3 rounds · duration unspecified");
+  assert.equal(doseSummary({ ...blankDose("intervals"), rounds: 1, load_or_intensity: "light" }), "1 round · duration unspecified · light");
+  assert.equal(doseSummary({ ...blankDose("intervals"), work_seconds: 180, rest_seconds: 60 }), "3 min rounds · number unspecified · rest 60s");
+  assert.equal(doseSummary({ ...blankDose("reps"), sets: 3 }), "3 sets · reps unspecified");
+  assert.equal(doseSummary({ ...blankDose("reps"), reps: 8, per_side: true }), "8 reps · sets unspecified · per side");
+  assert.equal(doseSummary({ ...blankDose("duration"), sets: 4 }), "4 sets · duration unspecified");
+  assert.equal(doseSummary({ ...blankDose("distance"), sets: 6 }), "6 sets · distance unspecified");
+  assert.equal(doseSummary({ ...blankDose("distance"), distance: 5 }), "5 · unit unspecified");
+  // Nothing written at all still asks for it.
+  assert.equal(doseSummary(blankDose("intervals")), "Set intervals");
+});
+
 test("editing a timed drill reads minutes as seconds and preserves its effort", () => {
   const dose = doseFromBlock({ duration: { value: 25, unit: "minutes" }, effort: { method: "RPE", value: 4 } });
   assert.equal(dose.mode, "duration");

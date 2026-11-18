@@ -1003,7 +1003,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
                       onClick={() => setOpenAdded(open ? undefined : exercise.id)}>
                       <span className={styles.addedText}>
                         <strong>{nameOf(exercise)}</strong>
-                        <small>{doseIncomplete(exercise.dose) ? "Prescription not set" : doseSummary(exercise.dose)}</small>
+                        <small>{/^Set /.test(doseSummary(exercise.dose)) ? "Prescription not set" : doseSummary(exercise.dose)}</small>
                       </span>
                       <span className={styles.chevron} aria-hidden="true" />
                     </button>

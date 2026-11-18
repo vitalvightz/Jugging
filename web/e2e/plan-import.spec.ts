@@ -47,7 +47,7 @@ const id = () => crypto.randomUUID();
 const mondays = ["2026-11-23", "2026-11-30", "2026-12-07", "2026-12-14"];
 const padIds = mondays.map(() => id());
 const result = {
-  weeks: 4, sessions: 8, exercises: 8,
+  weeks: 4, sessions: 8, exercises: 12,
   flags: [
     { where: "Plan", message: "No upcoming start date written, so it starts Monday 23 Nov. Change the start date in the builder if needed." },
     { where: "Weeks 1-4 · Strength · Trap bar deadlift", message: "RPE 15 isn't between 1 and 10, so it's kept in the notes." },
@@ -59,7 +59,8 @@ const result = {
     name: "Fight camp block", schedule_mode: "dated", start_date: "2026-11-23", end_date: "2026-12-20",
     sessions: mondays.flatMap((monday, week) => [
       { id: id(), name: "Strength", weekday: null, scheduled_date: monday, session_type: "strength_power", notes: "Brace hard, own every rep.",
-        exercises: [{ id: id(), origin: "manual", name: "Trap bar deadlift", notes: "RPE as written: 15", dose: { mode: "reps", sets: 3, reps: 5, load_or_intensity: "140kg" } }] },
+        exercises: [{ id: id(), origin: "manual", name: "Trap bar deadlift", notes: "RPE as written: 15", dose: { mode: "reps", sets: 3, reps: 5, load_or_intensity: "140kg" } },
+          { id: id(), origin: "manual", name: "Shadow boxing", notes: null, dose: { mode: "intervals", rounds: 3 } }] },
       { id: padIds[week], name: "Pads", weekday: null, scheduled_date: monday, session_type: "skill", notes: null,
         exercises: [{ id: id(), origin: "manual", name: "Pad rounds", notes: "Finish on the jab", dose: { mode: "intervals", rounds: 6, work_seconds: 180, rest_seconds: 60 } }] },
     ]),
@@ -103,7 +104,7 @@ for (const width of [320, 390, 1280]) {
     expect(bodies[0].file_name).toBe("Camp plan.docx");
     expect(bodies[0].start_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(uploads).toEqual([]);
-    await expect(page.getByRole("status")).toContainText("Weeks4Sessions8Exercises8");
+    await expect(page.getByRole("status")).toContainText("Weeks4Sessions8Exercises12");
     // What couldn't be mapped exactly is listed openly, by where it belongs.
     await expect(page.getByText("3 things to check")).toBeVisible();
     await expect(page.getByText("“Drink 3L water a day”")).toBeVisible();
@@ -121,6 +122,8 @@ for (const width of [320, 390, 1280]) {
     await review.click();
     await expect(page).toHaveURL(/\/plans\/custom\?imported=1/);
     await expect(page.getByText("Imported from Camp plan.docx. Tick each thing to check once it's fixed or checked, then save.")).toBeVisible();
+    // A dose the coach only partly wrote shows what's there, not "Set intervals".
+    await expect(page.getByText("3 rounds · duration unspecified").first()).toBeVisible();
     // The coach's session note is on the session itself.
     await expect(page.getByText("Brace hard, own every rep.").first()).toBeVisible();
     await expect(page.getByText("Trap bar deadlift").first()).toBeVisible();

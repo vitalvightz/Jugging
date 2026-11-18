@@ -1,0 +1,17 @@
+{"name": "", "start_date": null, "skipped": [], "corrections": [
+  {"written": "Strenght", "corrected": "Strength"}, {"written": "bulgarain split sqaut", "corrected": "Bulgarian split squat"},
+  {"written": "kettelbell", "corrected": "kettlebell"}, {"written": "shadwo", "corrected": "shadow"},
+  {"written": "Conditionning", "corrected": "Conditioning"}, {"written": "asault", "corrected": "assault"},
+  {"written": "skiping", "corrected": "skipping"}],
+ "weeks": [{"repeat": 2, "sessions": [
+ {"day": "Monday", "name": "Strength", "session_type": "strength_power", "instructions": null, "exercises": [
+  {"name": "Bulgarian split squat", "sets": 3, "reps": 8, "seconds": null, "rounds": null, "work_seconds": null, "rest_seconds": null, "distance": null, "distance_unit": null, "per_side": true, "load": null, "rpe": null, "prescription": null, "equipment": null, "cues": [], "stop_rules": [], "notes": null},
+  {"name": "kettlebell swings", "sets": 4, "reps": 15, "seconds": null, "rounds": null, "work_seconds": null, "rest_seconds": null, "distance": null, "distance_unit": null, "per_side": null, "load": null, "rpe": null, "prescription": null, "equipment": null, "cues": [], "stop_rules": [], "notes": null},
+  {"name": "RDL", "sets": 3, "reps": 6, "seconds": null, "rounds": null, "work_seconds": null, "rest_seconds": null, "distance": null, "distance_unit": null, "per_side": null, "load": "80kg", "rpe": null, "prescription": null, "equipment": null, "cues": ["keep the bar close to ur shins"], "stop_rules": [], "notes": null}]},
+ {"day": "Wednesday", "name": "shadow boxing", "session_type": "skill", "instructions": null, "exercises": [
+  {"name": "shadow boxing", "sets": null, "reps": null, "seconds": null, "rounds": 4, "work_seconds": 180, "rest_seconds": 30, "distance": null, "distance_unit": null, "per_side": null, "load": null, "rpe": null, "prescription": null, "equipment": null, "cues": [], "stop_rules": [], "notes": null}]},
+ {"day": "Thursday", "name": "Conditioning", "session_type": "conditioning", "instructions": null, "exercises": [
+  {"name": "assault bike", "sets": null, "reps": null, "seconds": null, "rounds": 8, "work_seconds": 20, "rest_seconds": 40, "distance": null, "distance_unit": null, "per_side": null, "load": null, "rpe": null, "prescription": null, "equipment": null, "cues": [], "stop_rules": [], "notes": "sprint / easy"},
+  {"name": "skipping rope", "sets": 3, "reps": null, "seconds": 120, "rounds": null, "work_seconds": null, "rest_seconds": null, "distance": null, "distance_unit": null, "per_side": null, "load": null, "rpe": null, "prescription": null, "equipment": null, "cues": [], "stop_rules": [], "notes": null}]},
+ {"day": "Saturday", "name": "Rest", "session_type": "rest", "instructions": null, "exercises": []}
+]}]}
