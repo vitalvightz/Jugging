@@ -61,6 +61,9 @@ class ImportFlag(BaseModel):
     builder; ``message`` says what to check, quoting the coach where it helps."""
     where: str
     message: str
+    # Where it is in the draft, so tapping it can open that session or exercise.
+    session_id: str | None = None
+    exercise_id: str | None = None
 
 
 class NeedsDay(BaseModel):
@@ -218,6 +221,18 @@ def corrections_flags(read: "ReadPlan", flag, source: str = "") -> None:
         flag("Spelling", "Corrected: " + ", ".join(fixed) + ".")
 
 
+def _with_read_values(prescription: str | None, item: ReadExercise) -> str | None:
+    """A text dose keeps every number read beside it. "4x8-10" read as sets 4 and
+    "8-10" becomes "4 × 8-10", never just "8-10" with the sets lost."""
+    if not prescription:
+        return prescription
+    if item.sets and re.match(r"^\s*\d+(?:\.\d+)?\s*[-\u2013]\s*\d", prescription) and not re.search(r"\d\s*[x\u00d7*]\s*\d", prescription, re.I):
+        return f"{_number(item.sets)} \u00d7 {prescription}"[:500]
+    read_numbers = [n for n in _numbers(_written_dose(item))]
+    missing = [n for n in read_numbers if n not in _numbers(prescription)]
+    return f"{_written_dose(item)}, {prescription}"[:500] if missing else prescription
+
+
 def dose_from(item: ReadExercise, flag=lambda message: None) -> CustomDose:
     """The builder's dose for what was written, in the mode it fits exactly.
 
@@ -244,7 +259,7 @@ def dose_from(item: ReadExercise, flag=lambda message: None) -> CustomDose:
     written = {"sets": item.sets, "reps": item.reps, "seconds": item.seconds, "rounds": item.rounds,
                "work_seconds": item.work_seconds, "distance": item.distance}
     present = {key for key, value in written.items() if value is not None}
-    prescription = _clean(item.prescription, 500)
+    prescription = _with_read_values(_clean(item.prescription, 500), item)
     mode: dict | None = None
     if prescription:
         mode = {"mode": "text", "prescription": prescription}
@@ -420,6 +435,8 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
         kind = item.session_type if item.session_type in SESSION_TYPES else "mixed"
         title = _clean(item.name) or ("Rest" if kind == "rest" else f"Session {index + 1}")
         where = f"{label}{title}"
+        session_id = str(uuid4())
+        session_where.setdefault(where, session_id)
         notes = _clean(item.instructions)
         if notes and len(notes) > 2000:
             flag(where, "The session note was longer than 2,000 characters and was shortened.")
@@ -433,8 +450,9 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
             def say(message, e=exercise, where=where):
                 flag(f"{where} \u00b7 {_clean(e.name, 60)}" if _clean(e.name) else where, message)
 
-            # Numbers are checked against the written line first, so one that
-            # isn't written is removed before the exercise is built.
+            # Numbers are checked against the written line first, so one the line
+            # settles is fixed before the exercise is built.
+            mark = len(flags)
             if checker and not exercise.copied and _clean(exercise.name):
                 checker.check(exercise, say)
             # A copy made from a reference was flagged where it was first written.
@@ -449,7 +467,9 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
                     built = swapped
             if built:
                 exercises.append(built)
-        return {"id": str(uuid4()), "name": title[:100], "weekday": None if scheduled else day,
+                for raised in flags[mark:]:
+                    raised.exercise_id = raised.exercise_id or built["id"]
+        return {"id": session_id, "name": title[:100], "weekday": None if scheduled else day,
                 "scheduled_date": scheduled.isoformat() if scheduled else None, "session_type": kind,
                 "notes": notes[:2000] if notes else None, "exercises": exercises}
 
@@ -460,6 +480,7 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
         unplaced.setdefault(id(item), NeedsDay(where=where, session_ids=[])).session_ids.append(built["id"])
 
     sessions: list[dict] = []
+    session_where: dict[str, str] = {}
     if not dated:
         # One week, repeating: the builder's weekly plan. A session without a
         # written day stays unplaced until the person picks its day.
@@ -525,6 +546,12 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
     except ValidationError as exc:
         logger.warning("plan import draft failed validation: %s", exc.errors()[:3])
         raise HTTPException(422, "That programme couldn't be read. Try a simpler file, or build it by hand.") from exc
+    for raised in flags:
+        # A flag on a session, or one of its exercises, opens that session.
+        raised.session_id = next((sid for where, sid in session_where.items()
+                                  if raised.where == where or raised.where.startswith(f"{where} \u00b7 ")), None)
+        if raised.exercise_id and not raised.session_id:
+            raised.exercise_id = None
     return PlanImportResult(plan=plan.model_dump(mode="json"), weeks=len(expanded), sessions=len(plan.sessions),
                             exercises=sum(len(s.exercises) for s in plan.sessions), flags=flags,
                             needs_day=list(unplaced.values()), matched=len(library), library=library)

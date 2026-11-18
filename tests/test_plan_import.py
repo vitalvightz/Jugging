@@ -197,7 +197,7 @@ def test_the_coach_programme_arrives_exactly_as_written(api):
     # The repeat copies week 1 exactly, a week apart.
     assert [s["scheduled_date"] for s in plan["sessions"][4:8]] == ["2026-11-30", "2026-11-30", "2026-12-02", "2026-12-05"]
     assert [e["name"] for e in plan["sessions"][4]["exercises"]] == [e["name"] for e in strength]
-    assert body["flags"] == [
+    assert [{"where": f["where"], "message": f["message"]} for f in body["flags"]] == [
         {"where": "Plan", "message": "No start date written, so it starts Monday 23 Nov."},
         {"where": "Not placed", "message": "“Sauna 2x a week if cutting”"},
     ]
@@ -245,7 +245,7 @@ def test_weekly_plans_leave_unwritten_days_open_for_the_builder_to_ask(api):
         "mode": "duration", "sets": 4, "duration_seconds": 240}
     pads = next(s for s in plan["sessions"] if s["name"] == "Day 3 - Pads")["exercises"][0]
     assert dose(pads) == {"mode": "reps"}
-    assert body["flags"] == [
+    assert [{"where": f["where"], "message": f["message"]} for f in body["flags"]] == [
         {"where": "Day 3 - Pads · Pads", "message": "No dose written. Add one or leave it open."},
     ]
     # Once the person picks the days, it saves with nothing left open.
@@ -1103,3 +1103,50 @@ def test_the_exercise_line_with_a_dose_beats_a_heading_that_names_it():
     assert _flags_for(source, ReadExercise(name="Plank", sets=3, seconds=45)) == []
     reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("S", "Monday", exercises=[ReadExercise(name="Plank", sets=3, seconds=30)])])])
     assert build_draft(reading, date(2026, 11, 23), source).plan["sessions"][0]["exercises"][0]["dose"]["duration_seconds"] == 45
+
+
+@pytest.mark.parametrize("line, read, expected", [
+    ("Push-ups 4x8-10", {"sets": 4, "prescription": "8-10"}, "4 × 8-10"),
+    ("DB rows 4x8-10 each", {"sets": 4, "prescription": "8-10 each", "per_side": True}, "4 × 8-10 each"),
+    ("Strict press 3x6-8", {"sets": 3, "prescription": "6-8"}, "3 × 6-8"),
+    ("Strict press 3x6-8", {"sets": 3, "prescription": "3 x 6-8"}, "3 x 6-8"),
+])
+def test_a_rep_range_keeps_its_sets(line, read, expected):
+    """As imported live: "Push-ups 4x8-10" came in as just "8-10"."""
+    name = line.rsplit(" ", 1)[0]
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("S", "Monday", exercises=[ReadExercise(name=name, **read)])])])
+    draft = build_draft(reading, date(2026, 11, 23), line)
+    dose = draft.plan["sessions"][0]["exercises"][0]["dose"]
+    assert dose["mode"] == "text" and dose["prescription"] == expected
+    assert not [f for f in draft.flags if f.message.startswith("Check the dose")]
+
+
+def test_a_rep_range_read_without_its_sets_gets_them_from_its_line():
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("S", "Monday", exercises=[
+        ReadExercise(name="Push-ups", prescription="8-10")])])])
+    dose = build_draft(reading, date(2026, 11, 23), "Push-ups 4x8-10").plan["sessions"][0]["exercises"][0]["dose"]
+    assert dose["prescription"] == "4 × 8-10"
+
+
+def test_text_doses_on_a_shared_line_are_not_false_alarms():
+    """As imported live: "8 isn't written" for "Push-ups 4x8-10" on a line of several exercises."""
+    source = "Upper Strength: Push-ups 4x8-10, DB rows 4x8-10 each, Strict press 3x6-8, Side plank 2x30s each\nEasy run 30-40 min"
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("Upper Strength", "Monday", exercises=[
+        ReadExercise(name="Push-ups", sets=4, prescription="8-10"),
+        ReadExercise(name="DB rows", sets=4, prescription="8-10 each", per_side=True),
+        ReadExercise(name="Strict press", prescription="3x6-8"),
+        ReadExercise(name="Side plank", sets=2, seconds=30, per_side=True),
+        ReadExercise(name="Easy run", prescription="30-40 min")])])])
+    draft = build_draft(reading, date(2026, 11, 23), source)
+    assert [f.message for f in draft.flags if f.message.startswith("Check the dose")] == []
+
+
+def test_each_flag_points_at_its_session_and_exercise():
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("Strength", "Monday", exercises=[
+        ReadExercise(name="Squat", sets=8, reps=3), ReadExercise(name="Pads")])])])
+    result = build_draft(reading, date(2026, 11, 23), "Squat 3x8\nPads")
+    session = result.plan["sessions"][0]
+    by_where = {f.where: (f.session_id, f.exercise_id) for f in result.flags}
+    assert by_where["Strength · Squat"] == (session["id"], session["exercises"][0]["id"])
+    assert by_where["Strength · Pads"] == (session["id"], session["exercises"][1]["id"])
+    assert all(sid is None for where, (sid, _) in by_where.items() if not where.startswith("Strength"))

@@ -114,6 +114,12 @@ class SourceCheck:
         group = _clean(item.group)
         read = read_dose_line(f"{window} ({group})" if group else window)
         problems: list[str] = []
+        # A rep range read without its sets ("8-10" from "Push-ups 4x8-10"): the sets are on the line.
+        written_range = re.match(r"^\s*(\d+\s*[-\u2013]\s*\d+)\b", item.prescription or "")
+        if item.sets is None and written_range:
+            pair = re.search(rf"(\d+)\s*[x\u00d7*]\s*{re.escape(written_range.group(1))}", window, re.I)
+            if pair:
+                item.sets = int(pair.group(1))
         # The line after the exercise's own name: where its own numbers are.
         first = next((t for t in _tokens(name) if t in window.lower()), None)
         after = window[window.lower().index(first):] if first else ""
@@ -196,8 +202,9 @@ class SourceCheck:
             if (float(number), _weight_unit(unit)) not in read.weights:
                 problems.append(f"load {number}{unit} isn't written")
         loose = [n for n in _numbers(" ".join(filter(None, [re.sub(WEIGHT, "", (item.load or "")), item.prescription])))]
-        problems += [f"{n} isn't written" for n in loose
-                     if n.replace(",", ".") not in read.bare and f"{float(n.replace(',', '.')):g}" not in read.bare]
+        # Text doses ("4 × 8-10", "30-40 min") only have to be written on the line, in any role.
+        on_line = {f"{float(n.replace(',', '.')):g}" for n in _numbers(window)}
+        problems += [f"{n} isn't written" for n in loose if f"{float(n.replace(',', '.')):g}" not in on_line]
         # A single reps number read out of a written range collapses what the coach wrote.
         if isinstance(item.reps, int) and read.rep_ranges:
             problems.append(f"reps {item.reps} was written as the range {read.rep_ranges[0]}")
