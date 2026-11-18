@@ -357,11 +357,11 @@ def test_the_accuracy_check_finds_no_differences_against_its_own_hand_checked_re
     and catches a wrong day, a changed dose and an invented exercise."""
     from tools.plan_import_eval import FIXTURES as CASES, cases, compare
     found = list(cases(CASES / "eval"))
-    assert [name for name, *_ in found] == ["coach_programme", "boxing_clinch_3week", "boxing_prep_references", "strength_block", "typos", "whatsapp_week"]
+    assert [name for name, *_ in found] == ["coach_programme", "boxing_clinch_3week", "boxing_prep_references", "boxing_sc_4week_dates", "strength_block", "typos", "whatsapp_week"]
     for _, text, _, truth in found:
         assert text.strip()
         assert compare(truth, truth, text)["errors"] == []
-    truth = found[5][3]
+    truth = found[6][3]
     wrong = truth.model_copy(deep=True)
     wrong.weeks[0].sessions[0].day = "Tuesday"
     wrong.weeks[0].sessions[2].exercises[0].reps = 6
@@ -758,7 +758,7 @@ def test_repeated_conditioning_blocks_and_timed_rounds_are_kept_not_flattened():
     assert [line[:9] for line in stages] == ["0:00–0:30", "0:30–1:00", "1:00–2:00", "2:00–2:30", "2:30–3:00"]
     messages = [f.message for f in draft.flags]
     assert "Written as 2 blocks of 6 rounds with 2 min rest between blocks. The dose shows one block; the repeat is in the notes." in messages
-    assert "Each round has 5 timed parts. They're in the notes, in order." in messages
+    assert "Each round has 5 timed parts. They are in the notes, in order." in messages
     # A circuit's rounds are each exercise's sets, read off the circuit heading.
     finisher = {e["name"]: _dose(e) for e in weeks[0]["Monday"][0]["exercises"] if "Clinch Finisher" in (e["notes"] or "")}
     assert finisher["Heavy Sandbag Bear-Hug Hold"] == {"mode": "duration", "sets": 3, "duration_seconds": 30}
@@ -852,7 +852,7 @@ def test_a_reference_that_cant_be_resolved_or_is_ambiguous_is_flagged_not_guesse
     draft = build_draft(plan(day1, numbered), date.fromisoformat(MONDAY), None)
     copied = draft.plan["sessions"][1]["exercises"]
     assert [e["dose"]["duration_seconds"] for e in copied] == [60, 60]
-    assert any("comes with a change" in f.message for f in draft.flags)
+    assert any("with a written change" in f.message for f in draft.flags)
 
 
 def test_a_missing_week_or_a_day_the_programme_never_names_is_flagged():
@@ -894,3 +894,74 @@ def test_a_reference_uses_this_week_then_the_nearest_earlier_week_and_flags_a_ti
     draft = build_draft(tied, date.fromisoformat(MONDAY), None)
     assert [s["exercises"] for s in draft.plan["sessions"] if s["name"] == "Repeat"] == [[]]
     assert any("could mean more than one Monday in that week" in f.message for f in draft.flags)
+
+
+
+# -- Regression: a dated 4-week plan whose later weeks refer back ("Same as Week 1") --
+
+def test_dated_weeks_that_refer_back_copy_the_right_session_on_the_written_dates():
+    draft, _ = _fixture_draft("boxing_sc_4week_dates")
+    sessions = draft.plan["sessions"]
+    # Every session on its written date, Wednesday to Monday weeks included.
+    assert [s["scheduled_date"] for s in sessions] == [
+        "2026-11-18", "2026-11-20", "2026-11-23", "2026-11-25", "2026-11-27", "2026-11-30",
+        "2026-12-02", "2026-12-04", "2026-12-07", "2026-12-09", "2026-12-11", "2026-12-14"]
+    names = [[e["name"] for e in s["exercises"]] for s in sessions]
+    assert not [n for ns in names for n in ns if re.match(r"(?i)(same|adjustment|repeat)", n)]
+    # Weeks 2-4 repeat week 1's own sessions, never another day's.
+    for week in range(1, 4):
+        assert names[3 * week:3 * week + 3] == names[0:3]
+    week1_day1 = [_dose(e) for e in sessions[0]["exercises"]]
+    for later in (3, 6):
+        assert [_dose(e) for e in sessions[later]["exercises"]] == week1_day1, "no set change written: doses as copied"
+    # Week 4's "Cut 1 set from every exercise" is exact, so it is applied (4 -> 3, 3 -> 2);
+    # "drop lift weights by 15%" stays in the notes.
+    week1_sets = [e["dose"].get("sets") for e in sessions[0]["exercises"]]
+    week4_sets = [e["dose"].get("sets") for e in sessions[9]["exercises"]]
+    assert week4_sets == [s - 1 if s else s for s in week1_sets]
+    deload = sessions[9]["exercises"][0]["notes"]
+    assert "drop lift weights by 15%" in deload
+    assert "Add 2.5–5 kg" not in deload, "an earlier week's adjustment doesn't carry into the next copy"
+    assert any(f.where.startswith("Week 4 \u00b7 Day 1") and "Cut 1 set" in f.message for f in draft.flags)
+    assert not [f for f in draft.flags if f.message.startswith(("Check the dose", "Couldn't find", "No sets"))]
+
+
+def test_references_the_reader_returned_as_plain_exercises_are_still_resolved():
+    """As read live: "Same workout as Nov 20" and "Same 3-min round intervals" came back as
+    exercises with no dose and no reference fields. They are references all the same."""
+    reading = ReadPlan.model_validate_json((EVAL / "boxing_sc_4week_dates.json").read_text())
+    for week in reading.weeks[1:]:
+        for number, session in enumerate(week.sessions):
+            for item in session.exercises:
+                item.refers_to_day = item.refers_to_section = None
+                item.name = ["Same workout as Nov 18", "Same workout as Nov 20", "Same 3-min round intervals"][number]
+    draft = build_draft(reading, date.fromisoformat(MONDAY), (EVAL / "boxing_sc_4week_dates.txt").read_text())
+    names = [[e["name"] for e in s["exercises"]] for s in draft.plan["sessions"]]
+    assert names[3:6] == names[6:9] == names[9:12] == names[0:3]
+    assert not [n for ns in names for n in ns if n.lower().startswith("same")]
+
+
+# -- Written progressions on copied sessions --
+
+def test_progression_reads_only_exact_dose_changes():
+    from api.services.plan_import_progression import read_progression
+    assert read_progression("Cut 1 set from every exercise and drop lift weights by 15%").sets_delta == -1
+    assert read_progression("one set fewer").sets_delta == -1
+    assert read_progression("Add 2 sets").sets_delta == 2
+    assert read_progression("Adjustment: Increase volume to 5 rounds.").rounds == 5
+    assert read_progression("Taper volume down to 3 sharp rounds").rounds == 3
+    for vague in ("increase weight if comfortable", "drop weights by 15%", "increase reps slightly if easier", None):
+        assert not read_progression(vague)
+    assert not read_progression("add 1 set, then cut 1 set"), "conflicting changes are never applied"
+
+
+def test_progression_never_drops_a_dose_below_one():
+    from api.services.plan_import_progression import Progression, apply_progression
+    one = ReadExercise(name="Neck holds", sets=1)
+    assert apply_progression(one, Progression(sets_delta=-1)) == [] and one.sets == 1
+
+
+def test_dated_conditioning_follows_the_written_round_progression():
+    draft, _ = _fixture_draft("boxing_sc_4week_dates")
+    rounds = [e["dose"].get("rounds") for s in draft.plan["sessions"] for e in s["exercises"] if e["dose"].get("rounds")]
+    assert rounds == [4, 5, 6, 3]
