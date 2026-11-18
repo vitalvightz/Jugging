@@ -62,7 +62,7 @@ for (const width of [320, 390, 430, 768, 1024, 1280, 1600]) {
     const review = page.getByRole('dialog', { name: 'Review plan', exact: true });
     const fixes = review.getByRole('button', { name: /^Fix / });
     await expect(fixes).toHaveCount(8);
-    const actionColumns = await fixes.evaluateAll(buttons => buttons.map(button => { const rect = button.getBoundingClientRect(); return { x: rect.x, width: rect.width, height: rect.height }; }));
+    const actionColumns = await fixes.evaluateAll(buttons => buttons.map(button => { const rect = button.getBoundingClientRect(); return { x: rect.x, width: rect.width, height: (button as HTMLElement).offsetHeight }; }));
     expect(new Set(actionColumns.map(rect => Math.round(rect.x))).size).toBe(1);
     expect(new Set(actionColumns.map(rect => Math.round(rect.width))).size).toBe(1);
     expect(actionColumns.every(rect => rect.height >= 44)).toBe(true);
