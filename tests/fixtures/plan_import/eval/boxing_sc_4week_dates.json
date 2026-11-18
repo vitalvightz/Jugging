@@ -1,0 +1,739 @@
+{
+ "name": "4-Week Boxing S&C Plan",
+ "start_date": "2026-11-18",
+ "weeks": [
+  {
+   "repeat": 1,
+   "rest": false,
+   "sessions": [
+    {
+     "days": [
+      "Wednesday"
+     ],
+     "date": "2026-11-18",
+     "name": "Day 1: Lower Body Force & Rotational Power",
+     "session_type": "strength_power",
+     "instructions": null,
+     "exercises": [
+      {
+       "name": "Med Ball Rotational Scoop Toss",
+       "sets": 4,
+       "reps": 5,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": 90,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": true,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [
+        "Drive from the back hip, snap through the core, reset each rep."
+       ],
+       "stop_rules": [],
+       "notes": null,
+       "stages": [],
+       "group": null,
+       "refers_to_day": null,
+       "refers_to_section": null
+      },
+      {
+       "name": "Trap Bar Deadlift (or Squat)",
+       "sets": 4,
+       "reps": null,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": null,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": null,
+       "load": null,
+       "rpe": null,
+       "prescription": "4 × 4–5",
+       "equipment": null,
+       "cues": [
+        "Heavy, crisp bar speed. Leave 2–3 reps in the tank."
+       ],
+       "stop_rules": [],
+       "notes": "Rest 2–3m",
+       "stages": [],
+       "group": null,
+       "refers_to_day": null,
+       "refers_to_section": null
+      },
+      {
+       "name": "Rear-Foot Elevated Split Squat",
+       "sets": 3,
+       "reps": 6,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": 90,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": true,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [
+        "Control the descent, explode up through the front mid-foot."
+       ],
+       "stop_rules": [],
+       "notes": null,
+       "stages": [],
+       "group": null,
+       "refers_to_day": null,
+       "refers_to_section": null
+      },
+      {
+       "name": "Broad Jumps (Stick Landing)",
+       "sets": 3,
+       "reps": 4,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": 90,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": null,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [
+        "Max horizontal distance, absorb force quietly."
+       ],
+       "stop_rules": [],
+       "notes": null,
+       "stages": [],
+       "group": null,
+       "refers_to_day": null,
+       "refers_to_section": null
+      },
+      {
+       "name": "Pallof Press (Anti-Rotation)",
+       "sets": 3,
+       "reps": 10,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": 60,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": true,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [
+        "Ribs down, resist torso twist, 2-second hold at full extension."
+       ],
+       "stop_rules": [],
+       "notes": null,
+       "stages": [],
+       "group": null,
+       "refers_to_day": null,
+       "refers_to_section": null
+      }
+     ]
+    },
+    {
+     "days": [
+      "Friday"
+     ],
+     "date": "2026-11-20",
+     "name": "Day 2: Upper Body Force, Speed & Neck",
+     "session_type": "strength_power",
+     "instructions": null,
+     "exercises": [
+      {
+       "name": "Plyo Push-Ups (or Med Ball Chest Pass)",
+       "sets": 4,
+       "reps": 5,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": 90,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": null,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [
+        "Max intent off the floor/chest; stop before speed drops."
+       ],
+       "stop_rules": [],
+       "notes": null,
+       "stages": [],
+       "group": null,
+       "refers_to_day": null,
+       "refers_to_section": null
+      },
+      {
+       "name": "Weighted Pull-Ups (or Chin-Ups)",
+       "sets": 4,
+       "reps": 5,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": 120,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": null,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [
+        "Full dead hang to chin over bar; leave 2–3 reps in reserve."
+       ],
+       "stop_rules": [],
+       "notes": null,
+       "stages": [],
+       "group": null,
+       "refers_to_day": null,
+       "refers_to_section": null
+      },
+      {
+       "name": "Landmine Single-Arm Press",
+       "sets": 3,
+       "reps": 6,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": 90,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": true,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [
+        "Staggered stance, punch the weight up using hip-to-shoulder transfer."
+       ],
+       "stop_rules": [],
+       "notes": null,
+       "stages": [],
+       "group": null,
+       "refers_to_day": null,
+       "refers_to_section": null
+      },
+      {
+       "name": "Chest-Supported Dumbbell Row",
+       "sets": 3,
+       "reps": 8,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": 90,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": null,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [
+        "Retract shoulder blades hard; balances high-volume punching."
+       ],
+       "stop_rules": [],
+       "notes": null,
+       "stages": [],
+       "group": null,
+       "refers_to_day": null,
+       "refers_to_section": null
+      },
+      {
+       "name": "4-Way Neck Harness / Manual Iso",
+       "sets": 2,
+       "reps": null,
+       "seconds": 15,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": 45,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": null,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [
+        "Flexion, extension, left/right lateral. Controlled tension only."
+       ],
+       "stop_rules": [],
+       "notes": "15s / dir",
+       "stages": [],
+       "group": null,
+       "refers_to_day": null,
+       "refers_to_section": null
+      },
+      {
+       "name": "Hanging Leg Raises",
+       "sets": 3,
+       "reps": 10,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": 60,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": null,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [
+        "Curl pelvis up without swinging."
+       ],
+       "stop_rules": [],
+       "notes": null,
+       "stages": [],
+       "group": null,
+       "refers_to_day": null,
+       "refers_to_section": null
+      }
+     ]
+    },
+    {
+     "days": [
+      "Monday"
+     ],
+     "date": "2026-11-23",
+     "name": "Day 3: Conditioning (4 Rounds)",
+     "session_type": "conditioning",
+     "instructions": null,
+     "exercises": [
+      {
+       "name": "Jump rope + dynamic mobility",
+       "sets": null,
+       "reps": null,
+       "seconds": 300,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": null,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": null,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [],
+       "stop_rules": [],
+       "notes": null,
+       "stages": [],
+       "group": "Warm-up",
+       "refers_to_day": null,
+       "refers_to_section": null
+      },
+      {
+       "name": "Max sprint intervals",
+       "sets": null,
+       "reps": null,
+       "seconds": null,
+       "rounds": 4,
+       "work_seconds": 180,
+       "rest_seconds": 60,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": null,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [],
+       "stop_rules": [],
+       "notes": null,
+       "stages": [
+        "10s max sprint (100% effort) + 50s active recovery × 3"
+       ],
+       "group": "Main Block (Assault Bike, Concept2 Rower, or Sprints)",
+       "refers_to_day": null,
+       "refers_to_section": null
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "repeat": 1,
+   "rest": false,
+   "sessions": [
+    {
+     "days": [
+      "Wednesday"
+     ],
+     "date": "2026-11-25",
+     "name": "Day 1: Lower Body Force & Rotational Power",
+     "session_type": "strength_power",
+     "instructions": null,
+     "exercises": [
+      {
+       "name": "Same exercises, sets, and reps as Week 1",
+       "sets": null,
+       "reps": null,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": null,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": null,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [],
+       "stop_rules": [],
+       "notes": "Adjustment: Add 2.5–5 kg to Trap Bar Deadlift (and Split Squats if crisp). Leave 2 reps in reserve.",
+       "stages": [],
+       "group": null,
+       "refers_to_day": "Week 1",
+       "refers_to_section": null
+      }
+     ]
+    },
+    {
+     "days": [
+      "Friday"
+     ],
+     "date": "2026-11-27",
+     "name": "Day 2: Upper Body Force, Speed & Neck",
+     "session_type": "strength_power",
+     "instructions": null,
+     "exercises": [
+      {
+       "name": "Same exercises, sets, and reps as Week 1",
+       "sets": null,
+       "reps": null,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": null,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": null,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [],
+       "stop_rules": [],
+       "notes": "Adjustment: Add 2.5–5 kg to Weighted Pull-Ups and Landmine Press.",
+       "stages": [],
+       "group": null,
+       "refers_to_day": "Week 1",
+       "refers_to_section": null
+      }
+     ]
+    },
+    {
+     "days": [
+      "Monday"
+     ],
+     "date": "2026-11-30",
+     "name": "Day 3: Conditioning (5 Rounds)",
+     "session_type": "conditioning",
+     "instructions": null,
+     "exercises": [
+      {
+       "name": "Same 3-minute round protocol",
+       "sets": null,
+       "reps": null,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": null,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": null,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [],
+       "stop_rules": [],
+       "notes": "Adjustment: Increase volume to 5 rounds.",
+       "stages": [],
+       "group": null,
+       "refers_to_day": "previous week",
+       "refers_to_section": null
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "repeat": 1,
+   "rest": false,
+   "sessions": [
+    {
+     "days": [
+      "Wednesday"
+     ],
+     "date": "2026-12-02",
+     "name": "Day 1: Lower Body Force & Rotational Power",
+     "session_type": "strength_power",
+     "instructions": null,
+     "exercises": [
+      {
+       "name": "Same exercises, sets, and reps as Week 1",
+       "sets": null,
+       "reps": null,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": null,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": null,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [],
+       "stop_rules": [],
+       "notes": "Adjustment: Heaviest working weights on Trap Bar Deadlift and Split Squats (1–2 reps in reserve). Max velocity on Med Ball Toss and Broad Jumps.",
+       "stages": [],
+       "group": null,
+       "refers_to_day": "Week 1",
+       "refers_to_section": null
+      }
+     ]
+    },
+    {
+     "days": [
+      "Friday"
+     ],
+     "date": "2026-12-04",
+     "name": "Day 2: Upper Body Force, Speed & Neck",
+     "session_type": "strength_power",
+     "instructions": null,
+     "exercises": [
+      {
+       "name": "Same exercises, sets, and reps as Week 1",
+       "sets": null,
+       "reps": null,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": null,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": null,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [],
+       "stop_rules": [],
+       "notes": "Adjustment: Heaviest working weights on Pull-Ups, Landmine Press, and Rows. Explosive intent on Plyo Push-Ups.",
+       "stages": [],
+       "group": null,
+       "refers_to_day": "Week 1",
+       "refers_to_section": null
+      }
+     ]
+    },
+    {
+     "days": [
+      "Monday"
+     ],
+     "date": "2026-12-07",
+     "name": "Day 3: Conditioning (6 Rounds)",
+     "session_type": "conditioning",
+     "instructions": null,
+     "exercises": [
+      {
+       "name": "Same 3-minute round protocol",
+       "sets": null,
+       "reps": null,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": null,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": null,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [],
+       "stop_rules": [],
+       "notes": "Adjustment: Peak volume at 6 rounds.",
+       "stages": [],
+       "group": null,
+       "refers_to_day": "previous week",
+       "refers_to_section": null
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "repeat": 1,
+   "rest": false,
+   "sessions": [
+    {
+     "days": [
+      "Wednesday"
+     ],
+     "date": "2026-12-09",
+     "name": "Day 1: Lower Body Force & Rotational Power",
+     "session_type": "strength_power",
+     "instructions": null,
+     "exercises": [
+      {
+       "name": "Adjustment",
+       "sets": null,
+       "reps": null,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": null,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": null,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [],
+       "stop_rules": [],
+       "notes": "Adjustment: Cut 1 set from every exercise (e.g., 4 sets → 3 sets; 3 sets → 2 sets) and drop lift weights by 15%. Focus on fast, crisp reps.",
+       "stages": [],
+       "group": null,
+       "refers_to_day": "previous week",
+       "refers_to_section": null
+      }
+     ]
+    },
+    {
+     "days": [
+      "Friday"
+     ],
+     "date": "2026-12-11",
+     "name": "Day 2: Upper Body Force, Speed & Neck",
+     "session_type": "strength_power",
+     "instructions": null,
+     "exercises": [
+      {
+       "name": "Adjustment",
+       "sets": null,
+       "reps": null,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": null,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": null,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [],
+       "stop_rules": [],
+       "notes": "Adjustment: Cut 1 set from every exercise and drop lift weights by 15%. Keep neck work light (1 × 15s / direction).",
+       "stages": [],
+       "group": null,
+       "refers_to_day": "previous week",
+       "refers_to_section": null
+      }
+     ]
+    },
+    {
+     "days": [
+      "Monday"
+     ],
+     "date": "2026-12-14",
+     "name": "Day 3: Conditioning (3 Rounds)",
+     "session_type": "conditioning",
+     "instructions": null,
+     "exercises": [
+      {
+       "name": "Same 3-minute round protocol",
+       "sets": null,
+       "reps": null,
+       "seconds": null,
+       "rounds": null,
+       "work_seconds": null,
+       "rest_seconds": null,
+       "blocks": null,
+       "block_rest_seconds": null,
+       "distance": null,
+       "distance_unit": null,
+       "per_side": null,
+       "load": null,
+       "rpe": null,
+       "prescription": null,
+       "equipment": null,
+       "cues": [],
+       "stop_rules": [],
+       "notes": "Adjustment: Taper volume down to 3 sharp rounds so you finish the block fresh and springy.",
+       "stages": [],
+       "group": null,
+       "refers_to_day": "previous week",
+       "refers_to_section": null
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "every_week": [],
+ "skipped": [],
+ "corrections": []
+}

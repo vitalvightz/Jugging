@@ -82,7 +82,8 @@ EXERCISES, in written order (warm-up and cool-down lines written as exercises st
 - Repeated blocks: "6 rounds of 15 sec on / 45 sec off, rest 2 minutes, then repeat for a second block of 6 rounds" -> rounds 6, work_seconds 15, rest_seconds 45, blocks 2, block_rest_seconds 120. blocks is how many times the whole set of rounds is done; null when written once. Never fold blocks into rounds (never rounds 12).
 - Timed parts inside each round ("0:00-0:30: bag hooks", "0:30-1:00: bear-hug hold", ...): one exercise for the rounds, with each part, in order and verbatim, as one item of stages. They are not separate exercises. stages is empty otherwise.
 - A section heading with exercises under it ("Warm-up (5 mins): Shoulder rolls, wrist rolls", "Core Routine (15 mins): Bicycle crunch, plank"): each exercise is its own exercise with group set to the heading as written ("Core Routine (15 mins)"). Never give each exercise the section's time: an exercise gets only a time or dose written for that exercise itself.
-- References to earlier training ("Same as Day 1", "Repeat Day 2", "As above", "Repeat ankle + hip drills"): never an exercise of that name. Return one item in exercises at that place with name set to the reference exactly as written, refers_to_day set to the day or session it names as written ("Day 1", "Monday", or "above" for "as above"; null when it names none), refers_to_section set to the part it names when it is only part of that day ("Warm-up", "ankle + hip drills"; null for the whole day), group set to the heading it is written under, notes set to any change written with it ("increase reps slightly if easier"), and every other field empty. A whole session written only as "Same as Day 2, increase reps slightly if easier" is a session whose exercises are that single reference item. refers_to_day and refers_to_section are null for every other exercise.
+- date: the calendar date written for the session ("Wednesday, Nov 18"), as YYYY-MM-DD, with the year from the programme or its start date; null when no date is written.
+- References to earlier training ("Same as Day 1", "Repeat Day 2", "As above", "Same exercises, sets, and reps as Week 1", "Same workout as Nov 20", "Same 3-minute round protocol", "Repeat ankle + hip drills"): never an exercise of that name. A session written only as an adjustment of earlier training ("Cut 1 set from every exercise and drop weights by 15%") is a reference to the same session in the previous week, with refers_to_day "previous week". Return one item in exercises at that place with name set to the reference exactly as written, refers_to_day set to the day, week, date or session it names as written ("Day 1", "Monday", "Week 1", "Nov 20", "above" for "as above", "previous week" when it names no day but repeats this session from an earlier week; null when it names none), refers_to_section set to the part it names when it is only part of that day ("Warm-up", "ankle + hip drills"; null for the whole day), group set to the heading it is written under, notes set to any change or adjustment written with it, verbatim ("increase reps slightly if easier", "Adjustment: Add 2.5–5 kg to Trap Bar Deadlift"), and every other field empty. A whole session written only as "Same as Day 2, increase reps slightly if easier" is a session whose exercises are that single reference item. refers_to_day and refers_to_section are null for every other exercise.
 - A table or list that maps day labels to weekdays ("Mon (Day 1)", "Tue (Day 2)"): give each "Day N" session those weekdays in days. Rows in such a table for days with no session written out below ("Sat: Recovery / Freestyle (Optional)", "Sun: Full Rest") go in every_week.
 - A circuit or finisher heading with exercises listed under it ("Clinch Finisher (3 Rounds, 60s rest):" then each exercise on its own line): each listed exercise is its own exercise, with sets set to the circuit's rounds and its own written time, reps or distance; group is the heading as written ("Clinch Finisher (3 Rounds, 60s rest)"). The circuit's rest between rounds stays in group only, not in rest_seconds. group is null for an exercise not in a circuit.
 - A pair like "5x3" with no unit is sets x reps only for lifts and bodyweight work. For rounds-based work (pads, bag, sparring, intervals) never assume the second number is minutes or reps: put the text as written in prescription (and any written rest in rest_seconds). Never swap the two numbers of a pair: "3x8" is sets 3, reps 8.
@@ -127,9 +128,10 @@ def response_schema() -> dict[str, Any]:
     }
     session = {
         "type": "object", "additionalProperties": False,
-        "required": ["days", "name", "session_type", "instructions", "exercises"],
+        "required": ["days", "date", "name", "session_type", "instructions", "exercises"],
         "properties": {
             "days": {"type": "array", "items": {"type": "string", "enum": list(WEEKDAYS)}},
+            "date": nullable("string"),
             "name": {"type": "string"},
             "session_type": {"type": "string", "enum": list(SESSION_TYPES)},
             "instructions": nullable("string"),
@@ -193,6 +195,9 @@ class ReadExercise(BaseModel):
     refers_to_section: str | None = None
     # Set on a copy made from a reference; its numbers were checked on the original.
     copied: bool = False
+    # A copy's notes as the original had them, so a copy of a copy doesn't
+    # pile up every week's adjustments.
+    base_notes: str | None = None
 
     @property
     def is_reference(self) -> bool:
@@ -204,6 +209,8 @@ class ReadSession(BaseModel):
     # An older reading's single day; may also be written as "Tue/Thu/Sat".
     day: str | None = None
     name: str = ""
+    # The calendar date written for the session ("Wednesday, Nov 18"), as YYYY-MM-DD.
+    date: str | None = None
     session_type: str = "mixed"
     instructions: str | None = None
     exercises: list[ReadExercise] = Field(default_factory=list)
@@ -581,7 +588,7 @@ def _exercise(item: ReadExercise, flag) -> dict | None:
     stages = [line for line in (_clean(value, 300) for value in item.stages) if line]
     if stages:
         notes.append("Each round, in order:\n" + "\n".join(stages))
-        flag(f"Each round has {len(stages)} timed parts. They're in the notes, in order.")
+        flag(f"Each round has {len(stages)} timed {'part' if len(stages) == 1 else 'parts'}. {'It is' if len(stages) == 1 else 'They are'} in the notes, in order.")
     group = _clean(item.group, 200)
     if group:
         notes.append(f"Part of: {group}")
@@ -656,6 +663,10 @@ class SourceCheck:
             if _numbers(" ".join(window)) and not window[-1].rstrip().endswith(":"):
                 break
             window.append(line)
+        # A dose that carries on to the next line ("Rest 1 minute between rounds. Complete 4 rounds.").
+        after = best + len(window)
+        if after < len(self.lines) and re.match(r"^\W*(?:rest|repeat|complete|then)\b", self.lines[after], re.I):
+            window.append(self.lines[after])
         return " ".join(window)
 
     @staticmethod
@@ -931,7 +942,8 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
             def say(message, e=exercise, where=where):
                 flag(f"{where} \u00b7 {_clean(e.name, 60)}" if _clean(e.name) else where, message)
 
-            built = _exercise(exercise, say)
+            # A copy made from a reference was flagged where it was first written.
+            built = _exercise(exercise, (lambda message: None) if exercise.copied else say)
             if built and checker and not exercise.copied:
                 checker.check(exercise, say)
             if built and matcher:
@@ -973,6 +985,10 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
             stated = date.fromisoformat(read.start_date) if read.start_date else None
         except ValueError:
             stated = None
+        # No start date, but the sessions carry dates: the first one starts the plan.
+        if stated is None:
+            dated_sessions = [d for d in (_session_date(s, read) for w in read.weeks for s in w.sessions) if d]
+            stated = min(dated_sessions) if dated_sessions else None
         if stated and stated >= start - timedelta(days=7):
             first = stated - timedelta(days=stated.weekday())
         else:
@@ -984,13 +1000,21 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
                 flag(labels[number], f"Only the first {MAX_SESSIONS_PER_WEEK} of {len(items)} sessions were brought in.")
                 items = items[:MAX_SESSIONS_PER_WEEK]
             monday = first + timedelta(days=7 * number)
+            once = sum(1 for other in expanded if other is week) == 1
             for index, (item, day, where) in enumerate(items):
-                # No day written: never guessed. It waits on Monday until the person picks its day.
-                sessions.append(session(item, index, where, monday + timedelta(days=WEEKDAYS.index(day or "Monday"))))
+                # A written calendar date places the session (a programme week can run
+                # Wednesday to Monday); otherwise its weekday in this week. No day
+                # written: never guessed. It waits on Monday until the person picks its day.
+                written = _session_date(item, read) if once else None
+                if written and not (first <= written < first + timedelta(days=7 * MAX_WEEKS)) or (written and day and written.strftime("%A") != day):
+                    written = None
+                sessions.append(session(item, index, where, written or monday + timedelta(days=WEEKDAYS.index(day or "Monday"))))
                 if not day:
                     needs_day(item, f"{labels[number]} \u00b7 {sessions[-1]['name']}", sessions[-1])
         body = {"name": name, "schedule_mode": "dated", "start_date": first.isoformat(),
-                "end_date": (first + timedelta(days=7 * len(expanded) - 1)).isoformat(), "sessions": sessions}
+                "end_date": max([first + timedelta(days=7 * len(expanded) - 1)]
+                                + [(lambda d: d + timedelta(days=6 - d.weekday()))(date.fromisoformat(x["scheduled_date"])) for x in sessions]).isoformat(),
+                "sessions": sessions}
     if source and source.strip():
         # A session still waiting for its day isn't placed on one yet.
         waiting = {sid for group in unplaced.values() for sid in group.session_ids}
@@ -1059,6 +1083,9 @@ def resolve_references(read: ReadPlan, flag) -> ReadPlan:
     and nothing is copied: it is never guessed and never becomes an exercise."""
     read = read.model_copy(deep=True)
     order = [s for week in read.weeks for s in week.sessions] + list(read.every_week)
+    for session in order:
+        for item in session.exercises:
+            _implied_reference(item)
     # Each session's week (every-week sessions count as after the last week).
     week_of = [n for n, week in enumerate(read.weeks) for _ in week.sessions] + [len(read.weeks)] * len(read.every_week)
     if not any(e.is_reference for s in order for e in s.exercises):
@@ -1066,7 +1093,7 @@ def resolve_references(read: ReadPlan, flag) -> ReadPlan:
     for position, session in enumerate(order):
         if not any(e.is_reference for e in session.exercises):
             continue
-        where = _clean(session.name) or "Session"
+        where = (f"Week {week_of[position] + 1} \u00b7 " if len(read.weeks) > 1 and week_of[position] < len(read.weeks) else "") + (_clean(session.name) or "Session")
         resolved: list[ReadExercise] = []
         for item in session.exercises:
             if not item.is_reference:
@@ -1075,8 +1102,26 @@ def resolve_references(read: ReadPlan, flag) -> ReadPlan:
             written = _clean(item.name) or _clean(item.refers_to_day) or "the reference"
             target, section = _clean(item.refers_to_day), _clean(item.refers_to_section)
             earlier = order[:position][::-1]  # nearest first
+            week_target = re.search(r"\bweek\s*(\d{1,2})\b", target or "", re.I)
+            when = _written_date(target, read)
             if target and target.lower() in {"above", "as above", "previous", "the previous day", "last session"}:
                 sources = earlier[:1]
+            elif week_target or when or (target or "").lower() in SAME_SLOT or (not target and not section):
+                # "as Week 1", "as Nov 20", or this session repeated from an earlier week.
+                if when:
+                    pool = [s for i, s in enumerate(order) if i != position and _session_date(s, read) == when]
+                else:
+                    weeks = [int(week_target.group(1)) - 1] if week_target else list(range(week_of[position] - 1, -1, -1))
+                    pool = []
+                    for week in weeks:
+                        pool = [s for i, s in enumerate(order) if week_of[i] == week and i != position and _same_slot(session, s)]
+                        if pool:
+                            break
+                if len(pool) > 1:
+                    flag(where, f"\u201c{written}\u201d could mean more than one earlier session, so nothing was copied. Add those exercises by hand.")
+                    continue
+                sources, target = pool, target or "the earlier week"
+                section = None if not section or _words(section) <= GENERIC_REFERENCE else section
             elif target:
                 # "Same as Monday" means this week's Monday, else the nearest earlier
                 # week's. Two matches in that week is ambiguous: flagged, not guessed.
@@ -1103,11 +1148,12 @@ def resolve_references(read: ReadPlan, flag) -> ReadPlan:
                 continue
             change = _clean(item.notes)
             if change and re.search(r"\d", change):
-                flag(where, f"\u201c{written}\u201d comes with a change: \u201c{change}\u201d. It's in the copied exercises' notes; update their doses if it changes them.")
+                flag(where, f"Copied from {target or 'earlier training'} with a written change: \u201c{change}\u201d. The doses are as copied and the change is in their notes, so update them if needed.")
             label = target or "earlier"
             for original in picked:
                 copy = original.model_copy(deep=True)
-                notes = [_clean(copy.notes), f"As {label}" + (f" ({section})" if section else ""), f"Progression: {change}" if change else None]
+                copy.base_notes = original.base_notes if original.copied else _clean(original.notes)
+                notes = [copy.base_notes, f"As {label}" + (f" ({section})" if section else ""), f"Progression: {change}" if change else None]
                 copy.notes = "\n".join(n for n in notes if n)
                 copy.group = _clean(item.group) or copy.group
                 copy.refers_to_day = copy.refers_to_section = None
@@ -1115,6 +1161,85 @@ def resolve_references(read: ReadPlan, flag) -> ReadPlan:
                 resolved.append(copy)
         session.exercises = resolved
     return read
+
+
+SAME_SLOT = {"previous week", "last week", "the previous week", "the earlier week", "same session", "earlier week"}
+GENERIC_REFERENCE = {"workout", "exercise", "set", "rep", "session", "protocol", "round", "interval", "min", "minute",
+                     "3", "and", "day", "week", "block", "plan", "routine", "same", "as", "to", "with", "the"}
+REFERENCE_NAME = re.compile(r"^\s*(?:same\b|repeat(?:ed)?\b|as (?:above|before|last|per|week|day)\b)", re.I)
+MONTHS = {m: i for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
+
+
+def _implied_reference(item: ReadExercise) -> None:
+    """A reference the reader returned as a plain exercise ("Same workout as Nov 20",
+    "Same exercises, sets, and reps as Week 1") is still a reference: an exercise
+    with nothing written but a name that says "same as" or "repeat"."""
+    name = _clean(item.name) or ""
+    if item.is_reference or not REFERENCE_NAME.match(name) or _written_dose(item) or _clean(item.prescription):
+        return
+    week = re.search(r"\bweek\s*\d{1,2}\b", name, re.I)
+    day = re.search(r"\bday\s*\d{1,2}\b", name, re.I)
+    when = re.search(rf"\b(?:{'|'.join(MONTHS)})[a-z]*\.?\s+\d{{1,2}}\b|\b\d{{1,2}}\s+(?:{'|'.join(MONTHS)})[a-z]*\b|\d{{4}}-\d{{2}}-\d{{2}}", name, re.I)
+    named = next((m.group(0) for m in (week, day, when) if m), None)
+    rest = re.sub(REFERENCE_NAME, "", name)
+    rest = re.sub(r"\bas\b.*$", "", rest, flags=re.I) if named else rest
+    item.refers_to_day = named or ("above" if re.search(r"\babove\b", name, re.I) else "previous week")
+    words = _words(rest)
+    if words and not words <= GENERIC_REFERENCE:
+        item.refers_to_section = _clean(rest)
+
+
+def _year(read: ReadPlan) -> int:
+    for value in [read.start_date, *[s.date for w in read.weeks for s in w.sessions]]:
+        try:
+            if value:
+                return date.fromisoformat(value).year
+        except ValueError:
+            continue
+    return date.today().year
+
+
+def _written_date(text: str | None, read: ReadPlan) -> date | None:
+    """ "Nov 20", "20 November", "2026-11-20" as a date (year from the programme)."""
+    text = (text or "").strip()
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        pass
+    match = re.search(r"\b([a-z]{3})[a-z]*\.?\s+(\d{1,2})\b|\b(\d{1,2})\s+([a-z]{3})[a-z]*\b", text.lower())
+    if not match:
+        return None
+    month = MONTHS.get(match.group(1) or match.group(4))
+    try:
+        return date(_year(read), month, int(match.group(2) or match.group(3))) if month else None
+    except ValueError:
+        return None
+
+
+def _session_date(session: ReadSession, read: ReadPlan) -> date | None:
+    try:
+        return date.fromisoformat(session.date) if session.date else _written_date(session.name, read)
+    except ValueError:
+        return _written_date(session.date, read)
+
+
+def _slot_name(session: ReadSession) -> str:
+    """A session's name without its week, date or round count: "Day 3: Conditioning (5 Rounds)" -> "day 3 conditioning"."""
+    name = re.sub(r"\([^)]*\)", " ", (session.name or "").lower())
+    name = re.sub(r"\bweek\s*\d+\b|\b\d{1,2}\s*rounds?\b", " ", name)
+    return " ".join(re.findall(r"[a-z]+(?:\s*\d+)?", name))
+
+
+def _same_slot(session: ReadSession, other: ReadSession) -> bool:
+    """The same session in another week: the same written day, the same "Day N"
+    label, or the same name once week and round counts are set aside."""
+    days, theirs = session_days(session), session_days(other)
+    if days and theirs:
+        return days == theirs
+    label = re.search(r"\bday\s*\d+\b", (session.name or "").lower())
+    if label and re.search(rf"\b{re.escape(label.group(0))}\b", (other.name or "").lower()):
+        return True
+    return bool(_slot_name(session)) and _slot_name(session) == _slot_name(other)
 
 
 def _referenced(sources: list[ReadSession], section: str | None, heading: str | None) -> list[ReadExercise] | None:
