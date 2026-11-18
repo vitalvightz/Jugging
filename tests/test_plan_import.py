@@ -873,3 +873,24 @@ def test_both_regression_programmes_save_and_reload_as_custom_plans(api):
         body = saved.json()
         assert len(body["sessions"]) == 21
         assert {s["session_type"] for s in body["sessions"] if not s["exercises"]} <= {"rest", "recovery"}
+
+
+def test_a_reference_uses_this_week_then_the_nearest_earlier_week_and_flags_a_tie():
+    def monday(name, sets):
+        return _session(name, "Monday", exercises=[ReadExercise(name="Back squat", sets=sets, reps=5)])
+
+    def same_as_monday(day="Wednesday"):
+        return _session("Repeat", day, exercises=[ReadExercise(name="Same as Monday", refers_to_day="Monday")])
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[monday("Week 1 Monday", 3)]),
+                              ReadWeek(sessions=[monday("Week 2 Monday", 4)]),
+                              ReadWeek(sessions=[monday("Week 3 Monday", 5), same_as_monday()]),
+                              ReadWeek(sessions=[same_as_monday()])])
+    draft = build_draft(reading, date.fromisoformat(MONDAY), None)
+    copies = [s["exercises"][0]["dose"]["sets"] for s in draft.plan["sessions"] if s["name"] == "Repeat"]
+    # Week 3 copies its own Monday; week 4 has none, so the nearest earlier week's (week 3).
+    assert copies == [5, 5]
+    # Two Mondays in the nearest week: never guessed.
+    tied = ReadPlan(weeks=[ReadWeek(sessions=[monday("AM lift", 3), monday("PM lift", 4)]), ReadWeek(sessions=[same_as_monday()])])
+    draft = build_draft(tied, date.fromisoformat(MONDAY), None)
+    assert [s["exercises"] for s in draft.plan["sessions"] if s["name"] == "Repeat"] == [[]]
+    assert any("could mean more than one Monday in that week" in f.message for f in draft.flags)

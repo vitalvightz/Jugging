@@ -1059,6 +1059,8 @@ def resolve_references(read: ReadPlan, flag) -> ReadPlan:
     and nothing is copied: it is never guessed and never becomes an exercise."""
     read = read.model_copy(deep=True)
     order = [s for week in read.weeks for s in week.sessions] + list(read.every_week)
+    # Each session's week (every-week sessions count as after the last week).
+    week_of = [n for n, week in enumerate(read.weeks) for _ in week.sessions] + [len(read.weeks)] * len(read.every_week)
     if not any(e.is_reference for s in order for e in s.exercises):
         return read
     for position, session in enumerate(order):
@@ -1076,8 +1078,17 @@ def resolve_references(read: ReadPlan, flag) -> ReadPlan:
             if target and target.lower() in {"above", "as above", "previous", "the previous day", "last session"}:
                 sources = earlier[:1]
             elif target:
-                named = [s for s in earlier if _names_session(target, s)] or [s for s in order[position + 1:] if _names_session(target, s)]
-                sources = named[:1]
+                # "Same as Monday" means this week's Monday, else the nearest earlier
+                # week's. Two matches in that week is ambiguous: flagged, not guessed.
+                sources, tied = [], False
+                for week in range(week_of[position], -1, -1):
+                    named = [s for i, s in enumerate(order) if week_of[i] == week and i != position and _names_session(target, s)]
+                    if named:
+                        sources, tied = named[:1], len(named) > 1
+                        break
+                if tied:
+                    flag(where, f"\u201c{written}\u201d could mean more than one {target} in that week, so nothing was copied. Add those exercises by hand.")
+                    continue
             else:
                 sources = earlier
             if not sources:
