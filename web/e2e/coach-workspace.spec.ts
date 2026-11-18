@@ -1241,6 +1241,7 @@ for (const width of [390, 1440]) {
     });
     await page.goto('/coach/plans');
     await page.getByRole('button', { name: 'Create New Plan', exact: true }).click();
+    if (page.viewportSize()!.width < 768) await page.getByRole('button', { name: 'Schedule settings', exact: true }).click();
     await page.getByLabel('Schedule mode', { exact: true }).selectOption('weekly');
     await expect(page.getByRole('combobox', { name: 'Fighter', exact: true })).toBeDisabled();
     await page.getByLabel('Plan name', { exact: true }).fill('Coach technical week');
