@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from api.contracts.custom_plans import WEEKDAYS, CustomDose, CustomExerciseSnapshot, CustomPlanInput
 from api.services.custom_plans import dose_optional
+from api.services.plan_import_progression import apply_progression, read_progression
 from api.services.plan_import_match import LibraryMatcher, linked
 
 logger = logging.getLogger(__name__)
@@ -1155,11 +1156,12 @@ def resolve_references(read: ReadPlan, flag) -> ReadPlan:
                 flag(where, f"\u201c{written}\u201d couldn't be matched to earlier exercises, so nothing was copied. Add them by hand.")
                 continue
             change = _clean(item.notes)
-            if change and re.search(r"\d", change):
-                flag(where, f"Copied from {target or 'earlier training'} with a written change: \u201c{change}\u201d. The doses are as copied and the change is in their notes, so update them if needed.")
+            progression = read_progression(change)
+            applied: list[str] = []
             label = target or "earlier"
             for original in picked:
                 copy = original.model_copy(deep=True)
+                applied += [f"{copy.name}: {c}" for c in apply_progression(copy, progression)]
                 copy.base_notes = original.base_notes if original.copied else _clean(original.notes)
                 notes = [copy.base_notes, f"As {label}" + (f" ({section})" if section else ""), f"Progression: {change}" if change else None]
                 copy.notes = "\n".join(n for n in notes if n)
@@ -1167,6 +1169,9 @@ def resolve_references(read: ReadPlan, flag) -> ReadPlan:
                 copy.refers_to_day = copy.refers_to_section = None
                 copy.copied = True
                 resolved.append(copy)
+            if change and re.search(r"\d", change):
+                done = f" Applied: {'; '.join(applied)}." if applied else ""
+                flag(where, f"Copied from {label} with a written change: \u201c{change}\u201d.{done} Anything else in the change is in the notes, so update those doses if needed.")
         session.exercises = resolved
     return read
 

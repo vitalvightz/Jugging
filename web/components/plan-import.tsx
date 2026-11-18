@@ -201,6 +201,9 @@ function Result({ stage, onReview, onAnother }: {
   const weekly = result.plan.schedule_mode === "weekly";
   const [days, setDays] = useState<(Weekday | "")[]>(() => result.needs_day.map(() => ""));
   const left = days.filter(day => !day).length;
+  const firstDate = weekly ? null : (result.plan.sessions ?? []).map(s => s.scheduled_date).filter(Boolean).sort()[0];
+  const starts = firstDate && result.plan.start_date && firstDate !== result.plan.start_date
+    ? `First session ${dayLabel(firstDate)}. Calendar weeks start Monday ${dayLabel(result.plan.start_date, false)}.` : null;
   return <div className={styles.result}>
     <div className={styles.summary} role="status">
       <p className={styles.found}>Found in <strong className={styles.fileName}>{stage.name}</strong></p>
@@ -210,6 +213,7 @@ function Result({ stage, onReview, onAnother }: {
         <div><dt>Exercises</dt><dd>{result.exercises}</dd></div>
       </dl>
       <p className={styles.planName}>{result.plan.name}</p>
+      {starts ? <p className={styles.matched}>{starts}</p> : null}
       {result.matched ? <p className={styles.matched}>{result.matched} {result.matched === 1 ? "exercise" : "exercises"} matched to the exercise library, with demos ready where there is one.</p> : null}
     </div>
     {result.needs_day.length ? <fieldset className={styles.days}>
@@ -275,4 +279,9 @@ export function takeImportedPlan(): ImportedPlan | null {
 export function clearImportedPlan() {
   pending = null;
   try { sessionStorage.removeItem(KEY); } catch { /* nothing stored */ }
+}
+
+function dayLabel(iso: string, weekday = true) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  return d.toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "short", ...(weekday ? { weekday: "long" } : {}) });
 }

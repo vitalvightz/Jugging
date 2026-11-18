@@ -912,12 +912,15 @@ def test_dated_weeks_that_refer_back_copy_the_right_session_on_the_written_dates
     for week in range(1, 4):
         assert names[3 * week:3 * week + 3] == names[0:3]
     week1_day1 = [_dose(e) for e in sessions[0]["exercises"]]
-    for later in (3, 6, 9):
-        assert [_dose(e) for e in sessions[later]["exercises"]] == week1_day1, "doses copied, never changed"
-    # Week 4's deload is kept as written, not applied as numbers.
+    for later in (3, 6):
+        assert [_dose(e) for e in sessions[later]["exercises"]] == week1_day1, "no set change written: doses as copied"
+    # Week 4's "Cut 1 set from every exercise" is exact, so it is applied (4 -> 3, 3 -> 2);
+    # "drop lift weights by 15%" stays in the notes.
+    week1_sets = [e["dose"].get("sets") for e in sessions[0]["exercises"]]
+    week4_sets = [e["dose"].get("sets") for e in sessions[9]["exercises"]]
+    assert week4_sets == [s - 1 if s else s for s in week1_sets]
     deload = sessions[9]["exercises"][0]["notes"]
-    assert "Cut 1 set from every exercise" in deload
-    assert sessions[9]["exercises"][0]["dose"]["sets"] == 4
+    assert "drop lift weights by 15%" in deload
     assert "Add 2.5–5 kg" not in deload, "an earlier week's adjustment doesn't carry into the next copy"
     assert any(f.where.startswith("Week 4 \u00b7 Day 1") and "Cut 1 set" in f.message for f in draft.flags)
     assert not [f for f in draft.flags if f.message.startswith(("Check the dose", "Couldn't find", "No sets"))]
@@ -936,3 +939,29 @@ def test_references_the_reader_returned_as_plain_exercises_are_still_resolved():
     names = [[e["name"] for e in s["exercises"]] for s in draft.plan["sessions"]]
     assert names[3:6] == names[6:9] == names[9:12] == names[0:3]
     assert not [n for ns in names for n in ns if n.lower().startswith("same")]
+
+
+# -- Written progressions on copied sessions --
+
+def test_progression_reads_only_exact_dose_changes():
+    from api.services.plan_import_progression import read_progression
+    assert read_progression("Cut 1 set from every exercise and drop lift weights by 15%").sets_delta == -1
+    assert read_progression("one set fewer").sets_delta == -1
+    assert read_progression("Add 2 sets").sets_delta == 2
+    assert read_progression("Adjustment: Increase volume to 5 rounds.").rounds == 5
+    assert read_progression("Taper volume down to 3 sharp rounds").rounds == 3
+    for vague in ("increase weight if comfortable", "drop weights by 15%", "increase reps slightly if easier", None):
+        assert not read_progression(vague)
+    assert not read_progression("add 1 set, then cut 1 set"), "conflicting changes are never applied"
+
+
+def test_progression_never_drops_a_dose_below_one():
+    from api.services.plan_import_progression import Progression, apply_progression
+    one = ReadExercise(name="Neck holds", sets=1)
+    assert apply_progression(one, Progression(sets_delta=-1)) == [] and one.sets == 1
+
+
+def test_dated_conditioning_follows_the_written_round_progression():
+    draft, _ = _fixture_draft("boxing_sc_4week_dates")
+    rounds = [e["dose"].get("rounds") for s in draft.plan["sessions"] for e in s["exercises"] if e["dose"].get("rounds")]
+    assert rounds == [4, 5, 6, 3]
