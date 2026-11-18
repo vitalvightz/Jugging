@@ -148,8 +148,8 @@
 /* Doubled class beats the global mobile rule that stretches every ghost button. */
 .saveBar .fixButton { width: auto; min-height: 44px; padding: 4px 14px; font-size: 13px; flex-shrink: 0; }
 .saveActions { flex: 1 1 100%; display: flex; gap: 8px; }
-.saveActions :global(.cta) { flex: 1 1 auto; width: auto; min-height: 48px; }
-.saveActions :global(.ghost-button) { flex: 0 0 auto; width: auto; min-height: 48px; padding: 0 14px; font-size: 14px; }
+.saveActions :global(.cta) { flex: 1 1 auto; width: auto; min-height: 48px; white-space: nowrap; }
+.saveActions :global(.ghost-button) { flex: 0 0 auto; width: auto; min-height: 48px; padding: 0 14px; font-size: 14px; white-space: nowrap; }
 @media (max-width: 767px) {
   .saveBar {
     bottom: calc(var(--mobile-tab-bar-clearance) + 8px);
@@ -531,7 +531,10 @@
   .historyToolbar button > span:first-child { font-size: 20px; }
   .historyToolbar .historyLabel { display: none; }
   .historyToolbar > span { flex: 1 1 auto; margin-left: auto; text-align: right; }
-  .scheduleToggle:global(.ghost-button) { display: block; width: auto; justify-self: start; min-height: 44px; padding: 8px 0; font-size: 14px; }
+  .scheduleToggle:global(.ghost-button) { display: block; width: auto; justify-self: start; min-height: 44px; padding: 8px 14px; font-size: 14px; }
+  /* Keep one-line actions on one line at phone widths. */
+  .saveActions :global(.cta) { padding: 0 12px; font-size: 15px; }
+  .addSession { white-space: nowrap; font-size: 14px; }
   .scheduleSettings[data-expanded="false"] { display: none; }
   .session :global(.sp-session-head) { flex-wrap: wrap; gap: 8px; }
   .sessionActions :global(.ghost-button) { width: auto; min-height: 44px; padding: 8px 10px; font-size: 13px; }
