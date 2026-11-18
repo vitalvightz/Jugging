@@ -42,7 +42,7 @@ class FakeReader:
     def __init__(self, plan: ReadPlan | Exception):
         self.plan, self.texts, self.images = plan, [], []
 
-    def read(self, text, images=(), review=None):
+    def read(self, text, images=(), review=None, timeout=None):
         self.texts.append(text)
         self.images = list(images)
         if isinstance(self.plan, Exception):
@@ -1014,7 +1014,7 @@ class TwoReadings:
     def __init__(self, first, second):
         self.readings, self.reviews = [first, second], []
 
-    def read(self, text, images=(), review=None):
+    def read(self, text, images=(), review=None, timeout=None):
         self.reviews.append(review)
         return self.readings[len(self.reviews) - 1]
 
@@ -1150,3 +1150,13 @@ def test_each_flag_points_at_its_session_and_exercise():
     assert by_where["Strength · Squat"] == (session["id"], session["exercises"][0]["id"])
     assert by_where["Strength · Pads"] == (session["id"], session["exercises"][1]["id"])
     assert all(sid is None for where, (sid, _) in by_where.items() if not where.startswith("Strength"))
+
+
+def test_a_slow_first_read_skips_the_second_look(monkeypatch):
+    """The second look never runs past the request's time budget."""
+    plan_import.reset_import_limits()
+    monkeypatch.setenv("UNLXCK_PLAN_IMPORT_BUDGET_SECONDS", "10")  # less than a second look needs
+    reader = TwoReadings(_one_exercise(6, 4), _one_exercise(4, 6))
+    result = _import(reader)
+    assert reader.reviews == [None], "only the first read"
+    assert result.plan["sessions"][0]["exercises"][0]["dose"]["sets"] == 6

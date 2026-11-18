@@ -92,7 +92,7 @@ class PlanImportResult(BaseModel):
 # -- The model call --
 
 class PlanReader(Protocol):
-    def read(self, text: str, images: list[str], review: str | None = None) -> ReadPlan: ...
+    def read(self, text: str, images: list[str], review: str | None = None, timeout: float | None = None) -> ReadPlan: ...
 
 
 REVIEW_INSTRUCTIONS = """
@@ -111,7 +111,7 @@ class OpenAIPlanReader:
     max_output_tokens: int
     reasoning_effort: str
 
-    def read(self, text: str, images: list[str], review: str | None = None) -> ReadPlan:
+    def read(self, text: str, images: list[str], review: str | None = None, timeout: float | None = None) -> ReadPlan:
         fields: dict[str, Any] = {"plan_text": text, "screenshots": len(images)}
         if review:
             fields["review"] = json.loads(review)
@@ -128,7 +128,8 @@ class OpenAIPlanReader:
         }
         if self.reasoning_effort:
             request["reasoning"] = {"effort": self.reasoning_effort}
-        response = self.client.responses.create(**request)
+        client = self.client.with_options(timeout=timeout) if timeout else self.client
+        response = client.responses.create(**request)
         output = getattr(response, "output_text", "") or ""
         return ReadPlan.model_validate_json(output)
 
@@ -596,6 +597,7 @@ def import_plan(owner_id: str, body: PlanImportRequest, *, reader: PlanReader | 
     if not reserve_import(owner_id):
         raise HTTPException(429, "You've imported several plans today. Try again tomorrow.", headers={"Retry-After": "3600"})
     try:
+        started = time.monotonic()
         read = reader.read(text, images)
     except HTTPException:
         raise
@@ -604,7 +606,11 @@ def import_plan(owner_id: str, body: PlanImportRequest, *, reader: PlanReader | 
         raise HTTPException(502, "That plan couldn't be read just now. Try again in a minute.") from exc
     matcher = library_matcher(store)
     result = build_draft(read, body.start_date, text, matcher)
-    result = _second_look(reader, text, images, read, result, lambda again: build_draft(again, body.start_date, text, matcher))
+    # The second look only runs in time the request has left: a slow first read
+    # returns as it is rather than holding the connection past the host's limit.
+    left = _env_int("UNLXCK_PLAN_IMPORT_BUDGET_SECONDS", 55) - (time.monotonic() - started)
+    if left >= SECOND_LOOK_MIN_SECONDS:
+        result = _second_look(reader, text, images, read, result, lambda again: build_draft(again, body.start_date, text, matcher), left)
     if shortened:
         result.flags.insert(0, ImportFlag(where="Plan", message=f"The programme was longer than {MAX_TEXT_CHARS:,} characters, so only the first part was read."))
     return result
@@ -614,7 +620,12 @@ def _reviewable(result: PlanImportResult) -> list[ImportFlag]:
     return [f for f in result.flags if f.message.startswith(REVIEWABLE)]
 
 
-def _second_look(reader: PlanReader, text: str, images: list[str], read: ReadPlan, result: PlanImportResult, build) -> PlanImportResult:
+# Below this many seconds left, a second look can't finish in time: it is skipped.
+SECOND_LOOK_MIN_SECONDS = 20
+
+
+def _second_look(reader: PlanReader, text: str, images: list[str], read: ReadPlan, result: PlanImportResult, build,
+                 timeout: float | None = None) -> PlanImportResult:
     """When the reading disagrees with the written text, ask once more with the
     first reading and those checks. Part of the same import (no extra allowance
     used); the second reading is kept only if it fails fewer checks and adds no
@@ -626,7 +637,7 @@ def _second_look(reader: PlanReader, text: str, images: list[str], read: ReadPla
     review = json.dumps({"first_reading": read.model_dump(mode="json", exclude={"imported_on"}),
                          "checks": [f"{f.where}: {f.message}" for f in checks[:40]]}, ensure_ascii=False)
     try:
-        again = build(reader.read(text, images, review=review))
+        again = build(reader.read(text, images, review=review, timeout=timeout))
     except Exception as exc:  # noqa: BLE001 - a failed second look keeps the first reading
         logger.info("plan import second look failed: %s", type(exc).__name__)
         return result
