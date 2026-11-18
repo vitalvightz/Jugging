@@ -297,7 +297,16 @@ class PlanImportResult(BaseModel):
 # -- The model call --
 
 class PlanReader(Protocol):
-    def read(self, text: str, images: list[str]) -> ReadPlan: ...
+    def read(self, text: str, images: list[str], review: str | None = None) -> ReadPlan: ...
+
+
+REVIEW_INSTRUCTIONS = """
+
+SECOND LOOK
+You read this programme once already. Your first reading and the automatic checks it failed are given as first_reading and checks. Each check compares your reading with the programme text, and a check can itself be wrong. Read the programme again and return the whole corrected reading: fix each real mistake (a number that isn't written, a time or dose taken from a section heading, a dose given to the wrong exercise), and keep everything that was already right. All the rules above still hold."""
+
+# Checks worth a second look: the reading disagrees with the written text.
+REVIEWABLE = ("Check the dose", "Couldn't find")
 
 
 @dataclass
@@ -307,13 +316,16 @@ class OpenAIPlanReader:
     max_output_tokens: int
     reasoning_effort: str
 
-    def read(self, text: str, images: list[str]) -> ReadPlan:
-        payload = json.dumps({"plan_text": text, "screenshots": len(images)}, ensure_ascii=False)
+    def read(self, text: str, images: list[str], review: str | None = None) -> ReadPlan:
+        fields: dict[str, Any] = {"plan_text": text, "screenshots": len(images)}
+        if review:
+            fields["review"] = json.loads(review)
+        payload = json.dumps(fields, ensure_ascii=False)
         content: list[dict[str, Any]] = [{"type": "input_text", "text": payload}]
         content += [{"type": "input_image", "image_url": image, "detail": "high"} for image in images]
         request: dict[str, Any] = {
             "model": self.model,
-            "instructions": INSTRUCTIONS,
+            "instructions": INSTRUCTIONS + (REVIEW_INSTRUCTIONS if review else ""),
             "input": [{"role": "user", "content": content}] if images else payload,
             "text": {"format": response_schema()},
             "max_output_tokens": self.max_output_tokens,
@@ -621,8 +633,10 @@ def _tokens(text: str) -> list[str]:
 
 
 def _same_word(a: str, b: str) -> bool:
-    """"squat" and "squats", "pad" and "pads": one word starts the other."""
-    return a.startswith(b) or b.startswith(a)
+    """"squat" and "squats", "rotation" and "rotations": the same word, or one with a
+    plural or -ing/-ed ending. Never "plan" and "plank"."""
+    short, long = sorted((a, b), key=len)
+    return long.startswith(short) and long[len(short):] in {"", "s", "es", "ing", "ed"}
 
 
 class SourceCheck:
@@ -662,11 +676,16 @@ class SourceCheck:
         top = max(scores, default=0.0)
         if top < 0.5:
             return None
-        # The best line at or after the last match; else the best anywhere
-        # (sessions are not always checked in written order).
-        ahead = [index for index in range(self.cursor, len(scores)) if scores[index] == top]
-        best = ahead[0] if ahead else scores.index(top)
-        if ahead:
+        # Of the best lines, one that carries a dose beats a title or a coaching
+        # note that only mentions the exercise. Then the first at or after the
+        # last match; else the nearest before it (sessions are not always
+        # checked in written order).
+        tied = [index for index, score in enumerate(scores) if score == top]
+        dosed = [index for index in tied if _numbers(self.lines[index])]
+        tied = dosed or tied
+        ahead = [index for index in tied if index >= self.cursor]
+        best = ahead[0] if ahead else tied[-1]
+        if ahead and dosed:
             self.cursor = best + 1
         # The dose is on the exercise's own line. Only a line with no numbers
         # (a heading such as "WEDNESDAY - Pads") borrows the next line or two.
@@ -807,7 +826,8 @@ DISTANCE = re.compile(rf"(?<![\d.])(\d+(?:\.\d+)?)\s*({DIST_UNITS})\b", re.I)
 WEIGHT = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*(kgs?|lbs?|pounds?|%)", re.I)
 RPE_AT = re.compile(r"\brpe\s*:?\s*(\d+(?:\.\d+)?)(?:\s*[-\u2013]\s*(\d+(?:\.\d+)?))?|@\s*(\d+(?:\.\d+)?)\b(?!\s*(?:kgs?|lbs?|%))", re.I)
 # "/leg" counts only after a dose ("6 reps/leg", "8 sec max speed/side"), never in a name ("Knee/Leg Raises").
-EACH_WAY = re.compile(r"\b(?:each|per|every)\s+(?:way|direction)\b|/\s*direction\b", re.I)
+# "each way", "per direction" (neck holds) and a bare "2x30s each" (side plank) may be read either way.
+EACH_WAY = re.compile(r"\b(?:each|per|every)\s+(?:way|direction)\b|/\s*direction\b|\d\w*\s+each\b(?!\s+[a-z])", re.I)
 PER_SIDE = re.compile(r"\b(?:each|per|every)\s+(?:side|leg|arm|hand|foot)\b|\d\s*(?:(?:reps?|secs?|seconds?|s|m|meters?|metres?|mins?|minutes?|yds?|yards?)\b[\w .]{0,20}?)?/\s*(?:side|leg|arm|hand|foot)\b|\bboth\s+(?:sides|legs|arms)\b|\balternating\b", re.I)
 REST_AFTER = re.compile(r"^\W{0,3}(?:rest|off|easy|recover\w*|walk\w*|break)\b", re.I)
 REST_BEFORE = re.compile(r"\brest\w*\W{0,3}(?:of\W{0,2})?$", re.I)
@@ -1342,7 +1362,34 @@ def import_plan(owner_id: str, body: PlanImportRequest, *, reader: PlanReader | 
     except Exception as exc:  # noqa: BLE001 - the model or network; never leak details
         logger.warning("plan import model call failed: %s", type(exc).__name__)
         raise HTTPException(502, "That plan couldn't be read just now. Try again in a minute.") from exc
-    result = build_draft(read, body.start_date, text, library_matcher(store))
+    matcher = library_matcher(store)
+    result = build_draft(read, body.start_date, text, matcher)
+    result = _second_look(reader, text, images, read, result, lambda again: build_draft(again, body.start_date, text, matcher))
     if shortened:
         result.flags.insert(0, ImportFlag(where="Plan", message=f"The programme was longer than {MAX_TEXT_CHARS:,} characters, so only the first part was read."))
+    return result
+
+
+def _reviewable(result: PlanImportResult) -> list[ImportFlag]:
+    return [f for f in result.flags if f.message.startswith(REVIEWABLE)]
+
+
+def _second_look(reader: PlanReader, text: str, images: list[str], read: ReadPlan, result: PlanImportResult, build) -> PlanImportResult:
+    """When the reading disagrees with the written text, ask once more with the
+    first reading and those checks. Part of the same import (no extra allowance
+    used); the second reading is kept only if it fails fewer checks and adds no
+    other flags, otherwise the first stands. Screenshots have no text to check
+    against, so they never get a second look."""
+    checks = _reviewable(result)
+    if not text or not checks:
+        return result
+    review = json.dumps({"first_reading": read.model_dump(mode="json", exclude={"imported_on"}),
+                         "checks": [f"{f.where}: {f.message}" for f in checks[:40]]}, ensure_ascii=False)
+    try:
+        again = build(reader.read(text, images, review=review))
+    except Exception as exc:  # noqa: BLE001 - a failed second look keeps the first reading
+        logger.info("plan import second look failed: %s", type(exc).__name__)
+        return result
+    if len(_reviewable(again)) < len(checks) and len(again.flags) - len(_reviewable(again)) <= len(result.flags) - len(checks):
+        return again
     return result
