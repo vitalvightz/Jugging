@@ -21,8 +21,9 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from api.contracts.custom_plans import CustomPlanInput, CoachPlan
-from api.contracts.training_attachments import AttachmentSource, TrainingAttachment
-from api.services.training_attachments import attachment_views
+from api.contracts.training_attachments import AttachmentSource, CoachVoiceInput, TrainingAttachment
+from api.services.training_attachments import attach_file, attachment_views, playable
+from api.routes.training_attachments import NO_STORE as TRAINING_ATTACHMENT_NO_STORE
 from api.services.coach_notifications import notify_fighter_of_feedback, notify_fighter_of_plan
 from api.services.coach_plans import coach_plan_fields, assignment_view, assignment_views, saved_input
 from api.services.custom_plans import schedule_issues
@@ -64,6 +65,8 @@ class ConnectedFighter:
     # Weight is its own choice; connections accepted before it existed lack it.
     share_weight: bool
     allow_session_logging: bool
+    # Photos, voice notes and videos: their own choice, plus health consent.
+    share_media: bool = False
 
 
 class CoachCutAssessment(BaseModel):
@@ -187,7 +190,8 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
         return ConnectedFighter(athlete, coach, health, health and connection.get("share_recovery") is True,
                                 health and connection.get("share_injuries") is True,
                                 health and connection.get("share_weight") is True,
-                                connection.get("allow_session_logging") is True)
+                                connection.get("allow_session_logging") is True,
+                                health and connection.get("share_media") is True)
 
     def authored_plan(plan_id: UUID, fighter: ConnectedFighter = Depends(connected_fighter),
                       store: AppStore = Depends(get_store)):
@@ -272,12 +276,47 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
                             exercise_ref: str = Query(default="", max_length=200),
                             fighter: ConnectedFighter = Depends(connected_fighter),
                             store: AppStore = Depends(get_store)):
-        """The fighter's own videos on one record. Videos can show an injury or a
-        head knock, so they follow the fighter's injury-sharing choice."""
-        if not fighter.share_injuries:
+        """Files on one of the fighter's records. Photos, videos and voice notes
+        can show an injury, so they follow the fighter's own media-sharing choice."""
+        if not fighter.share_media:
             return []
         rows = store.list_training_attachments(fighter.profile.athlete_id, source, str(target_id), exercise_ref)
-        return attachment_views(store, fighter.profile.athlete_id, rows)
+        return attachment_views(store, fighter.profile.athlete_id, rows, viewer_id=fighter.coach.athlete_id)
+
+    @router.get("/api/coach/fighters/{athlete_id}/training/attachments/{attachment_id}/play",
+                response_model=TrainingAttachment)
+    def fighter_attachment_play(attachment_id: UUID, response: Response,
+                                fighter: ConnectedFighter = Depends(connected_fighter),
+                                store: AppStore = Depends(get_store)):
+        """A link for one file, issued only while the connection and the
+        fighter's media sharing are both still on at this request."""
+        response.headers.update(TRAINING_ATTACHMENT_NO_STORE)
+        if not fighter.share_media:
+            raise HTTPException(404, "File not available.")
+        return playable(store, fighter.profile.athlete_id, attachment_id, viewer_id=fighter.coach.athlete_id)
+
+    @router.post("/api/coach/fighters/{athlete_id}/training/attachments", response_model=TrainingAttachment,
+                 status_code=201)
+    def fighter_voice_note(body: CoachVoiceInput, fighter: ConnectedFighter = Depends(connected_fighter),
+                           store: AppStore = Depends(get_store)):
+        """Voice feedback from the coach on the fighter's record. The database
+        checks again: voice only, live connection, health consent and media sharing."""
+        if not fighter.share_media:
+            raise HTTPException(404, "File not available.")
+        row = attach_file(store, fighter.coach.athlete_id, fighter.profile.athlete_id, body.asset_id, body.source,
+                          body.target_id, body.exercise_ref)
+        views = attachment_views(store, fighter.profile.athlete_id, [row], viewer_id=fighter.coach.athlete_id)
+        if not views:
+            raise HTTPException(409, "That file is still being checked. Try again in a moment.")
+        return views[0]
+
+    @router.delete("/api/coach/fighters/{athlete_id}/training/attachments/{attachment_id}", status_code=204)
+    def remove_fighter_voice_note(attachment_id: UUID, fighter: ConnectedFighter = Depends(connected_fighter),
+                                  store: AppStore = Depends(get_store)):
+        """A coach removes only what they added."""
+        store.delete_authored_training_attachment(fighter.coach.athlete_id, fighter.profile.athlete_id,
+                                                  str(attachment_id))
+        return Response(status_code=204)
 
     @router.post('/api/coach/fighters/{athlete_id}/feedback/notify', status_code=202)
     def notify_feedback(body: FeedbackNotice, background_tasks: BackgroundTasks,

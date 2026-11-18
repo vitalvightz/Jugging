@@ -56,12 +56,14 @@ def owned_media(store, athlete_id, media_id):
     return row
 
 
-def media_preview(store, athlete_id, media_id):
+def media_preview(store, athlete_id, media_id, *, sign=True):
+    """A preview of the owner's media. ``sign=False`` leaves the link out, so a
+    list never hands out playable URLs before someone asks to watch."""
     row = owned_media(store, athlete_id, media_id)
     fields = {key: row.get(key) for key in (
         "id", "provider", "video_id", "asset_id", "start_s", "end_s", "channel_title", "orientation"
     )}
-    if row["provider"] == "uploaded":
+    if row["provider"] == "uploaded" and sign:
         # Only sanitized rendition, only after ownership and verification checks.
         asset = store.get_private_video_asset(athlete_id, row["asset_id"])
         fields["url"] = store.private_video_signed_url(asset["rendition_path"], expires_in=60)

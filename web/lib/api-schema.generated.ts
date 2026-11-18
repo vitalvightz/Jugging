@@ -279,6 +279,19 @@ export type AthleteProfileInput = {
   athlete_locale?: string;
 };
 
+/** A rebuilt photo or voice note. url is set only on a play response. */
+export type AttachmentFile = {
+  url: string | null;
+  width: number | null;
+  height: number | null;
+  duration_ms: number | null;
+};
+
+export type AttachmentSettings = {
+  photos_available: boolean;
+  voice_available: boolean;
+};
+
 /**
  * One movement inside a cluster block, e.g. each half of a contrast pair.
  *
@@ -432,6 +445,13 @@ export type CoachPlannedSession = {
   title: string;
   type: string;
   blocks: SessionDetailBlock[];
+};
+
+export type CoachVoiceInput = {
+  asset_id: string;
+  source: "external" | "sparring" | "unlxck";
+  target_id: string;
+  exercise_ref?: string;
 };
 
 export type CommandView = {
@@ -1197,6 +1217,25 @@ export type FeedbackRecord = {
   has_screenshot: boolean;
   created_at: string;
   updated_at: string;
+};
+
+export type FileUploadInput = {
+  kind: "photo" | "voice";
+  size_bytes: number;
+};
+
+export type FileUploadPermission = {
+  asset_id: string;
+  bucket: "attachment-intake";
+  path: string;
+  content_type: "audio/wav" | "image/jpeg";
+  expires_at: string;
+};
+
+export type FileUploadResult = {
+  asset_id: string;
+  status: "ready" | "rejected";
+  reason: string | null;
 };
 
 export type GenerationJobResponse = {
@@ -2818,11 +2857,17 @@ export type TodayInjuryDeclaration = {
 export type TrainingAttachment = {
   id: string;
   created_at: string;
-  media: PrivateMediaPreview;
+  kind: "photo" | "video" | "voice";
+  author: "athlete" | "coach";
+  removable: boolean;
+  media: PrivateMediaPreview | null;
+  file: AttachmentFile | null;
 };
 
+/** Attach a verified video (media_id) or a rebuilt photo / voice note (asset_id). */
 export type TrainingAttachmentInput = {
-  media_id: string;
+  media_id?: string | null;
+  asset_id?: string | null;
   source: "external" | "sparring" | "unlxck";
   target_id: string;
   exercise_ref?: string;

@@ -6,8 +6,6 @@ import { usePathname } from "next/navigation";
 import { ApiError, trackProductEvent, getMe } from "@/lib/api";
 import { observeUsage } from "@/lib/usage-tracking";
 import { clearSharedReads } from "@/lib/shared-reads";
-import { RECONNECTED_EVENT } from "@/lib/connectivity";
-import { clearVideoQueue, flushVideoQueue } from "@/lib/video-queue";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { hasSignupAdmission } from "@/lib/signup-invite-guard";
 import { APPEARANCE_STORAGE_KEY, type AppearanceMode, type MeResponse } from "@/lib/types";
@@ -88,16 +86,6 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     return () => { observer.dispose(); usageObserverRef.current = null; };
   }, [analyticsActor]);
   useEffect(() => { usageObserverRef.current?.pageChanged(); }, [pathname]);
-  // Form-check videos picked offline upload once the app is open and online.
-  const videoToken = session?.access_token ?? null;
-  useEffect(() => {
-    if (!videoToken) return;
-    const flush = () => { void flushVideoQueue(videoToken).catch(() => undefined); };
-    flush();
-    window.addEventListener("online", flush);
-    window.addEventListener(RECONNECTED_EVENT, flush);
-    return () => { window.removeEventListener("online", flush); window.removeEventListener(RECONNECTED_EVENT, flush); };
-  }, [videoToken]);
   const [hasTransientMeError, setHasTransientMeError] = useState(false);
   const [appearancePreview, setAppearancePreview] = useState<AppearanceMode | null>(null);
   const handledAccessTokenRef = useRef<string | null>(null);
@@ -418,8 +406,6 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     handledAccessTokenRef.current = null;
     hydratedAccessTokenRef.current = null;
     clearSharedReads();
-    // Videos held offline never outlive the person who picked them.
-    void clearVideoQueue();
     clearRetryTimer();
     setHasTransientMeError(false);
     setAppearancePreview(null);

@@ -37,6 +37,10 @@ create function auth.role() returns text language sql stable as $$ select coales
 create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
 create table storage.objects(id uuid primary key,bucket_id text,name text,owner uuid,created_at timestamptz default now());
 grant usage on schema auth to authenticated,anon,service_role;
+-- Supabase Storage: clients reach objects only through RLS policies.
+grant usage on schema storage to authenticated,anon,service_role;
+grant select,insert,update,delete on storage.objects to authenticated,anon,service_role;
+alter table storage.objects enable row level security;
 -- The canonical snapshot declares some functions before their referenced tables.
 set local check_function_bodies=off;
 """
@@ -60,12 +64,14 @@ for filename in (
     '20261116171039_dated_custom_plans.sql',
     '20261116190000_coach_plan_retract.sql',
     '20261118013000_training_attachments.sql',
+    '20261118025648_photo_voice_attachments.sql',
+    '20261118043914_attachment_processing_fencing.sql',
 ):
     bootstrap += (root / 'supabase/migrations' / filename).read_text() + '\n'
 bootstrap += 'grant all on all tables in schema public to service_role; grant all on all sequences in schema public to service_role;\n'
 for filename in ('coach_workspace_permissions.sql', 'coach_signup_invitations.sql',
                  'coach_self_signup.sql', 'coach_weight_consent.sql', 'coach_logged_sessions.sql', 'coach_feedback.sql', 'coach_fighter_profile_details.sql', 'coach_plan_assignments.sql',
-                 'training_attachments.sql'):
+                 'training_attachments.sql', 'photo_voice_attachments.sql'):
     source = (root / 'tests' / filename).read_text()
     # Match the JWT role to each simulated request; fixture writes use the
     # backend role and must still pass the actual compliance triggers.

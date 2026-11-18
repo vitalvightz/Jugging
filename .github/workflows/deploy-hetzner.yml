@@ -126,6 +126,7 @@ jobs:
               HEALTH_URL="https://${HEALTH_HOST}/health"
               CADDY_CONFIG="/etc/caddy/Caddyfile"
 
+              cleanup_healthy() { docker compose exec -T attachment-cleanup python -m api.attachment_cleanup --health-check; }
               worker_running() { [ -n "$(docker compose ps --status running -q worker)" ]; }
               caddy_running()  { [ -n "$(docker compose ps --status running -q caddy)" ]; }
               api_healthy() {
@@ -205,8 +206,8 @@ jobs:
                   echo "Previous commit: ${PREVIOUS_COMMIT}"
                   echo "--- docker compose ps ---"
                   docker compose ps
-                  echo "--- docker compose logs (api worker caddy) ---"
-                  docker compose logs --tail=300 api worker caddy
+                  echo "--- docker compose logs (api worker attachment-cleanup caddy) ---"
+                  docker compose logs --tail=300 api worker attachment-cleanup caddy
                 } > "$LOG_FILE" 2>&1
                 echo "Saved failure diagnostics to ${LOG_FILE}." >&2
 
@@ -263,7 +264,7 @@ jobs:
                 else
                   echo "ROLLBACK FAILED: could not fully restore ${PREVIOUS_COMMIT} (source, API, worker and/or caddy not verified)." >&2
                   docker compose ps >&2
-                  docker compose logs --tail=200 api worker caddy >&2
+                  docker compose logs --tail=200 api worker attachment-cleanup caddy >&2
                 fi
 
                 # Always fail the workflow: a rollback still means this
@@ -304,7 +305,7 @@ jobs:
               healthy=false
               for attempt in $(seq 1 18); do
                 if api_healthy; then
-                  if worker_running; then
+                  if worker_running && cleanup_healthy; then
                     healthy=true
                     break
                   fi
@@ -318,7 +319,7 @@ jobs:
               if [ "$healthy" != true ]; then
                 echo "ERROR: health checks failed (API and/or worker not ready after 18 attempts)." >&2
                 docker compose ps
-                docker compose logs --tail=200 api worker caddy
+                docker compose logs --tail=200 api worker attachment-cleanup caddy
                 false
               fi
 
@@ -331,7 +332,7 @@ jobs:
               fi
 
               DEPLOYMENT_SUCCEEDED=true
-              echo "Deployment successful: ${ACTUAL_COMMIT} (API healthy, worker running, caddy running)."
+              echo "Deployment successful: ${ACTUAL_COMMIT} (API healthy, worker running, attachment cleanup healthy, caddy running)."
               docker compose ps
           REMOTE_SCRIPT
 

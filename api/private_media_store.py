@@ -1,6 +1,9 @@
 """Small store mixin; privileged queries always carry the authenticated owner."""
+import logging
+import os
 from datetime import datetime, timedelta, timezone
 
+import httpx
 from fastapi import HTTPException
 from postgrest.exceptions import APIError as PostgrestAPIError
 
@@ -11,6 +14,21 @@ _ATTACH_ERRORS = {
     "54000": (409, "This already has six videos. Remove one to add another."),
     "22023": (422, "That exercise is not available."),
 }
+
+
+# attach_training_asset and reserve_attachment_upload raise these.
+_FILE_ERRORS = {
+    "42501": (404, "That record or file is not available."),
+    "55000": (409, "That file is still being checked. Try again in a moment."),
+    "54000": (409, "This already has six files. Remove one to add another."),
+    "23514": (422, "That file type or size is not allowed."),
+}
+logger = logging.getLogger(__name__)
+
+
+def _file_error(exc, fallback):
+    status, detail = _FILE_ERRORS.get(getattr(exc, "code", None) or "", (503, fallback))
+    return HTTPException(status, detail)
 
 
 class PrivateMediaStoreMixin:
@@ -81,7 +99,89 @@ class PrivateMediaStoreMixin:
                     .order("created_at").execute())
         return list(getattr(response, "data", None) or [])
 
+    def get_training_attachment(self, athlete_id, attachment_id):
+        response = (self.client.table("training_attachments").select("*").eq("athlete_id", athlete_id)
+                    .eq("id", attachment_id).limit(1).execute())
+        rows = getattr(response, "data", None) or []
+        if not rows:
+            return None
+        row = rows[0]
+        valid = self.client.rpc("training_record_available", {
+            "p_athlete_id": athlete_id, "p_source": row["source"],
+            "p_target_id": row["target_id"], "p_ref": row.get("exercise_ref") or "",
+        }).execute()
+        return row if valid.data is True else None
+
     def delete_training_attachment(self, athlete_id, attachment_id):
         response = (self.client.table("training_attachments").delete()
                     .eq("athlete_id", athlete_id).eq("id", attachment_id).execute())
+        return bool(getattr(response, "data", None))
+
+    # Photos and voice notes. The database functions are service-role only.
+    def reserve_attachment_upload(self, owner_id, kind, size_bytes, content_type):
+        try:
+            response = self.client.rpc("reserve_attachment_upload", {
+                "p_owner_id": owner_id, "p_kind": kind, "p_size_bytes": size_bytes, "p_content_type": content_type,
+            }).execute()
+        except PostgrestAPIError as exc:
+            if getattr(exc, "code", None) == "54000":
+                raise HTTPException(429, "Upload limit reached. Try again later.", headers={"Retry-After": "3600"}) from exc
+            raise _file_error(exc, "Uploads are unavailable. Try again.") from exc
+        if not response.data:
+            raise HTTPException(503, "Uploads are unavailable. Try again.")
+        return response.data[0]
+
+    def get_attachment_asset(self, owner_id, asset_id):
+        return self._select_first(self.client.table("attachment_assets").select("*")
+                                 .eq("owner_id", owner_id).eq("id", asset_id))
+
+    def get_attachment_assets(self, asset_ids):
+        if not asset_ids:
+            return {}
+        response = (self.client.table("attachment_assets").select("*").in_("id", list(asset_ids))
+                    .eq("status", "ready").execute())
+        return {str(row["id"]): row for row in (getattr(response, "data", None) or [])}
+
+    def attachment_signed_url(self, path, *, expires_in):
+        response = self.client.storage.from_("attachment-ready").create_signed_url(path, expires_in)
+        url = response.get("signedURL") or response.get("signedUrl")
+        if not url:
+            raise HTTPException(503, "Unable to open this file. Try again.")
+        return url
+
+    def process_attachment(self, asset_id):
+        """Rebuild one upload in the process-attachment Edge Function (never in this process)."""
+        url = os.getenv("SUPABASE_URL", "").rstrip("/")
+        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+        headers = {"apikey": key, "Content-Type": "application/json"}
+        if key.count(".") == 2:
+            headers["Authorization"] = f"Bearer {key}"
+        try:
+            response = httpx.post(f"{url}/functions/v1/process-attachment", json={"asset_id": asset_id},
+                                  headers=headers, timeout=60)
+        except httpx.HTTPError as exc:
+            logger.warning("[attachments] processor unreachable error=%s", type(exc).__name__)
+            raise HTTPException(503, "Checking is unavailable. Try again in a minute.") from exc
+        if response.status_code == 409:
+            raise HTTPException(409, "Upload not found. Try again.")
+        if response.status_code != 200:
+            logger.warning("[attachments] processor status=%s", response.status_code)
+            raise HTTPException(503, "Checking is unavailable. Try again in a minute.")
+        return response.json()
+
+    def attach_training_asset(self, author_id, athlete_id, asset_id, source, target_id, exercise_ref):
+        try:
+            response = self.client.rpc("attach_training_asset", {
+                "p_author_id": author_id, "p_athlete_id": athlete_id, "p_asset_id": asset_id, "p_source": source,
+                "p_target_id": target_id, "p_exercise_ref": exercise_ref,
+            }).execute()
+        except PostgrestAPIError as exc:
+            raise _file_error(exc, "Unable to attach the file. Try again.") from exc
+        if not response.data:
+            raise HTTPException(409, "That file is already attached.")
+        return response.data[0]
+
+    def delete_authored_training_attachment(self, author_id, athlete_id, attachment_id):
+        response = (self.client.table("training_attachments").delete().eq("athlete_id", athlete_id)
+                    .eq("author_id", author_id).eq("id", attachment_id).execute())
         return bool(getattr(response, "data", None))

@@ -1,0 +1,36 @@
+name: Verify Photo and Voice Attachments
+
+# Verification never changes production flags. Activation requires a separate,
+# explicitly approved operator change after all release checks pass.
+on:
+  push:
+    branches:
+      - Main
+    paths:
+      - ".github/workflows/enable-photo-voice-attachments.yml"
+      - "supabase/functions/process-attachment/**"
+      - "web/scripts/verify-attachment-pipeline.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify the production photo and voice pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: web/.nvmrc
+      - name: Install the JPEG test encoder
+        working-directory: web
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run end-to-end checks (test files are removed afterwards)
+        working-directory: web
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/verify-attachment-pipeline.mjs

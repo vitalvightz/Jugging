@@ -12,7 +12,7 @@ import type { CoachPlannedSession, CoachFighterWeight, SessionDetails, ExerciseL
 import type { ManualExerciseEntry, ManualExerciseListResponse, PerformedExerciseInput } from "@/lib/api-schema.generated";
 import type { LibraryFeaturedResponse, LibraryPreview, LibrarySearchResponse } from "@/lib/api-schema.generated";
 import type { CustomDoseSuggestion, CustomPlan, CustomPlanInput, CoachPlan } from "@/lib/api-schema.generated";
-import type { PrivateMediaPreview, PrivateMediaSettings, TrainingAttachment, TrainingAttachmentInput, UploadPermission, UploadState, YouTubeClipInput } from "@/lib/api-schema.generated";
+import type { AttachmentSettings, FileUploadPermission, FileUploadResult, PrivateMediaPreview, PrivateMediaSettings, TrainingAttachment, TrainingAttachmentInput, UploadPermission, UploadState, YouTubeClipInput } from "@/lib/api-schema.generated";
 import type {
   ApproveAndResumeGenerationRequest,
   AdminAthleteRecord,
@@ -114,7 +114,43 @@ export function attachTrainingVideo(token: string, mediaId: string, target: Atta
 export function removeTrainingAttachment(token: string, id: string) {
   return requestVoid(`/api/training/attachments/${encodeURIComponent(id)}`, { token, method: "DELETE" });
 }
-/** A coach reads a fighter's videos only while the fighter shares injury status. */
+/** A 60-second link for one video, issued only when someone presses play. */
+export function playTrainingAttachment(token: string, id: string) {
+  return readJson<TrainingAttachment>(`/api/training/attachments/${encodeURIComponent(id)}/play`, { token, cache: "no-store" });
+}
+export function playFighterTrainingAttachment(token: string, athleteId: string, id: string) {
+  return readJson<TrainingAttachment>(
+    `/api/coach/fighters/${encodeURIComponent(athleteId)}/training/attachments/${encodeURIComponent(id)}/play`, { token, cache: "no-store" });
+}
+/** Photos and voice notes: each type is switched on separately on the server. */
+export function getAttachmentSettings(token: string, signal?: AbortSignal) {
+  return readJson<AttachmentSettings>("/api/attachments/settings", { token, signal });
+}
+export function reserveFileUpload(token: string, kind: "photo" | "voice", sizeBytes: number) {
+  return readJson<FileUploadPermission>("/api/attachments/uploads", {
+    token, method: "POST", body: JSON.stringify({ kind, size_bytes: sizeBytes }),
+  });
+}
+/** The server has the upload rebuilt in isolation; only the clean copy is ever usable. */
+export function processFileUpload(token: string, assetId: string) {
+  return readJson<FileUploadResult>(`/api/attachments/uploads/${encodeURIComponent(assetId)}/process`, { token, method: "POST" });
+}
+export function attachTrainingFile(token: string, assetId: string, target: AttachmentTarget) {
+  return readJson<TrainingAttachment>("/api/training/attachments", {
+    token, method: "POST", body: JSON.stringify({ asset_id: assetId, exercise_ref: "", ...target }),
+  });
+}
+/** A coach's voice feedback on a fighter's record (needs the fighter's media sharing). */
+export function attachFighterVoiceNote(token: string, athleteId: string, assetId: string, target: AttachmentTarget) {
+  return readJson<TrainingAttachment>(`/api/coach/fighters/${encodeURIComponent(athleteId)}/training/attachments`, {
+    token, method: "POST", body: JSON.stringify({ asset_id: assetId, exercise_ref: "", ...target }),
+  });
+}
+export function removeFighterTrainingAttachment(token: string, athleteId: string, id: string) {
+  return requestVoid(`/api/coach/fighters/${encodeURIComponent(athleteId)}/training/attachments/${encodeURIComponent(id)}`,
+    { token, method: "DELETE" });
+}
+/** A coach reads a fighter's files only while the fighter shares photos and voice notes. */
 export function listFighterTrainingAttachments(token: string, athleteId: string, target: AttachmentTarget, signal?: AbortSignal) {
   return readJson<TrainingAttachment[]>(
     `/api/coach/fighters/${encodeURIComponent(athleteId)}/training/attachments?${attachmentQuery(target)}`, { token, signal });
