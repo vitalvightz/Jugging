@@ -135,9 +135,9 @@ def test_the_draft_saves_through_the_existing_endpoint_and_reads_back_identical(
     again = client.put(f"/api/custom-plans/{reloaded['id']}", json=saved_input(reloaded).model_dump(mode="json"), headers=AUTH)
     assert again.status_code == 200, again.text
     assert saved_input(again.json()).model_dump(mode="json") == saved_input(reloaded).model_dump(mode="json")
-    # Only rounds with no written time or rest stay marked for the person to finish.
+    # Rounds with no written work time remain incomplete; absent rest stays unknown.
     assert [e["name"] for s in reloaded["sessions"][:4] for e in s["exercises"] if e["incomplete"]] == [
-        "Shadow boxing", "Hard sparring"]
+        "Shadow boxing"]
 
 
 def test_a_coach_import_saves_and_reloads_through_the_coach_plan_path(plans, monkeypatch):  # noqa: F811
@@ -1358,7 +1358,7 @@ def test_targeted_second_look_does_not_overwrite_other_loading_rows_with_the_sam
         ReadExercise(name="A1 Clean", sets=2, reps=2, load="50%"),
         ReadExercise(name="A1 Clean", sets=3, reps=1, load="95%"),
     ])])])
-    patched = apply_patch(reading, [{"id": 0, "session": "Lift", "name": "A1 Clean", "exercise_index": 0}],
+    patched = apply_patch(reading, [{"id": 0, "session": "Lift", "name": "A1 Clean", "occurrence": (0, 0, 0)}],
                           [{"id": 0, "sets": 1, "reps": 2, "load": "50%"}])
     stages = build_draft(patched, date(2026, 11, 23)).plan["sessions"][0]["exercises"][0]["dose"]["prescribed_sets"]
     assert [(stage["sets"], stage["reps"]) for stage in stages] == [(1, 2), (3, 1)]

@@ -32,10 +32,10 @@ from pydantic import BaseModel, Field, PrivateAttr, ValidationError
 
 from api.contracts.custom_plans import WEEKDAYS, CustomDose, CustomExerciseSnapshot, CustomPlanInput
 from api.services.custom_plans import dose_optional
-from api.services.plan_import_check import TIME, SourceCheck, written_layout_flags
+from api.services.plan_import_check import TIME, SourceCheck, week_heading, written_layout_flags
 from api.structured_plan_models import ExercisePrescription
 from api.services.plan_import_match import LibraryMatcher, linked
-from api.services.plan_import_patch import PATCH_INSTRUCTIONS, apply_patch, patch_schema
+from api.services.plan_import_patch import DOSE_FIELDS, PATCH_INSTRUCTIONS, apply_patch, patch_schema
 from api.services.plan_import_reading import (
     DEFAULT_IMPORT_MODEL, EXERCISE_KINDS, INSTRUCTIONS, JPEG_PREFIX, LIST_LABEL, MAX_EXERCISES, MAX_IMAGE_BYTES, MAX_IMAGES,
     MAX_SESSIONS_PER_WEEK, MAX_TEXT_CHARS, MAX_WEEKS, SESSION_TYPES, ReadExercise, ReadPlan, ReadSession, ReadWeek,
@@ -445,20 +445,57 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
     against, which is flagged), None to skip the checks."""
     start = start - timedelta(days=start.weekday())
     flags: list[ImportFlag] = []
-    flagged: set[tuple[str, str]] = set()
+    flagged: set[tuple] = set()
+    flag_context = None
     library: dict[str, dict] = {}
 
     def flag(where: str, message: str):
         # A repeated week repeats its flags; each is listed once.
-        if (where, message) not in flagged:
-            flagged.add((where, message))
+        key = (where, message, flag_context)
+        if key not in flagged:
+            flagged.add(key)
             flags.append(ImportFlag(where=where, message=message))
 
     # A rest week the programme writes keeps its place wherever it is, first
     # week included, so every week keeps its date. An empty week that isn't
     # written as rest is not something the coach wrote, and is left out.
-    read = read.model_copy(update={"imported_on": start})
-    read = resolve_references(read, lambda where, message: flag(where, message))
+    read = read.model_copy(deep=True, update={"imported_on": start})
+    source_weeks = [week_heading(line) for line in (source or "").splitlines() if week_heading(line)]
+    if any(numbers != {-1} for numbers in source_weeks):
+        source_weeks = [numbers for numbers in source_weeks if numbers != {-1}]
+    if len(source_weeks) == len(read.weeks):
+        for week, numbers in zip(read.weeks, source_weeks):
+            if week.week_index is None and min(numbers) > 0:
+                week.week_index = min(numbers)
+    if len(source_weeks) > len(read.weeks) and any(w.repeat > 1 for w in read.weeks):
+        flag("Plan", "Separate written weeks were read as a repeated template. Check each week's exercises and doses.")
+    for week_index, week in [*enumerate(read.weeks), (-1, ReadWeek(sessions=read.every_week))]:
+        for session_index, raw_session in enumerate(week.sessions):
+            raw_session._source_position = (week_index, session_index)
+            for exercise_index, raw in enumerate(raw_session.exercises):
+                raw._source_index = exercise_index
+    checker = SourceCheck(source, read.corrections) if source and source.strip() else None
+    source_messages: dict[tuple[int, int, int], list[str]] = {}
+
+    def check_source(original: ReadPlan) -> None:
+        # Check source rows before references copy them. A corrected original
+        # must be the one copied into later sessions, with the same source identity.
+        checker.plan = original
+        for raw_session in [s for w in original.weeks for s in w.sessions] + original.every_week:
+            checker.session = raw_session.name
+            checker.context(raw_session)
+            for raw in raw_session.exercises:
+                if raw.is_reference or not (raw.name.strip() or raw.prescribed_sets):
+                    continue
+                occurrence = (*raw_session._source_position, raw._source_index)
+                messages: list[str] = []
+                mark = len(checker.failed)
+                checker.check(raw, messages.append)
+                source_messages[occurrence] = messages
+                for failed in checker.failed[mark:]:
+                    failed["occurrence"] = occurrence
+
+    read = resolve_references(read, lambda where, message: flag(where, message), before_copy=check_source if checker else None)
     written_weeks = [week for week in read.weeks if week.sessions or week.rest]
     every_week = read.every_week
     if not any(week.sessions for week in written_weeks) and every_week:
@@ -486,9 +523,8 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
         if not week.sessions:
             flag(labels[-1], "Written as a rest week, so it has no sessions.")
     name = _clean(read.name, 100) or "Imported plan"
-    dated = len(expanded) > 1
+    dated = len(expanded) > 1 or any(s.date or _session_date(s, read) for w in written_weeks for s in w.sessions)
     # Pasted or file text can be checked line by line; screenshots can't.
-    checker = SourceCheck(source, read.corrections) if source and source.strip() else None
 
     def slots(week: ReadWeek, label: str) -> list[tuple[ReadSession, str | None, str]]:
         """The week's sessions, one per written day ("Tue/Thu/Sat" is three), then
@@ -519,23 +555,25 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
     row_flags: dict[int, list[ImportFlag]] = {}
 
     def session(item: ReadSession, index: int, label: str, scheduled: date | None, day: str | None = None, programme_week: int | None = None) -> dict:
+        nonlocal flag_context
+        session_mark = len(flags)
         kind = item.session_type if item.session_type in SESSION_TYPES else "mixed"
         title = _clean(item.name) or ("Rest" if kind == "rest" else f"Session {index + 1}")
         where = f"{label}{title}"
         session_id = str(uuid4())
         session_where.setdefault(where, session_id)
         notes = _clean(item.instructions)
+        if source is not None and not item.exercises and kind not in {"rest", "recovery"}:
+            flag(where, "No exercises were read for this session. Compare it with the source.")
         if notes and len(notes) > 2000:
             flag(where, "The session note was longer than 2,000 characters and was shortened.")
         if checker:
-            checker.session = item.name or ""
             for exercise_index, raw in enumerate(item.exercises):
-                if raw.name.strip() and not raw.copied:
+                if (raw.name.strip() or raw.prescribed_sets) and not raw.copied:
+                    flag_context = (*item._source_position, raw._source_index)
                     mark = len(flags)
-                    failed_mark = len(checker.failed)
-                    checker.check(raw, lambda message, raw=raw: flag(f"{where} · {_clean(raw.name, 60)}", message))
-                    for failed in checker.failed[failed_mark:]:
-                        failed["exercise_index"] = exercise_index
+                    for message in source_messages.get((*item._source_position, raw._source_index), []):
+                        flag(f"{where} · {_clean(raw.name, 60)}", message)
                     row_flags.setdefault(id(raw), []).extend(flags[mark:])
         if id(item) not in consolidated_rows:
             consolidated_rows[id(item)] = _consolidate_rows(item.exercises, row_origins)
@@ -547,6 +585,7 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
             if group and re.search(r"\brounds?\b", group, re.I):
                 flag(where, f"Circuit \u201c{group}\u201d: its rounds are each exercise's sets.")
         for exercise in item.exercises[:MAX_EXERCISES]:
+            flag_context = (*item._source_position, exercise._source_index)
             def say(message, e=exercise, where=where):
                 flag(f"{where} \u00b7 {_clean(e.name, 60)}" if _clean(e.name) else where, message)
 
@@ -568,6 +607,9 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
                 original_flags = [raised for original in row_origins[id(exercise)] for raised in row_flags.get(original, [])]
                 for raised in [*flags[mark:], *original_flags]:
                     raised.exercise_id = raised.exercise_id or built["id"]
+        for raised in flags[session_mark:]:
+            raised.session_id = raised.session_id or session_id
+        flag_context = None
         return {"id": session_id, "name": title[:100], **({"programme_week": programme_week} if programme_week else {}), "weekday": None if scheduled else day,
                 "scheduled_date": scheduled.isoformat() if scheduled else None, "session_type": kind,
                 "notes": notes[:2000] if notes else None, "exercises": exercises}
@@ -613,15 +655,17 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
                 flag(labels[number], f"Only the first {MAX_SESSIONS_PER_WEEK} of {len(items)} sessions were brought in.")
                 items = items[:MAX_SESSIONS_PER_WEEK]
             monday = first + timedelta(days=7 * number)
-            once = sum(1 for other in expanded if other is week) == 1
+            once = max(1, int(week.repeat or 1)) == 1
             for index, (item, day, where) in enumerate(items):
                 # A written calendar date places the session (a programme week can run
                 # Wednesday to Monday); otherwise its weekday in this week. No day
                 # written: never guessed. It waits on Monday until the person picks its day.
-                written = _session_date(item, read) if once else None
+                programme_start = (stated or first) + timedelta(days=7 * number)
+                written = _session_date(item, read, programme_start) if once else None
                 if written and not (first <= written < first + timedelta(days=7 * MAX_WEEKS)) or (written and day and written.strftime("%A") != day):
                     written = None
-                sessions.append(session(item, index, where, written or monday + timedelta(days=WEEKDAYS.index(day or "Monday")), programme_week=week.week_index))
+                fallback = programme_start + timedelta(days=(WEEKDAYS.index(day) - programme_start.weekday()) % 7) if day else monday
+                sessions.append(session(item, index, where, written or fallback, programme_week=week.week_index))
                 if not day:
                     needs_day(item, f"{labels[number]} \u00b7 {sessions[-1]['name']}", sessions[-1])
         body = {"name": name, "schedule_mode": "dated", "start_date": first.isoformat(),
@@ -647,7 +691,7 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
         raise HTTPException(422, "That programme couldn't be read. Try a simpler file, or build it by hand.") from exc
     for raised in flags:
         # A flag on a session, or one of its exercises, opens that session.
-        raised.session_id = next((sid for where, sid in session_where.items()
+        raised.session_id = raised.session_id or next((sid for where, sid in session_where.items()
                                   if raised.where == where or raised.where.startswith(f"{where} \u00b7 ")), None)
         if raised.exercise_id and not raised.session_id:
             raised.exercise_id = None
@@ -738,13 +782,27 @@ def _second_look(reader: PlanReader, read: ReadPlan, result: PlanImportResult, b
     if not items or not checks:
         return result
     try:
-        again = build(apply_patch(read, items, reader.patch(items, timeout=timeout)))
+        fixes = reader.patch(items, timeout=timeout)
     except Exception as exc:  # noqa: BLE001 - a failed second look keeps the first reading
         logger.info("plan import second look failed: %s", type(exc).__name__)
         return result
-    if (all(a >= b for a, b in zip(_coverage(again), _coverage(result))) and len(_reviewable(again)) < len(checks)
-            and len(again.flags) - len(_reviewable(again)) <= len(result.flags) - len(checks)):
-        return again
+    # Verify each change independently. A good correction must never conceal a
+    # second correction that still has unsupported values or deleted work.
+    for item in items:
+        try:
+            matching = [f for f in fixes if isinstance(f, dict) and f.get("id") == item["id"]]
+            if len(matching) != 1 or not any(matching[0].get(f) for f in DOSE_FIELDS):
+                continue
+            candidate = apply_patch(read, [item], fixes)
+            again = build(candidate)
+        except Exception:  # noqa: BLE001 - invalid provider fields leave the original intact
+            continue
+        unresolved = any(tuple(f.get("occurrence", ())) == tuple(item["occurrence"]) for f in again._review)
+        if (not unresolved and _coverage(again) == _coverage(result)
+                and len(_reviewable(again)) < len(_reviewable(result))
+                and {(f.where, f.message) for f in again.flags if not f.message.startswith(REVIEWABLE)}
+                <= {(f.where, f.message) for f in result.flags if not f.message.startswith(REVIEWABLE)}):
+            read, result = candidate, again
     return result
 
 

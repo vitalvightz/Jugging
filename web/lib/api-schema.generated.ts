@@ -2620,6 +2620,7 @@ export type SelectedResistance = {
 
 /** A single training session within a day (Section M). */
 export type Session = {
+  programme_week?: number | null;
   session_id: string | null;
   session_type: "conditioning" | "fight_or_match" | "mixed" | "primer" | "recovery" | "rehab" | "skill" | "sparring" | "strength_power";
   prescription_source: "athlete" | null;

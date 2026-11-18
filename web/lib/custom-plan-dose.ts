@@ -80,7 +80,7 @@ export function doseIncomplete(d: CustomDose): boolean {
   if (d.mode === "distance") return !(d.distance && d.distance_unit);
   if (d.mode === "reps") return !(d.sets && d.reps);
   if (d.mode === "duration") return !d.duration_seconds || Boolean(d.distance) !== Boolean(d.distance_unit);
-  if (d.mode === "intervals") return !(d.rounds && d.work_seconds) || d.rest_seconds == null;
+  if (d.mode === "intervals") return !(d.rounds && d.work_seconds);
   return !d.prescription?.trim();
 }
 
