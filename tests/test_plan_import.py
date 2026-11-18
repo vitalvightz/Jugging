@@ -23,9 +23,8 @@ import pytest
 from api.contracts.custom_plans import WEEKDAYS, CustomPlanInput
 from api.services import plan_import
 from api.services.coach_plans import saved_input
-from api.services.plan_import import (
-    PlanImportRequest, ReadCorrection, ReadExercise, ReadPlan, ReadSession, ReadWeek, build_draft, dose_from, response_schema,
-)
+from api.services.plan_import import PlanImportRequest, build_draft, dose_from
+from api.services.plan_import_reading import ReadCorrection, ReadExercise, ReadPlan, ReadSession, ReadWeek, response_schema
 from tests.support import _build_client
 from tests.test_coach_fighter_access import AS_COACH, BASE
 from tests.test_coach_fighter_access import camp  # noqa: F401 - shared pytest fixture
@@ -702,7 +701,7 @@ def _dose(exercise):
 
 
 def test_several_days_written_together_are_each_scheduled():
-    from api.services.plan_import import _days
+    from api.services.plan_import_reading import _days
     assert _days("Tue/Thu/Sat") == ["Tuesday", "Thursday", "Saturday"]
     assert _days("Monday/Wed") == ["Monday", "Wednesday"]
     assert _days("Mon, Wed & Fri") == ["Monday", "Wednesday", "Friday"]
@@ -856,7 +855,7 @@ def test_a_reference_that_cant_be_resolved_or_is_ambiguous_is_flagged_not_guesse
 
 
 def test_a_missing_week_or_a_day_the_programme_never_names_is_flagged():
-    from api.services.plan_import import written_layout_flags
+    from api.services.plan_import_check import written_layout_flags
     found = []
     written_layout_flags("Week 1\nMon: squats 3x5\nWeek 2\nMon: squats 3x3\nWeek 3\nMon - Fri: walk 20 min", 2,
                          {"Monday", "Wednesday", "Sunday"}, lambda where, message: found.append(message))
@@ -1085,3 +1084,22 @@ def test_a_number_is_fixed_from_its_own_line_or_left_and_flagged():
     assert jump["dose"]["duration_seconds"] == 180
     assert plank["dose"]["duration_seconds"] == 45, "fixed from its own line"
     assert [f.message for f in draft.flags if f.message.startswith("Check the dose")] == ["Check the dose: time 180s isn't written."]
+
+
+def test_a_second_look_that_drops_an_exercise_is_never_kept():
+    """Dropping the hard-to-read exercise would make the second reading look cleaner."""
+    plan_import.reset_import_limits()
+    first = ReadPlan.model_validate({"name": "Plan", "weeks": [{"repeat": 1, "sessions": [{
+        "days": ["Monday"], "name": "Strength", "session_type": "strength_power", "exercises": [
+            {"name": "Bench press", "sets": 6, "reps": 4}, {"name": "Row", "sets": 3, "reps": 8}]}]}]})
+    reader = TwoReadings(first, _one_exercise(4, 6))  # fixed the bench press, but lost the row
+    result = _import(reader, "Monday Strength\nBench press 4x6\nRow 3x8\n")
+    assert len(reader.reviews) == 2
+    assert [e["name"] for e in result.plan["sessions"][0]["exercises"]] == ["Bench press", "Row"]
+
+
+def test_the_exercise_line_with_a_dose_beats_a_heading_that_names_it():
+    source = "Day 1 – Plank\nPlank 3x45s"
+    assert _flags_for(source, ReadExercise(name="Plank", sets=3, seconds=45)) == []
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("S", "Monday", exercises=[ReadExercise(name="Plank", sets=3, seconds=30)])])])
+    assert build_draft(reading, date(2026, 11, 23), source).plan["sessions"][0]["exercises"][0]["dose"]["duration_seconds"] == 45

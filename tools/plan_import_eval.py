@@ -33,7 +33,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from api.contracts.custom_plans import WEEKDAYS as DAYS  # noqa: E402
-from api.services.plan_import import ReadPlan, build_draft, get_plan_reader  # noqa: E402
+from api.services.plan_import import build_draft, get_plan_reader  # noqa: E402
+from api.services.plan_import_reading import ReadPlan  # noqa: E402
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "plan_import"
 START = date(2026, 11, 23)

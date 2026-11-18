@@ -21,20 +21,15 @@ from difflib import SequenceMatcher
 from typing import Any, Mapping
 
 from api.contracts.custom_plans import CustomExerciseSnapshot
+from api.services.plan_import_reading import _singular_word
 from api.services.training_library import preview, text_key
 
 CLOSE_RATIO = 0.95
 _FILLER = {"the", "a", "an", "of", "with", "and"}
 
 
-def _singular(word: str) -> str:
-    if len(word) > 3 and word.endswith("ies"):
-        return word[:-3] + "y"
-    return word[:-1] if len(word) > 3 and word.endswith("s") and not word.endswith("ss") else word
-
-
 def _words(name: str) -> tuple[str, ...]:
-    return tuple(sorted(_singular(w) for w in text_key(name).split() if w not in _FILLER))
+    return tuple(sorted(_singular_word(w) for w in text_key(name).split() if w not in _FILLER))
 
 
 def _numbers(name: str) -> tuple[str, ...]:
