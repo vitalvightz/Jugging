@@ -116,7 +116,9 @@ results without weakening the existing required check.
 ### Production deployment mismatch: do not run the old processor
 
 Read-only inspection found the fencing migration applied in production as
-20261118043914, while `process-attachment` is still version 1 with unfenced RPC
+`20261118043914`. The repository migration is aligned as
+`20261118043914_attachment_processing_fencing.sql`; its SQL is unchanged, and
+this filename correction does not reapply the migration. Meanwhile, `process-attachment` is still version 1 with unfenced RPC
 calls and the old cleanup implementation. Deploy the matching updated function
 before invoking it or running verification. The old cleanup assumes every
 candidate can have its approved file deleted; the new SQL also returns ready
