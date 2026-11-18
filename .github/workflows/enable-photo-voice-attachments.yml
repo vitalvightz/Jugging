@@ -1,0 +1,90 @@
+name: Enable Photo and Voice Attachments
+
+# Switches photos and voice notes on in production, but only after the deployed
+# pipeline passes its end-to-end checks against the real project: rebuilt
+# photos lose GPS/EXIF/appended HTML, disguised and oversized files are
+# rejected, concurrent processing claims once, and outside callers are refused.
+# If any check fails, nothing is switched on.
+on:
+  push:
+    branches:
+      - Main
+    paths:
+      - ".github/workflows/enable-photo-voice-attachments.yml"
+      - "supabase/functions/process-attachment/**"
+      - "web/scripts/verify-attachment-pipeline.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify the production photo and voice pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: web/.nvmrc
+      - name: Install the JPEG test encoder
+        working-directory: web
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run end-to-end checks (test files are removed afterwards)
+        working-directory: web
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/verify-attachment-pipeline.mjs
+
+  enable:
+    name: Switch photos and voice notes on
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Share the deployment lock with normal Hetzner deployments.
+    concurrency:
+      group: hetzner-backend-deployment
+      cancel-in-progress: false
+    env:
+      HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+      HETZNER_USER: ${{ secrets.HETZNER_USER }}
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.HETZNER_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.HETZNER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/unlxck_deploy
+          chmod 600 ~/.ssh/unlxck_deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Set the flags and reload the API
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/unlxck_deploy -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15"
+          $SSH "$HETZNER_USER@$HETZNER_HOST" 'bash -s' <<'REMOTE'
+            set -Eeuo pipefail
+            cd /opt/unlxck
+            env_file=/opt/unlxck/.env.production
+            umask 077
+            tmp="$(mktemp /opt/unlxck/.attachments-env.XXXXXX)"
+            trap 'rm -f "$tmp"' EXIT
+            # Replace any earlier values, then append one of each. Video stays off.
+            awk '$0 !~ /^ATTACHMENT_PHOTOS_ENABLED=/ && $0 !~ /^ATTACHMENT_VOICE_ENABLED=/' "$env_file" > "$tmp"
+            printf '\n# Photos and voice notes (rebuilt by the process-attachment Edge Function).\nATTACHMENT_PHOTOS_ENABLED=true\nATTACHMENT_VOICE_ENABLED=true\n' >> "$tmp"
+            cat "$tmp" > "$env_file"
+            docker compose up -d --force-recreate api
+            for attempt in $(seq 1 18); do
+              if [[ -n "$(docker compose ps --status running -q api)" ]]; then break; fi
+              if [[ "$attempt" -eq 18 ]]; then docker compose logs --tail=150 api >&2; exit 1; fi
+              sleep 5
+            done
+            docker compose exec -T api sh -c 'test "$ATTACHMENT_PHOTOS_ENABLED" = true && test "$ATTACHMENT_VOICE_ENABLED" = true'
+            echo "Photos and voice notes are switched on."
+          REMOTE
