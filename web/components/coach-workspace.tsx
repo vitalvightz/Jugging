@@ -253,6 +253,7 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
         const name = c.coach_name || "Your coach";
         const sharing = connectionSharing(c);
         return (
+          coach && pending ? <PendingInvite key={c.id} connection={c} busy={busy} onCancel={() => void command("remove", c.id)} /> :
           <article className={styles.connection} key={c.id}>
             <div className={styles.rowCopy}>
               <strong>{coach ? c.invited_email : name}</strong>
@@ -284,7 +285,6 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
                   Allow session logging
                 </button>
               ) : null}
-              {coach && pending ? <InviteShare connection={c} /> : null}
               {!coach && pending ? (
                 <button
                   className="cta"
@@ -320,25 +320,41 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
   );
 }
 
-function InviteShare({ connection }: { connection: Connection }) {
+// A pending invite has one job: reach the athlete. Sharing leads, full width
+// and thumb-height; copying is the fallback; cancelling sits apart in the
+// header so it is never tapped by mistake while sharing.
+function PendingInvite({ connection, busy, onCancel }: { connection: Connection; busy: boolean; onCancel: () => void }) {
   const [copied, setCopied] = useState<"" | "copied" | "failed">("");
   const share = coachInviteShare(connection, window.location.origin);
   return (
-    <>
-      <a className="cta" href={share.whatsapp} target="_blank" rel="noopener noreferrer">
-        Share on WhatsApp
-      </a>
-      <button
-        type="button"
-        className="ghost-button"
-        onClick={() => {
-          navigator.clipboard.writeText(share.text).then(() => setCopied("copied"), () => setCopied("failed"));
-        }}
-      >
-        {copied === "copied" ? "Copied" : "Copy invite"}
-      </button>
-      {copied === "failed" ? <small role="alert">Copy failed. Share on WhatsApp instead.</small> : null}
-    </>
+    <article className={`${styles.connection} ${styles.pendingInvite}`}>
+      <div className={styles.inviteHeader}>
+        <div className={styles.rowCopy}>
+          <strong>{connection.invited_email}</strong>
+          <small><span className={styles.pendingBadge}>Pending</span> They accept by signing in with this email.</small>
+        </div>
+        <button type="button" className={styles.cancelInvite} disabled={busy} onClick={onCancel}
+          aria-label={`Cancel invite to ${connection.invited_email}`}>
+          Cancel
+        </button>
+      </div>
+      <div className={styles.inviteActions}>
+        <a className={styles.whatsappButton} href={share.whatsapp} target="_blank" rel="noopener noreferrer">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2c0 1.3.9 2.5 1.1 2.7.1.2 1.8 2.8 4.4 3.9 1.6.7 2.3.8 3.1.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.2-.2-.4-.3Z"/></svg>
+          Share on WhatsApp
+        </a>
+        <button
+          type="button"
+          className={`ghost-button ${styles.copyInvite}`}
+          onClick={() => {
+            navigator.clipboard.writeText(share.text).then(() => setCopied("copied"), () => setCopied("failed"));
+          }}
+        >
+          {copied === "copied" ? "Copied ✓" : "Copy invite"}
+        </button>
+      </div>
+      {copied === "failed" ? <small role="alert" className={styles.inviteError}>Copy failed. Share on WhatsApp instead.</small> : null}
+    </article>
   );
 }
 
