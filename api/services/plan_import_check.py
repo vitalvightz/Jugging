@@ -114,6 +114,12 @@ class SourceCheck:
         group = _clean(item.group)
         read = read_dose_line(f"{window} ({group})" if group else window)
         problems: list[str] = []
+        # A rep range read without its sets ("8-10" from "Push-ups 4x8-10"): the sets are on the line.
+        written_range = re.match(r"^\s*(\d+\s*[-\u2013]\s*\d+)\b", item.prescription or "")
+        if item.sets is None and written_range:
+            pair = re.search(rf"(\d+)\s*[x\u00d7*]\s*{re.escape(written_range.group(1))}", window, re.I)
+            if pair:
+                item.sets = int(pair.group(1))
         # The line after the exercise's own name: where its own numbers are.
         first = next((t for t in _tokens(name) if t in window.lower()), None)
         after = window[window.lower().index(first):] if first else ""

@@ -218,6 +218,18 @@ def corrections_flags(read: "ReadPlan", flag, source: str = "") -> None:
         flag("Spelling", "Corrected: " + ", ".join(fixed) + ".")
 
 
+def _with_read_values(prescription: str | None, item: ReadExercise) -> str | None:
+    """A text dose keeps every number read beside it. "4x8-10" read as sets 4 and
+    "8-10" becomes "4 × 8-10", never just "8-10" with the sets lost."""
+    if not prescription:
+        return prescription
+    if item.sets and re.match(r"^\s*\d+(?:\.\d+)?\s*[-\u2013]\s*\d", prescription) and not re.search(r"\d\s*[x\u00d7*]\s*\d", prescription, re.I):
+        return f"{_number(item.sets)} \u00d7 {prescription}"[:500]
+    read_numbers = [n for n in _numbers(_written_dose(item))]
+    missing = [n for n in read_numbers if n not in _numbers(prescription)]
+    return f"{_written_dose(item)}, {prescription}"[:500] if missing else prescription
+
+
 def dose_from(item: ReadExercise, flag=lambda message: None) -> CustomDose:
     """The builder's dose for what was written, in the mode it fits exactly.
 
@@ -244,7 +256,7 @@ def dose_from(item: ReadExercise, flag=lambda message: None) -> CustomDose:
     written = {"sets": item.sets, "reps": item.reps, "seconds": item.seconds, "rounds": item.rounds,
                "work_seconds": item.work_seconds, "distance": item.distance}
     present = {key for key, value in written.items() if value is not None}
-    prescription = _clean(item.prescription, 500)
+    prescription = _with_read_values(_clean(item.prescription, 500), item)
     mode: dict | None = None
     if prescription:
         mode = {"mode": "text", "prescription": prescription}

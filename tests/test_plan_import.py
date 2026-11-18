@@ -1103,3 +1103,26 @@ def test_the_exercise_line_with_a_dose_beats_a_heading_that_names_it():
     assert _flags_for(source, ReadExercise(name="Plank", sets=3, seconds=45)) == []
     reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("S", "Monday", exercises=[ReadExercise(name="Plank", sets=3, seconds=30)])])])
     assert build_draft(reading, date(2026, 11, 23), source).plan["sessions"][0]["exercises"][0]["dose"]["duration_seconds"] == 45
+
+
+@pytest.mark.parametrize("line, read, expected", [
+    ("Push-ups 4x8-10", {"sets": 4, "prescription": "8-10"}, "4 × 8-10"),
+    ("DB rows 4x8-10 each", {"sets": 4, "prescription": "8-10 each", "per_side": True}, "4 × 8-10 each"),
+    ("Strict press 3x6-8", {"sets": 3, "prescription": "6-8"}, "3 × 6-8"),
+    ("Strict press 3x6-8", {"sets": 3, "prescription": "3 x 6-8"}, "3 x 6-8"),
+])
+def test_a_rep_range_keeps_its_sets(line, read, expected):
+    """As imported live: "Push-ups 4x8-10" came in as just "8-10"."""
+    name = line.rsplit(" ", 1)[0]
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("S", "Monday", exercises=[ReadExercise(name=name, **read)])])])
+    draft = build_draft(reading, date(2026, 11, 23), line)
+    dose = draft.plan["sessions"][0]["exercises"][0]["dose"]
+    assert dose["mode"] == "text" and dose["prescription"] == expected
+    assert not [f for f in draft.flags if f.message.startswith("Check the dose")]
+
+
+def test_a_rep_range_read_without_its_sets_gets_them_from_its_line():
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("S", "Monday", exercises=[
+        ReadExercise(name="Push-ups", prescription="8-10")])])])
+    dose = build_draft(reading, date(2026, 11, 23), "Push-ups 4x8-10").plan["sessions"][0]["exercises"][0]["dose"]
+    assert dose["prescription"] == "4 × 8-10"

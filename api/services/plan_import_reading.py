@@ -76,7 +76,7 @@ EXERCISES, in written order (warm-up and cool-down lines written as exercises st
 - rpe: only a single written RPE number. An RPE range ("RPE 7-8") goes in load as written.
 - kind: what this exercise is, whatever the session is: warm_up (warm-up and activation items), strength (lifts, carries, core and accessory lifting), power (jumps, throws, plyos, med ball), conditioning (runs, bike, intervals, circuits, roadwork, skipping for fitness), skill (pads, bag, shadow boxing, drilling, technical or light sparring), sparring (hard or full sparring), recovery (cool-down, stretching, mobility, breathing). Judge by the coach's words: "bag work 6 x 30s high output" is skill, "light technical rounds" is skill, "hard sparring" is sparring. null only when it can't be told.
 - tempo: a written lifting tempo ("3-1-1-0", "31X1", "3-sec eccentric", "2-sec pause"), as written; otherwise null.
-- prescription: when the written dose doesn't fit the fields above ("AMRAP 10 min", "EMOM 12", "build to a heavy single", "3-4 sets"), the dose exactly as written. Ranges like "8-10 reps" go here too.
+- prescription: when the written dose doesn't fit the fields above ("AMRAP 10 min", "EMOM 12", "build to a heavy single", "3-4 sets"), the dose exactly as written. A rep range goes here with its sets, as written: "4x8-10" -> sets 4, prescription "4 x 8-10"; "3x6-8 each side" -> sets 3, per_side true, prescription "3 x 6-8". Never drop the sets from a range.
 - equipment: written equipment ("trap bar", "18oz gloves"), otherwise null.
 - cues: the coach's technique cues for this exercise, one per item, verbatim ("drive through the floor", "chin down").
 - stop_rules: written stop or safety rules for this exercise ("stop if shoulder pain").
