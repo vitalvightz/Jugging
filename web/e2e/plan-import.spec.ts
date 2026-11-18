@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { deflateRawSync } from "node:zlib";
-import { setup } from "./custom-plan-fixture";
+import { entries, setup } from "./custom-plan-fixture";
 
 // Import a plan from a file: only the text leaves the browser, the draft opens
 // in the builder unsaved, and nothing is stored until Save.
@@ -46,8 +46,11 @@ function textPdf(lines: string[]) {
 const id = () => crypto.randomUUID();
 const mondays = ["2026-11-23", "2026-11-30", "2026-12-07", "2026-12-14"];
 const padIds = mondays.map(() => id());
+const gobletId = id();
+// A library exercise the coach also wrote: it arrives linked, with the library's details.
+const goblet = { ...entries[0], category: "training" as const, source: "exercise_bank.json", source_revision: "source-revision", row_revision: "row-revision" };
 const result = {
-  weeks: 4, sessions: 8, exercises: 12,
+  weeks: 4, sessions: 8, exercises: 17, matched: 1, library: { [gobletId]: goblet },
   flags: [
     { where: "Plan", message: "No upcoming start date written, so it starts Monday 23 Nov. Change the start date in the builder if needed." },
     { where: "Weeks 1-4 · Strength · Trap bar deadlift", message: "RPE 15 isn't between 1 and 10, so it's kept in the notes." },
@@ -60,7 +63,9 @@ const result = {
     sessions: mondays.flatMap((monday, week) => [
       { id: id(), name: "Strength", weekday: null, scheduled_date: monday, session_type: "strength_power", notes: "Brace hard, own every rep.",
         exercises: [{ id: id(), origin: "manual", name: "Trap bar deadlift", notes: "RPE as written: 15", dose: { mode: "reps", sets: 3, reps: 5, load_or_intensity: "140kg" } },
-          { id: id(), origin: "manual", name: "Shadow boxing", notes: null, dose: { mode: "intervals", rounds: 3 } }] },
+          { id: id(), origin: "manual", name: "Shadow boxing", notes: null, dose: { mode: "intervals", rounds: 3 } },
+          { id: id(), origin: "manual", name: "Cooldown", notes: null, dose: { mode: "reps" } },
+          ...(week === 0 ? [{ id: gobletId, origin: "catalogue", catalogue_id: goblet.catalogue_id, coaching_cues: ["Chest up"], stop_rules: null, dose: { mode: "reps", sets: 3, reps: 8 } }] : [])] },
       { id: padIds[week], name: "Pads", weekday: null, scheduled_date: monday, session_type: "skill", notes: null,
         exercises: [{ id: id(), origin: "manual", name: "Pad rounds", notes: "Finish on the jab", dose: { mode: "intervals", rounds: 6, work_seconds: 180, rest_seconds: 60 } }] },
     ]),
@@ -104,7 +109,8 @@ for (const width of [320, 390, 1280]) {
     expect(bodies[0].file_name).toBe("Camp plan.docx");
     expect(bodies[0].start_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(uploads).toEqual([]);
-    await expect(page.getByRole("status")).toContainText("Weeks4Sessions8Exercises12");
+    await expect(page.getByRole("status")).toContainText("Weeks4Sessions8Exercises17");
+    await expect(page.getByText("1 exercise matched to the exercise library")).toBeVisible();
     // What couldn't be mapped exactly is listed openly, by where it belongs.
     await expect(page.getByText("3 things to check")).toBeVisible();
     await expect(page.getByText("“Drink 3L water a day”")).toBeVisible();
@@ -122,6 +128,11 @@ for (const width of [320, 390, 1280]) {
     await review.click();
     await expect(page).toHaveURL(/\/plans\/custom\?imported=1/);
     await expect(page.getByText("Imported from Camp plan.docx. Tick each thing to check once it's fixed or checked, then save.")).toBeVisible();
+    // A cooldown needs no dose: it is on the session without "Set dose" and isn't a to-fix.
+    await expect(page.getByText("Cooldown", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Set dose")).toHaveCount(0);
+    // An exercise the library has arrives linked to it, shown by the library's name.
+    await expect(page.getByText(entries[0].name).first()).toBeVisible();
     // A dose the coach only partly wrote shows what's there, not "Set intervals".
     await expect(page.getByText("3 rounds · duration unspecified").first()).toBeVisible();
     // The coach's session note is on the session itself.

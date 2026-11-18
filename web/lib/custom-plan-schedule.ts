@@ -2,7 +2,7 @@ import type { CustomSession } from "./api-schema.generated";
 import type { MeResponse } from "./types";
 import { hydratePlanRequest } from "./onboarding";
 import { parseRoundsFormat } from "./rounds-format";
-import { blankDose, doseIncomplete } from "./custom-plan-dose";
+import { blankDose, exerciseIncomplete } from "./custom-plan-dose";
 import { calendarMonday } from "./custom-plan-calendar";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
@@ -66,7 +66,7 @@ export function customScheduleIssues(sessions: EditableSession[]): Array<{ sessi
       continue;
     } else if (!session.exercises.length && !["recovery", "skill", "sparring"].includes(type)) {
       add(`${label} session has no exercises.`);
-    } else if (session.exercises.some(e => doseIncomplete(e.dose))) {
+    } else if (session.exercises.some(e => exerciseIncomplete(e))) {
       add(`Finish the exercise doses in ${label}.`, true);
     }
   }

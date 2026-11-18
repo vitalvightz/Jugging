@@ -55,6 +55,8 @@ class FakeReader:
 def api(monkeypatch):
     client, store, _ = _build_client()
     plan_import.reset_import_limits()
+    # Most tests are about the reading, so they run without the exercise library.
+    monkeypatch.setattr(plan_import, "library_matcher", lambda store: None)
     yield client, store, monkeypatch
     plan_import.reset_import_limits()
     plan_import._reader_cache.clear()
@@ -536,3 +538,141 @@ def test_each_exercise_on_a_shared_line_is_checked_against_its_own_part():
     # Pull ups given the squat's reps: 5 is on the line, but not in the pull-ups part.
     assert _flags_for(source, ReadExercise(name="Pull ups", sets=3, reps=5)) == [
         "Check the dose: reps 5 isn't written in “pull ups 3x8”."]
+
+
+def test_warm_ups_cooldowns_and_mobility_need_no_dose_and_are_not_flagged_for_it(api):
+    client, _, monkeypatch = api
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("Sparring", "Friday", session_type="sparring", exercises=[
+        ReadExercise(name="Hard sparring", rounds=3, work_seconds=180, rest_seconds=60),
+        ReadExercise(name="Cooldown"), ReadExercise(name="Warm-up"), ReadExercise(name="Hip mobility flow", seconds=300),
+        ReadExercise(name="Back squat")])])])
+    body = run_import(client, monkeypatch, reading, text="Fri: Sparring 3 x 3 min, 1 min rest\nCooldown\nWarm-up\nHip mobility flow 5 min\nBack squat")
+    # Only the lift with no dose is a gap; the cooldown, warm-up and mobility need none.
+    assert [(f["where"], f["message"]) for f in body["flags"]] == [
+        ("Sparring · Back squat", "No sets, reps, time or distance written. Add the dose, or leave it open.")]
+    saved = client.post("/api/custom-plans", json=body["plan"], headers=AUTH).json()
+    incomplete = {e["name"]: e["incomplete"] for s in saved["sessions"] for e in s["exercises"]}
+    assert incomplete == {"Hard sparring": False, "Cooldown": False, "Warm-up": False, "Hip mobility flow": False, "Back squat": True}
+
+
+def test_a_plan_with_a_dose_free_cooldown_is_complete_and_reaches_today_without_a_dose():
+    from api.services.custom_plans import _dose_text, dose_optional, exercise_incomplete, schedule_issues
+    assert [dose_optional(n) for n in ("Cooldown", "Warm down", "Stretching", "Mobility", "Foam rolling", "Back squat")] == [
+        True, True, True, True, True, False]
+    blank = {"mode": "reps"}
+    cooldown = {"name": "Cooldown", "origin": "manual", "dose": blank}
+    squat = {"name": "Back squat", "origin": "manual", "dose": blank}
+    assert (exercise_incomplete(cooldown), exercise_incomplete(squat)) == (False, True)
+    sessions = lambda *exercises: [{"name": "Sparring", "weekday": "Friday", "session_type": "sparring", "exercises": list(exercises)}]  # noqa: E731
+    assert schedule_issues(sessions(cooldown)) == []
+    assert schedule_issues(sessions(cooldown, squat)) == ["Finish the dose for Back squat in Friday's Hard Sparring."]
+    assert _dose_text(blank) == "" and _dose_text({"mode": "reps", "sets": 3, "reps": 5}) == "3 × 5"
+
+
+def test_a_dose_free_cooldown_saves_and_compiles_into_the_plan_shown_on_today(api):
+    from api.plan_mappers import _map_profile_row
+    from api.services.custom_plans import dated_custom_plan_result
+    client, store, monkeypatch = api
+    reading = ReadPlan(weeks=[ReadWeek(repeat=2, sessions=[_session("Sparring", "Monday", session_type="sparring", exercises=[
+        ReadExercise(name="Hard sparring", rounds=3, work_seconds=180, rest_seconds=60), ReadExercise(name="Cooldown")])])])
+    body = run_import(client, monkeypatch, reading, text="Mon: Hard sparring 3 x 3 min, 1 min rest\\nCooldown")
+    saved = client.post("/api/custom-plans", json=body["plan"], headers=AUTH)
+    assert saved.status_code == 201, saved.text
+    assert saved.json()["incomplete"] is False
+    result = dated_custom_plan_result(saved.json(), _map_profile_row(store.profiles["athlete-1"]), training_day=MONDAY)
+    blocks = result["structured_plan"]["weeks"][0]["days"][0]["sessions"][0]["blocks"]
+    cooldown = next(b for b in blocks if b["display_name"] == "Cooldown")
+    assert not cooldown.get("prescription_text")
+
+
+# -- Matching imported exercises to the exercise library ------------------------
+
+def _with_library(monkeypatch, media=None):
+    from api.services.plan_import_match import LibraryMatcher
+    from api.services.training_library import cache
+    monkeypatch.setattr(plan_import, "library_matcher", lambda store: LibraryMatcher(cache.get().records, media))
+
+
+def _library_names(*words):
+    from api.services.training_library import cache
+    return [r["entry"]["name"] for r in cache.get().records if r["summary"]["category"] == "training"
+            and all(w in r["entry"]["name"].lower() for w in words)]
+
+
+def test_an_exercise_with_the_library_s_name_is_linked_and_keeps_everything_written(api):
+    client, _, monkeypatch = api
+    _with_library(monkeypatch)
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("Strength", "Monday", exercises=[
+        ReadExercise(name="Goblet Squats", sets=3, reps=8, load="24kg", notes="Slow down", cues=["Chest up"]),
+        ReadExercise(name="Mystery drill from my gym", sets=2, reps=5)])])])
+    body = run_import(client, monkeypatch, reading, text="Mon: Goblet Squats 3x8 24kg\nMystery drill from my gym 2x5")
+    first, second = body["plan"]["sessions"][0]["exercises"]
+    assert first["origin"] == "catalogue" and body["matched"] == 1
+    assert body["library"][first["id"]]["name"] == "Goblet Squat"
+    assert first["dose"]["sets"] == 3 and first["dose"]["reps"] == 8 and first["dose"]["load_or_intensity"] == "24kg"
+    assert first["coaching_cues"] == ["Chest up", "Slow down"], "the coach's wording stays"
+    assert second["origin"] == "manual", "no library exercise like it: left as written"
+    assert not [f for f in body["flags"] if "library" in f["message"]], "a same-name match needs no check"
+    saved = client.post("/api/custom-plans", json=body["plan"], headers=AUTH)
+    assert saved.status_code == 201, saved.text
+    assert saved.json()["sessions"][0]["exercises"][0]["snapshot"]["name"] == "Goblet Squat"
+
+
+def test_the_library_s_demo_video_comes_with_the_link():
+    from api.models import ExerciseMedia
+    from api.services.plan_import_match import LibraryMatcher
+    from api.services.training_library import cache
+    records = cache.get().records
+    key = next(r["entry"]["exercise_key"] for r in records if r["entry"]["name"] == "Goblet Squat")
+    matcher = LibraryMatcher(records, {key: ExerciseMedia(video_id="dQw4w9WgXcQ")})
+    snapshot = matcher.snapshot(matcher.match("goblet squat"))
+    assert snapshot["media"]["video_id"] == "dQw4w9WgXcQ"
+
+
+def test_a_close_but_not_identical_name_is_linked_and_flagged_to_confirm(api):
+    client, _, monkeypatch = api
+    _with_library(monkeypatch)
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("Skill", "Tuesday", exercises=[
+        ReadExercise(name="Grapplers Flow Roll", rounds=3, work_seconds=300, rest_seconds=60)])])])
+    body = run_import(client, monkeypatch, reading, text="Tue: Grapplers Flow Roll 3 x 5 min, 1 min rest")
+    assert body["matched"] == 1
+    assert [(f["where"], f["message"]) for f in body["flags"]] == [
+        ("Skill \u00b7 Grapplers Flow Roll", "Matched to the library exercise \u201cGrappler's Flow Roll\u201d. Check it's the same exercise.")]
+
+
+def test_names_that_differ_in_a_number_or_are_ambiguous_are_never_linked():
+    from api.services.plan_import_match import LibraryMatcher
+    from api.services.training_library import cache
+    matcher = LibraryMatcher(cache.get().records)
+    isometrics = _library_names("front squat isometric")
+    assert isometrics, "the library has numbered variants to guard against"
+    assert matcher.match(isometrics[0]) is not None
+    assert matcher.match(isometrics[0].replace("105", "110").replace("115", "120")) is None
+    assert matcher.match("Cooldown") is None and matcher.match("") is None
+
+
+def test_dose_optional_work_is_complete_only_while_nothing_is_written():
+    from api.services.custom_plans import exercise_incomplete, schedule_issues
+
+    def ex(name, **dose):
+        return {"name": name, "origin": "manual", "dose": {"mode": "reps", **dose}}
+    assert exercise_incomplete(ex("Warm-up")) is False
+    assert exercise_incomplete(ex("Warm-up squats")) is False
+    assert exercise_incomplete(ex("Warm-up squats", sets=3)) is True, "3 sets but no reps"
+    assert exercise_incomplete(ex("Mobility flow", mode="duration", duration_seconds=300)) is False
+    assert exercise_incomplete(ex("Mobility flow", mode="intervals", rounds=3)) is True
+    assert exercise_incomplete(ex("Cooldown", per_side=False, prescription="")) is False
+    sessions = [{"name": "Strength", "weekday": "Monday", "session_type": "strength_power",
+                 "exercises": [ex("Warm-up squats", sets=3)]}]
+    assert schedule_issues(sessions) == ["Finish the dose for Warm-up squats in Monday's Strength & Power."]
+
+
+def test_an_imported_warm_up_with_a_written_dose_is_treated_like_any_exercise(api):
+    client, _, monkeypatch = api
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("Strength", "Monday", session_type="strength_power", exercises=[
+        ReadExercise(name="Warm-up squats", sets=3), ReadExercise(name="Back squat", sets=3)])])])
+    body = run_import(client, monkeypatch, reading, text="Mon: Warm-up squats 3 sets\nBack squat 3 sets")
+    warm, squat = body["plan"]["sessions"][0]["exercises"]
+    assert warm["dose"] == squat["dose"], "a name never changes how a written dose is read"
+    saved = client.post("/api/custom-plans", json=body["plan"], headers=AUTH).json()
+    assert [e["incomplete"] for e in saved["sessions"][0]["exercises"]] == [False, False]

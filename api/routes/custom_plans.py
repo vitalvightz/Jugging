@@ -69,11 +69,11 @@ def build_custom_plans_router(*, require_profile, get_store):
         return _map_plan_summary(plan)
 
     @router.post("/import", response_model=PlanImportResult)
-    def import_custom_plan(body: PlanImportRequest, profile=Depends(require_profile)):
+    def import_custom_plan(body: PlanImportRequest, profile=Depends(require_profile), store=Depends(get_store)):
         """Read the text of a plan file into a draft. Nothing is saved: the draft
         opens in the builder, and only a save there stores it."""
         from api.services import plan_import
-        return plan_import.import_plan(str(profile.athlete_id), body, reader=plan_import.get_plan_reader())
+        return plan_import.import_plan(str(profile.athlete_id), body, reader=plan_import.get_plan_reader(), store=store)
 
     @router.get("/source-suggestion", response_model=CustomDoseSuggestion)
     def suggest(catalogue_id: str, profile=Depends(require_profile)):

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { doseFromBlock, finishedDose, validDose } from "./exercise-dose";
-import { blankDose, doseSummary } from "./custom-plan-dose";
+import { blankDose, doseOptional, doseSummary, exerciseIncomplete } from "./custom-plan-dose";
 
 test("short holds and interval work stay in seconds on custom cards", () => {
   assert.equal(doseSummary({ ...blankDose("duration"), sets: 3, duration_seconds: 12 }), "3 × 12s");
@@ -54,4 +54,32 @@ test("switching format only saves fields for the selected format", () => {
   assert.equal("rounds" in dose, false);
   assert.equal("distance" in dose, false);
   assert.equal(validDose({ mode: "reps", sets: 3, reps: 8, rpe: 11 }), false);
+});
+
+test("warm-ups, cooldowns, stretching and mobility never need a dose", () => {
+  for (const name of ["Cooldown", "Warm-up", "warm up", "Warm down", "Cool-down jog", "Stretching", "Hip mobility", "Foam rolling", "Breathwork", "Yoga flow"])
+    assert.equal(doseOptional(name), true, name);
+  for (const name of ["Back squat", "Pad rounds", "Sled push", "Hard sparring", "Easy run"])
+    assert.equal(doseOptional(name), false, name);
+  // No dose is complete for them; for anything else it is still to finish.
+  assert.equal(exerciseIncomplete({ name: "Cooldown", dose: blankDose("reps") }), false);
+  assert.equal(exerciseIncomplete({ snapshot: { name: "Dynamic warm-up" }, dose: blankDose("intervals") }), false);
+  assert.equal(exerciseIncomplete({ name: "Back squat", dose: blankDose("reps") }), true);
+  assert.equal(exerciseIncomplete({ name: "Back squat", dose: { ...blankDose("reps"), sets: 3, reps: 5 } }), false);
+  // Nothing written shows nothing; a dose that was written still shows.
+  assert.equal(doseSummary(blankDose("reps"), "Cooldown"), "");
+  assert.equal(doseSummary({ ...blankDose("duration"), duration_seconds: 600 }, "Cooldown"), "10 min");
+  assert.equal(doseSummary(blankDose("reps"), "Back squat"), "Set dose");
+});
+
+test("dose-optional work is complete only while nothing is written; a started dose is checked normally", () => {
+  const e = (name: string, dose: Partial<ReturnType<typeof blankDose>> & { mode?: ReturnType<typeof blankDose>["mode"] } = {}) =>
+    ({ name, dose: { ...blankDose(dose.mode ?? "reps"), ...dose } });
+  assert.equal(exerciseIncomplete(e("Warm-up")), false, "warm-up, nothing written");
+  assert.equal(exerciseIncomplete(e("Warm-up squats")), false, "warm-up squats, nothing written");
+  assert.equal(exerciseIncomplete(e("Warm-up squats", { sets: 3 })), true, "3 sets but no reps");
+  assert.equal(exerciseIncomplete(e("Mobility flow", { mode: "duration", duration_seconds: 300 })), false, "5 minutes");
+  assert.equal(exerciseIncomplete(e("Mobility flow", { mode: "intervals", rounds: 3 })), true, "started intervals, no time");
+  assert.equal(exerciseIncomplete(e("Cooldown", { mode: "text", prescription: "  " })), false, "blank text is nothing written");
+  assert.equal(doseSummary(e("Warm-up squats", { sets: 3 }).dose, "Warm-up squats"), "3 sets · reps unspecified");
 });

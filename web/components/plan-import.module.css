@@ -104,6 +104,7 @@
 .counts dt { color: var(--text-muted); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
 .counts dd { margin: 0; font-family: var(--font-display), sans-serif; font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 .planName { margin: 14px 0 0; padding-top: 14px; border-top: 1px solid var(--border-default); font-weight: 600; overflow-wrap: anywhere; }
+.matched { margin: 6px 0 0; font-size: 0.875rem; color: var(--text-secondary, inherit); overflow-wrap: anywhere; }
 .warn, .check { margin: 0; color: var(--text-secondary); font-size: 14px; line-height: 1.5; }
 .flags { border: 1px solid var(--border-default); border-radius: 14px; padding: 0 14px; background: var(--bg-surface); }
 .flags summary { min-height: 44px; display: flex; align-items: center; font-size: 14px; font-weight: 600; cursor: pointer; }
