@@ -28,12 +28,13 @@ from typing import Any, Protocol
 from uuid import uuid4
 
 from fastapi import HTTPException
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, PrivateAttr, ValidationError
 
 from api.contracts.custom_plans import WEEKDAYS, CustomDose, CustomExerciseSnapshot, CustomPlanInput
 from api.services.custom_plans import dose_optional
 from api.services.plan_import_check import TIME, SourceCheck, written_layout_flags
 from api.services.plan_import_match import LibraryMatcher, linked
+from api.services.plan_import_patch import PATCH_INSTRUCTIONS, apply_patch, patch_schema
 from api.services.plan_import_reading import (
     DEFAULT_IMPORT_MODEL, EXERCISE_KINDS, INSTRUCTIONS, JPEG_PREFIX, LIST_LABEL, MAX_EXERCISES, MAX_IMAGE_BYTES, MAX_IMAGES,
     MAX_SESSIONS_PER_WEEK, MAX_TEXT_CHARS, MAX_WEEKS, SESSION_TYPES, ReadExercise, ReadPlan, ReadSession, ReadWeek,
@@ -87,21 +88,20 @@ class PlanImportResult(BaseModel):
     # and the library details the builder shows for each, by exercise id.
     matched: int = 0
     library: dict[str, CustomExerciseSnapshot] = Field(default_factory=dict)
+    # Exercises whose numbers didn't match their line: what the second look fixes. Never sent.
+    _review: list[dict] = PrivateAttr(default_factory=list)
 
 
 # -- The model call --
 
 class PlanReader(Protocol):
-    def read(self, text: str, images: list[str], review: str | None = None, timeout: float | None = None) -> ReadPlan: ...
+    def read(self, text: str, images: list[str]) -> ReadPlan: ...
+
+    def patch(self, items: list[dict], timeout: float | None = None) -> list[dict]: ...
 
 
-REVIEW_INSTRUCTIONS = """
-
-SECOND LOOK
-You read this programme once already. Your first reading and the automatic checks it failed are given as first_reading and checks. Each check compares your reading with the programme text, and a check can itself be wrong. Read the programme again and return the whole corrected reading: fix each real mistake (a number that isn't written, a time or dose taken from a section heading, a dose given to the wrong exercise), and keep everything that was already right. All the rules above still hold."""
-
-# Checks worth a second look: the reading disagrees with the written text.
-REVIEWABLE = ("Check the dose", "Couldn't find")
+# Checks the second look can fix: a dose that doesn't match its own line.
+REVIEWABLE = ("Check the dose",)
 
 
 @dataclass
@@ -111,16 +111,13 @@ class OpenAIPlanReader:
     max_output_tokens: int
     reasoning_effort: str
 
-    def read(self, text: str, images: list[str], review: str | None = None, timeout: float | None = None) -> ReadPlan:
-        fields: dict[str, Any] = {"plan_text": text, "screenshots": len(images)}
-        if review:
-            fields["review"] = json.loads(review)
-        payload = json.dumps(fields, ensure_ascii=False)
+    def read(self, text: str, images: list[str]) -> ReadPlan:
+        payload = json.dumps({"plan_text": text, "screenshots": len(images)}, ensure_ascii=False)
         content: list[dict[str, Any]] = [{"type": "input_text", "text": payload}]
         content += [{"type": "input_image", "image_url": image, "detail": "high"} for image in images]
         request: dict[str, Any] = {
             "model": self.model,
-            "instructions": INSTRUCTIONS + (REVIEW_INSTRUCTIONS if review else ""),
+            "instructions": INSTRUCTIONS,
             "input": [{"role": "user", "content": content}] if images else payload,
             "text": {"format": response_schema()},
             "max_output_tokens": self.max_output_tokens,
@@ -128,10 +125,19 @@ class OpenAIPlanReader:
         }
         if self.reasoning_effort:
             request["reasoning"] = {"effort": self.reasoning_effort}
-        client = self.client.with_options(timeout=timeout) if timeout else self.client
-        response = client.responses.create(**request)
+        response = self.client.responses.create(**request)
         output = getattr(response, "output_text", "") or ""
         return ReadPlan.model_validate_json(output)
+
+    def patch(self, items: list[dict], timeout: float | None = None) -> list[dict]:
+        """Corrected doses for just these exercises: small, and at low effort, so it's quick."""
+        payload = json.dumps({"items": [{k: item[k] for k in ("id", "name", "line", "read", "problems")} for item in items]},
+                             ensure_ascii=False)
+        client = self.client.with_options(timeout=timeout) if timeout else self.client
+        response = client.responses.create(model=self.model, instructions=PATCH_INSTRUCTIONS, input=payload,
+                                           text={"format": patch_schema()}, max_output_tokens=4_000, store=False,
+                                           reasoning={"effort": "low"})
+        return json.loads(getattr(response, "output_text", "") or "{}").get("fixes") or []
 
 
 def _env_int(name: str, default: int) -> int:
@@ -455,6 +461,7 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
             # settles is fixed before the exercise is built.
             mark = len(flags)
             if checker and not exercise.copied and _clean(exercise.name):
+                checker.session = item.name or ""
                 checker.check(exercise, say)
             # A copy made from a reference was flagged where it was first written.
             built = _exercise(exercise, (lambda message: None) if exercise.copied else say)
@@ -553,9 +560,11 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
                                   if raised.where == where or raised.where.startswith(f"{where} \u00b7 ")), None)
         if raised.exercise_id and not raised.session_id:
             raised.exercise_id = None
-    return PlanImportResult(plan=plan.model_dump(mode="json"), weeks=len(expanded), sessions=len(plan.sessions),
-                            exercises=sum(len(s.exercises) for s in plan.sessions), flags=flags,
-                            needs_day=list(unplaced.values()), matched=len(library), library=library)
+    result = PlanImportResult(plan=plan.model_dump(mode="json"), weeks=len(expanded), sessions=len(plan.sessions),
+                              exercises=sum(len(s.exercises) for s in plan.sessions), flags=flags,
+                              needs_day=list(unplaced.values()), matched=len(library), library=library)
+    result._review = [{**item, "id": n} for n, item in enumerate(checker.failed if checker else [])]
+    return result
 
 
 def library_matcher(store) -> LibraryMatcher | None:
@@ -610,7 +619,7 @@ def import_plan(owner_id: str, body: PlanImportRequest, *, reader: PlanReader | 
     # returns as it is rather than holding the connection past the host's limit.
     left = _env_int("UNLXCK_PLAN_IMPORT_BUDGET_SECONDS", 55) - (time.monotonic() - started)
     if left >= SECOND_LOOK_MIN_SECONDS:
-        result = _second_look(reader, text, images, read, result, lambda again: build_draft(again, body.start_date, text, matcher), left)
+        result = _second_look(reader, read, result, lambda again: build_draft(again, body.start_date, text, matcher), left)
     if shortened:
         result.flags.insert(0, ImportFlag(where="Plan", message=f"The programme was longer than {MAX_TEXT_CHARS:,} characters, so only the first part was read."))
     return result
@@ -621,23 +630,24 @@ def _reviewable(result: PlanImportResult) -> list[ImportFlag]:
 
 
 # Below this many seconds left, a second look can't finish in time: it is skipped.
-SECOND_LOOK_MIN_SECONDS = 20
+SECOND_LOOK_MIN_SECONDS = 10
+# The most exercises sent for a fix at once: keeps the call small and quick.
+MAX_PATCH_ITEMS = 30
 
 
-def _second_look(reader: PlanReader, text: str, images: list[str], read: ReadPlan, result: PlanImportResult, build,
+def _second_look(reader: PlanReader, read: ReadPlan, result: PlanImportResult, build,
                  timeout: float | None = None) -> PlanImportResult:
-    """When the reading disagrees with the written text, ask once more with the
-    first reading and those checks. Part of the same import (no extra allowance
-    used); the second reading is kept only if it fails fewer checks and adds no
-    other flags, otherwise the first stands. Screenshots have no text to check
-    against, so they never get a second look."""
+    """When doses don't match their own written line, one small, quick call fixes
+    just those exercises (see plan_import_patch), and the code puts the fixed
+    doses back. Part of the same import (no extra allowance used). Kept only if it
+    keeps every session and exercise, fails fewer checks and adds no other flags;
+    otherwise the first reading stands. Screenshots have no line to check against."""
+    items = result._review[:MAX_PATCH_ITEMS]
     checks = _reviewable(result)
-    if not text or not checks:
+    if not items or not checks:
         return result
-    review = json.dumps({"first_reading": read.model_dump(mode="json", exclude={"imported_on"}),
-                         "checks": [f"{f.where}: {f.message}" for f in checks[:40]]}, ensure_ascii=False)
     try:
-        again = build(reader.read(text, images, review=review, timeout=timeout))
+        again = build(apply_patch(read, items, reader.patch(items, timeout=timeout)))
     except Exception as exc:  # noqa: BLE001 - a failed second look keeps the first reading
         logger.info("plan import second look failed: %s", type(exc).__name__)
         return result

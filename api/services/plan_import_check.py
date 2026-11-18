@@ -8,6 +8,7 @@ import re
 
 from api.contracts.custom_plans import WEEKDAYS
 from dataclasses import dataclass
+from api.services.plan_import_patch import DOSE_FIELDS
 from api.services.plan_import_reading import (
     MAX_WEEKS, ReadCorrection, ReadExercise, _clean, _days, _numbers, _same_word, _tokens, _unit,
 )
@@ -35,6 +36,9 @@ class SourceCheck:
         self.cursor = 0
         # A repeated week, or an every-week session, is the same reading: checked once.
         self.checked: set[int] = set()
+        # Exercises whose numbers still don't match their line, for the second look.
+        self.session = ""
+        self.failed: list[dict] = []
 
     def window(self, name: str) -> str | None:
         """The source line that names this exercise."""
@@ -218,6 +222,8 @@ class SourceCheck:
             item.per_side = True
         if problems:
             flag(f"Check the dose: {'; '.join(problems)}.")
+            self.failed.append({"session": self.session, "name": item.name or "", "line": window[:300], "problems": problems,
+                                "read": {f: getattr(item, f) for f in DOSE_FIELDS}})
 
 
 ROLE_WORDS = {"count": "the number of sets or rounds", "reps": "reps", "work": "a work time", "rest": "a rest time", "rpe": "an RPE"}
