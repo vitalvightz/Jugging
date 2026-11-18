@@ -482,3 +482,57 @@ def test_screenshots_say_their_numbers_could_not_be_double_checked():
     result = build_draft(READING, date(2026, 11, 23), "")
     assert ("Plan", "Read from screenshots, so the numbers couldn't be double-checked against text. Compare each dose with your screenshots.") in [
         (f.where, f.message) for f in result.flags]
+
+
+def _flags_for(source, *exercises):
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("S", "Monday", exercises=list(exercises))])])
+    return [f.message for f in build_draft(reading, date(2026, 11, 23), source).flags if f.message.startswith(("Check the dose", "Couldn't"))]
+
+
+def test_swapped_numbers_are_caught_by_what_they_mean_not_just_whether_they_exist():
+    # 3 x 8 read as 8 sets of 3.
+    assert _flags_for("Squat 3x8", ReadExercise(name="Squat", sets=8, reps=3)) == [
+        "Check the dose: sets 8 is written as reps; reps 3 is written as the number of sets or rounds in “Squat 3x8”."]
+    # 6 rounds of 3 min read as 3 rounds of 6 min.
+    assert _flags_for("Pads 6 x 3 min rounds, 1 min rest", ReadExercise(name="Pads", rounds=3, work_seconds=360, rest_seconds=60)) == [
+        "Check the dose: rounds 3 is written as a work time; work time 360s is written as the number of sets or rounds in “Pads 6 x 3 min rounds, 1 min rest”."]
+    # Work and rest swapped.
+    assert _flags_for("Pads 6 x 3 min rounds, 1 min rest", ReadExercise(name="Pads", rounds=6, work_seconds=60, rest_seconds=180)) == [
+        "Check the dose: work time 60s is written as a rest time; rest 180s is written as a work time in “Pads 6 x 3 min rounds, 1 min rest”."]
+    # The right reading raises nothing.
+    assert _flags_for("Squat 3x8", ReadExercise(name="Squat", sets=3, reps=8)) == []
+    assert _flags_for("Pads 6 x 3 min rounds, 1 min rest", ReadExercise(name="Pads", rounds=6, work_seconds=180, rest_seconds=60)) == []
+    # Minutes read as seconds-by-mistake: 3 min is 180s, not 3s.
+    assert _flags_for("Plank 3 x 30s", ReadExercise(name="Plank", sets=3, seconds=30)) == []
+    assert _flags_for("Plank 3 x 30s", ReadExercise(name="Plank", sets=3, seconds=3)) == [
+        "Check the dose: time 3s is written as the number of sets or rounds in “Plank 3 x 30s”."]
+
+
+def test_units_loads_and_sides_must_match_the_line():
+    assert _flags_for("Easy run 5 km", ReadExercise(name="Easy run", distance=5, distance_unit="km")) == []
+    assert _flags_for("Easy run 5 km", ReadExercise(name="Easy run", distance=5, distance_unit="mi")) == [
+        "Check the dose: distance 5 mi has a different unit in “Easy run 5 km”."]
+    assert _flags_for("Deadlift 4x5 @ 140kg", ReadExercise(name="Deadlift", sets=4, reps=5, load="140kg")) == []
+    assert _flags_for("Deadlift 4x5 @ 140kg", ReadExercise(name="Deadlift", sets=4, reps=5, load="140lb")) == [
+        "Check the dose: load 140lb isn't written in “Deadlift 4x5 @ 140kg”."]
+    assert _flags_for("Lunge 3x10 each leg", ReadExercise(name="Lunge", sets=3, reps=10, per_side=True)) == []
+    assert _flags_for("Lunge 3x10", ReadExercise(name="Lunge", sets=3, reps=10, per_side=True)) == [
+        "Check the dose: per side isn't written in “Lunge 3x10”."]
+    assert _flags_for("Lunge 3x10 each leg", ReadExercise(name="Lunge", sets=3, reps=10)) == [
+        "Check the dose: the line says each side in “Lunge 3x10 each leg”."]
+    assert _flags_for("Press 4x6 @ RPE 8", ReadExercise(name="Press", sets=4, reps=6, rpe=8)) == []
+    assert _flags_for("Press 4x6", ReadExercise(name="Press", sets=4, reps=6, rpe=8)) == [
+        "Check the dose: RPE 8 isn't written as an RPE in “Press 4x6”."]
+    # A range read as one number collapses what the coach wrote.
+    assert _flags_for("Curl 3 x 6-8", ReadExercise(name="Curl", sets=3, reps=8)) == [
+        "Check the dose: reps 8 was written as the range 6-8 in “Curl 3 x 6-8”."]
+
+
+def test_each_exercise_on_a_shared_line_is_checked_against_its_own_part():
+    source = "thurs - gym: squats 3x5 @ 100, pull ups 3x8, plank 3x45s"
+    ok = [ReadExercise(name="Squats", sets=3, reps=5, load="100"), ReadExercise(name="Pull ups", sets=3, reps=8),
+          ReadExercise(name="Plank", sets=3, seconds=45)]
+    assert _flags_for(source, *ok) == []
+    # Pull ups given the squat's reps: 5 is on the line, but not in the pull-ups part.
+    assert _flags_for(source, ReadExercise(name="Pull ups", sets=3, reps=5)) == [
+        "Check the dose: reps 5 isn't written in “pull ups 3x8”."]

@@ -76,6 +76,7 @@ STRUCTURE
 EXERCISES, in written order (warm-up and cool-down lines written as exercises stay as exercises)
 - "3x5" -> sets 3, reps 5. "3x8 each side" -> reps 8, sets 3, per_side true. "5x3 min" -> sets 5, seconds 180. "30 sec hold" -> seconds 30.
 - Rounds of work: "6 x 3 min rounds, 1 min rest" -> rounds 6, work_seconds 180, rest_seconds 60.
+- A pair like "5x3" with no unit is sets x reps only for lifts and bodyweight work. For rounds-based work (pads, bag, sparring, intervals) never assume the second number is minutes or reps: put the text as written in prescription (and any written rest in rest_seconds). Never swap the two numbers of a pair: "3x8" is sets 3, reps 8.
 - "5 km run" -> distance 5, distance_unit km. "400m" -> distance 400, distance_unit m. "2 miles" -> distance 2, distance_unit mi. Never convert between units.
 - load: the written weight or intensity ("140kg", "70% 1RM", "zone 2", "bodyweight").
 - rpe: only a single written RPE number. An RPE range ("RPE 7-8") goes in load as written.
@@ -536,37 +537,179 @@ class SourceCheck:
             return None
         # The dose is on the exercise's own line. Only a line with no numbers
         # (a heading such as "WEDNESDAY - Pads") borrows the next line or two.
-        window = [self.lines[best]]
+        window = [self._own_clauses(self.lines[best], set(_tokens(written) or _tokens(name)))]
         for line in self.lines[best + 1:best + 3]:
             if _numbers(" ".join(window)):
                 break
             window.append(line)
         return " ".join(window)
 
+    @staticmethod
+    def _own_clauses(line: str, wanted: set[str]) -> str:
+        """One line can hold several exercises ("squats 3x5 @ 100, pull ups 3x8"):
+        keep this exercise's clause, and any clauses after it that carry no
+        dose of their own ("..., rest 2-3 min")."""
+        if len(DOSE_PAIR.findall(line)) < 2:
+            return line
+        clauses = [c.strip() for c in re.split(r"[,;]", line) if c.strip()]
+        scores = [sum(1 for word in wanted if any(_same_word(word, other) for other in _tokens(c))) for c in clauses]
+        if not scores or max(scores) == 0:
+            return line
+        start = scores.index(max(scores))
+        end = start + 1
+        while end < len(clauses) and not DOSE_PAIR.search(clauses[end]):
+            end += 1
+        return ", ".join(clauses[start:end])
+
     def check(self, item: ReadExercise, flag) -> None:
+        """Every number in the dose, matched to what it is on the source line:
+        sets or rounds, reps, work time, rest, distance and its unit, load and
+        its unit, RPE. A value written as something else ("3 x 8" read as
+        8 sets of 3) or not written at all is flagged. A role the line doesn't
+        make clear is only checked for being written at all."""
         name = _clean(item.name) or ""
-        values = {
-            "sets": item.sets, "reps": item.reps, "rounds": item.rounds, "RPE": item.rpe, "distance": item.distance,
-        }
-        timed = {"time": item.seconds, "work time": item.work_seconds, "rest": item.rest_seconds}
-        loads = _numbers(" ".join(filter(None, [item.load, item.prescription])))
-        if not any(v is not None for v in [*values.values(), *timed.values()]) and not loads:
+        numeric = [item.sets, item.reps, item.rounds, item.rpe, item.distance, item.seconds, item.work_seconds, item.rest_seconds]
+        if not any(isinstance(v, (int, float)) for v in numeric) and not _numbers(" ".join(filter(None, [item.load, item.prescription]))):
             return
         window = self.window(name)
         if window is None:
             flag("Couldn't find this exercise's line in the file to double-check its numbers. Check its dose.")
             return
-        written = set(_numbers(window.replace(",", ".")))
-        def seen(number: float) -> bool:
-            return f"{number:g}" in written
-        missing = [f"{label} {value:g}" for label, value in values.items()
-                   if isinstance(value, (int, float)) and not seen(value)]
-        # Times may be written in minutes or seconds ("3 min" is 180).
-        missing += [f"{label} {value}s" for label, value in timed.items()
-                    if isinstance(value, (int, float)) and not seen(value) and not seen(value / 60)]
-        missing += [number for number in loads if number.replace(",", ".") not in written]
-        if missing:
-            flag(f"Check the dose: {', '.join(missing)} isn't written in \u201c{window[:120]}\u201d.")
+        read = read_dose_line(window)
+        problems: list[str] = []
+
+        def written_as(value: float, *skip: str) -> str | None:
+            """What else this number is on the line, if it's anything."""
+            for role, numbers in read.roles.items():
+                if role not in skip and any(abs(value - n) < 1e-9 for n in numbers):
+                    return role
+            return None
+
+        def verify(label: str, value, role: str, *, seconds: bool = False, also: tuple[str, ...] = ()):
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                return
+            expected = set().union(*(read.roles[r] for r in (role, *also)))
+            if any(abs(value - n) < 1e-9 for n in expected):
+                return
+            shown = f"{label} {value:g}{'s' if seconds else ''}"
+            # A time written in minutes is also checked as minutes.
+            other = written_as(value, role, *also) or (written_as(value / 60, role, *also) if seconds else written_as(value * 60, "count", "reps", "rpe"))
+            if expected and other:
+                problems.append(f"{shown} is written as {ROLE_WORDS[other]}")
+            elif expected:
+                problems.append(f"{shown} isn't written")
+            elif not any(f"{value:g}" == n or (seconds and f"{value / 60:g}" == n) for n in read.bare):
+                problems.append(f"{shown} isn't written")
+            elif other and not expected:
+                # The line doesn't make this role clear, but the number is there as something else.
+                problems.append(f"{shown} is written as {ROLE_WORDS[other]}")
+
+        verify("sets", item.sets, "count")
+        verify("rounds", item.rounds, "count")
+        verify("reps", item.reps, "reps")
+        verify("time", item.seconds, "work", seconds=True)
+        verify("work time", item.work_seconds, "work", seconds=True)
+        verify("rest", item.rest_seconds, "rest", seconds=True, also=("work",) if not read.roles["rest"] else ())
+        if isinstance(item.rpe, (int, float)) and not any(abs(item.rpe - n) < 1e-9 for n in read.roles["rpe"]):
+            problems.append(f"RPE {item.rpe:g} isn't written as an RPE")
+        # Distance: the number and its unit together.
+        if isinstance(item.distance, (int, float)):
+            unit = _unit(item.distance_unit)
+            pairs = read.distances
+            if pairs and not any(abs(item.distance - n) < 1e-9 and (unit is None or unit == u) for n, u in pairs):
+                if any(abs(item.distance - n) < 1e-9 for n, _ in pairs):
+                    problems.append(f"distance {item.distance:g} {unit} has a different unit")
+                else:
+                    problems.append(f"distance {item.distance:g} {unit or ''} isn't written".replace("  ", " "))
+            elif not pairs and f"{item.distance:g}" not in read.bare:
+                problems.append(f"distance {item.distance:g} isn't written")
+        # Load: weights keep their unit; anything else just has to be written.
+        for number, unit in WEIGHT.findall((item.load or "").replace(",", ".")):
+            if (float(number), _weight_unit(unit)) not in read.weights:
+                problems.append(f"load {number}{unit} isn't written")
+        loose = [n for n in _numbers(" ".join(filter(None, [re.sub(WEIGHT, "", (item.load or "")), item.prescription])))]
+        problems += [f"{n} isn't written" for n in loose
+                     if n.replace(",", ".") not in read.bare and f"{float(n.replace(',', '.')):g}" not in read.bare]
+        # A single reps number read out of a written range collapses what the coach wrote.
+        if isinstance(item.reps, int) and read.rep_ranges:
+            problems.append(f"reps {item.reps} was written as the range {read.rep_ranges[0]}")
+        # "each side" is only true if the line says so (and left out if it does).
+        says_per_side = bool(PER_SIDE.search(window))
+        if item.per_side and not says_per_side:
+            problems.append("per side isn't written")
+        elif says_per_side and not item.per_side and (item.reps or item.seconds):
+            problems.append("the line says each side")
+        if problems:
+            flag(f"Check the dose: {'; '.join(problems)} in \u201c{window[:120]}\u201d.")
+
+
+ROLE_WORDS = {"count": "the number of sets or rounds", "reps": "reps", "work": "a work time", "rest": "a rest time", "rpe": "an RPE"}
+TIME_UNITS = r"(?:hours?|hrs?|h|minutes?|mins?|seconds?|secs?|s)"
+DIST_UNITS = r"(?:kms?|k|miles?|mi|metres?|meters?|m|yards?|yds?)"
+DOSE_PAIR = re.compile(r"\d\s*(?:x|\u00d7|\*)\s*\d", re.I)
+AXB = re.compile(rf"(?<![\d.])(\d+)\s*(?:x|\u00d7|\*)\s*(\d+(?:\.\d+)?)(?:\s*[-\u2013]\s*(\d+(?:\.\d+)?))?\s*(?:({TIME_UNITS})\b|({DIST_UNITS})\b)?", re.I)
+TIME = re.compile(rf"(?<![\d.])(\d+(?:\.\d+)?)(?:\s*[-\u2013]\s*(\d+(?:\.\d+)?))?\s*({TIME_UNITS})\b", re.I)
+DISTANCE = re.compile(rf"(?<![\d.])(\d+(?:\.\d+)?)\s*({DIST_UNITS})\b", re.I)
+WEIGHT = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*(kgs?|lbs?|pounds?|%)", re.I)
+RPE_AT = re.compile(r"\brpe\s*:?\s*(\d+(?:\.\d+)?)(?:\s*[-\u2013]\s*(\d+(?:\.\d+)?))?|@\s*(\d+(?:\.\d+)?)\b(?!\s*(?:kgs?|lbs?|%))", re.I)
+PER_SIDE = re.compile(r"\b(?:each|per|every)\s+(?:side|leg|arm|hand|foot)\b|/\s*(?:side|leg|arm|hand|foot)\b|\bboth\s+(?:sides|legs|arms)\b|\balternating\b", re.I)
+REST_AFTER = re.compile(r"^\W{0,3}(?:rest|off|easy|recover\w*|walk\w*|break)\b", re.I)
+REST_BEFORE = re.compile(r"\brest\w*\W{0,3}(?:of\W{0,2})?$", re.I)
+
+
+def _weight_unit(unit: str) -> str:
+    unit = unit.lower()
+    return "kg" if unit.startswith("kg") else "%" if unit == "%" else "lb"
+
+
+@dataclass
+class DoseLine:
+    roles: dict[str, set[float]]
+    distances: set[tuple[float, str]]
+    weights: set[tuple[float, str]]
+    bare: set[str]
+    rep_ranges: list[str]
+
+
+def read_dose_line(text: str) -> DoseLine:
+    """What each number on a source line is, by position and unit:
+    "3 x 8" is 3 sets of 8 reps; "6 x 3 min" is 6 rounds of 180s; "1 min rest"
+    is a rest; "5 km" is a distance; "140kg" is a weight."""
+    text = text.replace(",", ".") if re.search(r"\d,\d", text) else text
+    roles: dict[str, set[float]] = {"count": set(), "reps": set(), "work": set(), "rest": set(), "rpe": set()}
+    distances: set[tuple[float, str]] = set()
+    weights: set[tuple[float, str]] = set()
+    ranges: list[str] = []
+    for first, second, upper, time_unit, dist_unit in AXB.findall(text):
+        roles["count"].add(float(first))
+        if dist_unit:
+            continue  # the distance pattern below reads it
+        if not time_unit:
+            if upper:
+                ranges.append(f"{second}-{upper}")
+            else:
+                roles["reps"].add(float(second))
+    for number, kind in re.findall(r"(\d+)\s*(sets?|rounds?|reps?)\b", text, re.I):
+        roles["reps" if kind.lower().startswith("rep") else "count"].add(float(number))
+    for number in re.findall(r"sets?\s+of\s+(\d+)", text, re.I):
+        roles["reps"].add(float(number))
+    for match in TIME.finditer(text):
+        low, high, unit = match.group(1), match.group(2), match.group(3).lower()
+        factor = 3600 if unit.startswith(("h", "hr")) else 60 if unit.startswith("m") else 1
+        after, before = text[match.end():match.end() + 12], text[max(0, match.start() - 10):match.start()]
+        # The words straight after (or "rest" straight before) say whether it is rest.
+        role = "rest" if REST_AFTER.match(after) or REST_BEFORE.search(before) else "work"
+        for value in filter(None, (low, high)):
+            roles[role].add(float(value) * factor)
+    for number, unit in DISTANCE.findall(text):
+        distances.add((float(number), _unit(unit) or unit.lower()))
+    for number, unit in WEIGHT.findall(text):
+        weights.add((float(number), _weight_unit(unit)))
+    for low, high, at in RPE_AT.findall(text):
+        for value in filter(None, (low, high, at)):
+            roles["rpe"].add(float(value))
+    bare = {f"{float(n):g}" for n in re.findall(r"(?<![\d.])\d+(?:\.\d+)?", text)}
+    return DoseLine(roles, distances, weights, bare, ranges)
 
 
 def build_draft(read: ReadPlan, start: date, source: str | None = None) -> PlanImportResult:
