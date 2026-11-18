@@ -232,3 +232,13 @@ export type DeclaredWeeklySchedule = Expect<Declared<Web.WeeklySchedule, Api.Wee
 
 export type ReadAdminTimeToFirstPlanSummary = Reads<Api.AdminTimeToFirstPlanSummary, Web.AdminTimeToFirstPlanSummary>;
 export type DeclaredAdminTimeToFirstPlanSummary = Expect<Declared<Web.AdminTimeToFirstPlanSummary, Api.AdminTimeToFirstPlanSummary>>;
+
+export type ReadExercisePrescription = Reads<Api.ExercisePrescription, Web.ExercisePrescription>;
+export type DeclaredExercisePrescription = Expect<Declared<Web.ExercisePrescription, Api.ExercisePrescription>>;
+
+// Custom Build writes generated dose values. The permissive Web value types
+// above are defensive read views, not the request payload the editor submits.
+export type SendExercisePrescription = Sends<Api.ExercisePrescription, Api.ExercisePrescriptionRequest>;
+export type SendEffortPrescription = Sends<Api.EffortPrescription, Api.EffortPrescriptionRequest>;
+export type SendLoadPrescription = Sends<Api.LoadPrescription, Api.LoadPrescriptionRequest>;
+export type SendMeasuredValue = Sends<Api.MeasuredValue, Api.MeasuredValueRequest>;

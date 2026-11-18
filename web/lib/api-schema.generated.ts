@@ -628,7 +628,7 @@ export type CountdownLabel = {
 };
 
 export type CustomDose = {
-  mode: "distance" | "duration" | "intervals" | "reps" | "text";
+  mode: "distance" | "duration" | "intervals" | "reps" | "stages" | "text";
   sets: number | null;
   reps: number | null;
   duration_seconds: number | null;
@@ -642,10 +642,11 @@ export type CustomDose = {
   distance: number | null;
   distance_unit: "km" | "m" | "mi" | "yd" | null;
   prescription: string | null;
+  prescribed_sets?: ExercisePrescription[] | null;
 };
 
 export type CustomDoseRequest = {
-  mode?: "distance" | "duration" | "intervals" | "reps" | "text";
+  mode?: "distance" | "duration" | "intervals" | "reps" | "stages" | "text";
   sets?: number | null;
   reps?: number | null;
   duration_seconds?: number | null;
@@ -659,6 +660,7 @@ export type CustomDoseRequest = {
   distance?: number | null;
   distance_unit?: "km" | "m" | "mi" | "yd" | null;
   prescription?: string | null;
+  prescribed_sets?: ExercisePrescriptionRequest[] | null;
 };
 
 export type CustomDoseSuggestion = {
@@ -671,6 +673,8 @@ export type CustomDoseSuggestion = {
 };
 
 export type CustomExercise = {
+  exercise_code?: string | null;
+  group_type?: "alternating_sets" | "circuit" | "superset" | null;
   id: string;
   origin: "catalogue";
   catalogue_id: string;
@@ -683,6 +687,8 @@ export type CustomExercise = {
 };
 
 export type CustomExerciseInput = {
+  exercise_code?: string | null;
+  group_type?: "alternating_sets" | "circuit" | "superset" | null;
   id: string;
   origin?: "catalogue";
   catalogue_id: string;
@@ -737,6 +743,7 @@ export type CustomPlanInput = {
 };
 
 export type CustomSession = {
+  programme_week?: number | null;
   id: string;
   name: string;
   weekday: "Friday" | "Monday" | "Saturday" | "Sunday" | "Thursday" | "Tuesday" | "Wednesday" | null;
@@ -747,6 +754,7 @@ export type CustomSession = {
 };
 
 export type CustomSessionInput = {
+  programme_week?: number | null;
   id: string;
   name: string;
   weekday?: "Friday" | "Monday" | "Saturday" | "Sunday" | "Thursday" | "Tuesday" | "Wednesday" | null;
@@ -784,6 +792,13 @@ export type EffortPrescription = {
   method: "RIR" | "RPE" | "heart_rate_zone" | "intent" | "max_effort_percent" | "pace" | "velocity";
   value: number | string;
   scale: string | null;
+};
+
+/** Target effort expressed via a named method (RPE, RIR, intent...). */
+export type EffortPrescriptionRequest = {
+  method: "RIR" | "RPE" | "heart_rate_zone" | "intent" | "max_effort_percent" | "pace" | "velocity";
+  value: number | string;
+  scale?: string | null;
 };
 
 export type EmailPreference = {
@@ -1066,6 +1081,44 @@ export type ExercisePerformance = {
 export type ExercisePerformancesResponse = {
   performances: ExercisePerformance[];
   next_cursor: string | null;
+};
+
+/** One source row/loading stage; omitted values and units stay unknown. */
+export type ExercisePrescription = {
+  sets: number | null;
+  reps: number | string | null;
+  load: LoadPrescription | null;
+  percentage: number | null;
+  weight: MeasuredValue | null;
+  duration: MeasuredValue | null;
+  rest: MeasuredValue | null;
+  effort: EffortPrescription | null;
+  tempo: TempoPrescription | null;
+  work: MeasuredValue | null;
+  distance: MeasuredValue | null;
+  rounds: number | null;
+  intensity: string | null;
+  per_side: string | null;
+  source_text: string | null;
+};
+
+/** One source row/loading stage; omitted values and units stay unknown. */
+export type ExercisePrescriptionRequest = {
+  sets?: number | null;
+  reps?: number | string | null;
+  load?: LoadPrescriptionRequest | null;
+  percentage?: number | null;
+  weight?: MeasuredValueRequest | null;
+  duration?: MeasuredValueRequest | null;
+  rest?: MeasuredValueRequest | null;
+  effort?: EffortPrescriptionRequest | null;
+  tempo?: TempoPrescriptionRequest | null;
+  work?: MeasuredValueRequest | null;
+  distance?: MeasuredValueRequest | null;
+  rounds?: number | null;
+  intensity?: string | null;
+  per_side?: string | null;
+  source_text?: string | null;
 };
 
 /** The weight last logged for an exercise, carried into the next log. */
@@ -1562,7 +1615,25 @@ export type LoadPrescription = {
   display: string | null;
 };
 
+/**
+ * How much to load a block, kept machine-readable.
+ *
+ * Example::
+ *
+ *     {"method": "percentage", "value": 85, "unit": "percent",
+ *      "ref": "1RM", "display": "85% 1RM"}
+ */
+export type LoadPrescriptionRequest = {
+  method: "absolute" | "band" | "bodyweight" | "other" | "percentage" | "relative" | "rir" | "rpe" | "velocity";
+  value: number;
+  unit: string;
+  ref?: string | null;
+  display?: string | null;
+};
+
 export type ManualExercise = {
+  exercise_code?: string | null;
+  group_type?: "alternating_sets" | "circuit" | "superset" | null;
   id: string;
   origin: "manual";
   exercise_type: "bodyweight" | "other" | "power" | "strength" | null;
@@ -1593,6 +1664,8 @@ export type ManualExerciseEntry = {
 };
 
 export type ManualExerciseInput = {
+  exercise_code?: string | null;
+  group_type?: "alternating_sets" | "circuit" | "superset" | null;
   id: string;
   origin: "manual";
   exercise_type?: "bodyweight" | "other" | "power" | "strength" | null;
@@ -1627,6 +1700,12 @@ export type MeResponse = {
 
 /** A scalar quantity with an explicit unit (duration, distance, mass...). */
 export type MeasuredValue = {
+  value: number;
+  unit: string;
+};
+
+/** A scalar quantity with an explicit unit (duration, distance, mass...). */
+export type MeasuredValueRequest = {
   value: number;
   unit: string;
 };
@@ -2567,6 +2646,10 @@ export type SessionBlock = {
   mechanical_load_regions: string[] | null;
   tags: string[] | null;
   display_name: string;
+  exercise_code: string | null;
+  exercise_block: string | null;
+  group_type: "alternating_sets" | "circuit" | "superset" | null;
+  prescribed_sets: ExercisePrescription[];
   category: string | null;
   order_index: number | null;
   duration: MeasuredValue | null;
@@ -2827,6 +2910,14 @@ export type TempoPrescription = {
   pause_bottom: number | string | null;
   concentric: number | string | null;
   pause_top: number | string | null;
+};
+
+/** Lift tempo phases. Values are seconds or a cue such as ``"X"``. */
+export type TempoPrescriptionRequest = {
+  eccentric?: number | string | null;
+  pause_bottom?: number | string | null;
+  concentric?: number | string | null;
+  pause_top?: number | string | null;
 };
 
 /**

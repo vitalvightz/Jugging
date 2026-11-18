@@ -42,7 +42,7 @@ export function weighedFormat(mode: string, ...sources: (object | null | undefin
 }
 
 type DoseShape = {
-  mode: "reps" | "duration" | "intervals" | "distance" | "text";
+  mode: "reps" | "duration" | "intervals" | "distance" | "text" | "stages";
   sets?: number | null; reps?: number | null; rounds?: number | null;
   work_seconds?: number | null; duration_seconds?: number | null; rest_seconds?: number | null;
   distance?: number | null; distance_unit?: "m" | "km" | "mi" | "yd" | null;
@@ -60,7 +60,7 @@ const blank = (value: unknown) => value == null || value === "";
  * in where nothing was suggested. The last weight fills an empty weight.
  */
 export function withPastDose<T extends DoseShape>(dose: T, past: PersonalExercise | null | undefined, preserveMode = false): T {
-  if (!past) return dose;
+  if (!past || dose.mode === "stages") return dose;
   const values = past.latest_values;
   // No suggested format at all: the athlete's last session sets one.
   const unformatted = (["sets", "reps", "rounds", "work_seconds", "duration_seconds", "distance", "prescription"] as const)

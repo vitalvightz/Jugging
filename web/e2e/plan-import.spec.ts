@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { readFileSync } from "node:fs";
 import { deflateRawSync } from "node:zlib";
 import { entries, setup } from "./custom-plan-fixture";
 
@@ -218,3 +219,61 @@ test("screenshots are redrawn as plain JPEGs and sent once; pasted text works to
   await page.getByRole("button", { name: "Review and edit" }).click();
   await expect(page.getByText("Imported from pasted text. Tick each thing to check once it's fixed or checked, then save.")).toBeVisible();
 });
+
+
+for (const width of [390, 1280]) {
+test(`S&C screenshot import keeps seven exercises through stage editing, save and reopen at ${width}px`, async ({ page, baseURL }, info) => {
+  test.skip(Boolean(process.env.CUSTOM_PLAN_TEST_API), "Uses the checked importer-response fixture.");
+  test.setTimeout(90_000);
+  const imported = JSON.parse(readFileSync("../tests/fixtures/plan_import/sc_week5.draft.json", "utf8"));
+  await page.setViewportSize({ width, height: 900 });
+  const { saved } = await setup(page, baseURL!);
+  const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
+  await page.route("**/api/custom-plans/import", route => route.fulfill({ contentType: "application/json", body: JSON.stringify(imported) }));
+  await page.goto("/plans/import");
+  await page.getByLabel("Plan file (PDF, Word or screenshots)").setInputFiles({ name: "Week5.png", mimeType: "image/png", buffer: PNG });
+  await expect(page.getByText("Found in")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Review and edit" })).toBeDisabled();
+  await page.getByRole("combobox", { name: "Day 1 (Total)", exact: true }).selectOption("Wednesday");
+  await page.getByRole("button", { name: "Review and edit" }).click();
+  await expect(page).toHaveURL(/imported=1/);
+  await page.getByRole("group", { name: "Plan view", exact: true }).getByRole("button", { name: "Week", exact: true }).click();
+  await expect(page.locator(".ex-row-title")).toHaveCount(7);
+  for (const name of ["A1 — Clean", "A2 — Back Extension Iso", "B1 — Back Squat", "B2 — Ankle PAIL&RAIL", "C1 — S.A. DB High Incline Bench", "C2 — Lat Pull Down", "D1 — Barbell RDL"]) {
+    await expect(page.getByText(name, { exact: true })).toBeVisible();
+  }
+  await expect(page.getByText("Week 5 · 7 exercises")).toBeVisible();
+  expect(saved.size).toBe(0);
+  await page.getByRole("button", { name: "Quick dose for Clean", exact: true }).click();
+  await expect(page.getByLabel("Stage 8 percentage", { exact: true })).toHaveValue("95");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath("sc-stage-editor.png") });
+  await expect(page.getByLabel("Stage 8 source notation", { exact: true })).toHaveValue("WT: 225");
+  await page.getByLabel("Stage 8 source notation", { exact: true }).fill("WT: 230");
+  await page.getByRole("button", { name: "Done editing dose" }).click();
+  await page.getByText("A1 — Clean", { exact: true }).click();
+  await expect(page.getByRole("list", { name: "Prescribed sets" }).locator("li")).toHaveCount(8);
+  await expect(page.getByText("95% · 3 × 1 · WT: 230", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath("sc-week5-loading-stages.png"), fullPage: true });
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect.poll(() => saved.size).toBe(1);
+  const plan = [...saved.values()][0];
+  await expect(page).toHaveURL(new RegExp(`plan=${plan.id}`));
+  const session = plan.sessions[0];
+  expect(session.weekday).toBe("Wednesday");
+  expect(session.programme_week).toBe(5);
+  expect(session.name).toBe("Day 1 (Total)");
+  expect(session.exercises).toHaveLength(7);
+  expect(session.exercises.map(e => e.dose.prescribed_sets?.length)).toEqual([8, 1, 6, 1, 3, 1, 1]);
+  expect(session.exercises[0].dose.prescribed_sets?.at(-1)?.source_text).toBe("WT: 230");
+  await page.reload();
+  await page.getByRole("group", { name: "Plan view", exact: true }).getByRole("button", { name: "Week", exact: true }).click();
+  await expect(page.locator(".ex-row-title")).toHaveCount(7);
+  await page.getByRole("button", { name: "Quick dose for Clean", exact: true }).click();
+  await expect(page.getByLabel("Stage 8 source notation", { exact: true })).toHaveValue("WT: 230");
+  await expect(page.getByLabel("Stage 8 percentage", { exact: true })).toHaveValue("95");
+  expect(errors).toEqual([]);
+});
+
+}

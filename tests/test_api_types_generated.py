@@ -78,3 +78,19 @@ def test_two_way_schemas_get_a_request_variant():
     for name in both:
         assert f"export type {name} = " in generated
         assert f"export type {name}Request = " in generated
+
+
+def test_fastapi_input_output_names_are_valid_typescript_and_keep_request_variants():
+    spec = {"components": {"schemas": {
+        "Example-Input": {"type": "object", "properties": {"value": {"type": "string"}}},
+        "Example-Output": {"type": "object", "properties": {"value": {"type": "string"}}},
+        "Wrapper": {"type": "object", "properties": {"request": {"$ref": "#/components/schemas/Example-Input"},
+                                                            "response": {"$ref": "#/components/schemas/Example-Output"}}},
+    }}, "paths": {"/example": {"post": {"requestBody": {"$ref": "#/components/schemas/Example-Input"},
+                                               "responses": {"200": {"$ref": "#/components/schemas/Example-Output"}}}}}}
+    generated = render(spec)
+    assert "export type ExampleRequest =" in generated
+    assert "export type Example =" in generated
+    assert "value?: string" in generated
+    assert "request: ExampleRequest" in generated and "response: Example" in generated
+    assert "Example-Input" not in generated and "Example-Output" not in generated

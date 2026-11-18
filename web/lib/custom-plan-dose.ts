@@ -1,5 +1,6 @@
 import type { CustomDose, CustomDoseSuggestion, PersonalExercise } from "./api-schema.generated";
 import { personalWeightRecommendation } from "./weight-recommendation";
+import { formatExercisePrescription } from "./structured-plan";
 import { parseLoad } from "./load-entry";
 import { withPastDose } from "./load-entry";
 export const blankDose = (mode: CustomDose["mode"] = "reps"): CustomDose => ({
@@ -21,6 +22,11 @@ export const blankDose = (mode: CustomDose["mode"] = "reps"): CustomDose => ({
 /** The dose as written. A partly filled dose shows what is there and names
  * what's missing ("3 rounds · duration unspecified"), never a bare "Set …". */
 export function doseSummary(d: CustomDose, name?: string | null) {
+  if (d.mode === "stages") return [
+    ...(d.prescribed_sets ?? []).map(formatExercisePrescription), d.load_or_intensity,
+    d.rest_seconds != null ? `rest ${d.rest_seconds}s` : null,
+    d.rpe != null ? `RPE ${d.rpe}` : null, d.tempo ? `tempo ${d.tempo}` : null,
+  ].filter(Boolean).join("; ");
   if (doseOptional(name) && doseIncomplete(d) && !filled(d)) return "";
   const time = (seconds: number) => seconds % 60 === 0 ? `${seconds / 60} min` : `${seconds}s`;
   const count = (value: number, word: string) => `${value} ${word}${value === 1 ? "" : "s"}`;
@@ -64,6 +70,7 @@ export function exerciseIncomplete(e: Dosed): boolean {
 }
 
 export function doseIncomplete(d: CustomDose): boolean {
+  if (d.mode === "stages") return !d.prescribed_sets?.length || d.prescribed_sets.some(stage => !formatExercisePrescription(stage).trim());
   if (d.mode === "distance") return !(d.distance && d.distance_unit);
   if (d.mode === "reps") return !(d.sets && d.reps);
   if (d.mode === "duration") return !d.duration_seconds || Boolean(d.distance) !== Boolean(d.distance_unit);
@@ -101,3 +108,10 @@ export function libraryPrefill(
   const fromPast = JSON.stringify(dose) !== JSON.stringify(start);
   return { dose, source: fromLibrary && fromPast ? "Library format · your last session" : fromLibrary ? "Library format" : "Your last session" };
 }
+
+
+export const blankPrescribedSet = (): NonNullable<CustomDose["prescribed_sets"]>[number] => ({
+  sets: null, reps: null, percentage: null, weight: null, load: null,
+  duration: null, rest: null, effort: null, tempo: null, work: null,
+  distance: null, rounds: null, intensity: null, per_side: null, source_text: null,
+});

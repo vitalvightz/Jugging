@@ -1,0 +1,241 @@
+{
+  "name": "Strength Phase 2",
+  "weeks": [
+    {
+      "week_index": 5,
+      "sessions": [
+        {
+          "name": "Day 1 (Total)",
+          "days": [],
+          "session_type": "strength_power",
+          "exercises": [
+            {
+              "exercise_code": "A1",
+              "name": "Clean",
+              "prescribed_sets": [
+                {
+                  "percentage": 50.0,
+                  "reps": 2,
+                  "source_text": "WT: 120"
+                }
+              ]
+            },
+            {
+              "exercise_code": null,
+              "name": "",
+              "prescribed_sets": [
+                {
+                  "percentage": 60.0,
+                  "reps": 1,
+                  "source_text": "WT: 140"
+                }
+              ]
+            },
+            {
+              "exercise_code": null,
+              "name": "",
+              "prescribed_sets": [
+                {
+                  "percentage": 70.0,
+                  "reps": 1,
+                  "source_text": "WT: 165"
+                }
+              ]
+            },
+            {
+              "exercise_code": null,
+              "name": "",
+              "prescribed_sets": [
+                {
+                  "percentage": 75.0,
+                  "reps": 1,
+                  "source_text": "WT: 175"
+                }
+              ]
+            },
+            {
+              "exercise_code": null,
+              "name": "",
+              "prescribed_sets": [
+                {
+                  "percentage": 80.0,
+                  "reps": 1,
+                  "source_text": "WT: 190"
+                }
+              ]
+            },
+            {
+              "exercise_code": null,
+              "name": "",
+              "prescribed_sets": [
+                {
+                  "percentage": 85.0,
+                  "reps": 1,
+                  "source_text": "WT: 200"
+                }
+              ]
+            },
+            {
+              "exercise_code": null,
+              "name": "",
+              "prescribed_sets": [
+                {
+                  "percentage": 90.0,
+                  "reps": 1,
+                  "source_text": "WT: 210"
+                }
+              ]
+            },
+            {
+              "exercise_code": null,
+              "name": "",
+              "prescribed_sets": [
+                {
+                  "percentage": 95.0,
+                  "sets": 3,
+                  "reps": 1,
+                  "source_text": "WT: 225"
+                }
+              ]
+            },
+            {
+              "exercise_code": "A2",
+              "name": "Back Extension Iso",
+              "prescribed_sets": [
+                {
+                  "sets": 3,
+                  "reps": "25 sec"
+                }
+              ]
+            },
+            {
+              "exercise_code": "B1",
+              "name": "Back Squat",
+              "prescribed_sets": [
+                {
+                  "percentage": 50.0,
+                  "reps": 3,
+                  "source_text": "WT: 170"
+                }
+              ]
+            },
+            {
+              "exercise_code": null,
+              "name": "",
+              "prescribed_sets": [
+                {
+                  "percentage": 60.0,
+                  "reps": 2,
+                  "source_text": "WT: 200"
+                }
+              ]
+            },
+            {
+              "exercise_code": null,
+              "name": "",
+              "prescribed_sets": [
+                {
+                  "percentage": 70.0,
+                  "reps": 1,
+                  "source_text": "WT: 235"
+                }
+              ]
+            },
+            {
+              "exercise_code": null,
+              "name": "",
+              "prescribed_sets": [
+                {
+                  "percentage": 75.0,
+                  "reps": 1,
+                  "source_text": "WT: 250"
+                }
+              ]
+            },
+            {
+              "exercise_code": null,
+              "name": "",
+              "prescribed_sets": [
+                {
+                  "percentage": 80.0,
+                  "reps": 1,
+                  "source_text": "WT: 270"
+                }
+              ]
+            },
+            {
+              "exercise_code": null,
+              "name": "",
+              "prescribed_sets": [
+                {
+                  "percentage": 88.0,
+                  "sets": 7,
+                  "reps": 1,
+                  "source_text": "WT: 295"
+                }
+              ]
+            },
+            {
+              "exercise_code": "B2",
+              "name": "Ankle PAIL&RAIL",
+              "prescribed_sets": [
+                {
+                  "sets": 2,
+                  "reps": "2 Ea"
+                }
+              ]
+            },
+            {
+              "exercise_code": "C1",
+              "name": "S.A. DB High Incline Bench",
+              "prescribed_sets": [
+                {
+                  "reps": "4e"
+                }
+              ]
+            },
+            {
+              "exercise_code": null,
+              "name": "",
+              "prescribed_sets": [
+                {
+                  "reps": "4e"
+                }
+              ]
+            },
+            {
+              "exercise_code": null,
+              "name": "",
+              "prescribed_sets": [
+                {
+                  "reps": "4e"
+                }
+              ]
+            },
+            {
+              "exercise_code": "C2",
+              "name": "Lat Pull Down",
+              "prescribed_sets": [
+                {
+                  "sets": 3,
+                  "reps": 4
+                }
+              ]
+            },
+            {
+              "exercise_code": "D1",
+              "name": "Barbell RDL",
+              "prescribed_sets": [
+                {
+                  "sets": 3,
+                  "reps": 5,
+                  "source_text": "WT: 225"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

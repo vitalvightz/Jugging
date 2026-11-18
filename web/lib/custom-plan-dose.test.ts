@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CustomDoseSuggestion, PersonalExercise } from "./api-schema.generated";
-import { blankDose, libraryPrefill } from "./custom-plan-dose";
+import { blankDose, blankPrescribedSet, doseSummary, libraryPrefill } from "./custom-plan-dose";
 
 const suggestion = (value: Partial<CustomDoseSuggestion>): CustomDoseSuggestion =>
   ({ dose: null, format_dose: null, original: "", ...value }) as CustomDoseSuggestion;
@@ -71,4 +71,12 @@ test("no reliable source means no prefill, never an invented dose", () => {
   assert.equal(libraryPrefill(null, null), null);
   assert.equal(libraryPrefill(suggestion({}), null), null);
   assert.equal(libraryPrefill(suggestion({ format_dose: blankDose("reps") }), null), null);
+});
+
+
+test("stage summaries keep time, weight, percentages and explicit zero rest without guessing units", () => {
+  const dose = { ...blankDose("stages"), prescribed_sets: [{ ...blankPrescribedSet(),
+    sets: 3, reps: 1, percentage: 95, weight: { value: 225, unit: "" }, duration: { value: 2, unit: "seconds" },
+    rest: { value: 0, unit: "seconds" }, per_side: "each side", source_text: "working sets" }] };
+  assert.equal(doseSummary(dose), "95% · 3 × 1 · 2 seconds · 225 · Rest 0 seconds · each side · working sets");
 });

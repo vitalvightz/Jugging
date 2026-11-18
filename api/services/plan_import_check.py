@@ -34,6 +34,7 @@ class SourceCheck:
         # in several weeks ("Trap Bar Deadlift: 4x5", later "4x3"), so the next
         # one is looked for after it first: each week's line, not week 1's.
         self.cursor = 0
+        self.reps_first = False
         # A repeated week, or an every-week session, is the same reading: checked once.
         self.checked: set[int] = set()
         # Exercises whose numbers still don't match their line, for the second look.
@@ -67,6 +68,8 @@ class SourceCheck:
         best = ahead[0] if ahead else tied[-1]
         if ahead and dosed:
             self.cursor = best + 1
+        headers = [line for line in self.lines[:best + 1] if re.search(r"\b(?:reps\s*[x×]\s*sets|sets\s*[x×]\s*reps)\b", line, re.I)]
+        self.reps_first = bool(headers and re.search(r"\breps\s*[x×]\s*sets\b", headers[-1], re.I))
         # The dose is on the exercise's own line. Only a line with no numbers
         # (a heading such as "WEDNESDAY - Pads") borrows the next line or two.
         window = [self._own_clauses(self.lines[best], set(_tokens(written) or _tokens(name)))]
@@ -116,7 +119,7 @@ class SourceCheck:
             return
         # A circuit's rounds are written on its heading, not on each exercise's line.
         group = _clean(item.group)
-        read = read_dose_line(f"{window} ({group})" if group else window)
+        read = read_dose_line(f"{window} ({group})" if group else window, reps_first=self.reps_first)
         problems: list[str] = []
         # A rep range read without its sets ("8-10" from "Push-ups 4x8-10"): the sets are on the line.
         written_range = re.match(r"^\s*(\d+\s*[-\u2013]\s*\d+)\b", item.prescription or "")
@@ -238,7 +241,7 @@ RPE_AT = re.compile(r"\brpe\s*:?\s*(\d+(?:\.\d+)?)(?:\s*[-\u2013]\s*(\d+(?:\.\d+
 # "/leg" counts only after a dose ("6 reps/leg", "8 sec max speed/side"), never in a name ("Knee/Leg Raises").
 # "each way", "per direction" (neck holds) and a bare "2x30s each" (side plank) may be read either way.
 EACH_WAY = re.compile(r"\b(?:each|per|every)\s+(?:way|direction)\b|/\s*direction\b|\d\w*\s+each\b(?!\s+[a-z])", re.I)
-PER_SIDE = re.compile(r"\b(?:each|per|every)\s+(?:side|leg|arm|hand|foot)\b|\d\s*(?:(?:reps?|secs?|seconds?|s|m|meters?|metres?|mins?|minutes?|yds?|yards?)\b[\w .]{0,20}?)?/\s*(?:side|leg|arm|hand|foot)\b|\bboth\s+(?:sides|legs|arms)\b|\balternating\b", re.I)
+PER_SIDE = re.compile(r"\b(?:each|per|every)\s+(?:side|leg|arm|hand|foot)\b|\d\s*(?:(?:reps?|secs?|seconds?|s|m|meters?|metres?|mins?|minutes?|yds?|yards?)\b[\w .]{0,20}?)?/\s*(?:side|leg|arm|hand|foot)\b|\bboth\s+(?:sides|legs|arms)\b|\balternating\b|\bE/S\b|\b\d+\s*(?:e|ea)\b", re.I)
 REST_AFTER = re.compile(r"^\W{0,3}(?:rest|off|easy|recover\w*|walk\w*|break)\b", re.I)
 REST_BEFORE = re.compile(r"\brest\w*\W{0,3}(?:of\W{0,2})?$", re.I)
 
@@ -265,7 +268,7 @@ class DoseLine:
     rep_ranges: list[str]
 
 
-def read_dose_line(text: str) -> DoseLine:
+def read_dose_line(text: str, *, reps_first: bool = False) -> DoseLine:
     """What each number on a source line is, by position and unit:
     "3 x 8" is 3 sets of 8 reps; "6 x 3 min" is 6 rounds of 180s; "1 min rest"
     is a rest; "5 km" is a distance; "140kg" is a weight."""
@@ -275,6 +278,8 @@ def read_dose_line(text: str) -> DoseLine:
     weights: set[tuple[float, str]] = set()
     ranges: list[str] = []
     for first, second, upper, time_unit, dist_unit in AXB.findall(text):
+        if reps_first and not time_unit and not dist_unit and not upper:
+            first, second = second, first
         roles["count"].add(float(first))
         if dist_unit:
             continue  # the distance pattern below reads it
@@ -311,11 +316,11 @@ WRITTEN_DAYS = re.compile(rf"\b({DAY_WORD})(?:\s*(?:-|\u2013|\u2014|\bto\b|\bthr
 WEEK_NUMBERS = re.compile(r"\bweeks?\s+(\d{1,2})(?:\s*(?:-|\u2013|to)\s*(\d{1,2}))?\b", re.I)
 
 
-def written_layout_flags(source: str, weeks: int, days: set[str], flag) -> None:
+def written_layout_flags(source: str, weeks: int, days: set[str], flag, imported_weeks: set[int] | None = None) -> None:
     """The plan's shape checked against the programme text: a week the text numbers
     but the reading doesn't have, and a training day the text never names."""
     numbers = [int(n) for pair in WEEK_NUMBERS.findall(source) for n in pair if n]
-    if numbers and weeks < max(numbers) <= MAX_WEEKS:
+    if numbers and weeks < max(numbers) <= MAX_WEEKS and not (imported_weeks and set(numbers) <= imported_weeks):
         flag("Plan", f"The programme mentions Week {max(numbers)}, but only {weeks} {'week was' if weeks == 1 else 'weeks were'} read.")
     written: set[str] = set()
     for first, last in WRITTEN_DAYS.findall(source):
