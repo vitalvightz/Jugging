@@ -3757,6 +3757,14 @@ PRESCRIPTION SHAPES
   ("max", "explosive"), never a number. Preserve the source method.
 - tempo uses eccentric/pause_bottom/concentric/pause_top, with seconds or X.
 - Route labelled source text verbatim: How -> execution_instructions;
+  A1/A2/Z12 are exercise_code positions inside sessions; exercise_block is
+  their letter, never a day. Preserve codes/order. group_type requires an
+  explicit superset/circuit/alternating instruction.
+  Week 5 and Day 1 are independent; unscheduled weekday=null, date/countdown
+  empty. Keep warm-up/loading/repeated rows in one
+  exercise's prescribed_sets, with all reps/sets, percentages AND weights,
+  holds/per-side details. Read REPS X SETS in order. Unknown units stay in source_text;
+  invent nothing. Stages replace uniform summaries.
   Cue -> coaching_cues; Purpose -> purpose; Why today -> why_today;
   Easier/Regression -> regression_options; Swap -> substitutions;
   Progress/Progression -> progression_rule;
@@ -3822,6 +3830,7 @@ ROOT SHAPE EXAMPLE (replace example values; omit unsupported optional detail):
               "blocks": [
                 {{
                   "block_id": "blk-1", "block_type": "strength", "display_name": "...", "sets": 4, "reps": 4,
+                  "exercise_code": null, "exercise_block": null, "group_type": null, "prescribed_sets": [],
                   "load": {{"method": "percentage", "value": 85, "unit": "percent", "ref": "1RM", "display": "85% 1RM"}},
                   "rest": {{"value": 180, "unit": "seconds"}}, "duration": null,
                   "purpose": "...", "why_today": "...", "coaching_cues": ["..."],

@@ -362,9 +362,10 @@ def _explicit_prescription_violations(plan: dict[str, Any], source: str, plannin
                                 violations.append(f"{PRESCRIPTION_CHANGED}: {name!r} added movement tempo to a hold")
                     if str(block.get("block_type")) not in _EXERCISE_BLOCK_TYPES:
                         continue
+                    prescriptions = [block, *[stage for stage in block.get("prescribed_sets") or [] if isinstance(stage, dict)]]
                     checks = (
-                        (_SOURCE_REST_RE.search(segment), bool(block.get("rest") or block.get("rest_note")), "rest"),
-                        (_SOURCE_EFFORT_RE.search(segment), bool(block.get("effort")), "effort"),
+                        (_SOURCE_REST_RE.search(segment), any(p.get("rest") or p.get("rest_note") for p in prescriptions), "rest"),
+                        (_SOURCE_EFFORT_RE.search(segment), any(p.get("effort") for p in prescriptions), "effort"),
                         (_SOURCE_CUE_RE.search(segment), bool(block.get("coaching_cues")), "cue"),
                     )
                     for source_match, structured_present, field_name in checks:

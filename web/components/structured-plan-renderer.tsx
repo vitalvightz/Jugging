@@ -9,6 +9,8 @@ import { getRehabExerciseGuide, rehabExerciseTarget } from "@/lib/rehab-exercise
 import {
   compactTimeUnits,
   readableExerciseMetrics,
+  formatExercisePrescription,
+  safeArray,
   classifySessionlessDay,
   isPlainRestDay,
   PLAIN_REST_HEADLINE_RE,
@@ -555,7 +557,8 @@ export function BlockCard({
       {/* Embedded, the exercise row's header already carries the name and type. */}
       {embedded ? null : (
         <div className="sp-block-head">
-          <span className="sp-block-title">{title}</span>
+          <span className="sp-block-title">{block.exercise_code ? `${block.exercise_code} — ` : ""}{title}</span>
+          {block.group_type ? <span className="sp-tag">{block.group_type.replace(/_/g, " ")}</span> : null}
           {tagLabel ? (
             <span className="sp-tag">
               {tagLabel}
@@ -570,6 +573,14 @@ export function BlockCard({
       {prescriptionText && !showMetricTiles ? <p className="sp-block-purpose">{prescriptionText}</p> : null}
       {block.notes && !hasAthleteMetrics ? <p className="sp-block-purpose">{block.notes}</p> : null}
       <RehabPrescription block={block} />
+      {safeArray(block.prescribed_sets).length > 0 ? (
+        <ol className="sp-cues sp-prescribed-sets" aria-label="Prescribed sets">
+          {safeArray(block.prescribed_sets).map((stage, index) => (
+            <li key={index}>{formatExercisePrescription(stage)}</li>
+          ))}
+        </ol>
+      ) : null}
+
       {/* Athlete entries retain their exact text (tempo, side, free-form load)
           alongside the same metric tiles used by generated sessions. */}
       {showMetricTiles ? (
@@ -772,10 +783,28 @@ function blockComponentGroup(block: StructuredBlock): string | null {
 export function groupBlockRows(
   blocks: StructuredBlock[],
   renderRow: (block: StructuredBlock, index: number) => ReactNode,
+  groupCodes = true,
 ): ReactNode[] {
   // Every member of a group renders inside one section placed at its first
   // member, even when the written plan interleaved another exercise between
   // them. Each member keeps its own row and original index (swap, edit, log).
+  if (groupCodes && blocks.some(block => block.exercise_block)) {
+    const coded: { letter: string | null; start: number; blocks: StructuredBlock[] }[] = [];
+    blocks.forEach((block, index) => {
+      const letter = cleanText(block.exercise_block);
+      const previous = coded.at(-1);
+      if (previous && previous.letter === letter) previous.blocks.push(block);
+      else coded.push({ letter, start: index, blocks: [block] });
+    });
+    return coded.flatMap<ReactNode>((group, index) => {
+      const rows = groupBlockRows(group.blocks, (block, offset) => renderRow(block, group.start + offset), false);
+      return group.letter ? [
+        <section key={`block-${index}`} className="sp-blocks" aria-label={`Exercise block ${group.letter}`}>
+          <p className="sp-stat-label">Block {group.letter}</p>{rows}
+        </section>,
+      ] : rows;
+    });
+  }
   const groups = new Map<string, number[]>();
   blocks.forEach((block, index) => {
     const group = blockComponentGroup(block);
@@ -907,7 +936,7 @@ export function ExerciseRow({
             aria-haspopup={detail === "sheet" ? "dialog" : undefined}
             onClick={onToggle}
           >
-            <span className="ex-row-title">{title}</span>
+            <span className="ex-row-title">{block.exercise_code ? `${block.exercise_code} — ` : ""}{title}</span>
             {media || block.private_media_id || block.community_revision_id ? <span className="sr-only"> Has demo video.</span> : null}
           </button>
           {!compact ? metadata : null}

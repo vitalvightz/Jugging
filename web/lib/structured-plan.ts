@@ -16,6 +16,7 @@ import type {
   StructuredPlan,
   StructuredSession,
   StructuredWeek,
+  ExercisePrescription,
 } from "@/lib/types";
 
 type MindsetLine = { label: string; value: string };
@@ -223,6 +224,25 @@ export type BlockMetric = { label: string; value: string };
  * Prefers an explicit duration over reps when reps looks like a time string.
  * Returns an empty array when the block carries no usable metric.
  */
+/** Format a source loading stage without supplying a missing unit or dose. */
+export function formatExercisePrescription(stage: ExercisePrescription): string {
+  return [
+    typeof stage.percentage === "number" && Number.isFinite(stage.percentage) ? `${stage.percentage}%` : null,
+    ...selectBlockMetric(stage).map((metric) => metric.label === "Duration" && stage.duration && finitePositiveNumber(stage.sets)
+      ? `${stage.sets} × ${metric.value}` : metric.value),
+    !stage.reps && !stage.duration && finitePositiveNumber(stage.sets) ? `${stage.sets} sets` : null,
+    formatMeasured(stage.weight),
+    formatBlockLoad(stage.load) || formatMeasured(stage.load),
+    stage.work ? `Work ${formatMeasured(stage.work)}` : null,
+    shouldShowRest(stage.rest) ? `Rest ${formatMeasured(stage.rest)}` : null,
+    formatEffort(stage),
+    stage.tempo ? `Tempo ${[stage.tempo.eccentric, stage.tempo.pause_bottom, stage.tempo.concentric, stage.tempo.pause_top].map((value) => value ?? "?").join("-")}` : null,
+    cleanText(stage.intensity),
+    cleanText(stage.per_side),
+    cleanText(stage.source_text),
+  ].filter(Boolean).join(" · ");
+}
+
 export function selectBlockMetric(block: StructuredBlock | null | undefined): BlockMetric[] {
   if (!isObject(block)) {
     return [];
