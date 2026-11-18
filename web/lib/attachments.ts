@@ -67,6 +67,39 @@ export function downsample(input: Float32Array, fromRate: number, toRate = VOICE
   return out;
 }
 
+/** Lightweight speech cleanup at 16 kHz, preserving sample count and WAV size. */
+export function prepareVoice(samples: Float32Array): Float32Array {
+  const out = new Float32Array(samples.length);
+  // Second-order Butterworth high-pass at 80 Hz (12 dB/octave).
+  const omega = 2 * Math.PI * 80 / VOICE_RATE;
+  const cosine = Math.cos(omega);
+  const alpha = Math.sin(omega) / Math.SQRT2;
+  const a0 = 1 + alpha;
+  const b0 = (1 + cosine) / (2 * a0);
+  const b1 = -(1 + cosine) / a0;
+  const a1 = -2 * cosine / a0;
+  const a2 = (1 - alpha) / a0;
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  let peak = 0;
+  for (let i = 0; i < samples.length; i += 1) {
+    const x = Number.isFinite(samples[i]) ? samples[i] : 0;
+    const y = b0 * x + b1 * x1 + b0 * x2 - a1 * y1 - a2 * y2;
+    x2 = x1; x1 = x; y2 = y1; y1 = y;
+    out[i] = y;
+    peak = Math.max(peak, Math.abs(out[i]));
+  }
+  // Leave near-silence alone; cap amplification at 6 dB to limit noise boost.
+  // Keep 1 dB of headroom, including for unexpectedly loud input.
+  const targetPeak = 10 ** (-1 / 20);
+  const gain = peak > 0.01 ? Math.min(2, targetPeak / peak) : 1;
+  const fadeSamples = Math.min(Math.round(VOICE_RATE * 0.015), Math.floor(out.length / 2));
+  for (let i = 0; i < out.length; i += 1) {
+    const fade = fadeSamples > 1 ? Math.min(1, i / (fadeSamples - 1), (out.length - 1 - i) / (fadeSamples - 1)) : 1;
+    out[i] *= gain * fade;
+  }
+  return out;
+}
+
 /** Mono 16-bit PCM WAV: the only voice format the server accepts. */
 export function encodeWav(samples: Float32Array, rate = VOICE_RATE): Uint8Array {
   const out = new Uint8Array(44 + samples.length * 2);
@@ -106,7 +139,7 @@ export class VoiceRecorder {
   get seconds() { return this.length / this.rate; }
 
   async start() {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     if (this.cancelled) {
       stream.getTracks().forEach(track => track.stop());
       throw new Error("Recording cancelled");
@@ -137,7 +170,7 @@ export class VoiceRecorder {
     const joined = new Float32Array(this.length);
     let at = 0;
     for (const chunk of this.chunks) { joined.set(chunk, at); at += chunk.length; }
-    const samples = downsample(joined, this.rate);
+    const samples = prepareVoice(downsample(joined, this.rate));
     this.chunks = [];
     const bytes = encodeWav(samples);
     return { wav: new Blob([bytes.buffer as ArrayBuffer], { type: "audio/wav" }), durationMs: Math.round((samples.length / VOICE_RATE) * 1000) };
