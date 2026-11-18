@@ -24,9 +24,10 @@ constrained strings (no ``Enum`` classes), and ``from __future__`` annotations.
 from __future__ import annotations
 
 import copy
+import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError, model_serializer
+from pydantic import BaseModel, Field, ValidationError, model_serializer, model_validator
 
 # Bump this whenever the structured shape changes in a backward-incompatible
 # way. Stored plans keep the version they were generated with so the renderer
@@ -290,6 +291,26 @@ def _omit_none(data: Any, field: str) -> Any:
     return data
 
 
+class ExercisePrescription(BaseModel):
+    """One source row/loading stage; omitted values and units stay unknown."""
+
+    sets: int | None = None
+    reps: int | str | None = None
+    load: LoadPrescription | None = None
+    percentage: int | float | None = None
+    weight: MeasuredValue | None = None
+    duration: MeasuredValue | None = None
+    rest: MeasuredValue | None = None
+    effort: EffortPrescription | None = None
+    tempo: TempoPrescription | None = None
+    work: MeasuredValue | None = None
+    distance: MeasuredValue | None = None
+    rounds: int | None = None
+    intensity: str | None = None
+    per_side: str | None = None
+    source_text: str | None = None
+
+
 class SessionBlock(BaseModel):
     """An executable unit inside a session (Section N)."""
 
@@ -301,6 +322,10 @@ class SessionBlock(BaseModel):
     mechanical_load_regions: list[str] | None = None
     tags: list[str] | None = None
     display_name: str
+    exercise_code: str | None = Field(default=None, pattern=r"^[A-Za-z][1-9][0-9]*$")
+    exercise_block: str | None = None
+    group_type: Literal["superset", "circuit", "alternating_sets"] | None = None
+    prescribed_sets: list[ExercisePrescription] = Field(default_factory=list)
     category: str | None = None
     order_index: int | None = None
     duration: MeasuredValue | None = None
@@ -382,6 +407,16 @@ class SessionBlock(BaseModel):
         return data
 
 
+    @model_validator(mode="after")
+    def preserve_exercise_code(self) -> SessionBlock:
+        match = re.match(r"^([A-Za-z][1-9][0-9]*)[.):]?\s+(?:[-—–]\s+)?(.+)$", self.display_name)
+        if match and (not self.exercise_code or self.exercise_code == match[1]):
+            self.exercise_code, self.display_name = match.groups()
+        if self.exercise_code:
+            self.exercise_block = self.exercise_code[0].upper()
+        return self
+
+
 class Completion(BaseModel):
     """Post-session completion log (Section P)."""
 
@@ -428,6 +463,39 @@ class Session(BaseModel):
     @model_serializer(mode="wrap")
     def _omit_absent_athlete_removed(self, handler):
         return _omit_none(handler(self), "athlete_removed")
+
+
+    @model_validator(mode="after")
+    def consolidate_prescription_rows(self) -> Session:
+        # Only adjacent rows with the SAME explicit identity are continuation
+        # rows. A shared letter alone never implies a superset or duplication.
+        result: list[SessionBlock] = []
+        dose_fields = set(ExercisePrescription.model_fields)
+        ignored = dose_fields | {"block_id", "order_index", "prescribed_sets"}
+        for block in self.blocks:
+            previous = result[-1] if result else None
+            same_identity = previous and block.exercise_code and (
+                previous.model_dump(exclude=ignored) == block.model_dump(exclude=ignored)
+            )
+            if same_identity:
+                assert previous is not None
+                if not previous.prescribed_sets:
+                    stage = ExercisePrescription.model_validate(
+                        previous.model_dump(include=dose_fields)
+                    )
+                    if stage.model_dump(exclude_none=True):
+                        previous.prescribed_sets = [stage]
+                stages = block.prescribed_sets or [ExercisePrescription.model_validate(
+                    block.model_dump(include=dose_fields)
+                )]
+                previous.prescribed_sets.extend(stage for stage in stages if stage.model_dump(exclude_none=True))
+                # Stages own the dose once rows are combined; no stale summary.
+                for name in dose_fields & set(SessionBlock.model_fields):
+                    setattr(previous, name, None)
+            else:
+                result.append(block)
+        self.blocks = result
+        return self
 
 
 class TodayCard(BaseModel):

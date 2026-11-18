@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CustomDoseSuggestion, PersonalExercise } from "./api-schema.generated";
-import { blankDose, libraryPrefill } from "./custom-plan-dose";
+import { blankDose, blankPrescribedSet, doseSummary, doseIncomplete, libraryPrefill } from "./custom-plan-dose";
 
 const suggestion = (value: Partial<CustomDoseSuggestion>): CustomDoseSuggestion =>
   ({ dose: null, format_dose: null, original: "", ...value }) as CustomDoseSuggestion;
@@ -71,4 +71,26 @@ test("no reliable source means no prefill, never an invented dose", () => {
   assert.equal(libraryPrefill(null, null), null);
   assert.equal(libraryPrefill(suggestion({}), null), null);
   assert.equal(libraryPrefill(suggestion({ format_dose: blankDose("reps") }), null), null);
+});
+
+
+test("stage summaries keep time, weight, percentages and explicit zero rest without guessing units", () => {
+  const dose = { ...blankDose("stages"), prescribed_sets: [{ ...blankPrescribedSet(),
+    sets: 3, reps: 1, percentage: 95, weight: { value: 225, unit: "" }, duration: { value: 2, unit: "seconds" },
+    rest: { value: 0, unit: "seconds" }, per_side: "each side", source_text: "working sets" }] };
+  assert.equal(doseSummary(dose), "95% · 3 × 1 · 2 seconds · 225 · Rest 0 seconds · each side · working sets");
+});
+
+
+test("stages need actual work or written source notation, not just counts or loading metadata", () => {
+  const incomplete = [{}, { sets: 3 }, { rounds: 3 }, { percentage: 95 }, { weight: { value: 225, unit: "" } },
+    { rest: { value: 60, unit: "seconds" } }, { intensity: "hard", per_side: "E/S" }, { source_text: "  " },
+    { reps: 0 }, { reps: -1 }, { reps: "0" }, { reps: "NaN" }, { duration: { value: 0, unit: "seconds" } }];
+  const complete = [{ reps: 2 }, { reps: "4e" }, { sets: 3, reps: 1 }, { duration: { value: 25, unit: "seconds" } },
+    { work: { value: 30, unit: "seconds" } }, { distance: { value: 20, unit: "m" } },
+    { source_text: "Build to a heavy single" }, { percentage: 50, source_text: "Sets x Reps: 2; WT: 120" }];
+  for (const stage of incomplete) assert.equal(doseIncomplete({ ...blankDose("stages"), prescribed_sets: [{ ...blankPrescribedSet(), ...stage }] }), true, JSON.stringify(stage));
+  for (const stage of complete) assert.equal(doseIncomplete({ ...blankDose("stages"), prescribed_sets: [{ ...blankPrescribedSet(), ...stage }] }), false, JSON.stringify(stage));
+  assert.equal(doseIncomplete({ ...blankDose("stages"), prescribed_sets: [] }), true);
+  assert.equal(doseIncomplete({ ...blankDose("stages"), prescribed_sets: [{ ...blankPrescribedSet(), reps: 2 }, { ...blankPrescribedSet(), sets: 3 }] }), true);
 });

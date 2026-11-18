@@ -1023,3 +1023,17 @@ def test_undated_salvage_prunes_only_rejected_week_membership():
     assert "Easy Jog Flush" in removed[0]
     assert plan == original
     assert not faithfulness._open_plan_membership_violations(pruned, "Undated plan", brief)
+
+
+def test_loading_stages_preserve_explicit_rest_and_effort():
+    block = {"display_name": "Clean", "block_type": "strength",
+             "prescribed_sets": [{"reps": 1, "percentage": 95,
+                                   "rest": {"value": 120, "unit": "seconds"},
+                                   "effort": {"method": "RPE", "value": 8}}]}
+    plan = {"weeks": [{"days": [{"sessions": [{"blocks": [block]}]}]}]}
+    source = "- Clean — 1 rep at 95%, rest: 120 seconds, RPE 8"
+    assert faithfulness._explicit_prescription_violations(plan, source) == []
+    block["prescribed_sets"] = []
+    issues = faithfulness._explicit_prescription_violations(plan, source)
+    assert any("dropped explicit source rest" in issue for issue in issues)
+    assert any("dropped explicit source effort" in issue for issue in issues)

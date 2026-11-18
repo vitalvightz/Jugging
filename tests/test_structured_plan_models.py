@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import copy
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from api.structured_plan_models import (
     SCHEMA_VERSION,
+    Session,
     SessionBlock,
     StructuredTrainingPlan,
     _STRICT_UNSUPPORTED_KEYWORDS,
@@ -17,6 +19,77 @@ from api.structured_plan_models import (
     safe_parse_structured_plan,
     validate_structured_plan,
 )
+
+
+def test_sc_screenshot_rows_consolidate_at_the_shared_validation_boundary():
+    text = (Path(__file__).parent / "fixtures/sc_week5.txt").read_text(encoding="utf-8")
+    rows = []
+    code = name = None
+    for line in text.splitlines()[4:]:
+        row_code, row_name, percentage, prescription, weight = [s.strip() for s in line.strip("|").split("|")]
+        code, name = row_code or code, row_name or name
+        parts = prescription.split("x", 1)
+        stage = {"reps": parts[-1]}
+        if len(parts) == 2:
+            stage["sets"] = int(parts[0])
+        if percentage:
+            stage["percentage"] = float(percentage.strip("%"))
+        if weight:
+            stage["source_text"] = f"WT: {weight}"
+        rows.append({"block_id": f"row-{len(rows)}", "block_type": "strength",
+                     "display_name": f"{code}. {name}", "prescribed_sets": [stage]})
+    raw = _session()
+    raw.update(title="Day 1 (Total)", blocks=rows)
+    session = Session.model_validate(raw)
+    assert [b.exercise_code for b in session.blocks] == ["A1", "A2", "B1", "B2", "C1", "C2", "D1"]
+    assert [len(b.prescribed_sets) for b in session.blocks] == [8, 1, 6, 1, 3, 1, 1]
+    assert all(b.group_type is None for b in session.blocks)
+    clean = session.blocks[0]
+    assert clean.display_name == "Clean" and clean.exercise_block == "A"
+    assert [s.percentage for s in clean.prescribed_sets] == [50, 60, 70, 75, 80, 85, 90, 95]
+    assert clean.prescribed_sets[-1].sets == 3 and clean.prescribed_sets[-1].reps == "1"
+    assert clean.prescribed_sets[-1].source_text == "WT: 225"
+    assert session.blocks[2].prescribed_sets[-1].sets == 7
+    assert [s.reps for s in session.blocks[4].prescribed_sets] == ["4e"] * 3
+    assert session.blocks[1].prescribed_sets[0].reps == "25 sec"
+    assert session.blocks[3].prescribed_sets[0].reps == "2 Ea"
+    # The saved form is stable when read/validated again.
+    assert Session.model_validate(session.model_dump()).model_dump() == session.model_dump()
+
+
+def test_legacy_coded_dose_rows_merge_without_losing_load_or_changing_uncoded_work():
+    raw = _session()
+    raw["blocks"] = [
+        {"block_id": str(i), "block_type": "strength", "display_name": "Z12 Clean",
+         "reps": 1, "load": {"method": "percentage", "value": p, "unit": "percent", "display": f"{p}%"}}
+        for i, p in enumerate([50, 60, 70])
+    ]
+    raw["blocks"] += [dict(_block(), block_id=f"uncoded-{i}") for i in range(2)]
+    session = Session.model_validate(raw)
+    assert len(session.blocks) == 3
+    assert session.blocks[0].exercise_block == "Z"
+    assert [s.load.value for s in session.blocks[0].prescribed_sets] == [50, 60, 70]
+    assert session.blocks[0].load is None
+    assert session.blocks[1].prescribed_sets == []
+
+
+@pytest.mark.parametrize("kind", ["superset", "circuit", "alternating_sets"])
+def test_explicit_groups_survive_without_merging_different_codes(kind):
+    raw = _session()
+    raw["blocks"] = [dict(_block(), display_name=f"A{i} Squat", group_type=kind) for i in (1, 2)]
+    blocks = Session.model_validate(raw).blocks
+    assert len(blocks) == 2
+    assert [b.group_type for b in blocks] == [kind, kind]
+    assert [b.exercise_code for b in blocks] == ["A1", "A2"]
+
+
+def test_continuation_without_an_initial_dose_does_not_invent_a_set():
+    raw = _session()
+    raw["blocks"] = [
+        {"block_id": "a", "block_type": "strength", "display_name": "A1 Clean"},
+        {"block_id": "b", "block_type": "strength", "display_name": "A1 Clean", "reps": 2},
+    ]
+    assert len(Session.model_validate(raw).blocks[0].prescribed_sets) == 1
 
 
 def _walk_schema_nodes(node, path="$"):

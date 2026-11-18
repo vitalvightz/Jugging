@@ -8,6 +8,7 @@
 // from the saved text, so a missing server-side structured payload can never
 // force the legacy renderer.
 import type {
+  ExercisePrescription,
   StructuredBlock,
   StructuredDay,
   StructuredPlan,
@@ -21,6 +22,9 @@ export type PlanTextDetail = { label: string | null; text: string };
 
 /** A single exercise/prescription inside a session card. */
 export type PlanTextBlock = {
+  code?: string | null;
+  prescribedSets?: ExercisePrescription[];
+  groupType?: StructuredBlock["group_type"];
   name: string;
   dose: string | null;
   details: PlanTextDetail[];
@@ -307,6 +311,10 @@ function classifyPlanTextHeading(
     return { kind: "week", title: clean, phase: phase ? normalizePhaseToken(phase[1]) : null };
   }
 
+  if (/^(?:Day|Session)\s+\d+\b/i.test(clean)) {
+    return { kind: "session", countdown: null, weekday: null, title: clean, remainder: null };
+  }
+
   const session = clean.match(SESSION_COUNTDOWN_FIRST_RE);
   if (session) {
     const split = splitSessionTitle(session[3].trim());
@@ -329,7 +337,7 @@ function classifyPlanTextHeading(
       remainder: split.remainder,
     };
   }
-  if (allowWeekdayOnlySession) {
+  if (allowWeekdayOnlySession || SESSION_WEEKDAY_ONLY_RE.test(clean)) {
     const openSession = clean.match(SESSION_WEEKDAY_ONLY_RE);
     if (openSession) {
       const split = splitSessionTitle(openSession[2].trim());
@@ -345,7 +353,7 @@ function classifyPlanTextHeading(
 
   // Any other markdown header (## Nutrition, ## Progression, …) opens its own
   // context card rather than being swallowed into the previous session.
-  if (isMarkdownHeader) {
+  if (isMarkdownHeader && !/^[A-Za-z][1-9]\d*[.):]?\s+\S/.test(clean)) {
     return { kind: "notes", title: clean, remainder: null };
   }
 
@@ -408,7 +416,9 @@ function matchBlockGroupLabel(line: string): string | null {
  * instead of dumping every line into one undifferentiated block.
  */
 export function parsePlanText(rawText: string): PlanTextGroup[] {
-  const lines = normalizePlanTextForCards(rawText).split("\n");
+  const lines = normalizePlanTextForCards(rawText)
+    .replace(/^(Day\s+\d+[^\n]*?)\s+\b(Week\s+\d+)\s*$/gim, "$2\n$1")
+    .split("\n");
   const groups: PlanTextGroup[] = [];
   let currentWeek: PlanTextWeek | null = null;
   let currentSession: PlanTextSession | null = null;
@@ -418,6 +428,28 @@ export function parsePlanText(rawText: string): PlanTextGroup[] {
   // header or the next session.
   let currentBlockTag: string | null = null;
   let allowWeekdayOnlySessions = false;
+  let tableHeaders: string[] | null = null;
+  let tableHasOuterPipes = false;
+  let groupType: StructuredBlock["group_type"] = null;
+  let groupLetter: string | null = null;
+
+  const addExerciseRow = (name: string, code: string | null, stage: ExercisePrescription | null) => {
+    if (!currentSession) return;
+    const previous = currentSession.blocks.at(-1);
+    const rowCode = code || (previous && (!name || name === previous.name) ? previous.code : null);
+    const rowGroupType = groupLetter && rowCode && rowCode[0].toUpperCase() !== groupLetter ? null : groupType;
+    // Table continuation/repeated rows are evidence of sets, not new cards.
+    if (previous && previous.groupType === rowGroupType && previous.tag === currentBlockTag &&
+      ((!name && (!code || code === previous.code)) ||
+      (name === previous.name && (!code || code === previous.code)))) {
+      if (stage) (previous.prescribedSets ||= []).push(stage);
+      return;
+    }
+    if (!name) return;
+    currentSession.blocks.push({ name, code, dose: null, details: [], tag: currentBlockTag,
+      prescribedSets: stage ? [stage] : [],
+      groupType: rowGroupType });
+  };
 
   const pushSession = (session: PlanTextSession) => {
     if (currentWeek) {
@@ -436,6 +468,81 @@ export function parsePlanText(rawText: string): PlanTextGroup[] {
     const wasListItem = Boolean(listItem);
     const content = stripPlanMarkup(listItem ? listItem[2] : line);
     if (!content) {
+      return;
+    }
+    const explicitGroup = content.match(/^(Superset|Circuit|Alternating sets)(?:\s+([A-Za-z]))?\s*:?$/i);
+    if (explicitGroup) {
+      groupType = explicitGroup[1].toLowerCase().replace(/ /g, "_") as StructuredBlock["group_type"];
+      groupLetter = explicitGroup[2]?.toUpperCase() || null;
+      return;
+    }
+    if (/^(?:Standalone|Straight sets)\s*:?$/i.test(content)) {
+      groupType = null;
+      groupLetter = null;
+      return;
+    }
+    if (content.includes("|") || content.includes("\t")) {
+      const hasOuterPipes = tableHeaders ? tableHasOuterPipes : content.startsWith("|") && content.endsWith("|");
+      const cells = (hasOuterPipes ? content.replace(/^\||\|$/g, "") : content)
+        .split(/\||\t/).map((cell) => cell.trim());
+      if (cells.every((cell) => /^:?-+:?$/.test(cell) || !cell)) return;
+      if (cells.some((cell) => /^exercise$/i.test(cell)) &&
+        cells.some((cell) => /reps|sets|weight|wt|%|duration/i.test(cell))) {
+        tableHeaders = cells;
+        tableHasOuterPipes = hasOuterPipes;
+        return;
+      }
+      if (tableHeaders) {
+        let headers = tableHeaders;
+        if (cells.length === headers.length + 1 && /^[A-Za-z][1-9]\d*[.)]?$/.test(cells[0])) {
+          headers = ["Code", ...headers];
+          tableHeaders = headers;
+        }
+        let name = "";
+        let code: string | null = null;
+        const dose: string[] = [];
+        const stage: ExercisePrescription = {};
+        headers.forEach((header, index) => {
+          const cell = cells[index] || "";
+          if (/^exercise$/i.test(header)) name = cell;
+          else if (/^(?:code)?$/i.test(header) && /^[A-Za-z][1-9]\d*[.)]?$/.test(cell)) code = cell.replace(/[.)]$/, "");
+          else if (cell) {
+            if (/^(?:%|percentage)$/i.test(header) && /^\d+(?:\.\d+)?%?$/.test(cell)) {
+              stage.percentage = Number(cell.replace("%", ""));
+            } else if (/^(?:sets\s*[x×]\s*reps|reps\s*[x×]\s*sets|reps|sets|duration)$/i.test(header)) {
+              const pair = cell.match(/^(\d+)\s*[x×]\s*(.+)$/i);
+              const repsFirst = /^reps\s*[x×]\s*sets$/i.test(header);
+              if (pair && (!repsFirst || /^\d+$/.test(pair[2]))) {
+                stage.sets = Number(repsFirst ? pair[2] : pair[1]);
+                stage.reps = repsFirst ? Number(pair[1]) : /^\d+$/.test(pair[2]) ? Number(pair[2]) : pair[2];
+              } else if (/^sets$/i.test(header) && /^\d+$/.test(cell)) stage.sets = Number(cell);
+              else stage.reps = /^\d+$/.test(cell) ? Number(cell) : cell;
+            } else dose.push(`${header || "Value"}: ${cell}`);
+          }
+        });
+        // Retain any extra/unknown columns too; never discard coach notation.
+        cells.slice(headers.length).filter(Boolean).forEach((cell) => dose.push(cell));
+        const codedName = name.match(/^([A-Za-z][1-9]\d*)[.):]?\s+(?:[-—–]\s+)?(.+)$/);
+        if (codedName) { code = codedName[1]; name = codedName[2]; }
+        // Keep exact header order/notation, including REPS X SETS, WT without
+        // units, 4e and warm-up rows. The source row is lossless and readable.
+        if (dose.length) stage.source_text = dose.join(" · ");
+        addExerciseRow(name, code, Object.keys(stage).length ? stage : null);
+        return;
+      }
+    }
+    const coded = content.match(/^([A-Za-z][1-9]\d*)[.):]?\s+(?:[-—–]\s+)?(.+)$/);
+    if (coded) {
+      const separator = /\s+[-—–]\s+|:\s+|\s+(?=\d+(?:\.\d+)?\s*(?:%|[x×]))/.exec(coded[2]);
+      const name = separator ? coded[2].slice(0, separator.index) : coded[2];
+      const dose = separator ? coded[2].slice(separator.index + separator[0].length) : null;
+      addExerciseRow(name, coded[1], dose ? { source_text: dose } : null);
+      return;
+    }
+    const previous = session.blocks.at(-1);
+    if (previous && (previous.code || previous.prescribedSets?.length) &&
+      /^\d+(?:\.\d+)?\s*(?:%|[x×]|e\b|(?:reps?|sec(?:onds?)?)\b|$)/i.test(content)) {
+      (previous.prescribedSets ||= []).push({ source_text: content });
       return;
     }
     // Keep the established dash guard for general prose. Only the canonical
@@ -490,6 +597,7 @@ export function parsePlanText(rawText: string): PlanTextGroup[] {
           dose: colonBlock[2].trim() || null,
           details: [],
           tag: blockTag,
+          groupType,
         });
       } else if (dashIndex > -1) {
         session.blocks.push({
@@ -497,12 +605,13 @@ export function parsePlanText(rawText: string): PlanTextGroup[] {
           dose: blockText.slice(dashIndex + 3).trim() || null,
           details: [],
           tag: blockTag,
+          groupType,
         });
       } else if (wasListItem) {
         // A bulleted line is its own exercise heading (e.g. a rehab drill whose
         // dose sits on the next line), so it always opens a new block rather than
         // folding into the previous one.
-        session.blocks.push({ name: blockText, dose: null, details: [], tag: blockTag });
+        session.blocks.push({ name: blockText, dose: null, details: [], tag: blockTag, groupType });
       } else if (block) {
         block.details.push({ label: null, text: blockText });
       } else {
@@ -560,6 +669,9 @@ export function parsePlanText(rawText: string): PlanTextGroup[] {
       continue;
     }
     if (heading?.kind === "week") {
+      tableHeaders = null;
+      groupType = null;
+      groupLetter = null;
       currentSession = null;
       currentNotes = null;
       currentWeek = { kind: "week", title: heading.title, phase: heading.phase, sessions: [] };
@@ -567,6 +679,9 @@ export function parsePlanText(rawText: string): PlanTextGroup[] {
       continue;
     }
     if (heading?.kind === "session") {
+      tableHeaders = null;
+      groupType = null;
+      groupLetter = null;
       currentNotes = null;
       currentBlockTag = null;
       currentSession = {
@@ -587,6 +702,13 @@ export function parsePlanText(rawText: string): PlanTextGroup[] {
       continue;
     }
 
+    if (!currentSession && (/^[A-Za-z][1-9]\d*[.):]?\s+\S/.test(cleanLine) ||
+      ((cleanLine.includes("|") || cleanLine.includes("\t")) && /\bExercise\b/i.test(cleanLine)))) {
+      currentNotes = null;
+      currentSession = { kind: "session", countdown: null, weekday: null,
+        title: "Training session", objective: null, coachNote: null, blocks: [], notes: [] };
+      pushSession(currentSession);
+    }
     if (currentSession) {
       // A standalone block-group header (e.g. "Rehab") tags the blocks beneath
       // it rather than rendering as a loose note.
@@ -739,6 +861,10 @@ function toStructuredBlock(
     block_id: `text-block-${index + 1}`,
     block_type: inferBlockType(block, sessionType),
     display_name: block.name,
+    exercise_code: block.code || null,
+    exercise_block: block.code ? block.code[0].toUpperCase() : null,
+    group_type: block.groupType || null,
+    prescribed_sets: block.prescribedSets || [],
     order_index: index,
     load: block.dose ? { display: block.dose } : null,
     purpose: null,

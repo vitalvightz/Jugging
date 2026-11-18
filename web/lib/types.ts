@@ -420,7 +420,30 @@ export type BlockComponent = {
   effort?: EffortPrescription | null;
 };
 
+export type ExercisePrescription = {
+  sets?: number | null;
+  reps?: number | string | null;
+  load?: LoadPrescription | null;
+  percentage?: number | null;
+  weight?: MeasuredValue | null;
+  duration?: MeasuredValue | null;
+  rest?: MeasuredValue | null;
+  effort?: EffortPrescription | null;
+  tempo?: { eccentric?: number | string | null; pause_bottom?: number | string | null; concentric?: number | string | null; pause_top?: number | string | null } | null;
+  work?: MeasuredValue | null;
+  distance?: MeasuredValue | null;
+  rounds?: number | null;
+  intensity?: string | null;
+  per_side?: string | null;
+  source_text?: string | null;
+};
+
 export type StructuredBlock = {
+  exercise_code?: string | null;
+  exercise_block?: string | null;
+  group_type?: "superset" | "circuit" | "alternating_sets" | null;
+  prescribed_sets?: ExercisePrescription[] | null;
+
   prescription_source?: "athlete" | null;
   prescription_text?: string | null;
   athlete_dose?: Record<string, unknown> | null;
