@@ -1,9 +1,8 @@
 /* Pages stacked in one scroll, each at the width of the screen (capped on desktop). */
+/* Plain block flow: in a grid or flex column a page (overflow hidden) could be
+   squeezed below its own height and overlap the next one. */
 .scroller {
-  display: grid;
-  align-content: start;
-  justify-items: center;
-  gap: 12px;
+  display: block;
   min-height: 0;
   overflow-y: auto;
   padding: 4px 12px max(20px, env(safe-area-inset-bottom));
@@ -12,6 +11,7 @@
 .page {
   position: relative;
   width: min(100%, 820px);
+  margin: 0 auto 12px;
   overflow: hidden;
   border-radius: 6px;
   background: #fff;

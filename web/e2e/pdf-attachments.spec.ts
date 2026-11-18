@@ -151,6 +151,10 @@ for (const width of [320, 390, 1280]) {
     await expect(reader.locator("[data-page='1'][data-drawn]")).toHaveCount(1);
     const canvas = reader.getByRole("img", { name: "Page 1" });
     const box = await canvas.boundingBox();
+    // Each page keeps its A4 shape and sits above the next, never squeezed under it.
+    expect(Math.abs(box!.height / box!.width - 842 / 595)).toBeLessThan(0.02);
+    const second = await reader.locator("[data-page='2']").boundingBox();
+    expect(second!.y).toBeGreaterThanOrEqual(box!.y + box!.height);
     expect(box!.width).toBeLessThanOrEqual(width);
     if (width < 600) expect(box!.width).toBeGreaterThan(width - 40);
     // The drawn page isn't blank: the dark header bar from the test PDF is on it.

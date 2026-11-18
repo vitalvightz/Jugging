@@ -124,6 +124,7 @@ for (const width of [320, 390, 1280]) {
     expect(box!.height).toBeLessThanOrEqual(900 - 150 + 1);
     expect(box!.width).toBeLessThanOrEqual(Math.min(width, 1200) + 1);
     if (width < 600) expect(box!.width).toBeGreaterThan(width - 40);
+    await page.waitForTimeout(400);
     await page.screenshot({ path: info.outputPath(`${width}-4-photo.png`) });
     expect((await new AxeBuilder({ page }).include("dialog[aria-label='Photo 1 of 2']").analyze()).violations
       .filter(v => ["serious", "critical"].includes(v.impact ?? ""))).toEqual([]);
