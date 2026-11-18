@@ -71,7 +71,7 @@ from .routes.training_library import build_training_library_router
 from .routes.custom_plans import build_custom_plans_router
 from .routes.exercise_changes import build_exercise_changes_router
 from .routes.private_media import build_private_media_router
-from .routes.training_attachments import build_training_attachments_router
+from .routes.training_attachments import build_attachment_uploads_router, build_training_attachments_router
 from .routes.community_exercises import build_community_router
 from .routes.coach import build_coach_router
 from .routes import (
@@ -712,6 +712,7 @@ def create_app(
     app.include_router(build_exercise_changes_router(require_profile=require_profile, get_store=get_store))
     app.include_router(build_private_media_router(require_profile=require_profile, get_store=get_store))
     app.include_router(build_training_attachments_router(require_profile=require_profile, get_store=get_store))
+    app.include_router(build_attachment_uploads_router(require_profile=require_profile, get_store=get_store))
     app.include_router(build_community_router(require_profile=require_profile, require_admin=require_admin, get_store=get_store))
     app.include_router(build_coach_router(require_profile=require_profile, get_store=get_store))
     app.include_router(

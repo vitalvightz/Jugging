@@ -33,6 +33,7 @@
     "@types/zxcvbn": "4.4.5",
     "eslint": "9.39.4",
     "eslint-config-next": "16.4.5",
+    "jpeg-js": "0.4.4",
     "jsdom": "^25.0.1",
     "tsx": "^4.23.0",
     "typescript": "5.9.3"

@@ -529,6 +529,7 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         self.private_media: dict[str, dict] = {}
         self.private_video_assets: dict[str, dict] = {}
         self.training_attachments: list[dict] = []
+        self.attachment_assets: dict[str, dict] = {}
         self.session_logs: dict[str, list[dict]] = {}
         self.athlete_streak_rows: dict[str, dict] = {}
         self.daily_activity: dict[str, set[str]] = {}
@@ -2193,8 +2194,9 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         if sum(r['athlete_id'] == athlete_id and r['source'] == source and r['target_id'] == target_id
                and r['exercise_ref'] == exercise_ref for r in self.training_attachments) >= 6:
             raise HTTPException(409, 'This already has six videos. Remove one to add another.')
-        row = {'id': str(uuid4()), 'athlete_id': athlete_id, 'media_id': media_id, 'source': source,
-               'target_id': target_id, 'exercise_ref': exercise_ref, 'created_at': _now()}
+        row = {'id': str(uuid4()), 'athlete_id': athlete_id, 'author_id': athlete_id, 'media_id': media_id,
+               'asset_id': None, 'source': source, 'target_id': target_id, 'exercise_ref': exercise_ref,
+               'created_at': _now()}
         self.training_attachments.append(row)
         return copy.deepcopy(row)
 
@@ -2210,6 +2212,69 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         before = len(self.training_attachments)
         self.training_attachments = [r for r in self.training_attachments
                                      if not (r['id'] == attachment_id and r['athlete_id'] == athlete_id)]
+        return len(self.training_attachments) < before
+
+    # Photos and voice notes; tests/photo_voice_attachments.sql covers the SQL itself.
+    def reserve_attachment_upload(self, owner_id: str, kind: str, size_bytes: int, content_type: str) -> dict:
+        if sum(a['owner_id'] == owner_id and a['status'] in ('reserved', 'processing')
+               for a in self.attachment_assets.values()) >= 3:
+            raise HTTPException(429, 'Upload limit reached. Try again later.')
+        asset_id = str(uuid4())
+        row = {'id': asset_id, 'owner_id': owner_id, 'kind': kind, 'status': 'reserved', 'content_type': content_type,
+               'size_bytes': size_bytes, 'ready_path': None, 'width': None, 'height': None, 'duration_ms': None,
+               'reject_reason': None, 'intake_path': f"{owner_id}/{asset_id}/source.{'jpg' if kind == 'photo' else 'wav'}",
+               'upload_expires_at': _now(), 'created_at': _now()}
+        self.attachment_assets[asset_id] = row
+        return copy.deepcopy(row)
+
+    def get_attachment_asset(self, owner_id: str, asset_id: str) -> dict | None:
+        row = self.attachment_assets.get(asset_id)
+        return copy.deepcopy(row) if row and row['owner_id'] == owner_id else None
+
+    def get_attachment_assets(self, asset_ids: list[str]) -> dict[str, dict]:
+        return {i: copy.deepcopy(self.attachment_assets[i]) for i in asset_ids
+                if i in self.attachment_assets and self.attachment_assets[i]['status'] == 'ready'}
+
+    def attachment_signed_url(self, path: str, *, expires_in: int) -> str:
+        raise HTTPException(503, 'Attachment storage is unavailable.')
+
+    def process_attachment(self, asset_id: str) -> dict:
+        raise HTTPException(503, 'Checking is unavailable. Try again in a minute.')
+
+    def attach_training_asset(self, author_id: str, athlete_id: str, asset_id: str, source: str, target_id: str,
+                              exercise_ref: str) -> dict:
+        asset = self.attachment_assets.get(asset_id)
+        if not asset or asset['owner_id'] != author_id:
+            raise HTTPException(404, 'That record or file is not available.')
+        if asset['status'] != 'ready':
+            raise HTTPException(409, 'That file is still being checked. Try again in a moment.')
+        if author_id != athlete_id:
+            connection = self.get_accepted_coach_connection(author_id, athlete_id)
+            if asset['kind'] != 'voice' or not connection or connection.get('share_media') is not True:
+                raise HTTPException(404, 'That record or file is not available.')
+        records = {
+            'external': lambda: (self.external_training_sessions.get(target_id) or {}).get('athlete_id') == athlete_id,
+            'sparring': lambda: not exercise_ref and any(r.get('id') == target_id and r.get('athlete_id') == athlete_id
+                                                         for r in self.sparring_logs),
+            'unlxck': lambda: any(r.get('id') == target_id for r in self.session_completions.get(athlete_id, [])),
+        }
+        if source not in records or not records[source]():
+            raise HTTPException(404, 'That record or file is not available.')
+        if any(r.get('asset_id') == asset_id for r in self.training_attachments):
+            raise HTTPException(409, 'That file is already attached.')
+        if sum(r['athlete_id'] == athlete_id and r['source'] == source and r['target_id'] == target_id
+               and r['exercise_ref'] == exercise_ref for r in self.training_attachments) >= 6:
+            raise HTTPException(409, 'This already has six files. Remove one to add another.')
+        row = {'id': str(uuid4()), 'athlete_id': athlete_id, 'author_id': author_id, 'media_id': None,
+               'asset_id': asset_id, 'source': source, 'target_id': target_id, 'exercise_ref': exercise_ref,
+               'created_at': _now()}
+        self.training_attachments.append(row)
+        return copy.deepcopy(row)
+
+    def delete_authored_training_attachment(self, author_id: str, athlete_id: str, attachment_id: str) -> bool:
+        before = len(self.training_attachments)
+        self.training_attachments = [r for r in self.training_attachments if not (
+            r['id'] == attachment_id and r['athlete_id'] == athlete_id and r.get('author_id') == author_id)]
         return len(self.training_attachments) < before
 
     def create_custom_plan(self, athlete_id: str, fields: dict) -> dict:

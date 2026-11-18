@@ -21,6 +21,7 @@ def _video(store, owner=FIGHTER, status="verified"):
 @pytest.fixture
 def logged(camp, monkeypatch):  # noqa: F811 - pytest fixture injection
     client, store, connection = camp
+    connection["share_media"] = True
     monkeypatch.setenv("PRIVATE_VIDEO_UPLOADS_ENABLED", "true")
     store.private_media_worker_healthy = lambda: True
     signed: list[str] = []
@@ -77,7 +78,7 @@ def test_only_own_verified_videos_on_own_records(logged):
     assert _attach(client, media, target).status_code == 409
     for _ in range(5):
         assert _attach(client, _video(store), target).status_code == 201
-    assert _attach(client, _video(store), target).json()["detail"].startswith("This already has six videos")
+    assert _attach(client, _video(store), target).json()["detail"].startswith("This already has six")
     assert client.get(URL, params={"source": "external", "target_id": target}).status_code == 401
 
 
@@ -102,7 +103,7 @@ def test_attaching_fails_closed_when_uploads_are_switched_off(logged, monkeypatc
     assert store.training_attachments == []
 
 
-def test_coach_plays_only_with_injury_sharing_and_a_live_connection(logged):
+def test_coach_plays_only_with_media_sharing_and_a_live_connection(logged):
     client, store, connection, target, signed = logged
     created = _attach(client, _video(store), target).json()
     path = f"{BASE}/training/attachments"
@@ -114,10 +115,12 @@ def test_coach_plays_only_with_injury_sharing_and_a_live_connection(logged):
     assert "no-store" in played.headers["cache-control"]
 
     # Consent is read again on every request: turning sharing off stops new links at once.
-    connection["share_injuries"] = False
+    connection["share_media"] = False
     assert client.get(path, headers=AS_COACH, params=params).json() == []
     assert client.get(f"{path}/{created['id']}/play", headers=AS_COACH).status_code == 404
-    connection["share_injuries"] = True
+    # Injury sharing alone is not media sharing.
+    assert connection["share_injuries"] is True
+    connection["share_media"] = True
     connection["status"] = "revoked"
     assert client.get(path, headers=AS_COACH, params=params).status_code == 404
     assert client.get(f"{path}/{created['id']}/play", headers=AS_COACH).status_code == 404
