@@ -45,7 +45,8 @@ async function mount(element: (token: string) => React.ReactElement,
   const token = `token-${Math.random()}`;
   await act(async () => root.render(element(token)));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-  const button = (label: string) => [...host.querySelectorAll("button")].find(item => item.textContent === label || item.getAttribute("aria-label") === label);
+  // Photo and PDF viewers open in a portal on <body>, so look there too.
+  const button = (label: string) => [...document.body.querySelectorAll("button")].find(item => item.textContent === label || item.getAttribute("aria-label") === label);
   return { host, calls, button, root, close() { act(() => root.unmount()); host.remove(); globalThis.fetch = before; } };
 }
 
@@ -147,31 +148,37 @@ test("with photos and voice notes on, Attach opens a menu of the types that are 
   } finally { ui.close(); }
 });
 
-test("a photo opens only when tapped, through a one-off link, with no preview in the list", async () => {
+test("a photo opens full screen only when tapped, through a one-off link", async () => {
   const ui = await mount(token => <TrainingVideos token={token} label="Hand wraps" target={{ source: "external", target_id: "session" }} />,
     { rows: [file("p", "photo")] });
   try {
     assert.equal(ui.host.querySelector("img"), null);
     assert.ok(!ui.calls.some(call => call.url.includes("/play")));
     await act(async () => ui.button("Open photo 1 for Hand wraps")!.click());
-    const image = ui.host.querySelector("img")!;
+    const viewer = document.body.querySelector('dialog[aria-label="Photo 1 of 1"]')!;
+    assert.ok(viewer, "a full-screen viewer opens");
+    const image = viewer.querySelector('img[alt="Photo 1 for Hand wraps"]')!;
     assert.equal(image.getAttribute("src"), "https://signed.example/p");
     assert.equal(image.getAttribute("referrerpolicy"), "no-referrer");
     await act(async () => ui.button("Remove photo")!.click());
     assert.ok(ui.calls.some(call => call.method === "DELETE" && call.url.endsWith("/api/training/attachments/p")));
-    assert.equal(ui.host.querySelector("img"), null);
+    assert.equal(document.body.querySelector("dialog"), null, "the viewer closes once its only photo is gone");
   } finally { ui.close(); }
 });
 
-test("voice notes are rows that play only when pressed, labelled with who left them", async () => {
+test("voice notes are chat-style players that load only when pressed, labelled with who left them", async () => {
   const ui = await mount(token => <TrainingVideos token={token} label="Sparring" target={{ source: "sparring", target_id: "report" }} />,
     { rows: [file("v", "voice", "coach")] });
   try {
-    assert.equal(ui.host.querySelector("audio"), null);
-    assert.match(ui.host.textContent ?? "", /Voice note.*Coach.*0:12/);
+    // No browser audio bar, and nothing fetched until Play.
+    assert.equal(ui.host.querySelector("audio[controls]"), null);
+    assert.match(ui.host.textContent ?? "", /Coach.*18 Nov.*0:12/);
+    assert.equal(ui.host.querySelectorAll('[role="slider"] span').length, 36, "a waveform of bars");
+    assert.ok(!ui.calls.some(call => call.url.includes("/play") || call.url.includes("signed.example")));
     await act(async () => ui.button("Play voice note 1 from coach for Sparring")!.click());
-    assert.equal(ui.host.querySelector("audio")?.getAttribute("src"), "https://signed.example/v");
-    assert.ok(ui.button("Remove"), "the athlete can remove anything on their own record");
+    assert.ok(ui.calls.some(call => call.url.endsWith("/api/training/attachments/v/play")));
+    assert.ok(ui.calls.some(call => call.url === "https://signed.example/v"), "the one short-lived link is fetched");
+    assert.ok(ui.button("Remove voice note 1"), "the athlete can remove anything on their own record");
   } finally { ui.close(); }
 });
 
@@ -185,8 +192,7 @@ test("a coach can record voice feedback when voice notes are on, and removes onl
     assert.equal(ui.host.querySelector('input[type="file"]'), null);
     await act(async () => ui.button("Open photo 1 for Sparring")!.click());
     assert.equal(ui.button("Remove photo"), undefined);
-    await act(async () => ui.button("Play voice note 1 from you for Sparring")!.click());
-    await act(async () => ui.button("Remove")!.click());
+    await act(async () => ui.button("Remove voice note 1")!.click());
     assert.ok(ui.calls.some(call => call.method === "DELETE" && call.url.endsWith("/api/coach/fighters/fighter/training/attachments/mine")));
   } finally { ui.close(); }
 });

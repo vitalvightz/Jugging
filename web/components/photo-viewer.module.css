@@ -1,0 +1,111 @@
+/* Full-screen photo viewer: dark, calm, nothing but the photo and a few controls. */
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  /* A <dialog> in the top layer: drop the browser's default box. */
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: rgba(6, 6, 8, 0.96);
+  color: #fff;
+  animation: fade 160ms ease-out;
+}
+.viewer::backdrop { background: transparent; }
+@keyframes fade { from { opacity: 0; } }
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: max(12px, env(safe-area-inset-top)) 12px 8px 20px;
+}
+.counter { flex: 1 1 auto; min-width: 0; overflow: hidden; color: rgba(255, 255, 255, 0.72); font-size: 14px;
+  font-variant-numeric: tabular-nums; white-space: nowrap; text-overflow: ellipsis; }
+.action {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  background: none;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.close, .nav {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  cursor: pointer;
+}
+.close svg, .nav svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.action:focus-visible, .close:focus-visible, .nav:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+.stage {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: 0 12px;
+}
+.frame {
+  position: relative;
+  /* As large as fits, keeping its shape, never past its real size. */
+  width: min(100%, var(--natural), calc((100dvh - 150px) * var(--ratio)));
+  overflow: hidden;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.preview, .full {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.preview { filter: blur(8px); transform: scale(1.04); }
+.full { opacity: 0; transition: opacity 180ms ease-out; }
+.frame[data-loaded] .full { opacity: 1; }
+.status {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  font-size: 12px;
+}
+
+.nav { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(0, 0, 0, 0.45); }
+.nav:disabled { opacity: 0; pointer-events: none; }
+.prev { left: 12px; }
+.next { right: 12px; }
+/* Phones swipe; the arrows stay out of the photo's way until there's room for them. */
+@media (max-width: 599px) { .nav { display: none; } }
+
+.note {
+  margin: 0;
+  padding: 10px 20px max(14px, env(safe-area-inset-bottom));
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) { .viewer { animation: none; } .full { transition: none; } }

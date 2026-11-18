@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import {
-  attachFighterVoiceNote, attachTrainingFile, attachTrainingVideo, getAttachmentSettings, getPrivateMediaSettings,
+  ApiError, attachFighterVoiceNote, attachTrainingFile, attachTrainingVideo, getAttachmentSettings, getPrivateMediaSettings,
   getPrivateUpload, listFighterTrainingAttachments, listTrainingAttachments, playFighterTrainingAttachment,
   playTrainingAttachment, processFileUpload, removeFighterTrainingAttachment, removeTrainingAttachment,
   reserveDocumentUpload, reserveFileUpload, reservePrivateUpload, type AttachmentTarget,
@@ -10,8 +10,12 @@ import {
 import type { TrainingAttachment } from "@/lib/api-schema.generated";
 import { formatDuration, photoProblem, preparePhoto, VOICE_MAX_SECONDS, VoiceRecorder } from "@/lib/attachments";
 import { describeLoadFailure } from "@/lib/connectivity";
+import { formatAppDate } from "@/lib/date-format";
 import { formatBytes, pdfProblem, renderPdfPages } from "@/lib/pdf-pages";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { PdfViewer } from "./pdf-viewer";
+import { PhotoViewer } from "./photo-viewer";
+import { VoicePlayer } from "./voice-note";
 import { PrivateVideoPlayer } from "./private-exercise-video";
 import styles from "./training-videos.module.css";
 
@@ -172,6 +176,8 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
   const photoInput = useRef<HTMLInputElement>(null);
   const pdfInput = useRef<HTMLInputElement>(null);
   const recorder = useRef<VoiceRecorder | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
+  const [reading, setReading] = useState<string | null>(null);
   const opening = useRef<string | null>(null);
   const athlete = viewer === "athlete";
   const { source, target_id: targetId, exercise_ref: exerciseRef = "" } = target;
@@ -215,7 +221,10 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
       added(await task());
       return true;
     } catch (error) {
-      setProblem(describeLoadFailure(error, error instanceof Error && error.message ? error.message : fallback));
+      // Upload limits: a plain sentence, not the server's message and request id.
+      setProblem(error instanceof ApiError && error.status === 429
+        ? "You've sent a lot of files in the last hour. Try again a bit later."
+        : describeLoadFailure(error, error instanceof Error && error.message ? error.message : fallback));
       return false;
     } finally {
       setStage(null);
@@ -338,15 +347,15 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
       }
       return;
     }
-    // A photo opens at once on its thumbnail; the full photo sharpens over it when it arrives.
-    if (kindOf(row) === "photo") setOpened(row);
+    // Photos open full screen; the viewer fetches each full photo when it's shown.
+    if (kindOf(row) === "photo") { setViewing(row.id); return; }
     opening.current = row.id;
     try {
       const fresh = athlete ? await playTrainingAttachment(token, row.id)
         : await playFighterTrainingAttachment(token, athleteId ?? "", row.id);
       // A slow answer for a file the person has already moved on from is dropped.
       if (opening.current !== row.id) return;
-      setOpened({ ...fresh, file: fresh.file ? { ...fresh.file, thumb_url: fresh.file.thumb_url ?? row.file?.thumb_url ?? null } : fresh.file });
+      setOpened(fresh);
     } catch (error) {
       if (opening.current !== row.id) return;
       setOpened(null);
@@ -383,7 +392,15 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
   const pendingTile = busy && !recording && busyKind !== "pdf";
   const pendingDoc = busy && busyKind === "pdf";
   const numbered = (row: TrainingAttachment) => rows.filter(item => kindOf(item) === kindOf(row)).indexOf(row) + 1;
-  const visualOpen = opened && (kindOf(opened) === "photo" || kindOf(opened) === "video") ? opened : null;
+  const visualOpen = opened && kindOf(opened) === "video" ? opened : null;
+  const photos = rows.filter(row => kindOf(row) === "photo");
+  const readingRow = rows.find(row => row.id === reading && kindOf(row) === "pdf") ?? null;
+  async function photoUrl(row: TrainingAttachment) {
+    const fresh = athlete ? await playTrainingAttachment(token, row.id)
+      : await playFighterTrainingAttachment(token, athleteId ?? "", row.id);
+    if (!fresh.file?.url) throw new Error("File unavailable.");
+    return fresh.file.url;
+  }
 
   if (!rows.length && !attachable && !busy && !recording) return null;
   const singleLabel = offered.length !== 1 ? "" : offered[0] === "voice" ? "Record voice note"
@@ -436,11 +453,12 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
       </li>)}
       {pendingTile ? <li><span className={styles.pending} role="status">{stage}</span></li> : null}
     </ul> : null}
+    {readingRow ? <PdfViewer name={readingRow.file?.name ?? "Document.pdf"} pages={readingRow.file?.pages ?? 1}
+      load={() => photoUrl(readingRow)} onDownload={() => void open(readingRow)} onClose={() => setReading(null)} /> : null}
+    {viewing && photos.some(photo => photo.id === viewing) ? <PhotoViewer photos={photos} startId={viewing} label={label}
+      load={photoUrl} onRemove={row => remove(row)} onClose={() => setViewing(null)} /> : null}
     {visualOpen ? <div className={styles.player}>
-      {kindOf(visualOpen) === "photo"
-        ? <PhotoFrame key={visualOpen.id} file={visualOpen.file}
-            alt={`Photo ${numbered(rows.find(r => r.id === visualOpen.id) ?? visualOpen)} for ${label}`} />
-        : visualOpen.media ? <PrivateVideoPlayer key={visualOpen.media.url ?? visualOpen.id} media={visualOpen.media} name={label} kind="Form check" /> : null}
+      {visualOpen.media ? <PrivateVideoPlayer key={visualOpen.media.url ?? visualOpen.id} media={visualOpen.media} name={label} kind="Form check" /> : null}
       <div className={styles.playerSide}>
         {athlete ? <p className={styles.who}>Only you and coaches you share photos and voice notes with can see this.</p> : null}
         <div className={styles.playerActions}>
@@ -452,22 +470,23 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
     </div> : null}
     {notes.length ? <ul className={styles.notes} aria-label={`Voice notes for ${label}`}>
       {notes.map(row => {
-        const playing = opened?.id === row.id && opened.file?.url;
         const who = whoFor(row);
-        return <li key={row.id} className={styles.note}>
-          {playing ? <audio className={styles.audio} src={opened.file!.url!} controls autoPlay
-            aria-label={`Voice note from ${who.toLowerCase()} for ${label}`} />
-            : <button type="button" className={styles.noteButton} onClick={() => void open(row)}
-              aria-label={`Play voice note ${numbered(row)} from ${who.toLowerCase()} for ${label}`}>
-              <span className={styles.playSmall} aria-hidden="true" />
-              <span className={styles.noteLabel}>Voice note</span>
-              <span className={styles.noteMeta}>{who}</span>
-              <span className={styles.noteTime}>{formatDuration(row.file?.duration_ms)}</span>
-            </button>}
-          {playing ? <div className={styles.noteActions}>
-            {row.removable ? <button type="button" className={styles.textAction} onClick={() => void remove(row)}>Remove</button> : null}
-            <button type="button" className={styles.textAction} onClick={() => { opening.current = null; setOpened(null); }}>Close</button>
-          </div> : null}
+        return <li key={row.id} className={styles.note} data-author={row.author}>
+          <div className={styles.noteHead}>
+            <span className={styles.noteWho}>{who}</span>
+            <span className={styles.noteDate}>{formatAppDate(row.created_at.slice(0, 10)).split(" ").slice(1, 3).join(" ")}</span>
+            {row.removable ? <button type="button" className={styles.noteRemove} onClick={() => void remove(row)}
+              aria-label={`Remove voice note ${numbered(row)}`}><TrashIcon /></button> : null}
+          </div>
+          <VoicePlayer id={row.id} durationMs={row.file?.duration_ms} tone={row.author === "coach" ? "coach" : "athlete"}
+            playLabel={`Play voice note ${numbered(row)} from ${who.toLowerCase()} for ${label}`}
+            seekLabel={`Position in voice note ${numbered(row)}`}
+            load={async () => {
+              const fresh = athlete ? await playTrainingAttachment(token, row.id)
+                : await playFighterTrainingAttachment(token, athleteId ?? "", row.id);
+              if (!fresh.file?.url) throw new Error("Voice note unavailable.");
+              return fresh.file.url;
+            }} />
         </li>;
       })}
     </ul> : null}
@@ -477,11 +496,14 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
         const pages = row.file?.pages ?? 0;
         const meta = [pages ? `${pages} ${pages === 1 ? "page" : "pages"}` : "", formatBytes(row.file?.size_bytes), whoFor(row)].filter(Boolean);
         return <li key={row.id} className={styles.doc}>
-          <span className={styles.docIcon} aria-hidden="true"><DocIcon /></span>
-          <span className={styles.docText}>
-            <span className={styles.docName} title={name}>{name}</span>
-            <span className={styles.docMeta}>{meta.join(" · ")}</span>
-          </span>
+          {/* The row opens the PDF in the app; Download stays beside it. */}
+          <button type="button" className={styles.docOpen} onClick={() => setReading(row.id)} aria-label={`View ${name}`}>
+            <span className={styles.docIcon} aria-hidden="true"><DocIcon /></span>
+            <span className={styles.docText}>
+              <span className={styles.docName} title={name}>{name}</span>
+              <span className={styles.docMeta}>{meta.join(" · ")}</span>
+            </span>
+          </button>
           <button type="button" className={styles.docDownload} onClick={() => void open(row)}
             aria-label={`Download ${name}`} aria-busy={fetching === row.id || undefined} disabled={fetching === row.id}>
             <DownloadIcon /><span className={styles.docDownloadLabel}>Download</span>
@@ -508,7 +530,10 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
           <span className={styles.stopIcon} aria-hidden="true" />Stop
         </button>
       </> : <>
-        <audio className={styles.audio} src={recording.url} controls aria-label="Preview your voice note" />
+        <div className={styles.previewPlayer} role="group" aria-label="Preview your voice note">
+          <VoicePlayer id="preview" durationMs={recording.durationMs} playLabel="Play your voice note"
+            seekLabel="Position in your voice note" load={async () => recording.wav} />
+        </div>
         <div className={styles.recActions}>
           {busy ? <span className={styles.stage} role="status">{stage}</span>
             : <button type="button" className={styles.textAction} onClick={discardRecording}>Discard</button>}
@@ -536,28 +561,6 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
 }
 
 export const TrainingAttachments = TrainingVideos;
-
-/**
- * An opened photo: its space is reserved from the known size (no jump), it is
- * never taller than about 60% of the screen, the thumbnail shows at once and
- * the full photo fades in over it once it has loaded.
- */
-function PhotoFrame({ file, alt }: { file: TrainingAttachment["file"]; alt: string }) {
-  const [loaded, setLoaded] = useState(false);
-  const width = file?.width || 4;
-  const height = file?.height || 3;
-  return <div className={styles.photoFrame} data-loaded={loaded || undefined}
-    style={{ aspectRatio: `${width} / ${height}`, maxWidth: `min(100%, calc(60vh * ${width / height}))` }}>
-    {/* Plain <img>s: next/image would route the private, short-lived links through the image optimizer. */}
-    {/* eslint-disable-next-line @next/next/no-img-element */}
-    {file?.thumb_url ? <img className={styles.photoPreview} src={file.thumb_url} alt="" aria-hidden="true"
-      referrerPolicy="no-referrer" draggable={false} /> : null}
-    {/* eslint-disable-next-line @next/next/no-img-element */}
-    {file?.url ? <img className={styles.photo} src={file.url} alt={alt} decoding="async" referrerPolicy="no-referrer"
-      draggable={false} onLoad={() => setLoaded(true)} /> : null}
-    {!loaded ? <span className={styles.photoLoading} role="status">Loading photo…</span> : null}
-  </div>;
-}
 
 /** "photos, voice notes or PDFs" for the kinds on offer. */
 function describeKinds(kinds: Kind[]) {

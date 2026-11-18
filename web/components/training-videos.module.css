@@ -186,97 +186,53 @@
 }
 .thumb:hover .thumbImage { filter: brightness(1.08); }
 
-/* An opened photo keeps its shape, reserves its space and is never taller than 60% of the screen. */
-.photoFrame {
-  position: relative;
-  width: 100%;
-  overflow: hidden;
-  border-radius: 14px;
-  background: var(--bg-surface-alt);
-}
-.photoPreview,
-.photo {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  user-select: none;
-}
-/* The preview is small, so soften it slightly instead of showing blocky pixels. */
-.photoPreview { filter: blur(6px); transform: scale(1.04); }
-.photo { opacity: 0; transition: opacity 180ms ease-out; }
-.photoFrame[data-loaded] .photo { opacity: 1; }
-.photoLoading {
-  position: absolute;
-  right: 10px;
-  bottom: 10px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: rgba(10, 10, 11, 0.62);
-  color: #fff;
-  font-size: var(--type-meta);
-}
-@media (prefers-reduced-motion: reduce) { .photo { transition: none; } }
+
 
 @media (min-width: 900px) {
-  .player:has(.photoFrame) { grid-template-columns: minmax(0, 560px) minmax(0, 280px); }
 }
 
 /* Voice notes are full-width rows: easier to tap and to tell apart. */
 .notes { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.note { display: grid; gap: 6px; }
-
-.noteButton {
+/* Each voice note is a quiet card: who and when on top, the player below. */
+.note {
   display: grid;
-  grid-template-columns: auto auto 1fr auto;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 48px;
-  padding: 0 14px;
+  gap: 2px;
+  padding: 8px 8px 6px 12px;
   border: 1px solid var(--border-default);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--bg-surface-alt);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: var(--type-body-sm);
-  text-align: left;
+}
+.note[data-author="coach"] { border-color: var(--progress-gold-border); background: var(--progress-gold-soft); }
+.noteHead { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 24px; }
+.noteWho { color: var(--text-primary); font-size: var(--type-meta); font-weight: 700; white-space: nowrap; }
+.note[data-author="coach"] .noteWho { color: var(--progress-gold); }
+.noteDate { color: var(--text-muted); font-size: var(--type-meta); white-space: nowrap; }
+.noteRemove {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted);
   cursor: pointer;
 }
+.noteRemove:hover { color: var(--text-primary); }
+.noteRemove:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; }
+.noteRemove svg { width: 16px; height: 16px; }
+.previewPlayer { flex: 1 1 100%; min-width: 0; }
 
-.noteButton:hover { border-color: var(--border-strong); }
-.noteButton:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
-.noteLabel { font-weight: 600; white-space: nowrap; }
-.noteMeta { min-width: 0; overflow: hidden; color: var(--text-muted); font-size: var(--type-meta); white-space: nowrap; text-overflow: ellipsis; }
-.noteTime { color: var(--text-secondary); font-size: var(--type-meta); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-.playSmall {
-  position: relative;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--text-primary);
-}
 
-.playSmall::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 54%;
-  transform: translate(-50%, -50%);
-  border-style: solid;
-  border-width: 5px 0 5px 8px;
-  border-color: transparent transparent transparent var(--bg-surface);
-}
 
-.audio { display: block; width: 100%; height: 44px; }
+
 .noteActions, .recActions { display: flex; align-items: center; justify-content: flex-end; gap: 20px; }
 
 @media (min-width: 900px) {
   .notes { max-width: 560px; }
-  .note:has(.audio) { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 20px; }
 }
 
 /* Recorder: Record → Stop → Preview → Send, in one quiet row. */
@@ -291,7 +247,6 @@
   background: var(--bg-surface-alt);
 }
 
-.recorder .audio { flex: 1 1 220px; min-width: 0; }
 .recorder .recActions { margin-left: auto; }
 .recDot { width: 10px; height: 10px; flex: none; border-radius: 50%; background: #e5484d; animation: recPulse 1.2s ease-in-out infinite; }
 .recTime { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
@@ -351,7 +306,7 @@
 
 .doc {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 12px;
   min-height: 56px;
@@ -374,6 +329,23 @@
 }
 
 .docText { display: grid; gap: 2px; min-width: 0; }
+.docOpen {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.docOpen:hover .docName { text-decoration: underline; text-underline-offset: 3px; }
+.docOpen:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 4px; border-radius: 8px; }
 
 .docName, .docMeta {
   min-width: 0;
@@ -490,8 +462,7 @@
 /* In a headed section (at most 560px wide) the photo gets the full width and
    its note and actions sit underneath, rather than squeezing it into half. */
 @media (min-width: 900px) {
-  .videos[data-headed] .player,
-  .videos[data-headed] .player:has(.photoFrame) { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .videos[data-headed] .player { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .videos[data-headed] .playerSide { flex-direction: row; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 0; }
   .videos[data-headed] .playerActions { flex: none; }
 }

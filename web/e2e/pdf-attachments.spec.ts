@@ -3,7 +3,8 @@ import AxeBuilder from "@axe-core/playwright";
 import { isolateFromNetwork } from "./support";
 
 // PDFs on a logged session: rows show name, pages and size, nothing loads until
-// Download is pressed, the link is fetched for that one file only, and a new
+// the PDF is opened or downloaded, the link is fetched for that one file only,
+// tapping a row reads it in the app (pages drawn to canvases), and a new
 // PDF is drawn to page images in the browser, uploaded page by page, checked
 // page by page and only then attached.
 const day = "2026-10-19";
@@ -137,10 +138,43 @@ for (const width of [320, 390, 1280]) {
     const file = await downloaded;
     expect(file.suggestedFilename()).toBe("Week 1 plan.pdf");
     expect(calls.filter(call => call.endsWith("/play"))).toEqual(["GET /api/training/attachments/d2/play"]);
-    // The page itself never shows the PDF.
+    // The browser's own PDF plug-in is never used.
     await expect(page.locator("iframe, embed, object")).toHaveCount(0);
     expect((await new AxeBuilder({ page }).include("dialog").analyze()).violations
       .filter(v => ["serious", "critical"].includes(v.impact ?? ""))).toEqual([]);
+
+    // Tapping the row reads the PDF in the app: each page drawn to a canvas, with Download one tap away.
+    await list.getByRole("button", { name: "View Week 1 plan.pdf" }).click();
+    const reader = page.getByRole("dialog", { name: "Week 1 plan.pdf" });
+    await expect(reader.getByRole("img", { name: "Page 1" })).toBeVisible();
+    await expect(reader).toContainText("Page 1 of 2");
+    await expect(reader.locator("[data-page='1'][data-drawn]")).toHaveCount(1);
+    const canvas = reader.getByRole("img", { name: "Page 1" });
+    const box = await canvas.boundingBox();
+    // Each page keeps its A4 shape and sits above the next, never squeezed under it.
+    expect(Math.abs(box!.height / box!.width - 842 / 595)).toBeLessThan(0.02);
+    const second = await reader.locator("[data-page='2']").boundingBox();
+    expect(second!.y).toBeGreaterThanOrEqual(box!.y + box!.height);
+    expect(box!.width).toBeLessThanOrEqual(width);
+    if (width < 600) expect(box!.width).toBeGreaterThan(width - 40);
+    // The drawn page isn't blank: the dark header bar from the test PDF is on it.
+    expect(await canvas.evaluate(element => {
+      const c = element as HTMLCanvasElement;
+      const pixels = c.getContext("2d")!.getImageData(0, 0, c.width, Math.floor(c.height / 5)).data;
+      for (let i = 0; i < pixels.length; i += 4) if (pixels[i] < 60) return true;
+      return false;
+    })).toBe(true);
+    expect(await reader.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await expect(page.locator("iframe, embed, object")).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath(`${width}-3-reader.png`) });
+    expect((await new AxeBuilder({ page }).include("dialog[aria-label='Week 1 plan.pdf']").analyze()).violations
+      .filter(v => ["serious", "critical"].includes(v.impact ?? ""))).toEqual([]);
+    const again = page.waitForEvent("download");
+    await reader.getByRole("button", { name: "Download", exact: true }).click();
+    expect((await again).suggestedFilename()).toBe("Week 1 plan.pdf");
+    await reader.getByRole("button", { name: "Close PDF" }).click();
+    await expect(reader).toHaveCount(0);
+    await expect(dialog).toBeVisible();
     expect(errors).toEqual([]);
   });
 }
