@@ -405,3 +405,33 @@
   .docIcon { display: none; }
   .docRemove { min-width: 32px; }
 }
+
+/* Headed: the files are a section of the record, with Attach beside the title
+   so it's the first thing seen, not hidden under exercises. */
+.videos[data-headed] { margin-top: 0; }
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.headTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.head .count { margin-left: 0; }
+.menu[data-align="end"] { right: 0; left: auto; }
+.empty { margin: 0; color: var(--text-muted); font-size: var(--type-body-sm); }
+
+/* Desktop: Attach lines up with the right edge of the files under it. */
+@media (min-width: 900px) {
+  .videos[data-headed] { max-width: 560px; }
+}

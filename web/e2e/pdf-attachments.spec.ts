@@ -37,7 +37,10 @@ function twoPagePdf() {
   return Buffer.from(body, "latin1");
 }
 
-async function setup(page: Page, baseURL: string) {
+const block = { feedback_ref: "11111111-1111-4111-8111-111111111111", name: "Trap bar deadlift", kind: "exercise", source: "manual",
+  format: null, prescribed: null, actual: { sets: 3, reps: 5, load: { value: 140, unit: "kg" } }, status: "done", reason: null, notes: null };
+
+async function setup(page: Page, baseURL: string, { exercises = false } = {}) {
   await isolateFromNetwork(page, baseURL);
   const now = new Date(`${day}T12:00:00Z`);
   await page.clock.setFixedTime(now);
@@ -68,7 +71,8 @@ async function setup(page: Page, baseURL: string) {
     const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     if (path === "/api/me") return json({ profile: { athlete_id: athleteId, email: "fighter@example.com", full_name: "Carlos", role: "athlete", access_status: "approved", technical_style: ["boxing"], tactical_style: [], athlete_timezone: "Europe/London", athlete_locale: "en", appearance_mode: "dark", nutrition_profile: {}, date_of_birth: "1995-01-01", meets_minimum_age: true, is_minor: false, terms_accepted: true, health_consent_granted: true, private_trial_ack_at: `${day}T12:00:00Z` }, plan_count: 0, latest_plan: null, latest_intake: null, username_rate_limit: {} });
     if (path === "/api/training/history") return json({ sessions: [session] });
-    if (path.startsWith("/api/training/history/")) return json({ session, athlete_id: athleteId, prescription_source: "manual", blocks: [] });
+    if (path.startsWith("/api/training/history/")) return json({ session, athlete_id: athleteId, prescription_source: "manual",
+      blocks: exercises ? [block] : [] });
     if (path === "/api/private-media/settings") return json({ uploads_available: false, youtube_available: false });
     if (path === "/api/attachments/settings") return json({ photos_available: true, voice_available: true, pdfs_available: true });
     if (path === "/api/attachments/uploads") {
@@ -176,3 +180,31 @@ test("files that aren't PDFs, or are too large, are refused before upload", asyn
   expect(uploads).toEqual([]);
   expect(calls.filter(call => call.startsWith("POST /api/attachments/uploads"))).toEqual([]);
 });
+
+for (const width of [320, 1280]) {
+  test(`Attach sits at the top of a session that has exercises at ${width}px`, async ({ page, baseURL }, info) => {
+    await page.setViewportSize({ width, height: 900 });
+    await setup(page, baseURL!, { exercises: true });
+    await page.goto("/history");
+    await page.getByRole("button", { name: /View Boxing details/ }).click();
+    const dialog = page.getByRole("dialog", { name: "Boxing" });
+    const heading = dialog.getByRole("heading", { name: "Attachments" });
+    const exercises = dialog.getByRole("heading", { name: "Exercises" });
+    await expect(heading).toBeVisible();
+    await expect(dialog.getByText("Trap bar deadlift")).toBeVisible();
+    // Above the exercises, with Attach on the same line as its title.
+    expect((await heading.boundingBox())!.y).toBeLessThan((await exercises.boundingBox())!.y);
+    const attach = dialog.getByRole("button", { name: "Attach", exact: true }).first();
+    // Measured together, so the sheet's slide-in can't skew the comparison.
+    const offset = await dialog.evaluate(element => {
+      const center = (node: Element | null) => { const box = node!.getBoundingClientRect(); return box.top + box.height / 2; };
+      const title = [...element.querySelectorAll("h3")].find(node => node.textContent === "Attachments")!;
+      return Math.abs(center(title) - center(title.parentElement!.querySelector("button")));
+    });
+    expect(offset).toBeLessThanOrEqual(4);
+    await attach.click();
+    await expect(dialog.getByRole("menuitem")).toHaveText(["Photo", "Voice note", "PDF"]);
+    expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await page.screenshot({ path: info.outputPath(`${width}-4-top-attach.png`) });
+  });
+}

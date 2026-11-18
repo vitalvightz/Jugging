@@ -143,10 +143,12 @@ type Recording = { stage: "recording"; seconds: number } | { stage: "preview"; w
  * removes anything; a coach sees them only while the athlete shares media
  * (enforced by the API), and can leave voice feedback and share PDFs.
  */
-export function TrainingVideos({ token, target, viewer = "athlete", athleteId, label }: {
+export function TrainingVideos({ token, target, viewer = "athlete", athleteId, label, heading }: {
   token: string; target: AttachmentTarget; viewer?: "athlete" | "coach"; athleteId?: string;
   /** What the files are for, used in accessible names ("Back squat"). */
   label: string;
+  /** A section title. With one, Attach sits beside it at the top instead of under the files. */
+  heading?: string;
 }) {
   const [rows, setRows] = useState<TrainingAttachment[]>([]);
   const [kinds, setKinds] = useState<Kinds>(NONE);
@@ -368,9 +370,29 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
   const visualOpen = opened && (kindOf(opened) === "photo" || kindOf(opened) === "video") ? opened : null;
 
   if (!rows.length && !attachable && !busy && !recording) return null;
-  return <div className={styles.videos} data-dragging={dragging || undefined}
+  const attachControl = attachable && !recording ? <div className={styles.attachWrap}>
+    <button type="button" className={styles.attach} disabled={busy} aria-haspopup={offered.length > 1 ? "menu" : undefined}
+      aria-expanded={offered.length > 1 ? menu : undefined}
+      onClick={() => offered.length > 1 ? setMenu(value => !value) : choose(offered[0])}>
+      {offered.length === 1 && offered[0] === "voice" ? <MicIcon /> : <PaperclipIcon />}
+      {offered.length > 1 ? "Attach" : offered[0] === "voice" ? "Record voice note"
+        : offered[0] === "pdf" ? "Attach PDF" : `Attach ${NOUN[offered[0]].toLowerCase()}`}
+    </button>
+    {menu ? <div className={styles.menu} data-align={heading ? "end" : undefined} role="menu" aria-label={`Attach to ${label}`}>
+      {offered.map(kind => <button key={kind} type="button" role="menuitem" className={styles.menuItem} onClick={() => choose(kind)}>
+        {kind === "photo" ? <PhotoIcon /> : kind === "voice" ? <MicIcon /> : kind === "pdf" ? <DocIcon /> : <VideoIcon />}
+        {NOUN[kind]}
+      </button>)}
+    </div> : null}
+  </div> : null;
+  return <div className={styles.videos} data-headed={heading ? true : undefined} data-dragging={dragging || undefined}
     onDragOver={attachable && dropKinds.length ? event => { event.preventDefault(); setDragging(true); } : undefined}
     onDragLeave={attachable ? () => setDragging(false) : undefined} onDrop={drop}>
+    {heading ? <div className={styles.head}>
+      <h3 className={styles.headTitle}>{heading}</h3>
+      {rows.length ? <span className={styles.count}>{rows.length} of {MAX_FILES}</span> : null}
+      {attachControl}
+    </div> : null}
     {tiles.length || pendingTile ? <ul className={styles.grid} aria-label={`Photos and videos for ${label}`}>
       {tiles.map(row => <li key={row.id}>
         <button type="button" className={styles.thumb} aria-pressed={opened?.id === row.id}
@@ -465,25 +487,14 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
         </div>
       </>}
     </div> : null}
-    {(attachable && !recording) || rows.length ? <div className={styles.bar}>
-      {attachable && !recording ? <div className={styles.attachWrap}>
-        <button type="button" className={styles.attach} disabled={busy} aria-haspopup={offered.length > 1 ? "menu" : undefined}
-          aria-expanded={offered.length > 1 ? menu : undefined}
-          onClick={() => offered.length > 1 ? setMenu(value => !value) : choose(offered[0])}>
-          {offered.length === 1 && offered[0] === "voice" ? <MicIcon /> : <PaperclipIcon />}
-          {offered.length > 1 ? "Attach" : offered[0] === "voice" ? "Record voice note"
-            : offered[0] === "pdf" ? "Attach PDF" : `Attach ${NOUN[offered[0]].toLowerCase()}`}
-        </button>
-        {menu ? <div className={styles.menu} role="menu" aria-label={`Attach to ${label}`}>
-          {offered.map(kind => <button key={kind} type="button" role="menuitem" className={styles.menuItem} onClick={() => choose(kind)}>
-            {kind === "photo" ? <PhotoIcon /> : kind === "voice" ? <MicIcon /> : kind === "pdf" ? <DocIcon /> : <VideoIcon />}
-            {NOUN[kind]}
-          </button>)}
-        </div> : null}
-      </div> : null}
+    {!heading && ((attachable && !recording) || rows.length) ? <div className={styles.bar}>
+      {attachControl}
       {attachable && !recording && dropKinds.length ? <span className={styles.dropHint}>or drop one here</span> : null}
       {rows.length ? <span className={styles.count}>{rows.length} of {MAX_FILES}</span> : null}
     </div> : null}
+    {heading && !rows.length && attachable && !busy && !recording ? <p className={styles.empty}>
+      {athlete ? `Add ${describeKinds(offered)} to this ${label === "Sparring" ? "report" : "session"}.`
+        : `Share ${describeKinds(offered)} with your fighter.`}</p> : null}
     {kinds.photo && athlete ? <input ref={photoInput} type="file" accept="image/jpeg,image/png,image/heic,image/heif,image/webp" hidden
       aria-label={`Attach a photo to ${label}`} onChange={event => void attachPhoto(event.target.files?.[0])} /> : null}
     {kinds.pdf && (athlete || athleteId) ? <input ref={pdfInput} type="file" accept="application/pdf,.pdf" hidden
@@ -496,6 +507,12 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
 }
 
 export const TrainingAttachments = TrainingVideos;
+
+/** "photos, voice notes or PDFs" for the kinds on offer. */
+function describeKinds(kinds: Kind[]) {
+  const words = kinds.map(kind => kind === "pdf" ? "PDFs" : `${NOUN[kind].toLowerCase()}s`);
+  return words.length > 1 ? `${words.slice(0, -1).join(", ")} or ${words.at(-1)}` : words[0] ?? "files";
+}
 
 const iconProps = {
   width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2,
