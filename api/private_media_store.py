@@ -103,7 +103,14 @@ class PrivateMediaStoreMixin:
         response = (self.client.table("training_attachments").select("*").eq("athlete_id", athlete_id)
                     .eq("id", attachment_id).limit(1).execute())
         rows = getattr(response, "data", None) or []
-        return rows[0] if rows else None
+        if not rows:
+            return None
+        row = rows[0]
+        valid = self.client.rpc("training_record_available", {
+            "p_athlete_id": athlete_id, "p_source": row["source"],
+            "p_target_id": row["target_id"], "p_ref": row.get("exercise_ref") or "",
+        }).execute()
+        return row if valid.data is True else None
 
     def delete_training_attachment(self, athlete_id, attachment_id):
         response = (self.client.table("training_attachments").delete()

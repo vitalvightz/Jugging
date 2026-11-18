@@ -89,6 +89,7 @@ export function formatDuration(ms: number | null | undefined) {
  * the person presses Send; stop() releases the microphone.
  */
 export class VoiceRecorder {
+  private cancelled = false;
   private stream: MediaStream | null = null;
   private context: AudioContext | null = null;
   private processor: ScriptProcessorNode | null = null;
@@ -101,7 +102,12 @@ export class VoiceRecorder {
   get seconds() { return this.length / this.rate; }
 
   async start() {
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+    if (this.cancelled) {
+      stream.getTracks().forEach(track => track.stop());
+      throw new Error("Recording cancelled");
+    }
+    this.stream = stream;
     const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     try { this.context = new Context({ sampleRate: VOICE_RATE }); } catch { this.context = new Context(); }
     this.rate = this.context.sampleRate;
@@ -134,6 +140,7 @@ export class VoiceRecorder {
   }
 
   cancel() {
+    this.cancelled = true;
     this.processor?.disconnect();
     this.stream?.getTracks().forEach(track => track.stop());
     void this.context?.close().catch(() => undefined);

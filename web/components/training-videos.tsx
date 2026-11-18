@@ -140,7 +140,7 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
   }, [token, athlete]);
 
   // Leaving the record mid-recording releases the microphone and the preview.
-  useEffect(() => () => { recorder.current?.cancel(); }, []);
+  useEffect(() => () => { recorder.current?.cancel(); recorder.current = null; }, []);
   useEffect(() => () => { if (recording?.stage === "preview") URL.revokeObjectURL(recording.url); }, [recording]);
 
   const busy = stage !== null;
@@ -191,15 +191,19 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
   async function startRecording() {
     setProblem(null);
     setMenu(false);
+    recorder.current?.cancel();
     const next = new VoiceRecorder(() => void stopRecording());
+    recorder.current = next;
     try {
       await next.start();
     } catch {
       next.cancel();
+      if (recorder.current !== next) return;
+      recorder.current = null;
       setProblem("Microphone unavailable. Allow microphone access to record a voice note.");
       return;
     }
-    recorder.current = next;
+    if (recorder.current !== next) { next.cancel(); return; }
     setRecording({ stage: "recording", seconds: 0 });
   }
 

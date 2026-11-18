@@ -16,7 +16,7 @@ const codec: JpegCodec = {
   encode: (image, quality) => jpeg.encode(image, quality),
 };
 
-type Asset = { id: string; owner_id: string; kind: "photo" | "voice"; size_bytes: number; intake_path: string; ready_path: string | null };
+type Asset = { id: string; owner_id: string; kind: "photo" | "voice"; size_bytes: number; intake_path: string; ready_path: string | null; status: string; processing_token: string };
 
 class Unauthorized extends Error {}
 
@@ -65,23 +65,31 @@ async function download(key: string, path: string): Promise<Uint8Array> {
 
 async function upload(key: string, path: string, bytes: Uint8Array, contentType: string) {
   const response = await fetch(objectUrl("attachment-ready", path), {
-    method: "POST", body: bytes,
-    headers: headers(key, { "Content-Type": contentType, "x-upsert": "true", "Cache-Control": "private, no-store" }),
+    method: "POST", body: new Uint8Array(bytes).buffer,
+    headers: headers(key, { "Content-Type": contentType, "x-upsert": "false", "Cache-Control": "private, no-store" }),
   });
   if (!response.ok) throw new Error(`store failed (${response.status})`);
 }
 
 async function remove(key: string, bucket: string, paths: string[]) {
   if (!paths.length) return;
-  await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}`, {
+  const response = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}`, {
     method: "DELETE", headers: headers(key, { "Content-Type": "application/json" }), body: JSON.stringify({ prefixes: paths }),
-  }).catch(() => undefined);
+  });
+  if (!response.ok) throw new Error(`remove failed (${response.status})`);
 }
 
 async function cleanup(key: string) {
   const stale = await rpc<Asset[]>(key, "attachment_cleanup_candidates", {});
-  await remove(key, "attachment-intake", stale.map(asset => asset.intake_path));
-  await remove(key, "attachment-ready", stale.flatMap(asset => asset.ready_path ? [asset.ready_path] : []));
+  for (const asset of stale) {
+    try {
+      await remove(key, "attachment-intake", [asset.intake_path]);
+      if (asset.status === "rejected" && asset.ready_path) {
+        await remove(key, "attachment-ready", [asset.ready_path]);
+      }
+      await rpc(key, "ack_attachment_cleanup", { p_asset_id: asset.id, p_all_removed: asset.status === "rejected" });
+    } catch { console.error("Attachment cleanup will retry", asset.id); }
+  }
 }
 
 async function process(key: string, assetId: string) {
@@ -94,22 +102,23 @@ async function process(key: string, assetId: string) {
     if (asset.kind === "photo") {
       const clean = cleanPhoto(original, codec, asset.size_bytes);
       await upload(key, `${base}/clean.jpg`, clean.bytes, "image/jpeg");
-      await rpc(key, "finish_attachment", { p_asset_id: asset.id, p_ready_path: `${base}/clean.jpg`,
+      await rpc(key, "finish_attachment", { p_asset_id: asset.id, p_token: asset.processing_token, p_ready_path: `${base}/clean.jpg`,
         p_width: clean.width, p_height: clean.height, p_duration_ms: null });
       return { status: "ready" as const, kind: asset.kind, width: clean.width, height: clean.height };
     }
     const clean = cleanVoice(original, asset.size_bytes);
     await upload(key, `${base}/clean.wav`, clean.bytes, "audio/wav");
-    await rpc(key, "finish_attachment", { p_asset_id: asset.id, p_ready_path: `${base}/clean.wav`,
+    await rpc(key, "finish_attachment", { p_asset_id: asset.id, p_token: asset.processing_token, p_ready_path: `${base}/clean.wav`,
       p_width: null, p_height: null, p_duration_ms: clean.durationMs });
     return { status: "ready" as const, kind: asset.kind, duration_ms: clean.durationMs };
   } catch (error) {
     // Fail closed: anything unexpected rejects the upload; the file never reaches anyone.
     const reason = error instanceof Rejected ? error.message : "Could not process this file";
-    await rpc(key, "reject_attachment", { p_asset_id: asset.id, p_reason: reason }).catch(() => undefined);
+    await rpc(key, "reject_attachment", { p_asset_id: asset.id, p_token: asset.processing_token, p_reason: reason }).catch(() => undefined);
     return { status: "rejected" as const, reason };
   } finally {
-    await remove(key, "attachment-intake", [asset.intake_path]);
+    // A failed immediate removal remains discoverable by cleanup.
+    await remove(key, "attachment-intake", [asset.intake_path]).catch(() => undefined);
   }
 }
 

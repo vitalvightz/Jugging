@@ -56,7 +56,7 @@ function check(name, ok, detail = "") {
 }
 const has = (bytes, text) => Buffer.from(bytes).includes(Buffer.from(text));
 
-function photo(width = 1200, height = 900) {
+function photo(width = 2048, height = 2048) {
   const data = new Uint8Array(width * height * 4);
   for (let i = 0; i < data.length; i += 4) { data[i] = (i / 4) % 256; data[i + 1] = 120; data[i + 2] = 200; data[i + 3] = 255; }
   const plain = new Uint8Array(jpeg.encode({ width, height, data }, 85).data);
@@ -116,17 +116,21 @@ try {
   failures += 1;
   console.error("ERROR", error instanceof Error ? error.message : error);
 } finally {
-  // Remove every test file and row this run created.
+  // Never forget a test row if Storage removal failed: leave it for retry.
   for (const asset of created) {
+    let removed = true;
     for (const [bucket, path] of [["attachment-intake", asset.intake_path],
       ["attachment-ready", `${asset.owner_id}/${asset.id}/clean.jpg`], ["attachment-ready", `${asset.owner_id}/${asset.id}/clean.wav`]]) {
-      await fetch(`${url}/storage/v1/object/${bucket}`, { method: "DELETE", headers: { ...auth, "Content-Type": "application/json" },
-        body: JSON.stringify({ prefixes: [path] }) }).catch(() => undefined);
+      try {
+        const response = await fetch(`${url}/storage/v1/object/${bucket}`, { method: "DELETE", headers: { ...auth, "Content-Type": "application/json" },
+          body: JSON.stringify({ prefixes: [path] }) });
+        if (!response.ok) throw new Error(`Storage deletion: ${response.status}`);
+      } catch (error) { removed = false; failures++; console.error("Cleanup must retry", asset.id, error); }
     }
-  }
-  if (created.length) {
-    await fetch(`${url}/rest/v1/attachment_assets?id=in.(${created.map(asset => asset.id).join(",")})`,
-      { method: "DELETE", headers: auth }).catch(() => undefined);
+    if (removed) {
+      const response = await fetch(`${url}/rest/v1/attachment_assets?id=eq.${asset.id}`, { method: "DELETE", headers: auth });
+      if (!response.ok) { failures++; console.error("Could not remove test row", asset.id); }
+    }
   }
   console.log(failures ? `\n${failures} check(s) failed. Keep uploads switched off.` : "\nAll checks passed.");
   process.exitCode = failures ? 1 : 0;

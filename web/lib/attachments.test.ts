@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { cleanVoice } from "../../supabase/functions/process-attachment/sanitize";
-import { downsample, encodeWav, fitWithin, formatDuration, photoProblem } from "./attachments";
+import { downsample, encodeWav, fitWithin, formatDuration, photoProblem, VoiceRecorder } from "./attachments";
 
 test("recorded voice notes are WAVs the server accepts", () => {
   const second = new Float32Array(48_000).map((_, i) => Math.sin(i / 10));
@@ -34,4 +34,25 @@ test("only photo types under 25 MB are accepted for preparing", () => {
 test("durations read as m:ss", () => {
   assert.equal(formatDuration(12_400), "0:12");
   assert.equal(formatDuration(60_000), "1:00");
+});
+
+
+test("cancelling while microphone permission is pending closes the late stream", async () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  let resolve!: (stream: MediaStream) => void;
+  let stopped = 0;
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: {
+    mediaDevices: { getUserMedia: () => new Promise<MediaStream>(done => { resolve = done; }) },
+  } });
+  try {
+    const recorder = new VoiceRecorder(() => {});
+    const pending = recorder.start();
+    recorder.cancel();
+    resolve({ getTracks: () => [{ stop: () => { stopped++; } }] } as unknown as MediaStream);
+    await assert.rejects(pending, /cancelled/);
+    assert.equal(stopped, 1);
+  } finally {
+    if (original) Object.defineProperty(globalThis, "navigator", original);
+    else Reflect.deleteProperty(globalThis, "navigator");
+  }
 });

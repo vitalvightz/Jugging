@@ -59,10 +59,19 @@ set local role service_role;
 select pg_temp.assert_raises(format($q$select public.attach_training_asset('00000000-0000-4000-8000-0000000000b1','00000000-0000-4000-8000-0000000000b1',%L,'external','63000000-0000-4000-8000-0000000000b1','')$q$,(select id from pv where kind='photo')),'55000');
 select pg_temp.assert_ok((select count(*) from public.claim_attachment_processing((select id from pv where kind='photo')))=1,'claim once');
 select pg_temp.assert_ok((select count(*) from public.claim_attachment_processing((select id from pv where kind='photo')))=0,'no second claim');
-select pg_temp.assert_raises(format($q$select public.finish_attachment(%L,'elsewhere/clean.jpg',100,100,null)$q$,(select id from pv where kind='photo')),'55000');
-select public.finish_attachment(id, '00000000-0000-4000-8000-0000000000b1/'||id||'/clean.jpg', 800, 600, null) from pv where kind='photo';
+select pg_temp.assert_raises(format($q$select public.finish_attachment(%L,(select processing_token from public.attachment_assets where id=%L),'elsewhere/clean.jpg',100,100,null)$q$,(select id from pv where kind='photo'),(select id from pv where kind='photo')),'55000');
+select pg_temp.assert_raises(format($q$select public.finish_attachment(%L,gen_random_uuid(),'elsewhere/clean.jpg',100,100,null)$q$,(select id from pv where kind='photo')),'55000');
+reset role;
+update public.attachment_assets set updated_at=now()-interval '6 minutes' where id=(select id from pv where kind='photo');
+set local role service_role;
+select pg_temp.assert_ok((select count(*) from public.claim_attachment_processing((select id from pv where kind='photo')))=0,'stalled processing never reclaimed');
+select pg_temp.assert_raises(format($q$select public.finish_attachment(%L,(select processing_token from public.attachment_assets where id=%L), '00000000-0000-4000-8000-0000000000b1/'||%L||'/clean.jpg',800,600,null)$q$,(select id from pv where kind='photo'),(select id from pv where kind='photo'),(select id from pv where kind='photo')),'55000');
+reset role;
+update public.attachment_assets set updated_at=now() where id=(select id from pv where kind='photo');
+set local role service_role;
+select public.finish_attachment(id, (select processing_token from public.attachment_assets a where a.id=pv.id), '00000000-0000-4000-8000-0000000000b1/'||id||'/clean.jpg', 800, 600, null) from pv where kind='photo';
 select public.claim_attachment_processing(id) from pv where kind='voice';
-select public.finish_attachment(id, '00000000-0000-4000-8000-0000000000b3/'||id||'/clean.wav', null, null, 22000) from pv where kind='voice';
+select public.finish_attachment(id, (select processing_token from public.attachment_assets a where a.id=pv.id), '00000000-0000-4000-8000-0000000000b3/'||id||'/clean.wav', null, null, 22000) from pv where kind='voice';
 
 -- Athlete attaches their photo; nobody else can use it.
 select pg_temp.assert_raises(format($q$select public.attach_training_asset('00000000-0000-4000-8000-0000000000b2','00000000-0000-4000-8000-0000000000b1',%L,'external','63000000-0000-4000-8000-0000000000b1','')$q$,(select id from pv where kind='photo')),'42501');
@@ -80,13 +89,17 @@ reset role;
 insert into storage.objects(id,bucket_id,name) select gen_random_uuid(),'attachment-intake',path from pv where kind='voice2';
 set local role service_role;
 select public.claim_attachment_processing(id) from pv where kind='voice2';
-select public.finish_attachment(id, '00000000-0000-4000-8000-0000000000b3/'||id||'/clean.wav', null, null, 5000) from pv where kind='voice2';
+select public.finish_attachment(id, (select processing_token from public.attachment_assets a where a.id=pv.id), '00000000-0000-4000-8000-0000000000b3/'||id||'/clean.wav', null, null, 5000) from pv where kind='voice2';
 select pg_temp.assert_raises(format($q$select public.attach_training_asset('00000000-0000-4000-8000-0000000000b3','00000000-0000-4000-8000-0000000000b1',%L,'external','63000000-0000-4000-8000-0000000000b1','')$q$,(select id from pv where kind='voice2')),'42501');
 -- An unconnected coach never can.
 select pg_temp.assert_raises(format($q$select public.attach_training_asset('00000000-0000-4000-8000-0000000000b4','00000000-0000-4000-8000-0000000000b1',%L,'external','63000000-0000-4000-8000-0000000000b1','')$q$,(select id from pv where kind='voice2')),'42501');
 -- A rejected upload never attaches.
 insert into pv select 'bad', id, intake_path from public.reserve_attachment_upload('00000000-0000-4000-8000-0000000000b1','photo',5000,'image/jpeg');
-select public.reject_attachment(id,'Not a JPEG') from pv where kind='bad';
+reset role;
+insert into storage.objects(id,bucket_id,name) select gen_random_uuid(),'attachment-intake',path from pv where kind='bad';
+set local role service_role;
+select public.claim_attachment_processing(id) from pv where kind='bad';
+select public.reject_attachment(id,(select processing_token from public.attachment_assets a where a.id=pv.id),'Not a JPEG') from pv where kind='bad';
 select pg_temp.assert_raises(format($q$select public.attach_training_asset('00000000-0000-4000-8000-0000000000b1','00000000-0000-4000-8000-0000000000b1',%L,'external','63000000-0000-4000-8000-0000000000b1','')$q$,(select id from pv where kind='bad')),'55000');
 -- Rate limit: at most three uploads waiting at once.
 select public.reserve_attachment_upload('00000000-0000-4000-8000-0000000000b2','photo',5000,'image/jpeg') from generate_series(1,3);
@@ -100,5 +113,13 @@ set local role service_role;
 create temp table cleaned on commit drop as select id from public.attachment_cleanup_candidates();
 select pg_temp.assert_ok((select id from pv where kind='photo') in (select id from cleaned),'removed photo released for cleanup');
 select pg_temp.assert_ok((select id from pv where kind='bad') in (select id from cleaned),'rejected upload cleaned up');
-select pg_temp.assert_ok((select id from pv where kind='voice') not in (select id from cleaned),'attached voice note kept');
+select pg_temp.assert_ok((select status from public.attachment_assets where id=(select id from pv where kind='voice'))='ready','attached voice note kept');
+reset role;
+
+-- Failed deletion remains eligible until explicitly acknowledged.
+set local role service_role;
+select pg_temp.assert_ok((select status from public.attachment_assets where id=(select id from pv where kind='photo'))='rejected','cleanup fences before removing');
+select pg_temp.assert_ok((select id from pv where kind='photo') in (select id from public.attachment_cleanup_candidates()),'failed deletion retries');
+select public.ack_attachment_cleanup(id,true) from pv where kind='photo';
+select pg_temp.assert_ok((select status from public.attachment_assets where id=(select id from pv where kind='photo'))='deleted','only acknowledge successful removal');
 reset role;
