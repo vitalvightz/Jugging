@@ -235,7 +235,7 @@ def test_weekly_plans_leave_unwritten_days_open_for_the_builder_to_ask(api):
         ReadSession(day="Wednesday", name="Bike", session_type="conditioning", exercises=[ReadExercise(name="Bike", sets=4, seconds=240)]),
         ReadSession(name="Day 3 - Pads", session_type="skill", exercises=[ReadExercise(name="Pads")]),
     ])])
-    body = run_import(client, monkeypatch, reading)
+    body = run_import(client, monkeypatch, reading, text="Day 1 - Strength\nSquat 5x5\nWednesday: Bike 4 x 4 min\nDay 3 - Pads")
     plan = body["plan"]
     assert plan["schedule_mode"] == "weekly" and plan["name"] == "Imported plan"
     assert sorted(str(s["weekday"]) for s in plan["sessions"]) == ["None", "None", "Wednesday"]
@@ -358,7 +358,7 @@ def test_the_accuracy_check_finds_no_differences_against_its_own_hand_checked_re
     assert [name for name, *_ in found] == ["coach_programme", "strength_block", "typos", "whatsapp_week"]
     for _, text, _, truth in found:
         assert text.strip()
-        assert compare(truth, truth)["errors"] == []
+        assert compare(truth, truth, text)["errors"] == []
     truth = found[3][3]
     wrong = truth.model_copy(deep=True)
     wrong.weeks[0].sessions[0].day = "Tuesday"
@@ -408,15 +408,22 @@ def test_written_days_in_any_common_spelling_are_kept_and_only_real_gaps_are_ask
     assert [group.where for group in result.needs_day] == ["D", "E"]
 
 
-def test_a_rest_week_in_the_middle_keeps_later_weeks_on_their_dates():
+def test_written_rest_weeks_keep_their_place_even_at_the_start():
     lift = _session("Lift", "Monday", exercises=[ReadExercise(name="Squat", sets=3, reps=5)])
-    reading = ReadPlan(weeks=[ReadWeek(sessions=[]), ReadWeek(repeat=2, sessions=[lift]), ReadWeek(sessions=[]),
-                              ReadWeek(sessions=[lift]), ReadWeek(sessions=[])])
+    # Week 1 is a written recovery week, week 4 a deload; the stray empty week isn't written as rest.
+    reading = ReadPlan(weeks=[ReadWeek(rest=True), ReadWeek(repeat=2, sessions=[lift]), ReadWeek(sessions=[]),
+                              ReadWeek(rest=True), ReadWeek(sessions=[lift]), ReadWeek(rest=True)])
     result = build_draft(reading, date(2026, 11, 23))
-    # Leading and trailing empty weeks are dropped; the rest week stays as a gap.
-    assert result.weeks == 4
-    assert [s["scheduled_date"] for s in result.plan["sessions"]] == ["2026-11-23", "2026-11-30", "2026-12-14"]
-    assert result.plan["end_date"] == "2026-12-20"
+    assert result.weeks == 6
+    # Strength starts in week 2, as written; nothing moves earlier.
+    assert [s["scheduled_date"] for s in result.plan["sessions"]] == ["2026-11-30", "2026-12-07", "2026-12-21"]
+    assert (result.plan["start_date"], result.plan["end_date"]) == ("2026-11-23", "2027-01-03")
+    assert [(f.where, f.message) for f in result.flags if "rest week" in f.message] == [
+        ("Week 1", "Written as a rest week, so it has no sessions."), ("Week 4", "Written as a rest week, so it has no sessions."),
+        ("Week 6", "Written as a rest week, so it has no sessions.")]
+    # A programme that is only rest has nothing to import.
+    with pytest.raises(Exception):
+        build_draft(ReadPlan(weeks=[ReadWeek(rest=True)]), date(2026, 11, 23))
 
 
 def test_list_labels_are_left_out_of_names_and_nameless_exercises_are_flagged_not_dropped_silently():
@@ -443,3 +450,35 @@ def test_two_sessions_on_one_day_and_same_named_sessions_stay_separate():
     assert monday == ["AM Run", "PM Pads"]
     # Only the Strength without a day waits for a day, once for both weeks.
     assert [(g.where, len(g.session_ids)) for g in result.needs_day] == [("Weeks 1-2 · Strength", 2)]
+
+
+
+# -- Numbers checked against the source, not the reader's word ---------------------
+
+def test_a_number_the_reader_changed_without_saying_is_caught_from_the_source():
+    source = "Monday Strength\nBulgarian split squat 3x8 each side, RPE 7\nPads 6 x 3 min rounds, 1 min rest\n5 km easy run\nLandmine press 3 x 6-8"
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("Strength", "Monday", exercises=[
+        ReadExercise(name="Bulgarian split squat", sets=3, reps=10, per_side=True, rpe=7),  # 8 became 10, unreported
+        ReadExercise(name="Pad rounds", rounds=6, work_seconds=180, rest_seconds=60),  # minutes as seconds: fine
+        ReadExercise(name="Easy run", distance=5, distance_unit="km"),
+        ReadExercise(name="Landmine press", prescription="3 x 6-9"),  # a range changed
+        ReadExercise(name="Turkish get-up", sets=2, reps=3),  # not in the programme at all
+    ])])])
+    flags = [(f.where, f.message) for f in build_draft(reading, date(2026, 11, 23), source).flags]
+    assert flags == [
+        ("Strength · Bulgarian split squat", "Check the dose: reps 10 isn't written in “Bulgarian split squat 3x8 each side, RPE 7”."),
+        ("Strength · Landmine press", "Check the dose: 9 isn't written in “Landmine press 3 x 6-8”."),
+        ("Strength · Turkish get-up", "Couldn't find this exercise's line in the file to double-check its numbers. Check its dose."),
+    ]
+
+
+def test_the_real_programme_passes_the_source_check_with_no_false_alarms(api):
+    client, _, monkeypatch = api
+    flags = run_import(client, monkeypatch)["flags"]
+    assert not [f for f in flags if "Check the dose" in f["message"] or "Couldn't find" in f["message"]]
+
+
+def test_screenshots_say_their_numbers_could_not_be_double_checked():
+    result = build_draft(READING, date(2026, 11, 23), "")
+    assert ("Plan", "Read from screenshots, so the numbers couldn't be double-checked against text. Compare each dose with your screenshots.") in [
+        (f.where, f.message) for f in result.flags]

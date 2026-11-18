@@ -68,7 +68,7 @@ THE ONE RULE: COPY, NEVER INVENT
 
 STRUCTURE
 - A week template that the programme says repeats ("weeks 1-4", "repeat for 6 weeks", "x4 weeks") is ONE week object with repeat set to that number. Identical consecutive weeks are also one week object with repeat > 1. Different weeks are separate objects, in order. No weeks mentioned: one week, repeat 1.
-- A week written with no training (a rest or off week) is still a week object, with no sessions, so later weeks keep their dates.
+- A week the programme writes as a rest, recovery, deload or off week with no sessions listed is still a week object, with rest true and no sessions, so every week keeps its date. This holds for the first week too. rest is false for every other week.
 - day: only a written weekday ("Mon", "Tuesday"). "Day 1", "Session A", "AM" are not weekdays: day is null, and keep that label in the session name (e.g. "Day 1 - Strength").
 - session_type: strength_power (lifting, plyos), conditioning (runs, intervals, circuits), skill (pads, bag, drilling, technique), sparring, recovery (mobility, stretching, easy aerobic), rest (rest days written in the programme), otherwise mixed.
 - instructions: the coach's session-level instructions or focus written for that session as a whole (e.g. "Focus: head movement, stay off the ropes"), verbatim; otherwise null.
@@ -123,8 +123,9 @@ def response_schema() -> dict[str, Any]:
         },
     }
     week = {
-        "type": "object", "additionalProperties": False, "required": ["repeat", "sessions"],
-        "properties": {"repeat": {"type": "integer"}, "sessions": {"type": "array", "items": session}},
+        "type": "object", "additionalProperties": False, "required": ["repeat", "rest", "sessions"],
+        "properties": {"repeat": {"type": "integer"}, "rest": {"type": "boolean"},
+                       "sessions": {"type": "array", "items": session}},
     }
     return {
         "type": "json_schema", "name": "imported_plan", "strict": True,
@@ -172,6 +173,8 @@ class ReadSession(BaseModel):
 
 class ReadWeek(BaseModel):
     repeat: int = 1
+    # The programme writes this week as a rest, recovery or off week.
+    rest: bool = False
     sessions: list[ReadSession] = Field(default_factory=list)
 
 
@@ -490,9 +493,86 @@ def _exercise(item: ReadExercise, flag) -> dict | None:
             "coaching_cues": cues, "stop_rules": stops, "dose": dose.model_dump(exclude_none=True)}
 
 
-def build_draft(read: ReadPlan, start: date, source: str = "") -> PlanImportResult:
-    """The Custom Build draft for what was read. ``source`` is the programme text
-    (empty for screenshots), used to check that corrected words were really written."""
+def _tokens(text: str) -> list[str]:
+    return [word for word in re.findall(r"[a-z]+", text.lower()) if len(word) >= 3]
+
+
+def _same_word(a: str, b: str) -> bool:
+    """"squat" and "squats", "pad" and "pads": one word starts the other."""
+    return a.startswith(b) or b.startswith(a)
+
+
+class SourceCheck:
+    """Checks the reader's numbers against the programme text itself.
+
+    The reader's own correction list can't be the only safeguard: a model could
+    change "3x8" into "3x10" without saying so. For each exercise, find the line
+    of the source it came from (by its name, before any spelling fix) and check
+    that every number in its dose is written on that line (or, for a heading
+    line with no numbers, on the line or two after).
+    A number that isn't, or an exercise whose line can't be found, is flagged."""
+
+    def __init__(self, source: str, corrections: list[ReadCorrection]):
+        self.lines = [" ".join(line.split()) for line in source.replace("\r", "").split("\n")]
+        self.lines = [line for line in self.lines if line]
+        self.undo = [(c.corrected.lower(), c.written.lower()) for c in corrections if c.corrected and c.written]
+
+    def window(self, name: str) -> str | None:
+        """The source line that names this exercise."""
+        written = name.lower()
+        for corrected, original in self.undo:
+            written = written.replace(corrected, original)
+        wanted = set(_tokens(written)) | set(_tokens(name))
+        if not wanted or not self.lines:
+            return None
+        best, best_score = None, 0.0
+        for index, line in enumerate(self.lines):
+            have = _tokens(line)
+            hits = sum(1 for word in set(_tokens(written) or _tokens(name)) if any(_same_word(word, other) for other in have))
+            score = hits / max(1, len(set(_tokens(written) or _tokens(name))))
+            if score > best_score:
+                best, best_score = index, score
+        if best is None or best_score < 0.5:
+            return None
+        # The dose is on the exercise's own line. Only a line with no numbers
+        # (a heading such as "WEDNESDAY - Pads") borrows the next line or two.
+        window = [self.lines[best]]
+        for line in self.lines[best + 1:best + 3]:
+            if _numbers(" ".join(window)):
+                break
+            window.append(line)
+        return " ".join(window)
+
+    def check(self, item: ReadExercise, flag) -> None:
+        name = _clean(item.name) or ""
+        values = {
+            "sets": item.sets, "reps": item.reps, "rounds": item.rounds, "RPE": item.rpe, "distance": item.distance,
+        }
+        timed = {"time": item.seconds, "work time": item.work_seconds, "rest": item.rest_seconds}
+        loads = _numbers(" ".join(filter(None, [item.load, item.prescription])))
+        if not any(v is not None for v in [*values.values(), *timed.values()]) and not loads:
+            return
+        window = self.window(name)
+        if window is None:
+            flag("Couldn't find this exercise's line in the file to double-check its numbers. Check its dose.")
+            return
+        written = set(_numbers(window.replace(",", ".")))
+        def seen(number: float) -> bool:
+            return f"{number:g}" in written
+        missing = [f"{label} {value:g}" for label, value in values.items()
+                   if isinstance(value, (int, float)) and not seen(value)]
+        # Times may be written in minutes or seconds ("3 min" is 180).
+        missing += [f"{label} {value}s" for label, value in timed.items()
+                    if isinstance(value, (int, float)) and not seen(value) and not seen(value / 60)]
+        missing += [number for number in loads if number.replace(",", ".") not in written]
+        if missing:
+            flag(f"Check the dose: {', '.join(missing)} isn't written in \u201c{window[:120]}\u201d.")
+
+
+def build_draft(read: ReadPlan, start: date, source: str | None = None) -> PlanImportResult:
+    """The Custom Build draft for what was read. ``source`` is the programme text,
+    used to double-check names and numbers: "" for screenshots (nothing to check
+    against, which is flagged), None to skip the checks."""
     start = start - timedelta(days=start.weekday())
     flags: list[ImportFlag] = []
     flagged: set[tuple[str, str]] = set()
@@ -503,13 +583,11 @@ def build_draft(read: ReadPlan, start: date, source: str = "") -> PlanImportResu
             flagged.add((where, message))
             flags.append(ImportFlag(where=where, message=message))
 
-    # A rest week written in the middle keeps its place, so later weeks keep their dates.
-    written_weeks = list(read.weeks)
-    while written_weeks and not written_weeks[-1].sessions:
-        written_weeks.pop()
-    while written_weeks and not written_weeks[0].sessions:
-        written_weeks.pop(0)
-    if not written_weeks:
+    # A rest week the programme writes keeps its place wherever it is, first
+    # week included, so every week keeps its date. An empty week that isn't
+    # written as rest is not something the coach wrote, and is left out.
+    written_weeks = [week for week in read.weeks if week.sessions or week.rest]
+    if not any(week.sessions for week in written_weeks):
         raise HTTPException(422, "No training sessions were found in that programme.")
     # Each written week, repeated as written. A repeated week is flagged once,
     # under its week range ("Weeks 1-3"), not once per copy.
@@ -525,8 +603,12 @@ def build_draft(read: ReadPlan, start: date, source: str = "") -> PlanImportResu
         if first_number > last:
             break
         labels += [f"Week {first_number}" if first_number == last else f"Weeks {first_number}-{last}"] * (last - first_number + 1)
+        if not week.sessions:
+            flag(labels[-1], "Written as a rest week, so it has no sessions.")
     name = _clean(read.name, 100) or "Imported plan"
     dated = len(expanded) > 1
+    # Pasted or file text can be checked line by line; screenshots can't.
+    checker = SourceCheck(source, read.corrections) if source and source.strip() else None
 
     def session(item: ReadSession, index: int, label: str, scheduled: date | None) -> dict:
         kind = item.session_type if item.session_type in SESSION_TYPES else "mixed"
@@ -539,7 +621,10 @@ def build_draft(read: ReadPlan, start: date, source: str = "") -> PlanImportResu
             flag(where, f"Only the first {MAX_EXERCISES} of {len(item.exercises)} exercises were brought in.")
         exercises = []
         for exercise in item.exercises[:MAX_EXERCISES]:
-            built = _exercise(exercise, lambda message, e=exercise: flag(f"{where} \u00b7 {_clean(e.name, 60)}" if _clean(e.name) else where, message))
+            say = (lambda message, e=exercise: flag(f"{where} \u00b7 {_clean(e.name, 60)}" if _clean(e.name) else where, message))
+            built = _exercise(exercise, say)
+            if built and checker:
+                checker.check(exercise, say)
             if built:
                 exercises.append(built)
         day = _day(item.day)
@@ -591,7 +676,9 @@ def build_draft(read: ReadPlan, start: date, source: str = "") -> PlanImportResu
                     needs_day(item, f"{labels[number]} \u00b7 {sessions[-1]['name']}", sessions[-1])
         body = {"name": name, "schedule_mode": "dated", "start_date": first.isoformat(),
                 "end_date": (first + timedelta(days=7 * len(expanded) - 1)).isoformat(), "sessions": sessions}
-    corrections_flags(read, flag, source)
+    corrections_flags(read, flag, source or "")
+    if source is not None and not source.strip():
+        flag("Plan", "Read from screenshots, so the numbers couldn't be double-checked against text. Compare each dose with your screenshots.")
     for line in read.skipped[:10]:
         if _clean(line):
             flag("Not placed", f"\u201c{_clean(line, 300)}\u201d")
