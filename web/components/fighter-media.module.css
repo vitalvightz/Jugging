@@ -1,0 +1,32 @@
+/* Progress photos beside recent session files on wide screens; stacked on phones. */
+.grid {
+  display: grid;
+  gap: 20px;
+}
+.column {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+  min-width: 0;
+}
+/* Each record after the first gets a quiet divider so headings don't run together. */
+.column > * + * {
+  padding-top: 16px;
+  border-top: 1px solid var(--border-default);
+}
+.placeholder h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+.muted {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+@media (min-width: 900px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 32px;
+  }
+}

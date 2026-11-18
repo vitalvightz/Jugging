@@ -22,6 +22,8 @@
 .trendHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .trendHead .sectionTitle { white-space: nowrap; }
 .rangeToggle { flex: none; }
+/* The smallest phones: the range buttons move under the title instead of running off the screen. */
+@media (max-width: 359px) { .trendHead { flex-wrap: wrap; } }
 .rangeToggle button { min-height: 30px; padding: 0 9px; font-size: 0.74rem; }
 .readout p { margin: 0; }
 .readout strong { font-size: 1.9rem; font-weight: 700; letter-spacing: -.035em; line-height: 1.1; color: var(--text-primary); font-variant-numeric: tabular-nums; }

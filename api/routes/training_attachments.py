@@ -24,6 +24,8 @@ def build_training_attachments_router(*, require_profile, get_store):
     def list_attachments(source: AttachmentSource, target_id: UUID,
                          exercise_ref: str = Query(default="", max_length=200),
                          profile=Depends(require_profile), store=Depends(get_store)):
+        if source == "progress" and (str(target_id) != profile.athlete_id or exercise_ref):
+            return []
         rows = store.list_training_attachments(profile.athlete_id, source, str(target_id), exercise_ref)
         return attachment_views(store, profile.athlete_id, rows)
 

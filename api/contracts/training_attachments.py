@@ -11,7 +11,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from api.contracts.private_media import PrivateMediaPreview
 
-AttachmentSource = Literal["unlxck", "external", "sparring"]
+# A logged record (session, sparring report), or 'progress': the athlete's own
+# progress photos, whose target is the athlete themself.
+RecordSource = Literal["unlxck", "external", "sparring"]
+AttachmentSource = Literal["unlxck", "external", "sparring", "progress"]
 AttachmentKind = Literal["video", "photo", "voice", "pdf"]
 FileKind = Literal["photo", "voice", "pdf"]
 
@@ -33,9 +36,10 @@ class TrainingAttachmentInput(BaseModel):
 
 
 class CoachVoiceInput(BaseModel):
+    """A coach replies on a logged record only; progress photos are the athlete's own."""
     model_config = ConfigDict(extra="forbid")
     asset_id: UUID
-    source: AttachmentSource
+    source: RecordSource
     target_id: UUID
     exercise_ref: str = Field(default="", max_length=200)
 
@@ -102,3 +106,18 @@ class AttachmentSettings(BaseModel):
     photos_available: bool
     voice_available: bool
     pdfs_available: bool = False
+
+
+class AttachmentTarget(BaseModel):
+    source: RecordSource
+    target_id: UUID
+    exercise_ref: str = ""
+    last_at: datetime
+
+
+class FighterMedia(BaseModel):
+    """What a coach may open from a fighter's media: nothing at all unless the
+    fighter shares media with this coach, and only records that still exist."""
+    share_media: bool
+    progress_count: int = 0
+    recent: list[AttachmentTarget] = []

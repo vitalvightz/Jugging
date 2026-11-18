@@ -17,12 +17,14 @@ import styles from "./training-videos.module.css";
 
 export const MAX_VIDEOS = 6;
 export const MAX_FILES = MAX_VIDEOS;
+/** Progress photos on an athlete's profile (the database enforces the same number). */
+export const PROGRESS_PHOTO_LIMIT = 24;
 const MAX_BYTES = 20 * 1024 * 1024;
 const VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/webm"];
 const POLL_MS = 2_000;
 const POLL_LIMIT = 60;
 
-type Kind = "video" | "photo" | "voice" | "pdf";
+export type Kind = "video" | "photo" | "voice" | "pdf";
 type Kinds = Record<Kind, boolean>;
 const NONE: Kinds = { video: false, photo: false, voice: false, pdf: false };
 
@@ -143,12 +145,18 @@ type Recording = { stage: "recording"; seconds: number } | { stage: "preview"; w
  * removes anything; a coach sees them only while the athlete shares media
  * (enforced by the API), and can leave voice feedback and share PDFs.
  */
-export function TrainingVideos({ token, target, viewer = "athlete", athleteId, label, heading }: {
+export function TrainingVideos({ token, target, viewer = "athlete", athleteId, label, heading, only, limit = MAX_FILES, emptyText }: {
   token: string; target: AttachmentTarget; viewer?: "athlete" | "coach"; athleteId?: string;
   /** What the files are for, used in accessible names ("Back squat"). */
   label: string;
   /** A section title. With one, Attach sits beside it at the top instead of under the files. */
   heading?: string;
+  /** Limits what can be attached here (progress photos are photos only). */
+  only?: Kind[];
+  /** How many files this place holds (the database enforces the same number). */
+  limit?: number;
+  /** The headed empty state, when the default sentence doesn't fit. */
+  emptyText?: string;
 }) {
   const [rows, setRows] = useState<TrainingAttachment[]>([]);
   const [kinds, setKinds] = useState<Kinds>(NONE);
@@ -189,10 +197,10 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
   useEffect(() => () => { if (recording?.stage === "preview") URL.revokeObjectURL(recording.url); }, [recording]);
 
   const busy = stage !== null;
-  const full = rows.length >= MAX_FILES;
+  const full = rows.length >= limit;
   // Coaches leave voice notes and share PDFs, only on a fighter whose files they can see.
   const offered = (["photo", "voice", "pdf", "video"] as Kind[]).filter(kind => kinds[kind]
-    && (athlete || ((kind === "voice" || kind === "pdf") && !!athleteId)));
+    && (!only || only.includes(kind)) && (athlete || ((kind === "voice" || kind === "pdf") && !!athleteId)));
   const attachable = !full && offered.length > 0;
 
   function added(row: TrainingAttachment) {
@@ -354,9 +362,9 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
     setDragging(false);
     const file = event.dataTransfer.files[0];
     if (!file) return;
-    if (file.type.startsWith("video/") && kinds.video && athlete) void attachVideo(file);
-    else if ((file.type === "application/pdf" || /\.pdf$/i.test(file.name)) && kinds.pdf) void attachPdf(file);
-    else if (file.type.startsWith("image/") && kinds.photo && athlete) void attachPhoto(file);
+    if (file.type.startsWith("video/") && offered.includes("video")) void attachVideo(file);
+    else if ((file.type === "application/pdf" || /\.pdf$/i.test(file.name)) && offered.includes("pdf")) void attachPdf(file);
+    else if (file.type.startsWith("image/") && offered.includes("photo")) void attachPhoto(file);
     else setProblem(`Drop ${dropKinds.map(kind => kind === "pdf" ? "a PDF" : `a ${NOUN[kind].toLowerCase()}`).join(" or ")}.`);
   }
 
@@ -370,13 +378,18 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
   const visualOpen = opened && (kindOf(opened) === "photo" || kindOf(opened) === "video") ? opened : null;
 
   if (!rows.length && !attachable && !busy && !recording) return null;
+  const singleLabel = offered.length !== 1 ? "" : offered[0] === "voice" ? "Record voice note"
+    : offered[0] === "pdf" ? "Attach PDF" : `Attach ${NOUN[offered[0]].toLowerCase()}`;
   const attachControl = attachable && !recording ? <div className={styles.attachWrap}>
-    <button type="button" className={styles.attach} disabled={busy} aria-haspopup={offered.length > 1 ? "menu" : undefined}
+    <button type="button" className={styles.attach} disabled={busy} aria-label={singleLabel || undefined} aria-haspopup={offered.length > 1 ? "menu" : undefined}
       aria-expanded={offered.length > 1 ? menu : undefined}
       onClick={() => offered.length > 1 ? setMenu(value => !value) : choose(offered[0])}>
       {offered.length === 1 && offered[0] === "voice" ? <MicIcon /> : <PaperclipIcon />}
-      {offered.length > 1 ? "Attach" : offered[0] === "voice" ? "Record voice note"
-        : offered[0] === "pdf" ? "Attach PDF" : `Attach ${NOUN[offered[0]].toLowerCase()}`}
+      {offered.length > 1 ? "Attach" : <>
+        <span className={styles.attachFull}>{singleLabel}</span>
+        {/* On the narrowest cards the title keeps its room and the button says just "Attach" or "Record". */}
+        <span className={styles.attachShort} aria-hidden="true">{offered[0] === "voice" ? "Record" : "Attach"}</span>
+      </>}
     </button>
     {menu ? <div className={styles.menu} data-align={heading ? "end" : undefined} role="menu" aria-label={`Attach to ${label}`}>
       {offered.map(kind => <button key={kind} type="button" role="menuitem" className={styles.menuItem} onClick={() => choose(kind)}>
@@ -389,8 +402,11 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
     onDragOver={attachable && dropKinds.length ? event => { event.preventDefault(); setDragging(true); } : undefined}
     onDragLeave={attachable ? () => setDragging(false) : undefined} onDrop={drop}>
     {heading ? <div className={styles.head}>
-      <h3 className={styles.headTitle}>{heading}</h3>
-      {rows.length ? <span className={styles.count}>{rows.length} of {MAX_FILES}</span> : null}
+      {/* The count sits under the title, so the title keeps the width beside Attach. */}
+      <div className={styles.headText}>
+        <h3 className={styles.headTitle} title={heading}>{heading}</h3>
+        {rows.length ? <span className={styles.headCount}>{rows.length} of {limit}</span> : null}
+      </div>
       {attachControl}
     </div> : null}
     {tiles.length || pendingTile ? <ul className={styles.grid} aria-label={`Photos and videos for ${label}`}>
@@ -490,11 +506,11 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
     {!heading && ((attachable && !recording) || rows.length) ? <div className={styles.bar}>
       {attachControl}
       {attachable && !recording && dropKinds.length ? <span className={styles.dropHint}>or drop one here</span> : null}
-      {rows.length ? <span className={styles.count}>{rows.length} of {MAX_FILES}</span> : null}
+      {rows.length ? <span className={styles.count}>{rows.length} of {limit}</span> : null}
     </div> : null}
     {heading && !rows.length && attachable && !busy && !recording ? <p className={styles.empty}>
-      {athlete ? `Add ${describeKinds(offered)} to this ${label === "Sparring" ? "report" : "session"}.`
-        : `Share ${describeKinds(offered)} with your fighter.`}</p> : null}
+      {emptyText ?? (athlete ? `Add ${describeKinds(offered)} to this ${label === "Sparring" ? "report" : "session"}.`
+        : `Share ${describeKinds(offered)} with your fighter.`)}</p> : null}
     {kinds.photo && athlete ? <input ref={photoInput} type="file" accept="image/jpeg,image/png,image/heic,image/heif,image/webp" hidden
       aria-label={`Attach a photo to ${label}`} onChange={event => void attachPhoto(event.target.files?.[0])} /> : null}
     {kinds.pdf && (athlete || athleteId) ? <input ref={pdfInput} type="file" accept="application/pdf,.pdf" hidden

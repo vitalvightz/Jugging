@@ -106,11 +106,40 @@ class PrivateMediaStoreMixin:
         if not rows:
             return None
         row = rows[0]
+        if row["source"] == "progress":
+            return row if row["target_id"] == athlete_id and not row.get("exercise_ref") else None
         valid = self.client.rpc("training_record_available", {
             "p_athlete_id": athlete_id, "p_source": row["source"],
             "p_target_id": row["target_id"], "p_ref": row.get("exercise_ref") or "",
         }).execute()
         return row if valid.data is True else None
+
+    def recent_attachment_targets(self, athlete_id, *, limit=4):
+        """The latest records that carry files, newest first, each still available."""
+        response = (self.client.table("training_attachments").select("source,target_id,exercise_ref,created_at")
+                    .eq("athlete_id", athlete_id).neq("source", "progress")
+                    .order("created_at", desc=True).limit(60).execute())
+        targets, seen = [], set()
+        for row in getattr(response, "data", None) or []:
+            key = (row["source"], row["target_id"], row.get("exercise_ref") or "")
+            if key in seen:
+                continue
+            seen.add(key)
+            valid = self.client.rpc("training_record_available", {
+                "p_athlete_id": athlete_id, "p_source": key[0], "p_target_id": key[1], "p_ref": key[2],
+            }).execute()
+            if valid.data is True:
+                targets.append({"source": key[0], "target_id": key[1], "exercise_ref": key[2],
+                                "last_at": row["created_at"]})
+            if len(targets) >= limit:
+                break
+        return targets
+
+    def count_progress_photos(self, athlete_id):
+        response = (self.client.table("training_attachments").select("id", count="exact")
+                    .eq("athlete_id", athlete_id).eq("source", "progress").eq("target_id", athlete_id)
+                    .limit(1).execute())
+        return int(getattr(response, "count", None) or 0)
 
     def delete_training_attachment(self, athlete_id, attachment_id):
         response = (self.client.table("training_attachments").delete()
@@ -197,6 +226,8 @@ class PrivateMediaStoreMixin:
                 "p_target_id": target_id, "p_exercise_ref": exercise_ref,
             }).execute()
         except PostgrestAPIError as exc:
+            if source == "progress" and getattr(exc, "code", None) == "54000":
+                raise HTTPException(409, "You have 24 progress photos. Remove one to add another.") from exc
             raise _file_error(exc, "Unable to attach the file. Try again.") from exc
         if not response.data:
             raise HTTPException(409, "That file is already attached.")

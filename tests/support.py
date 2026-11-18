@@ -2208,6 +2208,20 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         return next((dict(r) for r in self.training_attachments
                      if r['id'] == attachment_id and r['athlete_id'] == athlete_id), None)
 
+    def recent_attachment_targets(self, athlete_id: str, *, limit: int = 4) -> list[dict]:
+        targets, seen = [], set()
+        for r in sorted(self.training_attachments, key=lambda r: r['created_at'], reverse=True):
+            key = (r['source'], r['target_id'], r['exercise_ref'])
+            if r['athlete_id'] != athlete_id or r['source'] == 'progress' or key in seen:
+                continue
+            seen.add(key)
+            targets.append({'source': key[0], 'target_id': key[1], 'exercise_ref': key[2], 'last_at': r['created_at']})
+        return targets[:limit]
+
+    def count_progress_photos(self, athlete_id: str) -> int:
+        return sum(r['athlete_id'] == athlete_id and r['source'] == 'progress' and r['target_id'] == athlete_id
+                   for r in self.training_attachments)
+
     def delete_training_attachment(self, athlete_id: str, attachment_id: str) -> bool:
         before = len(self.training_attachments)
         self.training_attachments = [r for r in self.training_attachments
@@ -2258,7 +2272,13 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
             connection = self.get_accepted_coach_connection(author_id, athlete_id)
             if asset['kind'] not in ('voice', 'pdf') or not connection or connection.get('share_media') is not True:
                 raise HTTPException(404, 'That record or file is not available.')
+        if source == 'progress':
+            if author_id != athlete_id or target_id != athlete_id or exercise_ref or asset['kind'] != 'photo':
+                raise HTTPException(404, 'That record or file is not available.')
+            if sum(r['athlete_id'] == athlete_id and r['source'] == 'progress' for r in self.training_attachments) >= 24:
+                raise HTTPException(409, 'You have 24 progress photos. Remove one to add another.')
         records = {
+            'progress': lambda: True,
             'external': lambda: (self.external_training_sessions.get(target_id) or {}).get('athlete_id') == athlete_id,
             'sparring': lambda: not exercise_ref and any(r.get('id') == target_id and r.get('athlete_id') == athlete_id
                                                          for r in self.sparring_logs),

@@ -248,3 +248,57 @@ test("a weight can't be dated in the future", async ({ page, baseURL }) => {
   await expect(dialog.getByRole("alert")).toHaveText("A weight can't be dated in the future.");
   expect(saves).toHaveLength(0);
 });
+
+// Progress photos sit on the weight page: photos only, nothing loads until one
+// is opened, and the list asks only for this athlete's own progress photos.
+const photo = (id: string) => ({ id, created_at: "2026-10-26T07:00:00Z", kind: "photo", author: "athlete", removable: true,
+  media: null, file: { url: null, width: 900, height: 1200, duration_ms: null, name: null, pages: null, size_bytes: null } });
+for (const [width, height] of [[320, 700], [390, 844], [1280, 800]] as const) {
+  test(`Weight tracker: progress photos (${width}px)`, async ({ page, baseURL }) => {
+    await page.setViewportSize({ width, height });
+    await signInAthlete(page, baseURL!, { isMinor: false });
+    const lists: string[] = [];
+    await page.route("**/api/attachments/settings", route => route.fulfill({ json: { photos_available: true, voice_available: true, pdfs_available: true } }));
+    await page.route("**/api/private-media/settings", route => route.fulfill({ json: { uploads_available: false, youtube_available: false } }));
+    await page.route("**/api/training/attachments?**", route => {
+      lists.push(new URL(route.request().url()).search);
+      return route.fulfill({ json: [photo("p1"), photo("p2")] });
+    });
+    await page.goto("/nutrition");
+    const section = page.getByRole("region", { name: "Progress photos" });
+    await expect(section.getByRole("heading", { name: "Progress photos" })).toBeVisible();
+    await expect(section.getByText("2 of 24")).toBeVisible();
+    // Photos only: one plain button, no menu offering voice notes or PDFs.
+    const attach = section.getByRole("button", { name: "Attach photo" });
+    await expect(attach).toBeVisible();
+    await expect(attach).not.toHaveAttribute("aria-haspopup", "menu");
+    await expect(section.getByRole("button", { name: /Open photo/ })).toHaveCount(2);
+    expect(lists).toEqual(["?source=progress&target_id=athlete-1&exercise_ref="]);
+    // Attach sits beside the title (count under it), and neither wraps or is cut short.
+    const layout = await section.evaluate(element => {
+      const title = element.querySelector("h3")!;
+      const block = title.parentElement!.getBoundingClientRect();
+      const button = title.parentElement!.parentElement!.querySelector("button")!.getBoundingClientRect();
+      return { offset: Math.abs((block.top + block.height / 2) - (button.top + button.height / 2)),
+        buttonHeight: button.height, truncated: title.scrollWidth > title.clientWidth };
+    });
+    expect(layout.offset).toBeLessThan(6);
+    expect(layout.buttonHeight).toBeLessThan(48);
+    expect(layout.truncated).toBe(false);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    if (shots) {
+      await section.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `${shots}/progress-photos-${width}.png` });
+    }
+  });
+}
+
+test("Weight tracker: no progress photos section while photos are switched off", async ({ page, baseURL }) => {
+  await signInAthlete(page, baseURL!, { isMinor: false });
+  await page.route("**/api/attachments/settings", route => route.fulfill({ json: { photos_available: false, voice_available: true, pdfs_available: true } }));
+  await page.route("**/api/training/attachments?**", route => route.fulfill({ json: [] }));
+  await page.goto("/nutrition");
+  await expect(page.getByRole("heading", { level: 1, name: "Weight tracker" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Weight summary" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Progress photos" })).toHaveCount(0);
+});

@@ -299,6 +299,13 @@ export type AttachmentSettings = {
   pdfs_available: boolean;
 };
 
+export type AttachmentTarget = {
+  source: "external" | "sparring" | "unlxck";
+  target_id: string;
+  exercise_ref: string;
+  last_at: string;
+};
+
 /**
  * One movement inside a cluster block, e.g. each half of a contrast pair.
  *
@@ -454,6 +461,7 @@ export type CoachPlannedSession = {
   blocks: SessionDetailBlock[];
 };
 
+/** A coach replies on a logged record only; progress photos are the athlete's own. */
 export type CoachVoiceInput = {
   asset_id: string;
   source: "external" | "sparring" | "unlxck";
@@ -1224,6 +1232,16 @@ export type FeedbackRecord = {
   has_screenshot: boolean;
   created_at: string;
   updated_at: string;
+};
+
+/**
+ * What a coach may open from a fighter's media: nothing at all unless the
+ * fighter shares media with this coach, and only records that still exist.
+ */
+export type FighterMedia = {
+  share_media: boolean;
+  progress_count: number;
+  recent: AttachmentTarget[];
 };
 
 /**
@@ -2882,7 +2900,7 @@ export type TrainingAttachment = {
 export type TrainingAttachmentInput = {
   media_id?: string | null;
   asset_id?: string | null;
-  source: "external" | "sparring" | "unlxck";
+  source: "external" | "progress" | "sparring" | "unlxck";
   target_id: string;
   exercise_ref?: string;
 };

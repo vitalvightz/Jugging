@@ -199,7 +199,8 @@ for (const width of [320, 1280]) {
     const offset = await dialog.evaluate(element => {
       const center = (node: Element | null) => { const box = node!.getBoundingClientRect(); return box.top + box.height / 2; };
       const title = [...element.querySelectorAll("h3")].find(node => node.textContent === "Attachments")!;
-      return Math.abs(center(title) - center(title.parentElement!.querySelector("button")));
+      // The title block (title, and the count under it once there are files) lines up with Attach.
+      return Math.abs(center(title.parentElement) - center(title.parentElement!.parentElement!.querySelector("button")));
     });
     expect(offset).toBeLessThanOrEqual(4);
     await attach.click();

@@ -417,6 +417,23 @@
   min-width: 0;
 }
 
+.videos[data-headed] { container-type: inline-size; }
+.attachShort { display: none; }
+@container (max-width: 300px) {
+  .head .attachFull { display: none; }
+  .head .attachShort { display: inline; }
+}
+.headText {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.headCount {
+  color: var(--text-muted);
+  font-size: var(--type-meta);
+  white-space: nowrap;
+}
 .headTitle {
   flex: 1 1 auto;
   min-width: 0;

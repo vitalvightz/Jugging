@@ -1550,3 +1550,78 @@ test("photos and voice notes are shared only when the athlete turns them on, and
   await expect(page.getByRole("button", { name: "Share photos & voice notes" })).toBeVisible();
   expect(state.actions[1]).toMatchObject({ p_action: "consent", p_media: false, p_recovery: true, p_injuries: true });
 });
+
+// A fighter's shared media on their page: progress photos beside the latest
+// sessions with files, where the coach can reply with a voice note or a PDF.
+const mediaFile = (id: string, kind: "photo" | "voice" | "pdf", author: "athlete" | "coach" = "athlete") => ({
+  id, created_at: "2026-11-15T10:00:00Z", kind, author, removable: author === "coach", media: null,
+  file: { url: null, width: kind === "photo" ? 900 : null, height: kind === "photo" ? 1200 : null,
+    duration_ms: kind === "voice" ? 14000 : null, name: kind === "pdf" ? "Fight week meal plan.pdf" : null,
+    pages: kind === "pdf" ? 4 : null, size_bytes: kind === "pdf" ? 820_000 : null },
+});
+async function mediaRoutes(page: Page, share: boolean) {
+  const lists: string[] = [];
+  await page.route("**/api/attachments/settings", route => route.fulfill({ json: { photos_available: true, voice_available: true, pdfs_available: true } }));
+  await page.route(`**/api/coach/fighters/${fighterId}/media`, route => route.fulfill({ json: share ? {
+    share_media: true, progress_count: 3,
+    recent: [{ source: "external", target_id: strengthSession.id, exercise_ref: "", last_at: "2026-11-15T10:00:00Z" },
+      { source: "sparring", target_id: "spar-1", exercise_ref: "", last_at: "2026-11-12T19:00:00Z" }],
+  } : { share_media: false, progress_count: 0, recent: [] } }));
+  await page.route(`**/api/coach/fighters/${fighterId}/training/attachments?**`, route => {
+    const params = new URL(route.request().url()).searchParams;
+    lists.push(`${params.get("source")}:${params.get("target_id")}`);
+    const source = params.get("source");
+    return route.fulfill({ json: source === "progress" ? [mediaFile("p1", "photo"), mediaFile("p2", "photo"), mediaFile("p3", "photo")]
+      : source === "sparring" ? [mediaFile("v1", "voice")] : [mediaFile("s1", "photo"), mediaFile("d1", "pdf", "coach")] });
+  });
+  return lists;
+}
+
+for (const width of [320, 390, 1280]) {
+  test(`fighter media: progress photos and recent session files at ${width}px`, async ({ page, baseURL }) => {
+    await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter,
+      sparring_reports: [{ id: "spar-1", day: "2026-11-12", rounds: 5, intensity: "hard", round_seconds: 180, head_contact: "none", rocked: false }] }]);
+    const lists = await mediaRoutes(page, true);
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/coach/fighters/${fighterId}`);
+    const media = page.locator("#media");
+    await expect(media.getByRole("heading", { name: "Photos and voice notes" })).toBeVisible();
+    const progress = media.getByRole("region", { name: "Progress photos" });
+    await expect(progress.getByRole("button", { name: /Open photo/ })).toHaveCount(3);
+    await expect(progress.getByText("3 of 24")).toBeVisible();
+    // Coaches never add progress photos.
+    await expect(progress.getByRole("button", { name: /Attach/ })).toHaveCount(0);
+    const recent = media.getByRole("region", { name: "Recent session files" });
+    await expect(recent.getByRole("heading", { name: /Sparring · / })).toBeVisible();
+    await expect(recent.getByText("Fight week meal plan.pdf")).toBeVisible();
+    // The coach replies from here: voice notes and PDFs only.
+    await recent.getByRole("button", { name: "Attach", exact: true }).first().click();
+    await expect(recent.getByRole("menuitem")).toHaveText(["Voice note", "PDF"]);
+    await page.keyboard.press("Escape");
+    expect(lists.sort()).toEqual([`external:${strengthSession.id}`, `progress:${fighterId}`, "sparring:spar-1"]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    // Headings never wrap onto a second line or get cut short.
+    for (const heading of await media.locator("h3").all()) {
+      expect(await heading.evaluate(node => node.getBoundingClientRect().height < 30 && node.scrollWidth <= node.clientWidth)).toBe(true);
+    }
+    if (width >= 900) {
+      const [left, right] = [await progress.boundingBox(), await recent.boundingBox()];
+      expect(Math.abs(left!.y - right!.y)).toBeLessThan(4);
+      expect(right!.x).toBeGreaterThan(left!.x + left!.width);
+    }
+    if (process.env.COACH_SCREENSHOTS) {
+      await media.scrollIntoViewIfNeeded();
+      await media.screenshot({ path: `${process.env.COACH_SCREENSHOTS}/fighter-media-${width}.png` });
+    }
+  });
+}
+
+test("fighter media stays closed when the fighter doesn't share it", async ({ page, baseURL }) => {
+  await fixture(page, baseURL!);
+  const lists = await mediaRoutes(page, false);
+  await page.goto(`/coach/fighters/${fighterId}`);
+  const media = page.locator("#media");
+  await expect(media.getByText(/Photos, voice notes and PDFs: Not shared/)).toBeVisible();
+  await expect(media.getByRole("button")).toHaveCount(0);
+  expect(lists).toEqual([]);
+});
