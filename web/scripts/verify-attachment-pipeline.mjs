@@ -56,9 +56,19 @@ function check(name, ok, detail = "") {
 }
 const has = (bytes, text) => Buffer.from(bytes).includes(Buffer.from(text));
 
-function photo(width = 2048, height = 2048) {
+function photo(width = 2048, height = 2048, noise = false) {
   const data = new Uint8Array(width * height * 4);
   for (let i = 0; i < data.length; i += 4) { data[i] = (i / 4) % 256; data[i + 1] = 120; data[i + 2] = 200; data[i + 3] = 255; }
+  if (noise) {
+    // Reproducible high entropy exercises decoder/encoder work at the real cap.
+    let state = 0x51a7;
+    for (let i = 0; i < data.length; i += 4) {
+      for (let channel = 0; channel < 3; channel++) {
+        state ^= state << 13; state ^= state >>> 17; state ^= state << 5;
+        data[i + channel] = state & 255;
+      }
+    }
+  }
   const plain = new Uint8Array(jpeg.encode({ width, height, data }, 85).data);
   const exif = Buffer.from("Exif\0\0GPSLatitude 51.5074 N");
   const segment = Buffer.concat([Buffer.from([0xff, 0xe1, (exif.length + 2) >> 8, (exif.length + 2) & 0xff]), exif]);
@@ -86,6 +96,15 @@ try {
   check("rebuilt photo has no GPS, EXIF or HTML", !!clean && !has(clean, "GPSLatitude") && !has(clean, "Exif") && !has(clean, "<html"));
   const intake = await fetch(`${url}/storage/v1/object/attachment-intake/${good.intake_path}`, { headers: auth });
   check("the original upload is deleted from quarantine", intake.status === 400 || intake.status === 404, String(intake.status));
+
+  // Independent maximum-size uploads must also work concurrently. This is a
+  // production functional gate; CPU/peak-memory evidence still comes from logs.
+  const noisy = photo(2048, 2048, true);
+  const maxAssets = [await reserve("photo", noisy), await reserve("photo", noisy)];
+  const concurrentMax = await Promise.all(maxAssets.map(processAsset));
+  check("concurrent high-entropy 2048 x 2048 photos are rebuilt", concurrentMax.every(result =>
+    result.status === 200 && result.body.status === "ready" && result.body.width === 2048 && result.body.height === 2048),
+    JSON.stringify(concurrentMax));
 
   // 2. HTML pretending to be a JPEG.
   const fake = await reserve("photo", new Uint8Array(Buffer.from("<html><body onload=alert(1)>".padEnd(2000, " "))));

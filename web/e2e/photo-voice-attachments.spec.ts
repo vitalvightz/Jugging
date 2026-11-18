@@ -131,3 +131,40 @@ test("a voice note is recorded, previewed and sent only when the athlete presses
   await expect(dialog.getByRole("button", { name: "Attach", exact: true })).toBeVisible();
   expect(calls.filter(call => call.includes("/api/attachments/uploads"))).toEqual([]);
 });
+
+test("navigation during microphone permission closes a late stream", async ({ page, baseURL }, info) => {
+  const { calls } = await setup(page, baseURL!);
+  await page.setViewportSize({ width: 390, height: 900 });
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(() => {
+    const state = window as unknown as { grantMicrophone: () => void; microphonePending: boolean; lateTracksStopped: number };
+    state.lateTracksStopped = 0;
+    navigator.mediaDevices.getUserMedia = () => new Promise<MediaStream>(resolve => {
+      state.microphonePending = true;
+      state.grantMicrophone = () => {
+        const context = new AudioContext();
+        const stream = context.createMediaStreamDestination().stream;
+        for (const track of stream.getTracks()) {
+          const stop = track.stop.bind(track);
+          track.stop = () => { state.lateTracksStopped++; stop(); void context.close(); };
+        }
+        resolve(stream);
+      };
+    });
+  });
+  await page.goto("/history");
+  await page.getByRole("button", { name: /View Boxing details/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Boxing" });
+  await dialog.getByRole("button", { name: "Attach", exact: true }).click();
+  await dialog.getByRole("menuitem", { name: "Voice note" }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { microphonePending: boolean }).microphonePending)).toBe(true);
+  await dialog.getByRole("button", { name: "Close session details" }).click();
+  await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Home", exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.evaluate(() => (window as unknown as { grantMicrophone: () => void }).grantMicrophone());
+  await expect.poll(() => page.evaluate(() => (window as unknown as { lateTracksStopped: number }).lateTracksStopped)).toBe(1);
+  expect(calls.filter(call => call.includes("/api/attachments/uploads"))).toEqual([]);
+  expect(errors).toEqual([]);
+  await page.screenshot({ path: info.outputPath("late-microphone-navigation.png") });
+});

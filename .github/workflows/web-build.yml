@@ -70,9 +70,6 @@ jobs:
       - name: Unit tests
         run: npm run test:unit
 
-      - name: Dependency audit (high/critical only)
-        run: npm run audit:high
-
       - name: Build frontend with CI-safe API base URL
         env:
           # Placeholder public values only — no real secrets. NEXT_PUBLIC_* are
@@ -92,6 +89,12 @@ jobs:
           # base URL present. Placeholder only; tests never hit a real backend.
           NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000
         run: npm run test:e2e
+
+      # Keep the existing required build check red on audit failure, while
+      # allowing build/browser evidence to run before the audit gate.
+      - name: Dependency audit (high/critical only)
+        if: ${{ !cancelled() }}
+        run: npm run audit:high
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
