@@ -1361,6 +1361,17 @@ export type HistoryCompletionEdit = {
   notes?: string;
 };
 
+/**
+ * Something in the programme that couldn't be carried into the plan exactly.
+ *
+ * ``where`` names the session (and exercise) so the person can find it in the
+ * builder; ``message`` says what to check, quoting the coach where it helps.
+ */
+export type ImportFlag = {
+  where: string;
+  message: string;
+};
+
 export type InjuryEpisodeObservation = {
   injury_id: string;
   injury_episode_id: string;
@@ -2033,8 +2044,7 @@ export type PlanImportResult = {
   weeks: number;
   sessions: number;
   exercises: number;
-  skipped: string[];
-  shortened: boolean;
+  flags: ImportFlag[];
 };
 
 /** Top-level plan metadata (Section B). */

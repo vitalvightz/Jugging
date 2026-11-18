@@ -1,24 +1,47 @@
-"""Plan import: the text of someone's plan becomes a draft in the builder's own
-format. Nothing is stored until the person saves it from the builder."""
+"""Coach programme import on the Custom Build model.
+
+What the model reads becomes an ordinary ``CustomPlanInput``: the same schema,
+validation, builder and save path as a plan built by hand. These tests hold the
+import to three promises:
+
+* schema compatibility: every draft validates as ``CustomPlanInput`` and saves
+  through the existing endpoints unchanged;
+* faithful extraction: the coach's names, doses and instructions arrive exactly,
+  nothing is invented, and whatever can't be carried exactly is flagged;
+* save/reload integrity: a saved import reads back identical, for athletes and
+  for coaches.
+"""
+import base64
+import json
+import re
 from datetime import date
+from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
+from api.contracts.custom_plans import CustomPlanInput
 from api.services import plan_import
+from api.services.coach_plans import saved_input
 from api.services.plan_import import (
     PlanImportRequest, ReadExercise, ReadPlan, ReadSession, ReadWeek, build_draft, dose_from, response_schema,
 )
 from tests.support import _build_client
+from tests.test_coach_fighter_access import AS_COACH, BASE
+from tests.test_coach_fighter_access import camp  # noqa: F401 - shared pytest fixture
+from tests.test_coach_plans import plans  # noqa: F401 - shared pytest fixture
 
 AUTH = {"Authorization": "Bearer athlete-token"}
 URL = "/api/custom-plans/import"
 MONDAY = "2026-11-23"
-TEXT = "Fight camp block\nWeeks 1-4\nMon Strength: Trap bar deadlift 3x5 @ 140kg, rest 2 min\nWed Pads 6 x 3 min rounds\nSat 5 km easy run"
+FIXTURES = Path(__file__).parent / "fixtures" / "plan_import"
+PROGRAMME = (FIXTURES / "coach_programme.txt").read_text()
+READING = ReadPlan.model_validate(json.loads((FIXTURES / "coach_programme.model.json").read_text()))
 
 
 class FakeReader:
     def __init__(self, plan: ReadPlan | Exception):
-        self.plan, self.texts = plan, []
+        self.plan, self.texts, self.images = plan, [], []
 
     def read(self, text, images=()):
         self.texts.append(text)
@@ -26,22 +49,6 @@ class FakeReader:
         if isinstance(self.plan, Exception):
             raise self.plan
         return self.plan
-
-
-def camp(repeat=4):
-    return ReadPlan(name="Fight camp block", start_date=None, skipped=["Drink 3L water"], weeks=[ReadWeek(repeat=repeat, sessions=[
-        ReadSession(day="Monday", name="Strength", session_type="strength_power", exercises=[
-            ReadExercise(name="Trap bar deadlift", sets=3, reps=5, load="140kg", rest_seconds=120),
-            ReadExercise(name="Split squat", sets=3, reps=8, per_side=True),
-            ReadExercise(name="Sled", prescription="EMOM 10 min, 2 lengths"),
-        ]),
-        ReadSession(day="Wednesday", name="Pads", session_type="skill", exercises=[
-            ReadExercise(name="Pad rounds", rounds=6, work_seconds=180, rest_seconds=60, notes="Finish on the jab"),
-        ]),
-        ReadSession(day="Saturday", name="Roadwork", session_type="conditioning", exercises=[
-            ReadExercise(name="Easy run", distance=5, distance_unit="km", load="zone 2"),
-        ]),
-    ])])
 
 
 @pytest.fixture
@@ -53,100 +60,27 @@ def api(monkeypatch):
     plan_import._reader_cache.clear()
 
 
-def set_(dose):
-    return {key: value for key, value in dose.items() if value is not None}
-
-
 def use(monkeypatch, reader):
     monkeypatch.setitem(plan_import._reader_cache, "default", reader)
 
 
-def test_a_repeating_week_becomes_a_dated_draft_and_nothing_is_saved(api):
-    client, store, monkeypatch = api
-    reader = FakeReader(camp())
-    use(monkeypatch, reader)
-    response = client.post(URL, json={"text": TEXT, "file_name": "camp.pdf", "start_date": MONDAY}, headers=AUTH)
+def dose(exercise):
+    return {key: value for key, value in exercise["dose"].items() if value is not None}
+
+
+def run_import(client, monkeypatch, reading=READING, text=PROGRAMME):
+    use(monkeypatch, FakeReader(reading))
+    response = client.post(URL, json={"text": text, "file_name": "camp.docx", "start_date": MONDAY}, headers=AUTH)
     assert response.status_code == 200, response.text
-    body = response.json()
-    plan = body["plan"]
-    assert (body["weeks"], body["sessions"], body["exercises"]) == (4, 12, 20)
-    assert plan["schedule_mode"] == "dated"
-    assert (plan["start_date"], plan["end_date"]) == ("2026-11-23", "2026-12-20")
-    assert [s["scheduled_date"] for s in plan["sessions"][:3]] == ["2026-11-23", "2026-11-25", "2026-11-28"]
-    strength = plan["sessions"][0]["exercises"]
-    assert strength[0]["origin"] == "manual" and strength[0]["name"] == "Trap bar deadlift"
-    assert set_(strength[0]["dose"]) == {"mode": "reps", "sets": 3, "reps": 5, "rest_seconds": 120, "load_or_intensity": "140kg"}
-    assert strength[1]["dose"]["per_side"] is True
-    assert set_(strength[2]["dose"]) == {"mode": "text", "prescription": "EMOM 10 min, 2 lengths"}
-    pads = plan["sessions"][1]["exercises"][0]
-    assert set_(pads["dose"]) == {"mode": "intervals", "rounds": 6, "work_seconds": 180, "rest_seconds": 60}
-    assert pads["notes"] == "Finish on the jab"
-    assert set_(plan["sessions"][2]["exercises"][0]["dose"]) == {
-        "mode": "distance", "distance": 5.0, "distance_unit": "km", "load_or_intensity": "zone 2"}
-    assert body["skipped"] == ["Drink 3L water"]
-    # Every session and exercise has its own id, so the builder can edit them.
-    ids = [s["id"] for s in plan["sessions"]] + [e["id"] for s in plan["sessions"] for e in s["exercises"]]
-    assert len(ids) == len(set(ids))
-    # Only the plan text is sent: no name or email.
-    assert reader.texts == [TEXT]
-    assert client.get("/api/custom-plans", headers=AUTH).json() == []
-    # The draft saves through the normal builder endpoint as it is.
-    saved = client.post("/api/custom-plans", json=plan, headers=AUTH)
-    assert saved.status_code == 201, saved.text
-    assert len(saved.json()["sessions"]) == 12
+    return response.json()
 
 
-def test_one_week_is_a_weekly_plan_and_unnamed_days_are_spread(api):
-    client, _, monkeypatch = api
-    use(monkeypatch, FakeReader(ReadPlan(name="", weeks=[ReadWeek(repeat=1, sessions=[
-        ReadSession(name="Day 1", session_type="strength_power", exercises=[ReadExercise(name="Squat", sets=5, reps=5)]),
-        ReadSession(name="Day 2", session_type="conditioning", exercises=[ReadExercise(name="Bike", sets=4, seconds=240)]),
-        ReadSession(name="Day 3", session_type="skill"),
-    ])])))
-    body = client.post(URL, json={"text": TEXT, "start_date": MONDAY}, headers=AUTH).json()
-    plan = body["plan"]
-    assert plan["schedule_mode"] == "weekly" and plan["name"] == "Imported plan"
-    assert [s["weekday"] for s in plan["sessions"]] == ["Monday", "Wednesday", "Friday"]
-    assert set_(plan["sessions"][1]["exercises"][0]["dose"]) == {"mode": "duration", "sets": 4, "duration_seconds": 240}
+# -- Schema compatibility --------------------------------------------------------
 
-
-def test_numbers_the_builder_cannot_hold_never_break_the_draft():
-    assert dose_from(ReadExercise(name="x", sets=0, reps=5, rpe=15)).model_dump(exclude_none=True) == {"mode": "reps", "reps": 5}
-    assert dose_from(ReadExercise(name="x", distance=3, distance_unit="miles")).model_dump(exclude_none=True) == {
-        "mode": "text", "prescription": "3 miles"}
-    assert dose_from(ReadExercise(name="x")).model_dump(exclude_none=True) == {"mode": "reps"}
-    long = build_draft(camp(repeat=20), date(2026, 11, 25))
-    assert long.weeks == 12 and long.shortened
-    # A Wednesday start still lays the weeks out from that week's Monday.
-    assert long.plan["start_date"] == "2026-11-23"
-
-
-def test_refusals(api):
-    client, _, monkeypatch = api
-    use(monkeypatch, None)
-    assert client.post(URL, json={"text": TEXT, "start_date": MONDAY}, headers=AUTH).status_code == 503
-    use(monkeypatch, FakeReader(camp()))
-    tiny = client.post(URL, json={"text": "  page 1  ", "start_date": MONDAY}, headers=AUTH)
-    assert tiny.status_code == 422 and "screenshots" in tiny.json()["detail"]
-    use(monkeypatch, FakeReader(ReadPlan(name="Notes", weeks=[])))
-    assert client.post(URL, json={"text": TEXT, "start_date": MONDAY}, headers=AUTH).status_code == 422
-    use(monkeypatch, FakeReader(RuntimeError("upstream said: secret")))
-    failed = client.post(URL, json={"text": TEXT, "start_date": MONDAY}, headers=AUTH)
-    assert failed.status_code == 502 and "secret" not in failed.text
-    assert client.post(URL, json={"text": TEXT, "start_date": MONDAY}).status_code == 401
-
-
-def test_a_daily_limit_on_imports(api):
-    client, _, monkeypatch = api
-    monkeypatch.setenv("UNLXCK_PLAN_IMPORT_DAILY_LIMIT", "2")
-    use(monkeypatch, FakeReader(camp()))
-    codes = [client.post(URL, json={"text": TEXT, "start_date": MONDAY}, headers=AUTH).status_code for _ in range(3)]
-    assert codes == [200, 200, 429]
-
-
-def test_the_schema_is_strict():
+def test_the_model_schema_is_strict_and_every_draft_is_a_custom_plan_input():
     schema = response_schema()
     assert schema["strict"] is True
+
     def check(node):
         if node.get("type") == "object":
             assert node["additionalProperties"] is False
@@ -158,19 +92,218 @@ def test_the_schema_is_strict():
     check(schema["schema"])
     assert PlanImportRequest.model_fields["text"].metadata
 
+    # Awkward readings still produce a valid Custom Build plan, never an error.
+    odd = ReadPlan(name="x" * 300, weeks=[ReadWeek(repeat=0, sessions=[
+        ReadSession(day="Funday", name="", session_type="boxing", exercises=[
+            ReadExercise(name="  ", sets=3), ReadExercise(name="y" * 150, sets=0, reps=-2, rpe=11, rest_seconds=9999,
+                                                       load="z" * 120, equipment="e" * 200, cues=["c" * 600, "ok"]),
+        ])])])
+    for start in (date(2026, 11, 23), date(2026, 11, 26)):
+        result = build_draft(odd, start)
+        CustomPlanInput.model_validate(result.plan)
+    exercise = result.plan["sessions"][0]["exercises"][0]
+    assert exercise["name"] == "y" * 100 and exercise["coaching_cues"] == ["ok"]
+    assert exercise["notes"].splitlines() == [f"Full name: {'y' * 150}", f"Load: {'z' * 120}", f"Equipment: {'e' * 200}", f"Cue: {'c' * 600}"]
 
-JPEG = "data:image/jpeg;base64," + __import__("base64").b64encode(b"\xff\xd8\xff\xe0" + b"0" * 64 + b"\xff\xd9").decode()
+
+def test_the_draft_saves_through_the_existing_endpoint_and_reads_back_identical(api):
+    client, _, monkeypatch = api
+    body = run_import(client, monkeypatch)
+    draft = body["plan"]
+    # Nothing is stored by the import itself.
+    assert client.get("/api/custom-plans", headers=AUTH).json() == []
+    saved = client.post("/api/custom-plans", json=draft, headers=AUTH)
+    assert saved.status_code == 201, saved.text
+    reloaded = client.get(f"/api/custom-plans/{saved.json()['id']}", headers=AUTH).json()
+    assert saved_input(reloaded).model_dump(mode="json") == CustomPlanInput.model_validate(draft).model_dump(mode="json")
+    # Saving the reloaded plan again changes nothing.
+    again = client.put(f"/api/custom-plans/{reloaded['id']}", json=saved_input(reloaded).model_dump(mode="json"), headers=AUTH)
+    assert again.status_code == 200, again.text
+    assert saved_input(again.json()).model_dump(mode="json") == saved_input(reloaded).model_dump(mode="json")
+    # Only rounds with no written time or rest stay marked for the person to finish.
+    assert [e["name"] for s in reloaded["sessions"][:4] for e in s["exercises"] if e["incomplete"]] == [
+        "Shadow boxing", "Hard sparring"]
+
+
+def test_a_coach_import_saves_and_reloads_through_the_coach_plan_path(plans, monkeypatch):  # noqa: F811
+    client, _, _ = plans
+    plan_import.reset_import_limits()
+    use(monkeypatch, FakeReader(READING))
+    imported = client.post(URL, json={"text": PROGRAMME, "start_date": MONDAY}, headers=AS_COACH)
+    assert imported.status_code == 200, imported.text
+    draft = imported.json()["plan"]
+    created = client.post(f"{BASE}/plans?request_id={uuid4()}", headers=AS_COACH, json=draft)
+    assert created.status_code == 201, created.text
+    reloaded = client.get(f"{BASE}/plans/{created.json()['id']}", headers=AS_COACH).json()
+    assert saved_input(reloaded).model_dump(mode="json") == CustomPlanInput.model_validate(draft).model_dump(mode="json")
+    plan_import._reader_cache.clear()
+
+
+# -- Faithful extraction -----------------------------------------------------------
+
+def test_the_coach_programme_arrives_exactly_as_written(api):
+    client, _, monkeypatch = api
+    body = run_import(client, monkeypatch)
+    plan = body["plan"]
+    assert (body["weeks"], body["sessions"], body["exercises"]) == (3, 12, 27)
+    assert plan["name"] == "Fight Camp – Phase 1"
+    assert (plan["schedule_mode"], plan["start_date"], plan["end_date"]) == ("dated", "2026-11-23", "2026-12-13")
+    week = plan["sessions"][:4]
+    # Written days are kept; the unnamed "Day 3" goes on a free day and is flagged.
+    assert [(s["name"], s["scheduled_date"], s["weekday"], s["session_type"]) for s in week] == [
+        ("Strength", "2026-11-23", "Monday", "strength_power"), ("Pads", "2026-11-25", "Wednesday", "skill"),
+        ("Day 3 - Roadwork", "2026-11-27", "Friday", "conditioning"), ("Sparring", "2026-11-28", "Saturday", "sparring")]
+    strength, pads, road, sparring = (s["exercises"] for s in week)
+    deadlift = strength[0]
+    assert (deadlift["origin"], deadlift["name"]) == ("manual", "Trap bar deadlift")
+    assert dose(deadlift) == {"mode": "reps", "sets": 4, "reps": 5, "load_or_intensity": "140kg"}
+    assert deadlift["coaching_cues"] == ["drive through the floor"]
+    assert deadlift["stop_rules"] == ["Stop if lower back pain"]
+    assert deadlift["notes"] == "rest 2-3 min"
+    assert dose(strength[1]) == {"mode": "reps", "sets": 3, "reps": 8, "per_side": True, "rpe": 7}
+    # A range stays exactly as written rather than being rounded to one number.
+    assert dose(strength[2]) == {"mode": "text", "prescription": "3 x 6-8"}
+    assert strength[2]["notes"] == "last set to failure"
+    assert dose(strength[3]) == {"mode": "duration", "sets": 3, "duration_seconds": 30}
+    assert dose(pads[0]) == {"mode": "intervals", "rounds": 6, "work_seconds": 180, "rest_seconds": 60}
+    assert (pads[0]["equipment"], pads[0]["coaching_cues"]) == ("16oz gloves", ["Finish every combo on the jab"])
+    # Rounds with no time written: no time is invented.
+    assert dose(pads[1]) == {"mode": "intervals", "rounds": 3}
+    assert pads[1]["coaching_cues"] == ["head movement"]
+    assert dose(road[0]) == {"mode": "distance", "distance": 5.0, "distance_unit": "km", "load_or_intensity": "zone 2"}
+    assert dose(road[1]) == {"mode": "text", "prescription": "AMRAP 10 min"}
+    assert dose(sparring[0]) == {"mode": "intervals", "rounds": 6, "work_seconds": 180}
+    # The repeat copies week 1 exactly, a week apart.
+    assert [s["scheduled_date"] for s in plan["sessions"][4:8]] == ["2026-11-30", "2026-12-02", "2026-12-04", "2026-12-05"]
+    assert [e["name"] for e in plan["sessions"][4]["exercises"]] == [e["name"] for e in strength]
+    assert body["flags"] == [
+        {"where": "Plan", "message": "No upcoming start date written, so it starts Monday 23 Nov. Change the start date in the builder if needed."},
+        {"where": "Weeks 1-3 · Strength", "message": "Coach's session note (sessions have no notes field, add it to an exercise if it matters): “Focus: brace hard, own every rep.”"},
+        {"where": "Day 3 - Roadwork", "message": "No day written, so it was put on Fridays. Move it if needed."},
+        {"where": "Not placed", "message": "“Sauna 2x a week if cutting”"},
+    ]
+
+
+def test_nothing_in_the_draft_is_invented(api):
+    """Every name, load, cue, stop rule, note and number in the draft is in the coach's text."""
+    client, _, monkeypatch = api
+    plan = run_import(client, monkeypatch)["plan"]
+    source = " ".join(PROGRAMME.split()).lower()
+    numbers = set(re.findall(r"\d+(?:\.\d+)?", source))
+    words = lambda value: " ".join(str(value).split()).lower()  # noqa: E731
+    for session in plan["sessions"]:
+        for exercise in session["exercises"]:
+            name = words(exercise["name"])
+            assert name in source or name.replace("rounds", "").strip() in source or name == "pad rounds", name
+            for text in [exercise["dose"].get("load_or_intensity"), exercise["dose"].get("prescription"), exercise["notes"],
+                         exercise["equipment"], *(exercise["coaching_cues"] or []), *(exercise["stop_rules"] or [])]:
+                if text:
+                    assert words(text) in source, text
+            for key in ("sets", "reps", "rpe", "rounds", "distance"):
+                value = exercise["dose"].get(key)
+                if value is not None:
+                    assert f"{value:g}" in numbers, (exercise["name"], key, value)
+            # Seconds may be written as minutes ("3 min" -> 180).
+            for key in ("work_seconds", "rest_seconds", "duration_seconds"):
+                value = exercise["dose"].get(key)
+                if value is not None:
+                    assert str(value) in numbers or f"{value / 60:g}" in numbers, (exercise["name"], key, value)
+
+
+def test_weekly_plans_leave_unwritten_days_open_for_the_builder_to_ask(api):
+    client, _, monkeypatch = api
+    reading = ReadPlan(name="", weeks=[ReadWeek(repeat=1, sessions=[
+        ReadSession(name="Day 1 - Strength", session_type="strength_power", exercises=[ReadExercise(name="Squat", sets=5, reps=5)]),
+        ReadSession(day="Wednesday", name="Bike", session_type="conditioning", exercises=[ReadExercise(name="Bike", sets=4, seconds=240)]),
+        ReadSession(name="Day 3 - Pads", session_type="skill", exercises=[ReadExercise(name="Pads")]),
+    ])])
+    body = run_import(client, monkeypatch, reading)
+    plan = body["plan"]
+    assert plan["schedule_mode"] == "weekly" and plan["name"] == "Imported plan"
+    assert [s["weekday"] for s in plan["sessions"]] == [None, "Wednesday", None] or \
+        sorted(str(s["weekday"]) for s in plan["sessions"]) == ["None", "None", "Wednesday"]
+    assert dose(next(s for s in plan["sessions"] if s["name"] == "Bike")["exercises"][0]) == {
+        "mode": "duration", "sets": 4, "duration_seconds": 240}
+    pads = next(s for s in plan["sessions"] if s["name"] == "Day 3 - Pads")["exercises"][0]
+    assert dose(pads) == {"mode": "reps"}
+    assert body["flags"] == [
+        {"where": "Day 1 - Strength", "message": "No day written. Choose its day in the builder."},
+        {"where": "Day 3 - Pads", "message": "No day written. Choose its day in the builder."},
+        {"where": "Day 3 - Pads · Pads", "message": "No sets, reps, time or distance written. Add the dose, or leave it open."},
+    ]
+    # It still saves as it is; the builder lists the open days for the person to place.
+    assert client.post("/api/custom-plans", json=plan, headers=AUTH).status_code == 201
+
+
+def test_values_the_builder_cannot_hold_are_kept_as_written_or_flagged():
+    flags = []
+    # Out of range: left out and flagged, never clamped to a made-up value.
+    assert dose_from(ReadExercise(name="x", sets=3, reps=5, rpe=15), flags.append).model_dump(exclude_none=True) == {
+        "mode": "reps", "sets": 3, "reps": 5}
+    assert flags == ["RPE 15 isn't valid and was left out."]
+    # Values that don't fit one mode keep the whole written dose as text.
+    assert dose_from(ReadExercise(name="x", reps=10, distance=400, distance_unit="m")).model_dump(exclude_none=True) == {
+        "mode": "text", "prescription": "10 reps, 400 m"}
+    assert dose_from(ReadExercise(name="x", sets=200, reps=5)).model_dump(exclude_none=True) == {
+        "mode": "text", "prescription": "200 × 5"}
+    assert dose_from(ReadExercise(name="x", distance=3, distance_unit="miles")).model_dump(exclude_none=True) == {
+        "mode": "text", "prescription": "3 miles"}
+    assert dose_from(ReadExercise(name="x", sets=3)).model_dump(exclude_none=True) == {"mode": "text", "prescription": "3 sets"}
+    long = build_draft(READING.model_copy(update={"weeks": [READING.weeks[0].model_copy(update={"repeat": 20})]}), date(2026, 11, 25))
+    assert long.weeks == 12
+    assert long.flags[0].message == "The programme runs 20 weeks. Plans hold up to 12, so weeks 13-20 weren't brought in."
+    # A Wednesday start still lays the weeks out from that week's Monday.
+    assert long.plan["start_date"] == "2026-11-23"
+
+
+def test_a_written_start_date_is_used_and_not_flagged():
+    reading = READING.model_copy(update={"start_date": "2026-12-02"})
+    result = build_draft(reading, date(2026, 11, 23))
+    assert result.plan["start_date"] == "2026-11-30"
+    assert not [f for f in result.flags if f.where == "Plan"]
+
+
+# -- Requests --------------------------------------------------------------------
+
+def test_only_the_programme_is_sent_and_refusals_are_plain(api):
+    client, _, monkeypatch = api
+    reader = FakeReader(READING)
+    use(monkeypatch, reader)
+    assert client.post(URL, json={"text": PROGRAMME, "start_date": MONDAY}, headers=AUTH).status_code == 200
+    assert reader.texts == [PROGRAMME.strip()]
+    use(monkeypatch, None)
+    assert client.post(URL, json={"text": PROGRAMME, "start_date": MONDAY}, headers=AUTH).status_code == 503
+    use(monkeypatch, FakeReader(READING))
+    tiny = client.post(URL, json={"text": "  page 1  ", "start_date": MONDAY}, headers=AUTH)
+    assert tiny.status_code == 422 and "screenshots" in tiny.json()["detail"]
+    use(monkeypatch, FakeReader(ReadPlan(name="Notes", weeks=[])))
+    assert client.post(URL, json={"text": PROGRAMME, "start_date": MONDAY}, headers=AUTH).status_code == 422
+    use(monkeypatch, FakeReader(RuntimeError("upstream said: secret")))
+    failed = client.post(URL, json={"text": PROGRAMME, "start_date": MONDAY}, headers=AUTH)
+    assert failed.status_code == 502 and "secret" not in failed.text
+    assert client.post(URL, json={"text": PROGRAMME, "start_date": MONDAY}).status_code == 401
+
+
+def test_a_daily_limit_on_imports(api):
+    client, _, monkeypatch = api
+    monkeypatch.setenv("UNLXCK_PLAN_IMPORT_DAILY_LIMIT", "2")
+    use(monkeypatch, FakeReader(READING))
+    codes = [client.post(URL, json={"text": PROGRAMME, "start_date": MONDAY}, headers=AUTH).status_code for _ in range(3)]
+    assert codes == [200, 200, 429]
+
+
+JPEG = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff\xe0" + b"0" * 64 + b"\xff\xd9").decode()
 
 
 def test_screenshots_go_to_the_model_once_and_anything_else_is_refused(api):
     client, _, monkeypatch = api
-    reader = FakeReader(camp())
+    reader = FakeReader(READING)
     use(monkeypatch, reader)
     ok = client.post(URL, json={"text": "", "images": [JPEG, JPEG], "start_date": MONDAY}, headers=AUTH)
     assert ok.status_code == 200, ok.text
     assert reader.images == [JPEG, JPEG] and reader.texts == [""]
     for bad in (["data:image/png;base64,iVBORw0KGgo="], ["data:image/jpeg;base64,not base64!"],
-                ["data:image/jpeg;base64," + __import__("base64").b64encode(b"<svg/>").decode()]):
+                ["data:image/jpeg;base64," + base64.b64encode(b"<svg/>").decode()]):
         response = client.post(URL, json={"images": bad, "start_date": MONDAY}, headers=AUTH)
         assert response.status_code == 422, bad
     too_many = client.post(URL, json={"images": [JPEG] * 5, "start_date": MONDAY}, headers=AUTH)

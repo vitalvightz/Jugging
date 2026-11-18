@@ -13,6 +13,6 @@ export default function PlanImportPage() {
   return <RequireAuth>
     {session?.access_token ? <PlanImport accessToken={session.access_token} timezone={me?.profile.athlete_timezone}
       onCancel={() => router.push("/create")}
-      onReview={(plan, name) => { stashImportedPlan(plan, name); router.push("/plans/custom?imported=1"); }} /> : null}
+      onReview={imported => { stashImportedPlan(imported); router.push("/plans/custom?imported=1"); }} /> : null}
   </RequireAuth>;
 }

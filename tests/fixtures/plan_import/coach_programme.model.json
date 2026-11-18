@@ -1,0 +1,24 @@
+{
+  "name": "Fight Camp – Phase 1",
+  "start_date": null,
+  "skipped": ["Sauna 2x a week if cutting"],
+  "weeks": [{"repeat": 3, "sessions": [
+    {"day": "Monday", "name": "Strength", "session_type": "strength_power", "instructions": "Focus: brace hard, own every rep.", "exercises": [
+      {"name": "Trap bar deadlift", "sets": 4, "reps": 5, "seconds": null, "rounds": null, "work_seconds": null, "rest_seconds": null, "distance": null, "distance_unit": null, "per_side": null, "load": "140kg", "rpe": null, "prescription": null, "equipment": null, "cues": ["drive through the floor"], "stop_rules": ["Stop if lower back pain"], "notes": "rest 2-3 min"},
+      {"name": "Bulgarian split squat", "sets": 3, "reps": 8, "seconds": null, "rounds": null, "work_seconds": null, "rest_seconds": null, "distance": null, "distance_unit": null, "per_side": true, "load": null, "rpe": 7, "prescription": null, "equipment": null, "cues": [], "stop_rules": [], "notes": null},
+      {"name": "Landmine press", "sets": null, "reps": null, "seconds": null, "rounds": null, "work_seconds": null, "rest_seconds": null, "distance": null, "distance_unit": null, "per_side": null, "load": null, "rpe": null, "prescription": "3 x 6-8", "equipment": null, "cues": [], "stop_rules": [], "notes": "last set to failure"},
+      {"name": "Copenhagen plank", "sets": 3, "reps": null, "seconds": 30, "rounds": null, "work_seconds": null, "rest_seconds": null, "distance": null, "distance_unit": null, "per_side": null, "load": null, "rpe": null, "prescription": null, "equipment": null, "cues": [], "stop_rules": [], "notes": null}
+    ]},
+    {"day": "Wednesday", "name": "Pads", "session_type": "skill", "instructions": null, "exercises": [
+      {"name": "Pad rounds", "sets": null, "reps": null, "seconds": null, "rounds": 6, "work_seconds": 180, "rest_seconds": 60, "distance": null, "distance_unit": null, "per_side": null, "load": null, "rpe": null, "prescription": null, "equipment": "16oz gloves", "cues": ["Finish every combo on the jab"], "stop_rules": [], "notes": null},
+      {"name": "Shadow boxing", "sets": null, "reps": null, "seconds": null, "rounds": 3, "work_seconds": null, "rest_seconds": null, "distance": null, "distance_unit": null, "per_side": null, "load": null, "rpe": null, "prescription": null, "equipment": null, "cues": ["head movement"], "stop_rules": [], "notes": null}
+    ]},
+    {"day": null, "name": "Day 3 - Roadwork", "session_type": "conditioning", "instructions": null, "exercises": [
+      {"name": "Easy run", "sets": null, "reps": null, "seconds": null, "rounds": null, "work_seconds": null, "rest_seconds": null, "distance": 5, "distance_unit": "km", "per_side": null, "load": "zone 2", "rpe": null, "prescription": null, "equipment": null, "cues": [], "stop_rules": [], "notes": null},
+      {"name": "Hill sprints", "sets": null, "reps": null, "seconds": null, "rounds": null, "work_seconds": null, "rest_seconds": null, "distance": null, "distance_unit": null, "per_side": null, "load": null, "rpe": null, "prescription": "AMRAP 10 min", "equipment": null, "cues": [], "stop_rules": [], "notes": null}
+    ]},
+    {"day": "Saturday", "name": "Sparring", "session_type": "sparring", "instructions": null, "exercises": [
+      {"name": "Hard sparring", "sets": null, "reps": null, "seconds": null, "rounds": 6, "work_seconds": 180, "rest_seconds": null, "distance": null, "distance_unit": null, "per_side": null, "load": null, "rpe": null, "prescription": null, "equipment": null, "cues": [], "stop_rules": [], "notes": null}
+    ]}
+  ]}]
+}

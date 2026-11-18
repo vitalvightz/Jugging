@@ -57,9 +57,13 @@
 .counts dd { margin: 0; font-family: var(--font-display), sans-serif; font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 .planName { margin: 14px 0 0; padding-top: 14px; border-top: 1px solid var(--border-default); font-weight: 600; overflow-wrap: anywhere; }
 .warn, .check { margin: 0; color: var(--text-secondary); font-size: 14px; line-height: 1.5; }
-.skipped { border: 1px solid var(--border-default); border-radius: 14px; padding: 0 14px; }
-.skipped summary { min-height: 44px; display: flex; align-items: center; font-size: 14px; font-weight: 600; cursor: pointer; }
-.skipped ul { margin: 0 0 12px; padding-left: 18px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.flags { border: 1px solid var(--border-default); border-radius: 14px; padding: 0 14px; background: var(--bg-surface); }
+.flags summary { min-height: 44px; display: flex; align-items: center; font-size: 14px; font-weight: 600; cursor: pointer; }
+.flags dl { display: grid; gap: 12px; margin: 0 0 14px; }
+.flags dl > div { display: grid; gap: 4px; min-width: 0; }
+.flags dt { color: var(--text-primary); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.flags dd { display: grid; gap: 4px; margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+@media (min-width: 900px) { .flags dl > div { grid-template-columns: 180px minmax(0, 1fr); column-gap: 20px; align-items: baseline; } }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 
 @media (min-width: 900px) {

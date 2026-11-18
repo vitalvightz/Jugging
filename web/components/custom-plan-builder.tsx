@@ -17,6 +17,7 @@ import { ExerciseMediaProvider } from "./exercise-demo";
 import { customSchedulePrefill, customScheduleIssues, prepareCustomSession, customPlanError, sessionNames } from "@/lib/custom-plan-schedule";
 import type {
   CommunityEntry,
+  CustomDose,
   CustomDoseSuggestion,
   CustomExercise,
   CustomSession,
@@ -36,6 +37,7 @@ import { blankDose, doseSummary, doseIncomplete, libraryPrefill } from "@/lib/cu
 import { CustomExercisePicker } from "./custom-exercise-picker";
 import styles from "./custom-plan-builder.module.css";
 import { useFadeNavigate } from "@/components/fade-through";
+import { ImportFlags, type ImportedPlan } from "./plan-import";
 type Exercise = (Omit<CustomExercise, "snapshot"> & { snapshot: LibraryEntry }) | ManualExercise;
 type Session = Omit<CustomSession, "exercises" | "session_type"> & { exercises: Exercise[]; session_type?: CustomSession["session_type"] };
 type Draft = { id?: string; name: string; sessions: Session[]; incomplete?: boolean; schedule_mode?: "weekly" | "dated"; start_date?: string | null; end_date?: string | null };
@@ -61,12 +63,13 @@ const SESSION_TYPES: Array<[CustomSession["session_type"], string]> = [
   ["mixed", "Workout"], ["strength_power", "Strength / power"], ["conditioning", "Conditioning"],
   ["skill", "Light technical / skill"], ["sparring", "Hard sparring"], ["recovery", "Recovery"], ["rest", "Off / Rest"],
 ];
-/** A draft read from a plan file: every exercise is as written (manual), nothing saved yet. */
+/** A draft read from a plan file: every exercise is as written (manual), nothing saved yet.
+ * A dose the coach left open is marked unfinished, the same as one added by hand. */
 function importedPlanDraft(plan: CustomPlanInput): Draft {
   return orderedDraft({ ...plan, sessions: (plan.sessions ?? []).map(session => ({
     ...session, scheduled_date: session.scheduled_date ?? null,
     weekday: session.weekday ?? (session.scheduled_date ? calendarWeekday(session.scheduled_date) as Session["weekday"] : null),
-    exercises: (session.exercises ?? []).map(exercise => ({ ...exercise, incomplete: false }) as Exercise),
+    exercises: (session.exercises ?? []).map(exercise => ({ ...exercise, incomplete: !exercise.dose || doseIncomplete(exercise.dose as CustomDose) }) as Exercise),
   })) });
 }
 function orderedDraft(draft: Draft): Draft {
@@ -125,7 +128,7 @@ function PencilIcon() {
     </svg>
   );
 }
-export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessionDate, onboarding = null, coachFighterId, onCoachClose, initialPlan, importedDraft, athleteTimezone, fightDate }: { importedDraft?: { plan: CustomPlanInput; name: string }; fightDate?: string | null; athleteTimezone?: string; initialPlan?: CustomPlan; onCoachClose?: () => void; coachFighterId?: string; accessToken: string; planId?: string; addSessionDay?: string | null; addSessionDate?: string | null; onboarding?: MeResponse | null }) {
+export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessionDate, onboarding = null, coachFighterId, onCoachClose, initialPlan, importedDraft, athleteTimezone, fightDate }: { importedDraft?: ImportedPlan; fightDate?: string | null; athleteTimezone?: string; initialPlan?: CustomPlan; onCoachClose?: () => void; coachFighterId?: string; accessToken: string; planId?: string; addSessionDay?: string | null; addSessionDate?: string | null; onboarding?: MeResponse | null }) {
   const router = useRouter();
   const requestId = useRef(crypto.randomUUID());
   const savedPlansHref = coachFighterId ? "/coach/plans" : "/plans#custom-plans";
@@ -757,7 +760,10 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
           {error}
         </p>
       ) : null}
-      {importedDraft && dirty && !message ? <p role="status">Imported from {importedDraft.name}. Check each session, then save.</p> : null}
+      {importedDraft && dirty && !message ? <div className={styles.importNote}>
+        <p role="status">Imported from {importedDraft.name}. Check each session, then save.</p>
+        {importedDraft.flags.length ? <ImportFlags flags={importedDraft.flags} /> : null}
+      </div> : null}
       {message ? (
         <p role="status">
           {message} {onCoachClose ? <button type="button" className="ghost-button" onClick={() => void closeCoach()}>View saved plans</button> : <Link href={savedPlansHref}>View saved plans</Link>}

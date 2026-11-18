@@ -45,7 +45,12 @@ function textPdf(lines: string[]) {
 
 const id = () => crypto.randomUUID();
 const result = {
-  weeks: 4, sessions: 8, exercises: 8, shortened: false, skipped: ["Drink 3L water a day"],
+  weeks: 4, sessions: 8, exercises: 8,
+  flags: [
+    { where: "Plan", message: "No upcoming start date written, so it starts Monday 23 Nov. Change the start date in the builder if needed." },
+    { where: "Weeks 1-4 · Strength", message: "Coach's session note (sessions have no notes field, add it to an exercise if it matters): “Brace hard, own every rep.”" },
+    { where: "Not placed", message: "“Drink 3L water a day”" },
+  ],
   plan: {
     name: "Fight camp block", schedule_mode: "dated", start_date: "2026-11-23", end_date: "2026-12-20",
     sessions: [0, 1, 2, 3].flatMap(week => [
@@ -95,8 +100,10 @@ for (const width of [320, 390, 1280]) {
     expect(bodies[0].start_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(uploads).toEqual([]);
     await expect(page.getByRole("status")).toContainText("Weeks4Sessions8Exercises8");
-    await page.getByText("1 line couldn't be placed").click();
-    await expect(page.getByText("Drink 3L water a day")).toBeVisible();
+    // What couldn't be mapped exactly is listed openly, by where it belongs.
+    await expect(page.getByText("3 things to check")).toBeVisible();
+    await expect(page.getByText("“Drink 3L water a day”")).toBeVisible();
+    await expect(page.getByText("Weeks 1-4 · Strength")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath(`${width}-3-found.png`) });
     expect((await new AxeBuilder({ page }).include("main").analyze()).violations
@@ -105,6 +112,9 @@ for (const width of [320, 390, 1280]) {
     await page.getByRole("button", { name: "Review and edit" }).click();
     await expect(page).toHaveURL(/\/plans\/custom\?imported=1/);
     await expect(page.getByText("Imported from Camp plan.docx. Check each session, then save.")).toBeVisible();
+    // The same list stays with the draft in the builder, closed until opened.
+    await page.getByText("3 things to check").click();
+    await expect(page.getByText("“Brace hard, own every rep.”")).toBeVisible();
     await expect(page.getByText("Trap bar deadlift").first()).toBeVisible();
     // Nothing is saved until the person saves it.
     expect(saved.size).toBe(0);

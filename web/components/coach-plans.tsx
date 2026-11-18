@@ -2,13 +2,13 @@
 import { DiscoveryHint } from "@/components/once-hint";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import type { CoachPlan, CoachPlannedSession, CustomPlanInput } from "@/lib/api-schema.generated";
+import type { CoachPlan, CoachPlannedSession } from "@/lib/api-schema.generated";
 import { weekStart, dayOffset, humanize, type Fighter } from "@/lib/coach";
 import { sharePlanWithFighters, type ShareAttempts } from "@/lib/custom-plan-share";
 import { deleteCoachPlan, assignCoachPlan, listCoachPlans, getFighterPlan, retractCoachPlan } from "@/lib/api";
 import { CustomPlanCalendar } from "./custom-plan-calendar";
 import { CustomPlanBuilder } from "./custom-plan-builder";
-import { PlanImport } from "./plan-import";
+import { PlanImport, type ImportedPlan } from "./plan-import";
 import { AssignedPlanPreview } from "./assigned-plan-preview";
 import { StatusIcon } from "./record-icons";
 import { formatAppDate, formatAppDateRange } from "@/lib/date-format";
@@ -56,7 +56,7 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
   const [pending, setPending] = useState(false);
   const [attempt, setAttempt] = useState(0);
   // A plan read from a coach's PDF or Word file, opened in the builder unsaved.
-  const [imported, setImported] = useState<{ plan: CustomPlanInput; name: string } | null>(null);
+  const [imported, setImported] = useState<ImportedPlan | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     listCoachPlans(token, fighter.id, controller.signal).then(rows => { if (!controller.signal.aborted) { setPlans(rows); setError(""); } })
@@ -70,7 +70,7 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
     return () => { active = false; };
   }, [token, fighter, attempt, refresh]);
   if (editing === "import") return <PlanImport accessToken={token} timezone={fighter.timezone} forFighter={fighter.name}
-    onCancel={() => setEditing(null)} onReview={(plan, name) => { setImported({ plan, name }); setEditing("imported"); }} />;
+    onCancel={() => setEditing(null)} onReview={next => { setImported(next); setEditing("imported"); }} />;
   if (editing === "imported" && imported) return <CustomPlanBuilder accessToken={token} coachFighterId={fighter.id}
     athleteTimezone={fighter.timezone} fightDate={fighter.fight_date} importedDraft={imported}
     onCoachClose={() => { setImported(null); setEditing(null); setAttempt(n => n + 1); }} />;

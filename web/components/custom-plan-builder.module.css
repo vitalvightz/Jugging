@@ -503,3 +503,7 @@
 .datedCalendar[data-readonly="true"] .selectedDaySessions { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
 .datedCalendar[data-readonly="true"] .selectedDaySessions li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 10px; border-left: 3px solid var(--session-colour); border-radius: 6px; background: var(--bg-input); font-size: 12px; font-weight: 550; }
 .datedCalendar[data-readonly="true"] .selectedDaySessions small { color: var(--text-secondary); font-size: 11px; font-weight: 400; }
+
+/* An imported plan: the note and what to check, above the sessions. */
+.importNote { display: grid; gap: 8px; min-width: 0; }
+.importNote > p { margin: 0; }

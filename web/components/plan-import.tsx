@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ApiError, importPlanText, type PlanImportResult } from "@/lib/api";
-import type { CustomPlanInput } from "@/lib/api-schema.generated";
+import type { CustomPlanInput, ImportFlag } from "@/lib/api-schema.generated";
 import { nextCalendarMonday } from "@/lib/custom-plan-calendar";
 import { describeLoadFailure } from "@/lib/connectivity";
 import { MAX_SCREENSHOTS, PLAN_TEXT_MAX_CHARS, PlanFileError, extractPlanText, planFileKind, screenshotData } from "@/lib/plan-text";
@@ -20,7 +20,7 @@ type Stage = { step: "pick" } | { step: "reading" | "building"; name: string; ki
 export function PlanImport({ accessToken, timezone, onReview, onCancel, forFighter }: {
   accessToken: string;
   timezone?: string | null;
-  onReview: (plan: CustomPlanInput, fileName: string) => void;
+  onReview: (imported: ImportedPlan) => void;
   onCancel: () => void;
   /** A coach importing for a fighter: the wording names them. */
   forFighter?: string | null;
@@ -83,7 +83,7 @@ export function PlanImport({ accessToken, timezone, onReview, onCancel, forFight
       <p className={styles.lede}>Upload a PDF, a Word file or screenshots, or paste the programme. We read the sessions and exercises, then you check and edit everything before it&apos;s saved.</p>
     </header>
 
-    {stage.step === "done" ? <Result stage={stage} onReview={() => onReview(stage.result.plan, stage.name)}
+    {stage.step === "done" ? <Result stage={stage} onReview={() => onReview({ plan: stage.result.plan, name: stage.name, flags: stage.result.flags })}
       onAnother={() => setStage({ step: "pick" })} />
       : <>
         {pasting && !busy ? <form className={styles.paste} onSubmit={event => { event.preventDefault(); void run({ text: pasted }); }}>
@@ -144,12 +144,8 @@ function Result({ stage, onReview, onAnother }: {
       </dl>
       <p className={styles.planName}>{result.plan.name}</p>
     </div>
-    {result.shortened ? <p className={styles.warn}>This plan was longer than 12 weeks, so only the first 12 were brought in.</p> : null}
-    {result.skipped.length ? <details className={styles.skipped}>
-      <summary>{plural(result.skipped.length, "line")} couldn&apos;t be placed</summary>
-      <ul>{result.skipped.map((line, index) => <li key={index}>{line}</li>)}</ul>
-    </details> : null}
-    <p className={styles.check}>Check each session against your file. Exercises come in as written, with their sets, reps and notes.</p>
+    {result.flags.length ? <ImportFlags flags={result.flags} open /> : null}
+    <p className={styles.check}>{result.flags.length ? "Everything else came in as written." : "Everything came in as written."} Check each session against your file before saving.</p>
     <div className={styles.actions}>
       <button type="button" className="cta" onClick={onReview}>Review and edit</button>
       <button type="button" className={styles.cancel} onClick={onAnother}>Choose another file</button>
@@ -157,22 +153,35 @@ function Result({ stage, onReview, onAnother }: {
   </div>;
 }
 
+/** What couldn't be carried over exactly, grouped by where it belongs. */
+export function ImportFlags({ flags, open }: { flags: ImportFlag[]; open?: boolean }) {
+  const groups = new Map<string, string[]>();
+  for (const flag of flags) groups.set(flag.where, [...(groups.get(flag.where) ?? []), flag.message]);
+  return <details className={styles.flags} open={open}>
+    <summary>{flags.length} {flags.length === 1 ? "thing" : "things"} to check</summary>
+    <dl>{[...groups].map(([where, messages]) => <div key={where}><dt>{where}</dt>
+      <dd>{messages.map((message, index) => <span key={index}>{message}</span>)}</dd></div>)}</dl>
+  </details>;
+}
+
+export type ImportedPlan = { plan: CustomPlanInput; name: string; flags: ImportFlag[] };
+
 // The imported draft travels to the builder page: in memory for an in-app
 // move, and in this tab's session storage so a reload doesn't lose it.
 const KEY = "unlxck:imported-plan";
-let pending: { plan: CustomPlanInput; name: string } | null = null;
+let pending: ImportedPlan | null = null;
 
-export function stashImportedPlan(plan: CustomPlanInput, name: string) {
-  pending = { plan, name };
+export function stashImportedPlan(imported: ImportedPlan) {
+  pending = imported;
   try { sessionStorage.setItem(KEY, JSON.stringify(pending)); } catch { /* memory copy is enough */ }
 }
 
-export function takeImportedPlan(): { plan: CustomPlanInput; name: string } | null {
+export function takeImportedPlan(): ImportedPlan | null {
   let value = pending;
   if (!value) {
     try { value = JSON.parse(sessionStorage.getItem(KEY) ?? "null"); } catch { value = null; }
   }
-  return value && Array.isArray(value.plan?.sessions) ? value : null;
+  return value && Array.isArray(value.plan?.sessions) ? { ...value, flags: Array.isArray(value.flags) ? value.flags : [] } : null;
 }
 
 export function clearImportedPlan() {
