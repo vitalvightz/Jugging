@@ -330,8 +330,8 @@ function PendingInvite({ connection, busy, onCancel }: { connection: Connection;
     <article className={`${styles.connection} ${styles.pendingInvite}`}>
       <div className={styles.inviteHeader}>
         <div className={styles.rowCopy}>
-          <strong>{connection.invited_email}</strong>
-          <small><span className={styles.pendingBadge}>Pending</span> They accept by signing in with this email.</small>
+          <div className={styles.inviteTitle}><strong>{connection.invited_email}</strong><span className={styles.pendingBadge}>Pending</span></div>
+          <small className={styles.inviteHint}>They sign in with this email to accept.</small>
         </div>
         <button type="button" className={styles.cancelInvite} disabled={busy} onClick={onCancel}
           aria-label={`Cancel invite to ${connection.invited_email}`}>
