@@ -56,9 +56,10 @@ const DOSE_OPTIONAL = /\b(warm[\s-]?(?:up|down)s?|cool[\s-]?downs?|stretch(?:es|
 export const doseOptional = (name: string | null | undefined) => DOSE_OPTIONAL.test(name ?? "");
 
 type Dosed = { name?: string | null; snapshot?: { name?: string | null } | null; dose?: CustomDose | null };
-/** The exercise still needs its dose finished. Dose-optional work never does. */
+/** The exercise still needs its dose finished. Warm-ups, cooldowns, stretching and
+ * mobility need none while nothing is written; a started dose ("3 sets") is checked like any other. */
 export function exerciseIncomplete(e: Dosed): boolean {
-  if (doseOptional(e.name ?? e.snapshot?.name)) return false;
+  if (doseOptional(e.name ?? e.snapshot?.name) && (!e.dose || !filled(e.dose))) return false;
   return !e.dose || doseIncomplete(e.dose);
 }
 
@@ -71,7 +72,7 @@ export function doseIncomplete(d: CustomDose): boolean {
 }
 
 const filled = (d: CustomDose) => d.mode === "text" ? Boolean(d.prescription?.trim())
-  : Object.entries(d).some(([key, value]) => key !== "mode" && value != null && value !== "");
+  : Object.entries(d).some(([key, value]) => key !== "mode" && value != null && value !== false && !(typeof value === "string" && !value.trim()));
 
 /**
  * The dose a newly added library exercise starts with: the library's source

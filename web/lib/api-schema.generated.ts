@@ -2058,6 +2058,8 @@ export type PlanImportResult = {
   exercises: number;
   flags: ImportFlag[];
   needs_day: NeedsDay[];
+  matched: number;
+  library: Record<string, CustomExerciseSnapshot>;
 };
 
 /** Top-level plan metadata (Section B). */

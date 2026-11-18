@@ -65,11 +65,13 @@ const SESSION_TYPES: Array<[CustomSession["session_type"], string]> = [
 ];
 /** A draft read from a plan file: every exercise is as written (manual), nothing saved yet.
  * A dose the coach left open is marked unfinished, the same as one added by hand. */
-function importedPlanDraft(plan: CustomPlanInput): Draft {
+function importedPlanDraft({ plan, library }: ImportedPlan): Draft {
   return orderedDraft({ ...plan, sessions: (plan.sessions ?? []).map(session => ({
     ...session, scheduled_date: session.scheduled_date ?? null,
     weekday: session.weekday ?? (session.scheduled_date ? calendarWeekday(session.scheduled_date) as Session["weekday"] : null),
-    exercises: (session.exercises ?? []).map(exercise => ({ ...exercise, incomplete: exerciseIncomplete(exercise as Parameters<typeof exerciseIncomplete>[0]) }) as Exercise),
+    // An exercise matched to the library arrives with its library details (demo video, guidance).
+    exercises: (session.exercises ?? []).map(exercise => ({ ...exercise, ...(exercise.origin === "catalogue" ? { snapshot: library?.[exercise.id] } : {}),
+      incomplete: exerciseIncomplete(exercise as Parameters<typeof exerciseIncomplete>[0]) }) as Exercise),
   })) });
 }
 function orderedDraft(draft: Draft): Draft {
@@ -139,7 +141,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   const fadeNavigate = useFadeNavigate();
   const [draft, setDraft] = useState<Draft>(() => {
     if (initialPlan) return orderedDraft({ ...initialPlan, id: undefined, name: `${initialPlan.name} revision`.slice(0, 100) });
-    if (importedDraft) return importedPlanDraft(importedDraft.plan);
+    if (importedDraft) return importedPlanDraft(importedDraft);
     const start = nextCalendarMonday(athleteTimezone ?? onboarding?.profile.athlete_timezone ?? 'UTC');
     return { name: "My Training Plan", schedule_mode: 'dated', start_date: start, end_date: addCalendarDays(start, 27),
       sessions: planId ? [] : datedCopy(customSchedulePrefill(onboarding), start, addCalendarDays(start, 27)) };

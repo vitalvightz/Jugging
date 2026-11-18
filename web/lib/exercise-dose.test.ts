@@ -71,3 +71,15 @@ test("warm-ups, cooldowns, stretching and mobility never need a dose", () => {
   assert.equal(doseSummary({ ...blankDose("duration"), duration_seconds: 600 }, "Cooldown"), "10 min");
   assert.equal(doseSummary(blankDose("reps"), "Back squat"), "Set dose");
 });
+
+test("dose-optional work is complete only while nothing is written; a started dose is checked normally", () => {
+  const e = (name: string, dose: Partial<ReturnType<typeof blankDose>> & { mode?: ReturnType<typeof blankDose>["mode"] } = {}) =>
+    ({ name, dose: { ...blankDose(dose.mode ?? "reps"), ...dose } });
+  assert.equal(exerciseIncomplete(e("Warm-up")), false, "warm-up, nothing written");
+  assert.equal(exerciseIncomplete(e("Warm-up squats")), false, "warm-up squats, nothing written");
+  assert.equal(exerciseIncomplete(e("Warm-up squats", { sets: 3 })), true, "3 sets but no reps");
+  assert.equal(exerciseIncomplete(e("Mobility flow", { mode: "duration", duration_seconds: 300 })), false, "5 minutes");
+  assert.equal(exerciseIncomplete(e("Mobility flow", { mode: "intervals", rounds: 3 })), true, "started intervals, no time");
+  assert.equal(exerciseIncomplete(e("Cooldown", { mode: "text", prescription: "  " })), false, "blank text is nothing written");
+  assert.equal(doseSummary(e("Warm-up squats", { sets: 3 }).dose, "Warm-up squats"), "3 sets · reps unspecified");
+});

@@ -40,9 +40,20 @@ def exercise_name(exercise: dict) -> str:
     return exercise.get("name") or (exercise.get("snapshot") or {}).get("name") or ""
 
 
+def dose_blank(dose: dict) -> bool:
+    """Nothing written at all: only the mode is set."""
+    return not any(value not in (None, "", False) and not (isinstance(value, str) and not value.strip())
+                   for key, value in (dose or {}).items() if key != "mode")
+
+
 def exercise_incomplete(exercise: dict) -> bool:
-    """A dose still to finish. Warm-up, cooldown, stretching and mobility work never is."""
-    return dose_incomplete(exercise["dose"]) and not dose_optional(exercise_name(exercise))
+    """A dose still to finish. Warm-up, cooldown, stretching and mobility work
+    needs none, but only while nothing is written: a started dose ("3 sets") is
+    checked like any other."""
+    dose = exercise["dose"]
+    if dose_optional(exercise_name(exercise)) and dose_blank(dose):
+        return False
+    return dose_incomplete(dose)
 
 
 def default_session_name(name: str, previous_type: str = "mixed") -> bool:

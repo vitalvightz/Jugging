@@ -30,8 +30,9 @@ from uuid import uuid4
 from fastapi import HTTPException
 from pydantic import BaseModel, Field, ValidationError
 
-from api.contracts.custom_plans import WEEKDAYS, CustomDose, CustomPlanInput
+from api.contracts.custom_plans import WEEKDAYS, CustomDose, CustomExerciseSnapshot, CustomPlanInput
 from api.services.custom_plans import dose_optional
+from api.services.plan_import_match import LibraryMatcher, linked
 
 logger = logging.getLogger(__name__)
 
@@ -230,6 +231,10 @@ class PlanImportResult(BaseModel):
     exercises: int
     flags: list[ImportFlag]
     needs_day: list[NeedsDay] = Field(default_factory=list)
+    # Exercises linked to the app's library (their demo video comes with them),
+    # and the library details the builder shows for each, by exercise id.
+    matched: int = 0
+    library: dict[str, CustomExerciseSnapshot] = Field(default_factory=dict)
 
 
 # -- The model call --
@@ -714,13 +719,14 @@ def read_dose_line(text: str) -> DoseLine:
     return DoseLine(roles, distances, weights, bare, ranges)
 
 
-def build_draft(read: ReadPlan, start: date, source: str | None = None) -> PlanImportResult:
+def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher: LibraryMatcher | None = None) -> PlanImportResult:
     """The Custom Build draft for what was read. ``source`` is the programme text,
     used to double-check names and numbers: "" for screenshots (nothing to check
     against, which is flagged), None to skip the checks."""
     start = start - timedelta(days=start.weekday())
     flags: list[ImportFlag] = []
     flagged: set[tuple[str, str]] = set()
+    library: dict[str, dict] = {}
 
     def flag(where: str, message: str):
         # A repeated week repeats its flags; each is listed once.
@@ -772,6 +778,14 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None) -> PlanI
             built = _exercise(exercise, say)
             if built and checker:
                 checker.check(exercise, say)
+            if built and matcher:
+                found = matcher.match(built["name"])
+                swapped = linked(built, found) if found else None
+                if swapped:
+                    if found.kind == "close":
+                        say(f"Matched to the library exercise \u201c{found.name}\u201d. Check it's the same exercise.")
+                    library[swapped["id"]] = matcher.snapshot(found)
+                    built = swapped
             if built:
                 exercises.append(built)
         day = _day(item.day)
@@ -836,7 +850,18 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None) -> PlanI
         raise HTTPException(422, "That programme couldn't be read. Try a simpler file, or build it by hand.") from exc
     return PlanImportResult(plan=plan.model_dump(mode="json"), weeks=len(expanded), sessions=len(plan.sessions),
                             exercises=sum(len(s.exercises) for s in plan.sessions), flags=flags,
-                            needs_day=list(unplaced.values()))
+                            needs_day=list(unplaced.values()), matched=len(library), library=library)
+
+
+def library_matcher(store) -> LibraryMatcher | None:
+    """The exercise library with its demo videos, or None: matching is a bonus, never a reason to fail an import."""
+    try:
+        from api.services.exercise_media import load_media_index
+        from api.services.training_library import cache
+        return LibraryMatcher(cache.get().records, load_media_index(store) if store is not None else {})
+    except Exception:  # noqa: BLE001
+        logger.warning("exercise library unavailable for plan import matching", exc_info=True)
+        return None
 
 
 def checked_images(images: list[str]) -> list[str]:
@@ -855,7 +880,7 @@ def checked_images(images: list[str]) -> list[str]:
     return checked
 
 
-def import_plan(owner_id: str, body: PlanImportRequest, *, reader: PlanReader | None) -> PlanImportResult:
+def import_plan(owner_id: str, body: PlanImportRequest, *, reader: PlanReader | None, store=None) -> PlanImportResult:
     if reader is None:
         raise HTTPException(503, "Plan import isn't available right now.")
     images = checked_images(body.images)
@@ -873,7 +898,7 @@ def import_plan(owner_id: str, body: PlanImportRequest, *, reader: PlanReader | 
     except Exception as exc:  # noqa: BLE001 - the model or network; never leak details
         logger.warning("plan import model call failed: %s", type(exc).__name__)
         raise HTTPException(502, "That plan couldn't be read just now. Try again in a minute.") from exc
-    result = build_draft(read, body.start_date, text)
+    result = build_draft(read, body.start_date, text, library_matcher(store))
     if shortened:
         result.flags.insert(0, ImportFlag(where="Plan", message=f"The programme was longer than {MAX_TEXT_CHARS:,} characters, so only the first part was read."))
     return result

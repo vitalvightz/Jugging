@@ -83,7 +83,7 @@ export function PlanImport({ accessToken, timezone, onReview, onCancel, forFight
       <p className={styles.lede}>Upload your training programme or paste it below. We’ll turn it into an editable plan for you to review.</p>
     </header>
 
-    {stage.step === "done" ? <Result stage={stage} onReview={days => onReview({ plan: withDays(stage.result.plan, stage.result.needs_day, days), name: stage.name, flags: stage.result.flags })}
+    {stage.step === "done" ? <Result stage={stage} onReview={days => onReview({ plan: withDays(stage.result.plan, stage.result.needs_day, days), name: stage.name, flags: stage.result.flags, library: stage.result.library })}
       onAnother={() => setStage({ step: "pick" })} />
       : <>
         {pasting && !busy ? <form className={styles.paste} onSubmit={event => { event.preventDefault(); void run({ text: pasted }); }}>
@@ -210,6 +210,7 @@ function Result({ stage, onReview, onAnother }: {
         <div><dt>Exercises</dt><dd>{result.exercises}</dd></div>
       </dl>
       <p className={styles.planName}>{result.plan.name}</p>
+      {result.matched ? <p className={styles.matched}>{result.matched} {result.matched === 1 ? "exercise" : "exercises"} matched to the exercise library, with demos ready where there is one.</p> : null}
     </div>
     {result.needs_day.length ? <fieldset className={styles.days}>
       <legend>Choose a day</legend>
@@ -251,7 +252,7 @@ export function ImportFlags({ flags, open, checked, onCheck }: {
   </details>;
 }
 
-export type ImportedPlan = { plan: CustomPlanInput; name: string; flags: ImportFlag[] };
+export type ImportedPlan = { plan: CustomPlanInput; name: string; flags: ImportFlag[]; library: PlanImportResult["library"] };
 
 // The imported draft travels to the builder page: in memory for an in-app
 // move, and in this tab's session storage so a reload doesn't lose it.
