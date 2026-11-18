@@ -32,6 +32,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from api.contracts.custom_plans import WEEKDAYS as DAYS  # noqa: E402
 from api.services.plan_import import ReadPlan, build_draft, get_plan_reader  # noqa: E402
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "plan_import"
@@ -51,48 +52,57 @@ def cases(folder: Path):
         yield name, text.read_text() if text else "", images, ReadPlan.model_validate_json(truth.read_text())
 
 
-def sessions(reading: ReadPlan) -> dict[tuple[int, str], dict]:
-    """The first week's sessions, keyed by order and name, as the app would draft them."""
+def sessions(reading: ReadPlan) -> dict[tuple[int, str, int], dict]:
+    """Every session the app would draft, keyed by week, name and occurrence in
+    that week (a "Tue/Thu/Sat" session is three), in date order."""
     draft = build_draft(reading, START)
     waiting = {sid for group in draft.needs_day for sid in group.session_ids}
-    # The first week with training (a rest week first has none).
-    size = next((len(week.sessions) for week in reading.weeks if week.sessions), 0)
-    first = draft.plan["sessions"][:size]
-    return {(i, s["name"].lower()): {**s, "day": None if s["id"] in waiting else s["weekday"]} for i, s in enumerate(first)}
+    first = date.fromisoformat(draft.plan["start_date"]) if draft.plan.get("start_date") else START
+    ordered = sorted(draft.plan["sessions"], key=lambda s: (s.get("scheduled_date") or "", DAYS.index(s["weekday"]) if s.get("weekday") else 7))
+    keyed, seen = {}, {}
+    for s in ordered:
+        week = (date.fromisoformat(s["scheduled_date"]) - first).days // 7 if s.get("scheduled_date") else 0
+        name = s["name"].lower()
+        seen[(week, name)] = seen.get((week, name), -1) + 1
+        keyed[(week, name, seen[(week, name)])] = {**s, "day": None if s["id"] in waiting else s["weekday"], "week": week}
+    return keyed
 
 
 def compare(truth: ReadPlan, read: ReadPlan, source: str = "") -> dict:
     errors: list[str] = []
     counts = {"sessions": 0, "exercises": 0, "fields": 0, "errors": 0}
-    want, got = sessions(truth), sessions(read)
-    by_name = {name: value for (_, name), value in got.items()}
+    want, got = sessions(truth), dict(sessions(read))
+    several = len({week for week, _, _ in want}) > 1
     weeks = (sum(max(1, w.repeat or 1) for w in truth.weeks), sum(max(1, w.repeat or 1) for w in read.weeks))
     if weeks[0] != weeks[1]:
         errors.append(f"weeks: expected {weeks[0]}, read {weeks[1]}")
-    for (_, name), expected in want.items():
+    for key_, expected in want.items():
         counts["sessions"] += 1
-        actual = by_name.pop(name, None)
+        actual = got.pop(key_, None)
+        label = f"Week {expected['week'] + 1} · {expected['name']}" if several else expected["name"]
         if actual is None:
-            errors.append(f"missed session {expected['name']!r}")
+            errors.append(f"missed session {label!r}")
             continue
         for key in ("day", "session_type", "notes"):
             if expected.get(key) != actual.get(key):
-                errors.append(f"{expected['name']}: {key} expected {expected.get(key)!r}, read {actual.get(key)!r}")
+                errors.append(f"{label}: {key} expected {expected.get(key)!r}, read {actual.get(key)!r}")
         have = {e["name"].lower(): e for e in actual["exercises"]}
         for exercise in expected["exercises"]:
             counts["exercises"] += 1
             match = have.pop(exercise["name"].lower(), None)
             if match is None:
-                errors.append(f"{expected['name']}: missed exercise {exercise['name']!r}")
+                errors.append(f"{label}: missed exercise {exercise['name']!r}")
                 continue
             for key in FIELDS:
                 counts["fields"] += 1
                 left = {k: v for k, v in exercise[key].items() if v is not None} if key == "dose" else exercise.get(key)
                 right = {k: v for k, v in match[key].items() if v is not None} if key == "dose" else match.get(key)
                 if left != right:
-                    errors.append(f"{expected['name']} · {exercise['name']}: {key} expected {left!r}, read {right!r}")
-        errors += [f"{expected['name']}: invented exercise {extra['name']!r}" for extra in have.values()]
-    errors += [f"invented session {extra['name']!r}" for extra in by_name.values()]
+                    errors.append(f"{label} · {exercise['name']}: {key} expected {left!r}, read {right!r}")
+        errors += [f"{label}: invented exercise {extra['name']!r}" for extra in have.values()]
+    for extra in got.values():
+        label = f"Week {extra['week'] + 1} · {extra['name']}" if several else extra["name"]
+        errors.append(f"invented session {label!r}")
     # What the app itself would flag after checking the model's numbers against the text.
     if source:
         errors += [f"source check: {flag.where}: {flag.message}" for flag in build_draft(read, START, source).flags

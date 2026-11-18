@@ -71,13 +71,20 @@ THE ONE RULE: COPY, NEVER INVENT
 STRUCTURE
 - A week template that the programme says repeats ("weeks 1-4", "repeat for 6 weeks", "x4 weeks") is ONE week object with repeat set to that number. Identical consecutive weeks are also one week object with repeat > 1. Different weeks are separate objects, in order. No weeks mentioned: one week, repeat 1.
 - A week the programme writes as a rest, recovery, deload or off week with no sessions listed is still a week object, with rest true and no sessions, so every week keeps its date. This holds for the first week too. rest is false for every other week.
-- day: only a written weekday ("Mon", "Tuesday"). "Day 1", "Session A", "AM" are not weekdays: day is null, and keep that label in the session name (e.g. "Day 1 - Strength").
+- days: every weekday written for the session, as full names, in order. One written day is a list of one. Several days written for the same session ("Tue/Thu/Sat", "Monday/Wed", "Mon, Wed & Fri", "Monday-Friday") are ONE session with all those days: ["Tuesday", "Thursday", "Saturday"]; a range covers every day in it. "Day 1", "Session A", "AM" are not weekdays: days is empty, and keep that label in the session name (e.g. "Day 1 - Strength").
+- every_week: a weekly schedule or overview ("Weekly Schedule Overview", "Each week: ...") can name sessions that recur every week but are not written out in the week sections, such as "Tue/Thu/Sat: Boxing skill work, sparring and roadwork" or "Sunday: Complete rest". Put each of those, once, in every_week (with its days), not in the weeks. An overview line that only summarises a session the week sections write out in full (e.g. "Monday: Upper Body Push/Pull" when every week has its own Monday session) is NOT repeated anywhere: leave it out. A written rest day is a session with session_type rest and no exercises. No overview: every_week is empty.
 - session_type: strength_power (lifting, plyos), conditioning (runs, intervals, circuits), skill (pads, bag, drilling, technique), sparring, recovery (mobility, stretching, easy aerobic), rest (rest days written in the programme), otherwise mixed.
 - instructions: the coach's session-level instructions or focus written for that session as a whole (e.g. "Focus: head movement, stay off the ropes"), verbatim; otherwise null.
 
 EXERCISES, in written order (warm-up and cool-down lines written as exercises stay as exercises)
 - "3x5" -> sets 3, reps 5. "3x8 each side" -> reps 8, sets 3, per_side true. "5x3 min" -> sets 5, seconds 180. "30 sec hold" -> seconds 30.
 - Rounds of work: "6 x 3 min rounds, 1 min rest" -> rounds 6, work_seconds 180, rest_seconds 60.
+- Repeated blocks: "6 rounds of 15 sec on / 45 sec off, rest 2 minutes, then repeat for a second block of 6 rounds" -> rounds 6, work_seconds 15, rest_seconds 45, blocks 2, block_rest_seconds 120. blocks is how many times the whole set of rounds is done; null when written once. Never fold blocks into rounds (never rounds 12).
+- Timed parts inside each round ("0:00-0:30: bag hooks", "0:30-1:00: bear-hug hold", ...): one exercise for the rounds, with each part, in order and verbatim, as one item of stages. They are not separate exercises. stages is empty otherwise.
+- A section heading with exercises under it ("Warm-up (5 mins): Shoulder rolls, wrist rolls", "Core Routine (15 mins): Bicycle crunch, plank"): each exercise is its own exercise with group set to the heading as written ("Core Routine (15 mins)"). Never give each exercise the section's time: an exercise gets only a time or dose written for that exercise itself.
+- References to earlier training ("Same as Day 1", "Repeat Day 2", "As above", "Repeat ankle + hip drills"): never an exercise of that name. Return one item in exercises at that place with name set to the reference exactly as written, refers_to_day set to the day or session it names as written ("Day 1", "Monday", or "above" for "as above"; null when it names none), refers_to_section set to the part it names when it is only part of that day ("Warm-up", "ankle + hip drills"; null for the whole day), group set to the heading it is written under, notes set to any change written with it ("increase reps slightly if easier"), and every other field empty. A whole session written only as "Same as Day 2, increase reps slightly if easier" is a session whose exercises are that single reference item. refers_to_day and refers_to_section are null for every other exercise.
+- A table or list that maps day labels to weekdays ("Mon (Day 1)", "Tue (Day 2)"): give each "Day N" session those weekdays in days. Rows in such a table for days with no session written out below ("Sat: Recovery / Freestyle (Optional)", "Sun: Full Rest") go in every_week.
+- A circuit or finisher heading with exercises listed under it ("Clinch Finisher (3 Rounds, 60s rest):" then each exercise on its own line): each listed exercise is its own exercise, with sets set to the circuit's rounds and its own written time, reps or distance; group is the heading as written ("Clinch Finisher (3 Rounds, 60s rest)"). The circuit's rest between rounds stays in group only, not in rest_seconds. group is null for an exercise not in a circuit.
 - A pair like "5x3" with no unit is sets x reps only for lifts and bodyweight work. For rounds-based work (pads, bag, sparring, intervals) never assume the second number is minutes or reps: put the text as written in prescription (and any written rest in rest_seconds). Never swap the two numbers of a pair: "3x8" is sets 3, reps 8.
 - "5 km run" -> distance 5, distance_unit km. "400m" -> distance 400, distance_unit m. "2 miles" -> distance 2, distance_unit mi. Never convert between units.
 - load: the written weight or intensity ("140kg", "70% 1RM", "zone 2", "bodyweight").
@@ -102,23 +109,27 @@ def response_schema() -> dict[str, Any]:
     strings = {"type": "array", "items": {"type": "string"}}
     exercise = {
         "type": "object", "additionalProperties": False,
-        "required": ["name", "sets", "reps", "seconds", "rounds", "work_seconds", "rest_seconds", "distance",
-                     "distance_unit", "per_side", "load", "rpe", "prescription", "equipment", "cues", "stop_rules", "notes"],
+        "required": ["name", "sets", "reps", "seconds", "rounds", "work_seconds", "rest_seconds", "blocks", "block_rest_seconds",
+                     "distance", "distance_unit", "per_side", "load", "rpe", "prescription", "equipment", "cues", "stop_rules",
+                     "notes", "stages", "group", "refers_to_day", "refers_to_section"],
         "properties": {
             "name": {"type": "string"},
             "sets": nullable("integer"), "reps": nullable("integer"), "seconds": nullable("integer"),
             "rounds": nullable("integer"), "work_seconds": nullable("integer"), "rest_seconds": nullable("integer"),
+            "blocks": nullable("integer"), "block_rest_seconds": nullable("integer"),
             "distance": nullable("number"), "distance_unit": {"type": ["string", "null"], "enum": [*DISTANCE_UNITS, None]},
             "per_side": nullable("boolean"), "load": nullable("string"), "rpe": nullable("number"),
             "prescription": nullable("string"), "equipment": nullable("string"),
             "cues": strings, "stop_rules": strings, "notes": nullable("string"),
+            "stages": strings, "group": nullable("string"),
+            "refers_to_day": nullable("string"), "refers_to_section": nullable("string"),
         },
     }
     session = {
         "type": "object", "additionalProperties": False,
-        "required": ["day", "name", "session_type", "instructions", "exercises"],
+        "required": ["days", "name", "session_type", "instructions", "exercises"],
         "properties": {
-            "day": {"type": ["string", "null"], "enum": [*WEEKDAYS, None]},
+            "days": {"type": "array", "items": {"type": "string", "enum": list(WEEKDAYS)}},
             "name": {"type": "string"},
             "session_type": {"type": "string", "enum": list(SESSION_TYPES)},
             "instructions": nullable("string"),
@@ -133,12 +144,17 @@ def response_schema() -> dict[str, Any]:
     return {
         "type": "json_schema", "name": "imported_plan", "strict": True,
         "schema": {
-            "type": "object", "additionalProperties": False, "required": ["name", "start_date", "weeks", "skipped"],
+            "type": "object", "additionalProperties": False,
+            "required": ["name", "start_date", "weeks", "every_week", "skipped", "corrections"],
             "properties": {
                 "name": {"type": "string"},
                 "start_date": nullable("string"),
                 "weeks": {"type": "array", "items": week},
+                "every_week": {"type": "array", "items": session},
                 "skipped": strings,
+                "corrections": {"type": "array", "items": {
+                    "type": "object", "additionalProperties": False, "required": ["written", "corrected"],
+                    "properties": {"written": {"type": "string"}, "corrected": {"type": "string"}}}},
             },
         },
     }
@@ -154,6 +170,9 @@ class ReadExercise(BaseModel):
     rounds: int | None = None
     work_seconds: int | None = None
     rest_seconds: int | None = None
+    # The whole set of rounds done this many times, with this rest between.
+    blocks: int | None = None
+    block_rest_seconds: int | None = None
     distance: float | None = None
     distance_unit: str | None = None
     per_side: bool | None = None
@@ -164,9 +183,25 @@ class ReadExercise(BaseModel):
     cues: list[str] = Field(default_factory=list)
     stop_rules: list[str] = Field(default_factory=list)
     notes: str | None = None
+    # Timed parts of each round, in order ("0:00-0:30: bag hooks").
+    stages: list[str] = Field(default_factory=list)
+    # The circuit or section heading this exercise is listed under, as written.
+    group: str | None = None
+    # A reference to earlier training ("Same as Day 1"), resolved by
+    # resolve_references into the exercises it names; never an exercise itself.
+    refers_to_day: str | None = None
+    refers_to_section: str | None = None
+    # Set on a copy made from a reference; its numbers were checked on the original.
+    copied: bool = False
+
+    @property
+    def is_reference(self) -> bool:
+        return bool(_clean(self.refers_to_day) or _clean(self.refers_to_section))
 
 
 class ReadSession(BaseModel):
+    days: list[str] = Field(default_factory=list)
+    # An older reading's single day; may also be written as "Tue/Thu/Sat".
     day: str | None = None
     name: str = ""
     session_type: str = "mixed"
@@ -190,6 +225,9 @@ class ReadPlan(BaseModel):
     name: str = ""
     start_date: str | None = None
     weeks: list[ReadWeek] = Field(default_factory=list)
+    # Sessions a weekly overview says recur every week (boxing on Tue/Thu/Sat,
+    # Sunday rest), placed on each week's days that its own sessions leave free.
+    every_week: list[ReadSession] = Field(default_factory=list)
     skipped: list[str] = Field(default_factory=list)
     corrections: list[ReadCorrection] = Field(default_factory=list)
 
@@ -347,6 +385,38 @@ def _day(value: str | None) -> str | None:
     return DAY_NAMES.get(str(value or "").strip().rstrip(".").lower())
 
 
+DAY_SPLIT = re.compile(r"\s*(?:/|,|&|\+|\band\b)\s*", re.I)
+DAY_RANGE = re.compile(r"^\s*([a-z.]+)\s*(?:-|\u2013|\u2014|\bto\b|\bthrough\b|\bthru\b)\s*([a-z.]+)\s*$", re.I)
+
+
+def _days(value: str | None) -> list[str]:
+    """Every weekday in a written day expression, in order: "Tue/Thu/Sat",
+    "Monday/Wed", "Mon, Wed & Fri", "Monday-Friday". Anything that isn't all
+    weekdays ("Day 1", "AM") is no day at all."""
+    text = str(value or "").strip()
+    if not text:
+        return []
+    found: list[str] = []
+    for part in DAY_SPLIT.split(text):
+        if not part.strip():
+            continue
+        span = DAY_RANGE.match(part)
+        if span and _day(span.group(1)) and _day(span.group(2)):
+            first, last = WEEKDAYS.index(_day(span.group(1))), WEEKDAYS.index(_day(span.group(2)))
+            found += list(WEEKDAYS[first:last + 1]) if first <= last else [*WEEKDAYS[first:], *WEEKDAYS[:last + 1]]
+        elif _day(part):
+            found.append(_day(part))
+        else:
+            return []
+    return list(dict.fromkeys(found))
+
+
+def session_days(item: "ReadSession") -> list[str]:
+    """The session's written days, from the days list and any older single day."""
+    days = [day for value in [*item.days, item.day] for day in _days(value)]
+    return [day for day in WEEKDAYS if day in days] if len(set(days)) > 1 else list(dict.fromkeys(days))
+
+
 def _unit(value: str | None) -> str | None:
     return UNIT_NAMES.get(str(value or "").strip().rstrip(".").lower())
 
@@ -474,6 +544,13 @@ def _exercise(item: ReadExercise, flag) -> dict | None:
         return None
     name = full_name[:100]
     # A warm-up, cooldown, stretch or mobility line is done, not dosed: no dose is not a gap.
+    # In a timed section ("Core Routine (15 mins)") or a warm-up, cooldown or
+    # mobility section, an exercise with no dose of its own is done within that
+    # section: say so, without giving it a time of its own.
+    section = _clean(item.group)
+    if section and (TIME.search(section) or dose_optional(section)) and not re.search(r"\brounds?\b", section, re.I) \
+            and not _written_dose(item) and not _clean(item.prescription):
+        item = item.model_copy(update={"prescription": f"Within {section}"[:500]})
     dose = dose_from(item, (lambda message: None) if dose_optional(full_name) and not _written_dose(item) else flag)
     cues, extra_cues = _lines(item.cues)
     stops, extra_stops = _lines(item.stop_rules)
@@ -493,12 +570,31 @@ def _exercise(item: ReadExercise, flag) -> dict | None:
     if item.rest_seconds is not None and dose.rest_seconds is None:
         notes.append(f"Rest as written: {_number(item.rest_seconds)}s")
     notes += [f"Cue: {line}" for line in extra_cues] + [f"Stop rule: {line}" for line in extra_stops]
+    # What a dose can't hold is kept as written and flagged, never flattened.
+    blocks = _int(item.blocks, 2, 100)
+    if blocks:
+        between = _int(item.block_rest_seconds, 1, 3600)
+        notes.append(f"Repeat: {blocks} blocks of these rounds" + (f", {_duration(between)} rest between blocks" if between else ""))
+        flag(f"Written as {blocks} blocks of {_number(item.rounds) + ' rounds' if item.rounds else 'rounds'}"
+             + (f" with {_duration(between)} rest between blocks" if between else "")
+             + ". The dose shows one block; the repeat is in the notes.")
+    stages = [line for line in (_clean(value, 300) for value in item.stages) if line]
+    if stages:
+        notes.append("Each round, in order:\n" + "\n".join(stages))
+        flag(f"Each round has {len(stages)} timed parts. They're in the notes, in order.")
+    group = _clean(item.group, 200)
+    if group:
+        notes.append(f"Part of: {group}")
     text = "\n".join(line for line in notes if line) or None
     if text and len(text) > 2000:
         flag("Notes were longer than 2,000 characters and were shortened.")
         text = text[:2000]
     return {"id": str(uuid4()), "origin": "manual", "name": name, "equipment": equipment, "notes": text,
             "coaching_cues": cues, "stop_rules": stops, "dose": dose.model_dump(exclude_none=True)}
+
+
+def _duration(seconds: int) -> str:
+    return f"{seconds // 60} min" if seconds % 60 == 0 else f"{seconds}s"
 
 
 def _tokens(text: str) -> list[str]:
@@ -524,6 +620,12 @@ class SourceCheck:
         self.lines = [" ".join(line.split()) for line in source.replace("\r", "").split("\n")]
         self.lines = [line for line in self.lines if line]
         self.undo = [(c.corrected.lower(), c.written.lower()) for c in corrections if c.corrected and c.written]
+        # Where the last exercise was found. The same exercise is often written
+        # in several weeks ("Trap Bar Deadlift: 4x5", later "4x3"), so the next
+        # one is looked for after it first: each week's line, not week 1's.
+        self.cursor = 0
+        # A repeated week, or an every-week session, is the same reading: checked once.
+        self.checked: set[int] = set()
 
     def window(self, name: str) -> str | None:
         """The source line that names this exercise."""
@@ -533,20 +635,25 @@ class SourceCheck:
         wanted = set(_tokens(written)) | set(_tokens(name))
         if not wanted or not self.lines:
             return None
-        best, best_score = None, 0.0
-        for index, line in enumerate(self.lines):
+        scores = []
+        for line in self.lines:
             have = _tokens(line)
             hits = sum(1 for word in set(_tokens(written) or _tokens(name)) if any(_same_word(word, other) for other in have))
-            score = hits / max(1, len(set(_tokens(written) or _tokens(name))))
-            if score > best_score:
-                best, best_score = index, score
-        if best is None or best_score < 0.5:
+            scores.append(hits / max(1, len(set(_tokens(written) or _tokens(name)))))
+        top = max(scores, default=0.0)
+        if top < 0.5:
             return None
+        # The best line at or after the last match; else the best anywhere
+        # (sessions are not always checked in written order).
+        ahead = [index for index in range(self.cursor, len(scores)) if scores[index] == top]
+        best = ahead[0] if ahead else scores.index(top)
+        if ahead:
+            self.cursor = best + 1
         # The dose is on the exercise's own line. Only a line with no numbers
         # (a heading such as "WEDNESDAY - Pads") borrows the next line or two.
         window = [self._own_clauses(self.lines[best], set(_tokens(written) or _tokens(name)))]
         for line in self.lines[best + 1:best + 3]:
-            if _numbers(" ".join(window)):
+            if _numbers(" ".join(window)) and not window[-1].rstrip().endswith(":"):
                 break
             window.append(line)
         return " ".join(window)
@@ -574,6 +681,9 @@ class SourceCheck:
         its unit, RPE. A value written as something else ("3 x 8" read as
         8 sets of 3) or not written at all is flagged. A role the line doesn't
         make clear is only checked for being written at all."""
+        if id(item) in self.checked:
+            return
+        self.checked.add(id(item))
         name = _clean(item.name) or ""
         numeric = [item.sets, item.reps, item.rounds, item.rpe, item.distance, item.seconds, item.work_seconds, item.rest_seconds]
         if not any(isinstance(v, (int, float)) for v in numeric) and not _numbers(" ".join(filter(None, [item.load, item.prescription]))):
@@ -582,7 +692,9 @@ class SourceCheck:
         if window is None:
             flag("Couldn't find this exercise's line in the file to double-check its numbers. Check its dose.")
             return
-        read = read_dose_line(window)
+        # A circuit's rounds are written on its heading, not on each exercise's line.
+        group = _clean(item.group)
+        read = read_dose_line(f"{window} ({group})" if group else window)
         problems: list[str] = []
 
         def written_as(value: float, *skip: str) -> str | None:
@@ -616,7 +728,18 @@ class SourceCheck:
         verify("reps", item.reps, "reps")
         verify("time", item.seconds, "work", seconds=True)
         verify("work time", item.work_seconds, "work", seconds=True)
-        verify("rest", item.rest_seconds, "rest", seconds=True, also=("work",) if not read.roles["rest"] else ())
+        # With blocks, the written rest is the rest between blocks; the rounds' own
+        # recovery ("15 sec on -> 45 sec recovery") reads as a time.
+        verify("rest", item.rest_seconds, "rest", seconds=True, also=("work",) if not read.roles["rest"] or item.blocks else ())
+        # Repeated blocks: the repeat is written ("a second block", "x2 blocks"), never folded into rounds.
+        repeats = re.search(r"\b(?:repeat\w*|blocks?)\b", window, re.I)
+        if isinstance(item.blocks, int) and item.blocks > 1:
+            words = {2: r"second|two|twice|2nd|double", 3: r"third|three|3rd|triple"}.get(item.blocks)
+            if f"{item.blocks}" not in read.bare and not (words and re.search(rf"\b(?:{words})\b", window, re.I)):
+                problems.append(f"{item.blocks} blocks isn't written")
+            verify("rest between blocks", item.block_rest_seconds, "rest", seconds=True, also=("work",))
+        elif repeats and (item.rounds or item.work_seconds):
+            problems.append("the line repeats a block of rounds, but only one block was read")
         if isinstance(item.rpe, (int, float)) and not any(abs(item.rpe - n) < 1e-9 for n in read.roles["rpe"]):
             problems.append(f"RPE {item.rpe:g} isn't written as an RPE")
         # Distance: the number and its unit together.
@@ -659,7 +782,8 @@ TIME = re.compile(rf"(?<![\d.])(\d+(?:\.\d+)?)(?:\s*[-\u2013]\s*(\d+(?:\.\d+)?))
 DISTANCE = re.compile(rf"(?<![\d.])(\d+(?:\.\d+)?)\s*({DIST_UNITS})\b", re.I)
 WEIGHT = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*(kgs?|lbs?|pounds?|%)", re.I)
 RPE_AT = re.compile(r"\brpe\s*:?\s*(\d+(?:\.\d+)?)(?:\s*[-\u2013]\s*(\d+(?:\.\d+)?))?|@\s*(\d+(?:\.\d+)?)\b(?!\s*(?:kgs?|lbs?|%))", re.I)
-PER_SIDE = re.compile(r"\b(?:each|per|every)\s+(?:side|leg|arm|hand|foot)\b|/\s*(?:side|leg|arm|hand|foot)\b|\bboth\s+(?:sides|legs|arms)\b|\balternating\b", re.I)
+# "/leg" counts only after a dose ("6 reps/leg", "8 sec max speed/side"), never in a name ("Knee/Leg Raises").
+PER_SIDE = re.compile(r"\b(?:each|per|every)\s+(?:side|leg|arm|hand|foot)\b|\d\s*(?:(?:reps?|secs?|seconds?|s|m|meters?|metres?|mins?|minutes?|yds?|yards?)\b[\w .]{0,20}?)?/\s*(?:side|leg|arm|hand|foot)\b|\bboth\s+(?:sides|legs|arms)\b|\balternating\b", re.I)
 REST_AFTER = re.compile(r"^\W{0,3}(?:rest|off|easy|recover\w*|walk\w*|break)\b", re.I)
 REST_BEFORE = re.compile(r"\brest\w*\W{0,3}(?:of\W{0,2})?$", re.I)
 
@@ -737,7 +861,12 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
     # A rest week the programme writes keeps its place wherever it is, first
     # week included, so every week keeps its date. An empty week that isn't
     # written as rest is not something the coach wrote, and is left out.
+    read = resolve_references(read, lambda where, message: flag(where, message))
     written_weeks = [week for week in read.weeks if week.sessions or week.rest]
+    every_week = read.every_week
+    if not any(week.sessions for week in written_weeks) and every_week:
+        # Only a weekly schedule was written: that schedule is the week.
+        written_weeks, every_week = [ReadWeek(sessions=every_week)], []
     if not any(week.sessions for week in written_weeks):
         raise HTTPException(422, "No training sessions were found in that programme.")
     # Each written week, repeated as written. A repeated week is flagged once,
@@ -761,7 +890,31 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
     # Pasted or file text can be checked line by line; screenshots can't.
     checker = SourceCheck(source, read.corrections) if source and source.strip() else None
 
-    def session(item: ReadSession, index: int, label: str, scheduled: date | None) -> dict:
+    def slots(week: ReadWeek, label: str) -> list[tuple[ReadSession, str | None, str]]:
+        """The week's sessions, one per written day ("Tue/Thu/Sat" is three), then
+        each every-week session on its days that the week's own sessions leave
+        free, so an overview line never doubles a session written out in full.
+        The same session written twice on one day is brought in once."""
+        own = [(item, day, label) for item in week.sessions for day in (session_days(item) or [None])]
+        taken = {day for _, day, _ in own if day}
+        # An every-week session's checks are listed once, not once per week.
+        recurring = [(item, day, "Every week \u00b7 " if label else "") for item in every_week
+                     for day in session_days(item) if day not in taken]
+        kept, seen = [], set()
+        for item, day, where in own + recurring:
+            key = (day, (_clean(item.name) or "").lower(), item.session_type)
+            if day and key in seen:
+                flag(f"{where}{_clean(item.name) or 'Session'}", f"Written twice on {day}, so it was brought in once.")
+                continue
+            seen.add(key)
+            kept.append((item, day, where))
+        return kept
+
+    for item in every_week:
+        if not session_days(item):
+            flag("Every week", f"“{_clean(item.name, 80) or 'A session'}” has no day written, so it wasn't added. Add it by hand if it matters.")
+
+    def session(item: ReadSession, index: int, label: str, scheduled: date | None, day: str | None = None) -> dict:
         kind = item.session_type if item.session_type in SESSION_TYPES else "mixed"
         title = _clean(item.name) or ("Rest" if kind == "rest" else f"Session {index + 1}")
         where = f"{label}{title}"
@@ -771,12 +924,15 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
         if len(item.exercises) > MAX_EXERCISES:
             flag(where, f"Only the first {MAX_EXERCISES} of {len(item.exercises)} exercises were brought in.")
         exercises = []
+        for group in dict.fromkeys(_clean(e.group, 200) for e in item.exercises[:MAX_EXERCISES]):
+            if group and re.search(r"\brounds?\b", group, re.I):
+                flag(where, f"\u201c{group}\u201d is a circuit. Each of its exercises has the circuit's rounds as its sets, and the heading (with any rest between rounds) is in their notes.")
         for exercise in item.exercises[:MAX_EXERCISES]:
             def say(message, e=exercise, where=where):
                 flag(f"{where} \u00b7 {_clean(e.name, 60)}" if _clean(e.name) else where, message)
 
             built = _exercise(exercise, say)
-            if built and checker:
+            if built and checker and not exercise.copied:
                 checker.check(exercise, say)
             if built and matcher:
                 found = matcher.match(built["name"])
@@ -788,7 +944,6 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
                     built = swapped
             if built:
                 exercises.append(built)
-        day = _day(item.day)
         return {"id": str(uuid4()), "name": title[:100], "weekday": None if scheduled else day,
                 "scheduled_date": scheduled.isoformat() if scheduled else None, "session_type": kind,
                 "notes": notes[:2000] if notes else None, "exercises": exercises}
@@ -803,13 +958,13 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
     if not dated:
         # One week, repeating: the builder's weekly plan. A session without a
         # written day stays unplaced until the person picks its day.
-        items = expanded[0].sessions
+        items = slots(expanded[0], "")
         if len(items) > MAX_SESSIONS_PER_WEEK:
             flag("Plan", f"Only the first {MAX_SESSIONS_PER_WEEK} of {len(items)} sessions in the week were brought in.")
             items = items[:MAX_SESSIONS_PER_WEEK]
-        for index, item in enumerate(items):
-            sessions.append(session(item, index, "", None))
-            if not _day(item.day):
+        for index, (item, day, where) in enumerate(items):
+            sessions.append(session(item, index, where, None, day))
+            if not day:
                 needs_day(item, sessions[-1]["name"], sessions[-1])
         body = {"name": name, "schedule_mode": "weekly", "sessions": sessions}
     else:
@@ -824,19 +979,24 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
             first = start
             flag("Plan", f"No upcoming start date written, so it starts Monday {first.day} {first.strftime('%b')}. Change the start date in the builder if needed.")
         for number, week in enumerate(expanded):
-            items = week.sessions
+            items = slots(week, f"{labels[number]} \u00b7 ") if week.sessions else []
             if len(items) > MAX_SESSIONS_PER_WEEK:
                 flag(labels[number], f"Only the first {MAX_SESSIONS_PER_WEEK} of {len(items)} sessions were brought in.")
                 items = items[:MAX_SESSIONS_PER_WEEK]
             monday = first + timedelta(days=7 * number)
-            for index, item in enumerate(items):
-                day = _day(item.day)
+            for index, (item, day, where) in enumerate(items):
                 # No day written: never guessed. It waits on Monday until the person picks its day.
-                sessions.append(session(item, index, f"{labels[number]} \u00b7 ", monday + timedelta(days=WEEKDAYS.index(day or "Monday"))))
+                sessions.append(session(item, index, where, monday + timedelta(days=WEEKDAYS.index(day or "Monday"))))
                 if not day:
                     needs_day(item, f"{labels[number]} \u00b7 {sessions[-1]['name']}", sessions[-1])
         body = {"name": name, "schedule_mode": "dated", "start_date": first.isoformat(),
                 "end_date": (first + timedelta(days=7 * len(expanded) - 1)).isoformat(), "sessions": sessions}
+    if source and source.strip():
+        # A session still waiting for its day isn't placed on one yet.
+        waiting = {sid for group in unplaced.values() for sid in group.session_ids}
+        placed = {s["weekday"] if s.get("weekday") else WEEKDAYS[date.fromisoformat(s["scheduled_date"]).weekday()]
+                  for s in sessions if s["id"] not in waiting and (s.get("weekday") or s.get("scheduled_date"))}
+        written_layout_flags(source, len(expanded), placed, flag)
     corrections_flags(read, flag, source or "")
     if source is not None and not source.strip():
         flag("Plan", "Read from screenshots, so the numbers couldn't be double-checked against text. Compare each dose with your screenshots.")
@@ -851,6 +1011,127 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
     return PlanImportResult(plan=plan.model_dump(mode="json"), weeks=len(expanded), sessions=len(plan.sessions),
                             exercises=sum(len(s.exercises) for s in plan.sessions), flags=flags,
                             needs_day=list(unplaced.values()), matched=len(library), library=library)
+
+
+def _words(text: str | None) -> set[str]:
+    return {_singular_word(w) for w in re.findall(r"[a-z0-9]+", (text or "").lower())
+            if w not in {"the", "a", "an", "and", "of", "same", "as", "repeat", "mins", "min", "minutes"}}
+
+
+def _singular_word(word: str) -> str:
+    return word[:-1] if len(word) > 3 and word.endswith("s") and not word.endswith("ss") else word
+
+
+def _names_session(target: str, session: ReadSession) -> bool:
+    """Does "Day 1", "Monday" or "Session A" name this session?"""
+    label = " ".join(re.findall(r"[a-z0-9]+", target.lower()))
+    if not label:
+        return False
+    if _days(target):
+        return set(_days(target)) <= set(session_days(session))
+    return re.search(rf"(?<![a-z0-9]){re.escape(label)}(?![a-z0-9])", " ".join(re.findall(r"[a-z0-9]+", (session.name or "").lower()))) is not None
+
+
+DAY_WORD = r"(?:mon|tues?|wed(?:nes)?|thu(?:rs?)?|fri|sat(?:ur)?|sun)(?:day)?s?\.?"
+WRITTEN_DAYS = re.compile(rf"\b({DAY_WORD})(?:\s*(?:-|\u2013|\u2014|\bto\b|\bthrough\b|\bthru\b)\s*({DAY_WORD}))?(?![a-z])", re.I)
+WEEK_NUMBERS = re.compile(r"\bweeks?\s+(\d{1,2})(?:\s*(?:-|\u2013|to)\s*(\d{1,2}))?\b", re.I)
+
+
+def written_layout_flags(source: str, weeks: int, days: set[str], flag) -> None:
+    """The plan's shape checked against the programme text: a week the text numbers
+    but the reading doesn't have, and a training day the text never names."""
+    numbers = [int(n) for pair in WEEK_NUMBERS.findall(source) for n in pair if n]
+    if numbers and weeks < max(numbers) <= MAX_WEEKS:
+        flag("Plan", f"The programme writes Week {max(numbers)}, but {weeks} {'week was' if weeks == 1 else 'weeks were'} read. Check that no week is missing.")
+    written: set[str] = set()
+    for first, last in WRITTEN_DAYS.findall(source):
+        written.update(_days(f"{first}-{last}" if last else first))
+    for day in sorted(days - written, key=WEEKDAYS.index) if written else []:
+        flag("Plan", f"{day} isn't written in the programme, but a session was placed on it. Check its day.")
+
+
+def resolve_references(read: ReadPlan, flag) -> ReadPlan:
+    """Replace each reference to earlier training ("Same as Day 1", "Warm-up: same
+    as Day 1", "Repeat ankle + hip drills") with copies of the exercises it names,
+    from the source programme as read. A change written with it ("increase reps
+    slightly if easier") is kept on each copy as a progression note, never applied
+    as numbers. A reference that names nothing, or more than one thing, is flagged
+    and nothing is copied: it is never guessed and never becomes an exercise."""
+    read = read.model_copy(deep=True)
+    order = [s for week in read.weeks for s in week.sessions] + list(read.every_week)
+    if not any(e.is_reference for s in order for e in s.exercises):
+        return read
+    for position, session in enumerate(order):
+        if not any(e.is_reference for e in session.exercises):
+            continue
+        where = _clean(session.name) or "Session"
+        resolved: list[ReadExercise] = []
+        for item in session.exercises:
+            if not item.is_reference:
+                resolved.append(item)
+                continue
+            written = _clean(item.name) or _clean(item.refers_to_day) or "the reference"
+            target, section = _clean(item.refers_to_day), _clean(item.refers_to_section)
+            earlier = order[:position][::-1]  # nearest first
+            if target and target.lower() in {"above", "as above", "previous", "the previous day", "last session"}:
+                sources = earlier[:1]
+            elif target:
+                named = [s for s in earlier if _names_session(target, s)] or [s for s in order[position + 1:] if _names_session(target, s)]
+                sources = named[:1]
+            else:
+                sources = earlier
+            if not sources:
+                flag(where, f"\u201c{written}\u201d refers to {target or 'earlier training'}, which couldn't be found, so nothing was copied. Add those exercises by hand.")
+                continue
+            picked = _referenced(sources, section, item.group) if section or (not target) else sources[0].exercises
+            if picked is None:
+                flag(where, f"\u201c{written}\u201d could mean more than one earlier part, so nothing was copied. Add those exercises by hand.")
+                continue
+            if not picked:
+                flag(where, f"\u201c{written}\u201d couldn't be matched to earlier exercises, so nothing was copied. Add them by hand.")
+                continue
+            change = _clean(item.notes)
+            if change and re.search(r"\d", change):
+                flag(where, f"\u201c{written}\u201d comes with a change: \u201c{change}\u201d. It's in the copied exercises' notes; update their doses if it changes them.")
+            label = target or "earlier"
+            for original in picked:
+                copy = original.model_copy(deep=True)
+                notes = [_clean(copy.notes), f"As {label}" + (f" ({section})" if section else ""), f"Progression: {change}" if change else None]
+                copy.notes = "\n".join(n for n in notes if n)
+                copy.group = _clean(item.group) or copy.group
+                copy.refers_to_day = copy.refers_to_section = None
+                copy.copied = True
+                resolved.append(copy)
+        session.exercises = resolved
+    return read
+
+
+def _referenced(sources: list[ReadSession], section: str | None, heading: str | None) -> list[ReadExercise] | None:
+    """The exercises a section reference names, in the nearest session that has
+    them: a section by its heading ("Warm-up"), else the exercises whose names
+    carry its words ("ankle + hip drills"), narrowed by the heading the reference
+    is written under ("Mobility Flow"). None when it still means several parts."""
+    wanted = _words(section) - {"drill", "routine", "work"} or _words(section)
+    for source in sources:
+        plain = [e for e in source.exercises if not e.is_reference]
+        groups: dict[str, list[ReadExercise]] = {}
+        for e in plain:
+            groups.setdefault(_clean(e.group) or "", []).append(e)
+        by_heading = [g for g in groups if g and wanted and wanted <= _words(g)]
+        if len(by_heading) == 1:
+            return groups[by_heading[0]]
+        if len(by_heading) > 1:
+            return None
+        hits = [g for g, items in groups.items() if wanted and any(wanted <= _words(e.name) | _words(g) or
+                                                                    len(wanted & _words(e.name)) >= 2 for e in items)]
+        if len(hits) > 1 and heading:
+            narrowed = [g for g in hits if _words(g) & (_words(heading) - {"flow"})]
+            hits = narrowed or hits
+        if len(hits) == 1:
+            return [e for e in groups[hits[0]] if wanted & _words(e.name)] if hits[0] == "" else groups[hits[0]]
+        if len(hits) > 1:
+            return None
+    return []
 
 
 def library_matcher(store) -> LibraryMatcher | None:
