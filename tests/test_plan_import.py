@@ -357,11 +357,11 @@ def test_the_accuracy_check_finds_no_differences_against_its_own_hand_checked_re
     and catches a wrong day, a changed dose and an invented exercise."""
     from tools.plan_import_eval import FIXTURES as CASES, cases, compare
     found = list(cases(CASES / "eval"))
-    assert [name for name, *_ in found] == ["coach_programme", "boxing_clinch_3week", "boxing_prep_references", "boxing_sc_4week_dates", "strength_block", "typos", "whatsapp_week"]
+    assert [name for name, *_ in found] == ["coach_programme", "boxing_clinch_3week", "boxing_prep_references", "boxing_sc_4week_dates", "boxing_sc_4week_short", "strength_block", "typos", "whatsapp_week"]
     for _, text, _, truth in found:
         assert text.strip()
         assert compare(truth, truth, text)["errors"] == []
-    truth = found[6][3]
+    truth = next(f for f in found if f[0] == "whatsapp_week")[3]
     wrong = truth.model_copy(deep=True)
     wrong.weeks[0].sessions[0].day = "Tuesday"
     wrong.weeks[0].sessions[2].exercises[0].reps = 6
@@ -965,3 +965,24 @@ def test_dated_conditioning_follows_the_written_round_progression():
     draft, _ = _fixture_draft("boxing_sc_4week_dates")
     rounds = [e["dose"].get("rounds") for s in draft.plan["sessions"] for e in s["exercises"] if e["dose"].get("rounds")]
     assert rounds == [4, 5, 6, 3]
+
+
+# -- Regression: the short dated plan as imported live (no year, bare "Same workout") --
+
+def test_short_dated_plan_without_a_year_copies_every_week():
+    draft, _ = _fixture_draft("boxing_sc_4week_short")
+    sessions = draft.plan["sessions"]
+    assert draft.plan["start_date"] == "2026-11-16"
+    assert [s["scheduled_date"] for s in sessions] == [
+        "2026-11-18", "2026-11-20", "2026-11-23", "2026-11-25", "2026-11-27", "2026-11-30",
+        "2026-12-02", "2026-12-04", "2026-12-07", "2026-12-09", "2026-12-11", "2026-12-14"]
+    names = [[e["name"] for e in s["exercises"]] for s in sessions]
+    for week in range(1, 4):
+        assert names[3 * week:3 * week + 3] == names[0:3], f"week {week + 1} copies week 1"
+    def sets(session):
+        return [e["dose"].get("sets") for e in session["exercises"]]
+    assert sets(sessions[9]) == [n - 1 for n in sets(sessions[0])] and sets(sessions[10]) == [n - 1 for n in sets(sessions[1])]
+    assert [s["exercises"][0]["dose"].get("rounds") for s in sessions[2::3]] == [4, 5, 6, 3]
+    messages = " ".join(f.message for f in draft.flags)
+    for wrong in ("couldn't be found", "couldn't be matched", "No upcoming start date", "per side isn't written", "only one block was read"):
+        assert wrong not in messages
