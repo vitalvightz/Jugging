@@ -1,0 +1,174 @@
+.videos {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 900px) {
+  .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
+}
+
+.thumb,
+.pending {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  background: var(--bg-surface-alt);
+  padding: 0;
+  cursor: pointer;
+}
+
+.thumb video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.thumb[aria-pressed="true"] { border-color: var(--text-secondary); }
+.thumb:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+
+.play {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(10, 10, 11, 0.62);
+}
+
+.play::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 53%;
+  transform: translate(-50%, -50%);
+  border-style: solid;
+  border-width: 7px 0 7px 11px;
+  border-color: transparent transparent transparent var(--text-primary);
+}
+
+.pending {
+  cursor: default;
+  border-style: dashed;
+  color: var(--text-secondary);
+  font-size: var(--type-meta);
+  white-space: nowrap;
+}
+
+.pending { grid-auto-flow: row; align-content: center; gap: 6px; }
+.pending[data-failed] { cursor: pointer; border-color: var(--brand-red); color: var(--text-primary); font: inherit; font-size: var(--type-meta); }
+.note { margin: 0; color: var(--text-muted); font-size: var(--type-body-sm); }
+
+.player { display: grid; gap: 8px; }
+.playerActions { display: flex; justify-content: flex-end; gap: 20px; }
+
+/* Quiet text actions, matching the sheet's header actions. */
+.textAction {
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--type-body-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.textAction:hover { color: var(--text-primary); }
+
+/* Desktop: a portrait clip sits at a sensible size instead of filling the sheet. */
+.playerSide { display: grid; gap: 4px; }
+.who { margin: 0; color: var(--text-muted); font-size: var(--type-meta); }
+
+/* Desktop: the clip keeps a sensible size and its details sit beside it. */
+@media (min-width: 900px) {
+  .player { grid-template-columns: minmax(0, 400px) minmax(0, 280px); align-items: start; gap: 32px; }
+  .playerSide { gap: 12px; padding-top: 4px; }
+  .playerActions { justify-content: flex-start; }
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.attach {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--type-body-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.attach:hover:not(:disabled) { background: var(--bg-surface-alt); }
+.attach:disabled { opacity: 0.55; cursor: progress; }
+
+/* Drag and drop is a desktop gesture: the hint only shows with a mouse. */
+.dropHint {
+  display: none;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--type-meta);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dropHint { display: block; }
+}
+
+.count {
+  margin-left: auto;
+  flex: none;
+  color: var(--text-muted);
+  font-size: var(--type-meta);
+  white-space: nowrap;
+}
+
+.problem { margin: 0; color: var(--text-secondary); font-size: var(--type-body-sm); }
+
+.dropOverlay {
+  position: absolute;
+  inset: -6px;
+  display: grid;
+  place-items: center;
+  border: 1.5px dashed var(--text-secondary);
+  border-radius: 16px;
+  background: rgba(10, 10, 11, 0.86);
+  color: var(--text-primary);
+  font-size: var(--type-body-sm);
+  font-weight: 600;
+  pointer-events: none;
+}

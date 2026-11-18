@@ -21,6 +21,8 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from api.contracts.custom_plans import CustomPlanInput, CoachPlan
+from api.contracts.training_attachments import AttachmentSource, TrainingAttachment
+from api.services.training_attachments import attachment_views
 from api.services.coach_notifications import notify_fighter_of_feedback, notify_fighter_of_plan
 from api.services.coach_plans import coach_plan_fields, assignment_view, assignment_views, saved_input
 from api.services.custom_plans import schedule_issues
@@ -264,6 +266,18 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
             background_tasks.add_task(notify_fighter_of_plan, store, coach_id=fighter.coach.athlete_id,
                                       athlete_id=fighter.profile.athlete_id, plan=dict(updated))
         return assignment_view(store, updated)
+
+    @router.get("/api/coach/fighters/{athlete_id}/training/attachments", response_model=list[TrainingAttachment])
+    def fighter_attachments(source: AttachmentSource, target_id: UUID,
+                            exercise_ref: str = Query(default="", max_length=200),
+                            fighter: ConnectedFighter = Depends(connected_fighter),
+                            store: AppStore = Depends(get_store)):
+        """The fighter's own videos on one record. Videos can show an injury or a
+        head knock, so they follow the fighter's injury-sharing choice."""
+        if not fighter.share_injuries:
+            return []
+        rows = store.list_training_attachments(fighter.profile.athlete_id, source, str(target_id), exercise_ref)
+        return attachment_views(store, fighter.profile.athlete_id, rows)
 
     @router.post('/api/coach/fighters/{athlete_id}/feedback/notify', status_code=202)
     def notify_feedback(body: FeedbackNotice, background_tasks: BackgroundTasks,
