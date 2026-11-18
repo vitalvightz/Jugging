@@ -88,7 +88,7 @@ function draftBlock(exercise: Exercise, session: Session): StructuredBlock {
     ? ({ strength: "strength", bodyweight: "strength", power: "power", other: "" }[exercise.exercise_type ?? "other"]) : undefined);
   const activity = sessionActivity(nameOf(exercise));
   const activityType = activity === "Roadwork" ? "conditioning" : activity === "Sparring" ? "sparring" : activity ? "skill" : null;
-  const blockType = activityType ?? exercise.block_type ?? ({ conditioning: "conditioning", skill: "skill", strength: "strength", power: "plyometric_power", speed: "speed" } as Record<string, string>)[type ?? ""]
+  const blockType = exercise.block_type ?? activityType ?? ({ conditioning: "conditioning", skill: "skill", strength: "strength", power: "plyometric_power", speed: "speed" } as Record<string, string>)[type ?? ""]
     ?? ({ strength_power: "strength", conditioning: "conditioning", skill: "skill", sparring: "sparring", recovery: "cooldown_recovery" } as Record<string, string>)[session.session_type ?? "mixed"]
     ?? "accessory";
   const weight = dose.load_or_intensity?.trim().match(/^(\d+(?:\.\d+)?)\s*(kg|lb|lbs)$/i);

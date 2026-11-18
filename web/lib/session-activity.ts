@@ -1,8 +1,11 @@
 /** Session activities can be arranged by the gym without a numeric prescription.
  * Match the exercise itself, not its parent session (which may also contain lifts).
  * Keep in sync with session_activity in api/services/custom_plans.py. */
-export function sessionActivity(name: string | null | undefined): string | null {
+export function sessionActivity(name: string | null | undefined, blockType?: string | null): string | null {
   const text = name ?? "";
+  if (blockType === "sparring") return "Sparring";
+  if (["strength", "plyometric_power", "preparation", "cooldown_recovery", "rehab"].includes(blockType ?? "")) return null;
+  if (/\b(?:hard|full[ -]?contact|live)\b/i.test(text) && /\bsparring\b/i.test(text)) return "Sparring";
   if (/\b(?:light[\s/-]+technical|technical[\s/-]+(?:sparring|rounds)|light[\s/-]+sparring|skill\s+session)\b/i.test(text)) return "Light technical";
   if (/\b(?:pads?|pad[\s-]*work|mitts?)\b/i.test(text)) return "Pads";
   if (/\bsparring\b/i.test(text)) return "Sparring";

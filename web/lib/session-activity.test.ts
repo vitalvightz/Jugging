@@ -8,6 +8,7 @@ test("gym session entries have their activity label and need no prescription", (
     ["Boxing session", "Boxing"], ["Technical/pads session", "Pads"],
     ["Sparring/technical rounds as scheduled", "Light technical"], ["Skill session", "Light technical"],
     ["Light technical", "Light technical"], ["Light sparring", "Light technical"], ["Roadwork", "Roadwork"],
+    ["Hard sparring with pads", "Sparring"], ["Hard sparring + technical rounds", "Sparring"],
   ]) {
     assert.equal(sessionActivity(name), label);
     assert.equal(exerciseIncomplete({ name, dose: blankDose() }), false);
@@ -16,4 +17,7 @@ test("gym session entries have their activity label and need no prescription", (
   }
   assert.equal(sessionActivity("Box squat"), null);
   assert.equal(exerciseIncomplete({ name: "Back squat", dose: blankDose() }), true);
+  assert.equal(sessionActivity("Pads", "sparring"), "Sparring");
+  assert.equal(sessionActivity("Boxing push-ups", "strength"), null);
+  assert.equal(exerciseIncomplete({ name: "Boxing push-ups", block_type: "strength", dose: blankDose() }), true);
 });

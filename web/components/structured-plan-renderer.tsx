@@ -411,7 +411,7 @@ function blockTagLabel(block: StructuredBlock, policy: RehabLabelPolicy | null):
   if (isRehabBlock(block)) {
     return resolveBlockRehabLabel(block, policy);
   }
-  return sessionActivity(block.display_name) ?? titleize(cleanText(block.block_type));
+  return sessionActivity(block.display_name, block.block_type) ?? titleize(cleanText(block.block_type));
 }
 
 /**

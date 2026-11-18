@@ -32,13 +32,19 @@ DOSE_OPTIONAL = re.compile(
     r"|foam[\s-]?roll(?:ing|er)?|breath(?:ing|work)|yoga)\b", re.I)
 
 
-def dose_optional(name) -> bool:
-    return bool(DOSE_OPTIONAL.search(str(name or ""))) or session_activity(name) is not None
+def dose_optional(name, block_type=None) -> bool:
+    return bool(DOSE_OPTIONAL.search(str(name or ""))) or session_activity(name, block_type) is not None
 
 
-def session_activity(name) -> str | None:
+def session_activity(name, block_type=None) -> str | None:
     """Keep in sync with web/lib/session-activity.ts; never inherit a session name."""
     text = str(name or "")
+    if block_type == "sparring":
+        return "Sparring"
+    if block_type in {"strength", "plyometric_power", "preparation", "cooldown_recovery", "rehab"}:
+        return None
+    if re.search(r"\b(?:hard|full[ -]?contact|live)\b", text, re.I) and re.search(r"\bsparring\b", text, re.I):
+        return "Sparring"
     for pattern, label in (
         (r"\b(?:light[\s/-]+technical|technical[\s/-]+(?:sparring|rounds)|light[\s/-]+sparring|skill\s+session)\b", "Light technical"),
         (r"\b(?:pads?|pad[\s-]*work|mitts?)\b", "Pads"),
@@ -72,9 +78,9 @@ def exercise_incomplete(exercise: dict) -> bool:
     needs none, but only while nothing is written: a started dose ("3 sets") is
     checked like any other."""
     dose = exercise["dose"]
-    if session_activity(exercise_name(exercise)):
+    if session_activity(exercise_name(exercise), exercise.get("block_type")):
         return False
-    if dose_optional(exercise_name(exercise)) and dose_blank(dose):
+    if dose_optional(exercise_name(exercise), exercise.get("block_type")) and dose_blank(dose):
         return False
     return dose_incomplete(dose)
 
@@ -152,7 +158,7 @@ def custom_open_plan_result(draft: dict, profile, *, training_day: str) -> dict:
                 content_type = snapshot.get("content_type") or {
                     "strength": "strength", "bodyweight": "strength", "power": "power",
                 }.get(exercise.get("exercise_type"))
-                block_type = activity_block_type(exercise_name(exercise)) or exercise.get("block_type") or {"conditioning": "conditioning", "skill": "skill",
+                block_type = exercise.get("block_type") or activity_block_type(exercise_name(exercise)) or {"conditioning": "conditioning", "skill": "skill",
                               "strength": "strength", "power": "plyometric_power",
                               "speed": "speed"}.get(content_type) or {
                                   "strength_power": "strength", "conditioning": "conditioning",
