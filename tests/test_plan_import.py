@@ -43,7 +43,7 @@ class FakeReader:
     def __init__(self, plan: ReadPlan | Exception):
         self.plan, self.texts, self.images = plan, [], []
 
-    def read(self, text, images=()):
+    def read(self, text, images=(), review=None):
         self.texts.append(text)
         self.images = list(images)
         if isinstance(self.plan, Exception):
@@ -986,3 +986,64 @@ def test_short_dated_plan_without_a_year_copies_every_week():
     messages = " ".join(f.message for f in draft.flags)
     for wrong in ("couldn't be found", "couldn't be matched", "No upcoming start date", "per side isn't written", "only one block was read"):
         assert wrong not in messages
+
+
+def test_the_source_check_quotes_the_exercise_line_not_a_title_or_coaching_note():
+    """As imported live: Plank quoted the title ("...Plan"), band rotations quoted a
+    coaching note further down, and "2x30s each" was flagged as not per side."""
+    source = """Strength & Conditioning Plan – 2 Weeks (Boxer)
+Day 1 – Upper Body Strength
+• Band external rotations 3x12 each side
+• Bench press 4x6
+• Core: plank 3x45s, side plank 2x30s each
+Notes
+• Shoulder health is non-negotiable for a boxer: face pulls, external rotations, and band work every upper day."""
+    reading = ReadPlan.model_validate({"name": "S&C", "weeks": [{"repeat": 1, "sessions": [{
+        "days": ["Monday"], "name": "Day 1 – Upper Body Strength", "session_type": "strength_power", "exercises": [
+            {"name": "Band external rotations", "sets": 3, "reps": 12, "per_side": True},
+            {"name": "Bench press", "sets": 4, "reps": 6},
+            {"name": "Plank", "sets": 3, "seconds": 45},
+            {"name": "side plank", "sets": 2, "seconds": 30, "per_side": True}]}]}]})
+    draft = build_draft(reading, date.fromisoformat(MONDAY), source)
+    assert not [f.message for f in draft.flags if "Check the dose" in f.message or "Couldn't find" in f.message]
+
+
+
+# -- Second look: one retry with the failed checks, kept only if it is better --
+
+class TwoReadings:
+    def __init__(self, first, second):
+        self.readings, self.reviews = [first, second], []
+
+    def read(self, text, images=(), review=None):
+        self.reviews.append(review)
+        return self.readings[len(self.reviews) - 1]
+
+
+def _one_exercise(sets, reps):
+    return ReadPlan.model_validate({"name": "Plan", "weeks": [{"repeat": 1, "sessions": [{
+        "days": ["Monday"], "name": "Strength", "session_type": "strength_power",
+        "exercises": [{"name": "Bench press", "sets": sets, "reps": reps}]}]}]})
+
+
+def _import(reader, text="Monday Strength\nBench press 4x6\n"):
+    body = plan_import.PlanImportRequest(text=text, start_date=date.fromisoformat(MONDAY))
+    return plan_import.import_plan("owner", body, reader=reader)
+
+
+def test_a_reading_that_fails_its_checks_gets_one_second_look_and_keeps_the_better_one():
+    plan_import.reset_import_limits()
+    reader = TwoReadings(_one_exercise(4, 8), _one_exercise(4, 6))
+    result = _import(reader)
+    assert reader.reviews[0] is None and "reps 8" in reader.reviews[1]
+    assert result.plan["sessions"][0]["exercises"][0]["dose"]["reps"] == 6
+    assert not [f for f in result.flags if f.message.startswith("Check the dose")]
+
+
+def test_a_second_look_that_is_no_better_is_dropped_and_a_clean_reading_gets_none():
+    plan_import.reset_import_limits()
+    reader = TwoReadings(_one_exercise(4, 8), _one_exercise(5, 9))
+    assert _import(reader).plan["sessions"][0]["exercises"][0]["dose"]["reps"] == 8
+    clean = TwoReadings(_one_exercise(4, 6), None)
+    _import(clean)
+    assert clean.reviews == [None], "no second call when every check passes"
