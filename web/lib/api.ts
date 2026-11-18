@@ -12,7 +12,7 @@ import type { CoachPlannedSession, CoachFighterWeight, SessionDetails, ExerciseL
 import type { ManualExerciseEntry, ManualExerciseListResponse, PerformedExerciseInput } from "@/lib/api-schema.generated";
 import type { LibraryFeaturedResponse, LibraryPreview, LibrarySearchResponse } from "@/lib/api-schema.generated";
 import type { CustomDoseSuggestion, CustomPlan, CustomPlanInput, CoachPlan } from "@/lib/api-schema.generated";
-import type { PrivateMediaPreview, PrivateMediaSettings, UploadPermission, UploadState, YouTubeClipInput } from "@/lib/api-schema.generated";
+import type { PrivateMediaPreview, PrivateMediaSettings, TrainingAttachment, TrainingAttachmentInput, UploadPermission, UploadState, YouTubeClipInput } from "@/lib/api-schema.generated";
 import type {
   ApproveAndResumeGenerationRequest,
   AdminAthleteRecord,
@@ -96,6 +96,28 @@ export function reservePrivateUpload(token: string, file: File, signal?: AbortSi
 }
 export function getPrivateUpload(token: string, id: string, signal?: AbortSignal) {
   return readJson<UploadState>(`/api/private-media/uploads/${encodeURIComponent(id)}`, { token, signal });
+}
+
+export type AttachmentTarget = { source: TrainingAttachmentInput["source"]; target_id: string; exercise_ref?: string };
+function attachmentQuery(target: AttachmentTarget) {
+  return new URLSearchParams({ source: target.source, target_id: target.target_id, exercise_ref: target.exercise_ref ?? "" });
+}
+/** Form-check videos on the athlete's own record (a session, one exercise, or sparring). */
+export function listTrainingAttachments(token: string, target: AttachmentTarget, signal?: AbortSignal) {
+  return readJson<TrainingAttachment[]>(`/api/training/attachments?${attachmentQuery(target)}`, { token, signal });
+}
+export function attachTrainingVideo(token: string, mediaId: string, target: AttachmentTarget, signal?: AbortSignal) {
+  return readJson<TrainingAttachment>("/api/training/attachments", {
+    token, method: "POST", body: JSON.stringify({ media_id: mediaId, exercise_ref: "", ...target }), signal,
+  });
+}
+export function removeTrainingAttachment(token: string, id: string) {
+  return requestVoid(`/api/training/attachments/${encodeURIComponent(id)}`, { token, method: "DELETE" });
+}
+/** A coach reads a fighter's videos only while the fighter shares injury status. */
+export function listFighterTrainingAttachments(token: string, athleteId: string, target: AttachmentTarget, signal?: AbortSignal) {
+  return readJson<TrainingAttachment[]>(
+    `/api/coach/fighters/${encodeURIComponent(athleteId)}/training/attachments?${attachmentQuery(target)}`, { token, signal });
 }
 
 export function searchTrainingLibrary(token: string, params: URLSearchParams, signal?: AbortSignal) {

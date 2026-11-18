@@ -528,6 +528,7 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         self.custom_plans: dict[str, dict] = {}
         self.private_media: dict[str, dict] = {}
         self.private_video_assets: dict[str, dict] = {}
+        self.training_attachments: list[dict] = []
         self.session_logs: dict[str, list[dict]] = {}
         self.athlete_streak_rows: dict[str, dict] = {}
         self.daily_activity: dict[str, set[str]] = {}
@@ -2169,6 +2170,43 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
 
     def private_video_signed_url(self, path: str, *, expires_in: int) -> str:
         raise HTTPException(503, 'Private video storage is unavailable.')
+
+    def attach_training_media(self, athlete_id: str, media_id: str, source: str, target_id: str,
+                              exercise_ref: str) -> dict:
+        # Mirrors public.attach_training_media; tests/training_attachments.sql covers the SQL.
+        media = self.private_media.get(media_id)
+        asset = self.private_video_assets.get((media or {}).get('asset_id') or '')
+        if not media or media['athlete_id'] != athlete_id or media.get('provider') != 'uploaded':
+            raise HTTPException(404, 'That record or video is not available.')
+        if not asset or asset.get('status') != 'verified':
+            raise HTTPException(409, 'Video is still processing. Try again in a moment.')
+        records = {
+            'external': lambda: (self.external_training_sessions.get(target_id) or {}).get('athlete_id') == athlete_id,
+            'sparring': lambda: not exercise_ref and any(r.get('id') == target_id and r.get('athlete_id') == athlete_id
+                                                         for r in self.sparring_logs),
+            'unlxck': lambda: any(r.get('id') == target_id for r in self.session_completions.get(athlete_id, [])),
+        }
+        if source not in records or not records[source]():
+            raise HTTPException(404, 'That record or video is not available.')
+        if any(r['media_id'] == media_id for r in self.training_attachments):
+            raise HTTPException(409, 'That video is already attached.')
+        if sum(r['athlete_id'] == athlete_id and r['source'] == source and r['target_id'] == target_id
+               and r['exercise_ref'] == exercise_ref for r in self.training_attachments) >= 6:
+            raise HTTPException(409, 'This already has six videos. Remove one to add another.')
+        row = {'id': str(uuid4()), 'athlete_id': athlete_id, 'media_id': media_id, 'source': source,
+               'target_id': target_id, 'exercise_ref': exercise_ref, 'created_at': _now()}
+        self.training_attachments.append(row)
+        return copy.deepcopy(row)
+
+    def list_training_attachments(self, athlete_id: str, source: str, target_id: str, exercise_ref: str) -> list[dict]:
+        return [copy.deepcopy(r) for r in self.training_attachments if r['athlete_id'] == athlete_id
+                and r['source'] == source and r['target_id'] == target_id and r['exercise_ref'] == exercise_ref]
+
+    def delete_training_attachment(self, athlete_id: str, attachment_id: str) -> bool:
+        before = len(self.training_attachments)
+        self.training_attachments = [r for r in self.training_attachments
+                                     if not (r['id'] == attachment_id and r['athlete_id'] == athlete_id)]
+        return len(self.training_attachments) < before
 
     def create_custom_plan(self, athlete_id: str, fields: dict) -> dict:
         row = {**copy.deepcopy(fields), "athlete_id": athlete_id, "id": str(uuid4()),

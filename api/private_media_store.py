@@ -2,6 +2,15 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
+from postgrest.exceptions import APIError as PostgrestAPIError
+
+# attach_training_media raises these; each maps to one plain message.
+_ATTACH_ERRORS = {
+    "42501": (404, "That record or video is not available."),
+    "55000": (409, "Video is still processing. Try again in a moment."),
+    "54000": (409, "This already has six videos. Remove one to add another."),
+    "22023": (422, "That exercise is not available."),
+}
 
 
 class PrivateMediaStoreMixin:
@@ -52,3 +61,27 @@ class PrivateMediaStoreMixin:
         if not url:
             raise HTTPException(503, "Unable to open video. Try again.")
         return url
+
+    def attach_training_media(self, athlete_id, media_id, source, target_id, exercise_ref):
+        try:
+            response = self.client.rpc("attach_training_media", {
+                "p_athlete_id": athlete_id, "p_media_id": media_id, "p_source": source,
+                "p_target_id": target_id, "p_exercise_ref": exercise_ref,
+            }).execute()
+        except PostgrestAPIError as exc:
+            status, detail = _ATTACH_ERRORS.get(getattr(exc, "code", None) or "", (503, "Unable to attach the video. Try again."))
+            raise HTTPException(status, detail) from exc
+        if not response.data:
+            raise HTTPException(409, "That video is already attached.")
+        return response.data[0]
+
+    def list_training_attachments(self, athlete_id, source, target_id, exercise_ref):
+        response = (self.client.table("training_attachments").select("*").eq("athlete_id", athlete_id)
+                    .eq("source", source).eq("target_id", target_id).eq("exercise_ref", exercise_ref)
+                    .order("created_at").execute())
+        return list(getattr(response, "data", None) or [])
+
+    def delete_training_attachment(self, athlete_id, attachment_id):
+        response = (self.client.table("training_attachments").delete()
+                    .eq("athlete_id", athlete_id).eq("id", attachment_id).execute())
+        return bool(getattr(response, "data", None))

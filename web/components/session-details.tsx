@@ -4,6 +4,7 @@ import { sessionNotes } from "@/lib/training-history";
 import { TRAINING_FOCUS_CHANGED_EVENT } from "@/lib/training-focus";
 import { useEffect, useId, useRef, useState, type ReactNode, type CSSProperties } from "react";
 import { CoachFeedback } from "./coach-feedback";
+import { TrainingVideos } from "./training-videos";
 import { getSessionDetails } from "@/lib/api";
 import type { SessionDetailBlock, SessionDetailRun, SessionDetails as Details } from "@/lib/api-schema.generated";
 import { formatAppDate } from "@/lib/date-format";
@@ -414,7 +415,11 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
               {onEditExercises ? <button type="button" className={styles.manualAction} aria-haspopup="dialog"
                 onClick={() => onEditExercises(run)}>{details.blocks.length ? "Edit exercises" : "Add exercises"}</button> : null}</div>
             <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} numbered={false} compact viewer={viewer} byCoach={facts.logged_by_coach}
-              feedback={details.athlete_id && block.feedback_ref ? <CoachFeedback key={`${row.id}:${block.feedback_ref}`} token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} exerciseRef={block.feedback_ref} editable={viewer === "coach" && details.coach_feedback_allowed} /> : undefined}
+              feedback={details.athlete_id && block.feedback_ref ? <>
+                <CoachFeedback key={`${row.id}:${block.feedback_ref}`} token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} exerciseRef={block.feedback_ref} editable={viewer === "coach" && details.coach_feedback_allowed} />
+                <TrainingVideos key={`videos:${row.id}:${block.feedback_ref}`} token={token} viewer={viewer ?? "athlete"} athleteId={details.athlete_id} label={block.name}
+                  target={{ source: row.source, target_id: row.id, exercise_ref: block.feedback_ref }} />
+              </> : undefined}
               open={expanded.has(index)} onToggle={() => setOpen(new Set(expanded.has(index) ? [...expanded].filter(item => item !== index) : [...expanded, index]))} />)}</ol>
           </section> : null}
           {record.notes || record.takeaway ? <section className={styles.section}><h3>Session Notes</h3>
@@ -428,15 +433,24 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
                 onClick={() => onEditExercises({ ...row, ...record })}>{details.blocks.length ? "Edit exercises" : "Add exercises"}</button> : null}</div>
             {details.prescription_source === "exercise_logs" ? <p className={styles.quiet}>Saved exercise logs only. Full prescription and block order unavailable.</p> : null}
             {details.blocks.length ? <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} numbered={false} compact viewer={viewer} byCoach={facts.logged_by_coach}
-              feedback={details.athlete_id && block.feedback_ref ? <CoachFeedback key={`${row.id}:${block.feedback_ref}`} token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} exerciseRef={block.feedback_ref} editable={viewer === "coach" && details.coach_feedback_allowed} /> : undefined}
+              feedback={details.athlete_id && block.feedback_ref ? <>
+                <CoachFeedback key={`${row.id}:${block.feedback_ref}`} token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} exerciseRef={block.feedback_ref} editable={viewer === "coach" && details.coach_feedback_allowed} />
+                <TrainingVideos key={`videos:${row.id}:${block.feedback_ref}`} token={token} viewer={viewer ?? "athlete"} athleteId={details.athlete_id} label={block.name}
+                  target={{ source: row.source, target_id: row.id, exercise_ref: block.feedback_ref }} />
+              </> : undefined}
               open={expanded.has(index)} onToggle={() => setOpen(new Set(expanded.has(index) ? [...expanded].filter(item => item !== index) : [...expanded, index]))} />)}</ol>
               : record.source === "external" ? <p className={styles.quiet}>No exercises recorded.</p> : null}
+            {/* A session without exercises (pads, a class) takes videos on the session itself. */}
+            {!details.blocks.length && !details.sparring && details.athlete_id && (row.source === "external" || row.source === "unlxck") ? <TrainingVideos token={token}
+              viewer={viewer ?? "athlete"} athleteId={details.athlete_id} label={title || "this session"} target={{ source: row.source, target_id: row.id }} /> : null}
           </section>
           {details.sparring ? <section className={styles.section}><h3>Sparring report</h3><p>{details.sparring.rounds_completed} rounds{details.sparring.round_seconds != null ? ` · ${details.sparring.round_seconds} sec` : ""} · {details.sparring.intensity}</p>
             {details.sparring.head_contact ? <p>Head contact: {details.sparring.head_contact}</p> : null}
             {details.sparring.rocked != null ? <p>Rocked: {details.sparring.rocked ? "Yes" : "No"}</p> : null}
             {details.sparring.id && details.athlete_id ? <CoachFeedback token={token} athleteId={details.athlete_id} source="sparring" targetId={details.sparring.id} editable={viewer === "coach" && details.coach_feedback_allowed} /> : null}
-            {details.sparring.notes ? <p className={styles.note}>{details.sparring.notes}</p> : null}</section> : null}
+            {details.sparring.notes ? <p className={styles.note}>{details.sparring.notes}</p> : null}
+            {details.sparring.id && details.athlete_id ? <TrainingVideos token={token} viewer={viewer ?? "athlete"} athleteId={details.athlete_id} label="Sparring"
+              target={{ source: "sparring", target_id: details.sparring.id }} /> : null}</section> : null}
           {details.message ? <p className={styles.quiet}>{details.message}</p> : null}
           {record.notes || record.modification_reason || record.takeaway ? <section className={styles.section}><h3>Session Notes</h3>
             {record.modification_reason ? <p className={styles.note}>Modification: {record.modification_reason}</p> : null}

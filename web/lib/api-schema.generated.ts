@@ -2815,6 +2815,19 @@ export type TodayInjuryDeclaration = {
   friction_or_contact_problem?: "no" | "unknown" | "yes" | null;
 };
 
+export type TrainingAttachment = {
+  id: string;
+  created_at: string;
+  media: PrivateMediaPreview;
+};
+
+export type TrainingAttachmentInput = {
+  media_id: string;
+  source: "external" | "sparring" | "unlxck";
+  target_id: string;
+  exercise_ref?: string;
+};
+
 /**
  * One candidate focus. ``athlete``: written by the fighter after sparring.
  * ``inferred``: drawn by AI from a note they wrote, shown only before work its

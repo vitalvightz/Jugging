@@ -2,6 +2,7 @@
 import { sessionNotes } from "@/lib/training-history";
 import { TRAINING_FOCUS_CHANGED_EVENT } from "@/lib/training-focus";
 import { CoachFeedback } from "./coach-feedback";
+import { TrainingVideos } from "./training-videos";
 
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -475,6 +476,9 @@ function SparringRows({ history, sessions, token, onSaved, hasMore, athleteId }:
                 <p key={note} className="history-row-takeaway">{note}</p>)}
               <FocusCueLine cue={row.focus_cue} />
               {token ? <CoachFeedback token={token} athleteId={athleteId} source="sparring" targetId={row.id} /> : null}
+              {/* Reports saved with a session take videos in its details; standalone ones here. */}
+              {token && !row.external_session_id ? <TrainingVideos token={token} label="Sparring"
+                target={{ source: "sparring", target_id: row.id }} /> : null}
               {row.external_session_id && token ? (
                 <div className="history-session-actions">
                   <button className="history-session-delete" type="button" aria-haspopup="dialog"

@@ -74,7 +74,7 @@ export function PrescribedPrivateVideo({ id, name, community = false }: { id: st
   return token ? <PrivateExerciseVideo token={token} id={id} name={name} community={community} inline /> : null;
 }
 
-export function PrivateVideoPlayer({ media, name, visibility = "private" }: { media: PrivateMediaPreview; name: string; visibility?: "private" | "community" }) {
+export function PrivateVideoPlayer({ media, name, visibility = "private", kind = "Demo" }: { media: PrivateMediaPreview; name: string; visibility?: "private" | "community"; kind?: string }) {
   const video = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false), [slow, setSlow] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -92,14 +92,14 @@ export function PrivateVideoPlayer({ media, name, visibility = "private" }: { me
     <div className="ex-demo" data-orientation={orientation === "portrait" ? "portrait" : undefined}>
       <div className="ex-demo-frame">
         <video ref={video} className="ex-demo-player" src={media.url} playsInline muted loop preload="metadata"
-          aria-label={`${name} demonstration`} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+          aria-label={kind === "Demo" ? `${name} demonstration` : `${name} ${kind.toLowerCase()}`} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
           onLoadedMetadata={(e) => {
             const { videoWidth, videoHeight } = e.currentTarget;
             if (videoWidth && videoHeight) setMeasured(videoHeight > videoWidth ? "portrait" : "landscape");
           }}
           onError={() => setFailed(true)} />
       </div>
-      <div className="ex-demo-caption"><span className="ex-demo-meta">Demo · {visibility === "community" ? "Community" : "Private"}</span></div>
+      <div className="ex-demo-caption"><span className="ex-demo-meta">{kind} · {visibility === "community" ? "Community" : "Private"}</span></div>
       <div className="ex-demo-controls" role="group" aria-label="Demo controls">
         <button type="button" className="ex-demo-control" onClick={() => {
           if (playing) video.current?.pause(); else void video.current?.play().catch(() => setFailed(true));
