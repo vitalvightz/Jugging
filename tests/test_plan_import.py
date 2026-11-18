@@ -135,9 +135,8 @@ def test_the_draft_saves_through_the_existing_endpoint_and_reads_back_identical(
     again = client.put(f"/api/custom-plans/{reloaded['id']}", json=saved_input(reloaded).model_dump(mode="json"), headers=AUTH)
     assert again.status_code == 200, again.text
     assert saved_input(again.json()).model_dump(mode="json") == saved_input(reloaded).model_dump(mode="json")
-    # Only rounds with no written time or rest stay marked for the person to finish.
-    assert [e["name"] for s in reloaded["sessions"][:4] for e in s["exercises"] if e["incomplete"]] == [
-        "Shadow boxing", "Hard sparring"]
+    # Gym-led boxing and sparring do not need a numeric prescription.
+    assert [e["name"] for s in reloaded["sessions"][:4] for e in s["exercises"] if e["incomplete"]] == []
 
 
 def test_a_coach_import_saves_and_reloads_through_the_coach_plan_path(plans, monkeypatch):  # noqa: F811
@@ -246,9 +245,7 @@ def test_weekly_plans_leave_unwritten_days_open_for_the_builder_to_ask(api):
         "mode": "duration", "sets": 4, "duration_seconds": 240}
     pads = next(s for s in plan["sessions"] if s["name"] == "Day 3 - Pads")["exercises"][0]
     assert dose(pads) == {"mode": "reps"}
-    assert [{"where": f["where"], "message": f["message"]} for f in body["flags"]] == [
-        {"where": "Day 3 - Pads · Pads", "message": "No dose written. Add one or leave it open."},
-    ]
+    assert body["flags"] == [], "Pads need a day, but no prescription"
     # Once the person picks the days, it saves with nothing left open.
     saved = client.post("/api/custom-plans", json=place(body, "Tuesday"), headers=AUTH).json()
     assert sorted(s["weekday"] for s in saved["sessions"]) == ["Tuesday", "Tuesday", "Wednesday"]
@@ -1155,12 +1152,12 @@ def test_text_doses_on_a_shared_line_are_not_false_alarms():
 
 def test_each_flag_points_at_its_session_and_exercise():
     reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("Strength", "Monday", exercises=[
-        ReadExercise(name="Squat", sets=8, reps=3), ReadExercise(name="Pads")])])])
-    result = build_draft(reading, date(2026, 11, 23), "Squat 3x8\nPads")
+        ReadExercise(name="Squat", sets=8, reps=3), ReadExercise(name="Row")])])])
+    result = build_draft(reading, date(2026, 11, 23), "Squat 3x8\nRow")
     session = result.plan["sessions"][0]
     by_where = {f.where: (f.session_id, f.exercise_id) for f in result.flags}
     assert by_where["Strength · Squat"] == (session["id"], session["exercises"][0]["id"])
-    assert by_where["Strength · Pads"] == (session["id"], session["exercises"][1]["id"])
+    assert by_where["Strength · Row"] == (session["id"], session["exercises"][1]["id"])
     assert all(sid is None for where, (sid, _) in by_where.items() if not where.startswith("Strength"))
 
 

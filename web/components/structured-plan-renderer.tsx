@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
+import { sessionActivity } from "@/lib/session-activity";
 import type { ShownFocus } from "@/lib/training-focus";
 import { ExerciseGlyphIcon, type ExerciseGlyphName } from "./exercise-glyph";
 import { getRehabExerciseGuide, rehabExerciseTarget } from "@/lib/rehab-exercise-guide";
@@ -412,7 +413,7 @@ function blockTagLabel(block: StructuredBlock, policy: RehabLabelPolicy | null):
   if (isRehabBlock(block)) {
     return resolveBlockRehabLabel(block, policy);
   }
-  return titleize(cleanText(block.block_type));
+  return sessionActivity(block.display_name, block.block_type) ?? titleize(cleanText(block.block_type));
 }
 
 /**
