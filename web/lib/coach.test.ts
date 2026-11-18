@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  coachInviteShare,
   connectionSharing,
   fighterSummary,
   weekStart,
@@ -261,4 +262,13 @@ test("failed authorised weight reads produce a grey linked status, but loading a
   assert.deepEqual(coachConcerns({ ...f, age: 17 }, riskWeight), []);
   assert.equal(coachConcerns({ ...f, age: 18 }, null, true)[0]?.tone, "unknown");
   assert.equal(coachConcerns({ ...f, age: undefined }, null, true)[0]?.reason, "Weight status unavailable");
+});
+
+test("an invite share names the invited email and links to the accept screen", () => {
+  const share = coachInviteShare({ coach_name: "Sam Okafor", invited_email: "ari@example.com" }, "https://app.example/");
+  assert.equal(share.url, "https://app.example/settings/coach-access");
+  assert.match(share.text, /^Sam Okafor invited you/);
+  assert.match(share.text, /Sign in with ari@example\.com and tap Accept: https:\/\/app\.example\/settings\/coach-access$/);
+  assert.equal(share.whatsapp, `https://wa.me/?text=${encodeURIComponent(share.text)}`);
+  assert.match(coachInviteShare({ coach_name: " ", invited_email: "a@b.co" }, "https://x.y").text, /^Your coach invited you/);
 });

@@ -24,6 +24,7 @@ from api.services.training_history import (
     delete_plan_completion, edit_plan_completion, plan_completion_history_editable,
 )
 from api.contracts.session_details import SessionDetails
+from api.services.coach_notifications import notify_coaches_of_contact_concern
 from api.services.session_details import session_details
 from api.services.today_reads import run_reads_concurrently
 from api.plan_mappers import with_parsed_planning_brief
@@ -936,6 +937,11 @@ def build_today_router(*, require_profile, get_store) -> APIRouter:
                 detail="Your sparring log was not saved. Please try again.",
             )
         row = _apply_sparring_focus(store, profile.athlete_id, row, request_body)
+        # Coaches the fighter shares injury status with hear about head contact
+        # now, not when they next open the app. Keyed by log id, so a retry or
+        # correction of the same log never pushes twice.
+        background_tasks.add_task(notify_coaches_of_contact_concern, store, athlete_id=profile.athlete_id,
+                                  fighter_name=profile.full_name, log=dict(row))
         # An explicit focus is the athlete's own answer: no inference for this log.
         if not str(row.get("focus") or "").strip() and not rocked:
             schedule_focus_inference(background_tasks, store, profile.athlete_id, "sparring_log", row.get("id"),

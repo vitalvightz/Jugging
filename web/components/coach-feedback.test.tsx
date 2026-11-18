@@ -12,7 +12,13 @@ async function mount(editable: boolean, denySave = false) {
   const before = globalThis.fetch;
   let notes = [original];
   const writes: Record<string, unknown>[] = [];
-  globalThis.fetch = async (_input, init) => {
+  const notices: { url: string; body: unknown }[] = [];
+  globalThis.fetch = async (input, init) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.includes("/feedback/notify")) {
+      notices.push({ url, body: JSON.parse(String(init?.body)) });
+      return new Response(null, { status: 202 });
+    }
     if (init?.method === "POST") {
       writes.push(JSON.parse(String(init.body)));
       if (denySave) return new Response(JSON.stringify({ message: "Access ended" }), { status: 403 });
@@ -26,7 +32,7 @@ async function mount(editable: boolean, denySave = false) {
     const button = [...host.querySelectorAll("button")].find(button => button.textContent === label);
     assert.ok(button, label); await act(async () => button.click());
   };
-  return { host, writes, click, close() { act(() => root.unmount()); host.remove(); globalThis.fetch = before; } };
+  return { host, writes, notices, click, close() { act(() => root.unmount()); host.remove(); globalThis.fetch = before; } };
 }
 
 test("athletes see received coach feedback and attribution without editing controls", async () => {
@@ -54,9 +60,14 @@ for (const deny of [false, true]) {
         assert.equal(ui.host.querySelector("textarea")!.value, "Good depth today.");
         assert.match(ui.host.textContent!, /Control the descent/);
         assert.match(ui.host.textContent!, /feedback unavailable/);
+        assert.equal(ui.notices.length, 0);
       } else {
         assert.equal(ui.host.querySelector("textarea"), null);
         assert.match(ui.host.textContent!, /Good depth today/);
+        // The fighter is told only after the save succeeds, about this exact note.
+        assert.equal(ui.notices.length, 1);
+        assert.match(ui.notices[0].url, /\/api\/coach\/fighters\/fighter\/feedback\/notify$/);
+        assert.deepEqual(ui.notices[0].body, { source: "unlxck", target_id: "session", exercise_ref: "squat" });
       }
     } finally { ui.close(); }
   });

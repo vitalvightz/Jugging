@@ -111,6 +111,15 @@ export async function coachRpc<T>(
   }
   return response.json() as Promise<T>;
 }
+// A pending invite only connects when the athlete signs in with the invited
+// email and accepts, so the shared message says exactly that. The link is a
+// plain app path: it carries no token and grants nothing on its own.
+export function coachInviteShare(connection: Pick<Connection, "coach_name" | "invited_email">, origin: string) {
+  const url = `${origin.replace(/\/+$/, "")}/settings/coach-access`;
+  const coach = connection.coach_name?.trim() || "Your coach";
+  const text = `${coach} invited you to connect on UNLXCK so they can follow your training. Sign in with ${connection.invited_email} and tap Accept: ${url}`;
+  return { url, text, whatsapp: `https://wa.me/?text=${encodeURIComponent(text)}` };
+}
 export function formatList(items: string[]): string {
   return items.length < 2
     ? (items[0] ?? "")

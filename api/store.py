@@ -1366,6 +1366,25 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
             .eq("coach_id", coach_id).eq("athlete_id", athlete_id).eq("status", "accepted")
         )
 
+    def list_accepted_coach_connections_for_athlete(self, athlete_id: str) -> list[dict[str, Any]]:
+        """Every accepted connection in which ``athlete_id`` is the fighter."""
+        response = (
+            self.client.table("coach_connections")
+            .select("id,coach_id,athlete_id,status,share_recovery,share_injuries,share_weight,allow_session_logging")
+            .eq("athlete_id", athlete_id).eq("status", "accepted").execute()
+        )
+        return list(getattr(response, "data", None) or [])
+
+    def get_coach_feedback(self, *, athlete_id: str, coach_id: str, source: str, target_id: str,
+                           exercise_ref: str) -> dict[str, Any] | None:
+        """The one note ``coach_id`` keeps on a fighter's record, or ``None``."""
+        return self._select_first(
+            self.client.table("coach_feedback")
+            .select("id,athlete_id,coach_id,coach_name,source,target_id,exercise_ref,created_at,updated_at")
+            .eq("athlete_id", athlete_id).eq("coach_id", coach_id).eq("source", source)
+            .eq("target_id", target_id).eq("exercise_ref", exercise_ref)
+        )
+
     def get_profile_compliance(self, athlete_id: str) -> dict[str, Any] | None:
         """Fresh compliance facts only; intentionally no separate cache."""
         return self._select_first(
