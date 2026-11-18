@@ -202,8 +202,9 @@ class SourceCheck:
             if (float(number), _weight_unit(unit)) not in read.weights:
                 problems.append(f"load {number}{unit} isn't written")
         loose = [n for n in _numbers(" ".join(filter(None, [re.sub(WEIGHT, "", (item.load or "")), item.prescription])))]
-        problems += [f"{n} isn't written" for n in loose
-                     if n.replace(",", ".") not in read.bare and f"{float(n.replace(',', '.')):g}" not in read.bare]
+        # Text doses ("4 × 8-10", "30-40 min") only have to be written on the line, in any role.
+        on_line = {f"{float(n.replace(',', '.')):g}" for n in _numbers(window)}
+        problems += [f"{n} isn't written" for n in loose if f"{float(n.replace(',', '.')):g}" not in on_line]
         # A single reps number read out of a written range collapses what the coach wrote.
         if isinstance(item.reps, int) and read.rep_ranges:
             problems.append(f"reps {item.reps} was written as the range {read.rep_ranges[0]}")

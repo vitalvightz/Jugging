@@ -547,3 +547,11 @@
 .calendarGrid[data-copying="true"] .calendarDate:not([data-outside="true"]), .dayTile[data-copying="true"] { border-color: var(--brand-red); }
 
 .copyExerciseButton[aria-pressed="true"], .editButton[aria-pressed="true"] { border-color: var(--brand-red); color: var(--text-primary); }
+
+/* Briefly marks what a tapped import flag points at. */
+.flagged {
+  outline: 2px solid var(--accent, #c8102e);
+  outline-offset: 4px;
+  border-radius: 12px;
+  transition: outline-color 0.4s ease;
+}

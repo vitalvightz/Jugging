@@ -1374,6 +1374,8 @@ export type HistoryCompletionEdit = {
 export type ImportFlag = {
   where: string;
   message: string;
+  session_id: string | null;
+  exercise_id: string | null;
 };
 
 export type InjuryEpisodeObservation = {

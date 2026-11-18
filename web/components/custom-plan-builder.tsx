@@ -38,6 +38,7 @@ import { CustomExercisePicker } from "./custom-exercise-picker";
 import styles from "./custom-plan-builder.module.css";
 import { useFadeNavigate } from "@/components/fade-through";
 import { ImportFlags, type ImportedPlan } from "./plan-import";
+import type { ImportFlag } from "@/lib/api-schema.generated";
 type Exercise = (Omit<CustomExercise, "snapshot"> & { snapshot: LibraryEntry }) | ManualExercise;
 type Session = Omit<CustomSession, "exercises" | "session_type"> & { exercises: Exercise[]; session_type?: CustomSession["session_type"] };
 type Draft = { id?: string; name: string; sessions: Session[]; incomplete?: boolean; schedule_mode?: "weekly" | "dated"; start_date?: string | null; end_date?: string | null };
@@ -168,6 +169,19 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
     [dirty, setDirty] = useState(!!importedDraft);
   const [opened, setOpened] = useState(!planId);
   const [chosenDay, setChosenDay] = useState<Weekday>();
+  // Tapping an import flag's title opens its session (and exercise) in the builder.
+  const openFlag = (flag: ImportFlag) => {
+    const session = draft.sessions.find(s => s.id === flag.session_id);
+    if (!session) return;
+    if (session.scheduled_date) setSelectedDate(session.scheduled_date);
+    else if (session.weekday) setChosenDay(session.weekday as Weekday);
+    window.setTimeout(() => {
+      const target = (flag.exercise_id && document.getElementById(`exercise-${flag.exercise_id}`)) || document.getElementById(`session-${session.id}`);
+      target?.scrollIntoView({ block: "center", behavior: "smooth" });
+      target?.classList.add(styles.flagged);
+      window.setTimeout(() => target?.classList.remove(styles.flagged), 1600);
+    }, 60);
+  };
   // The add sheet remembers what it added this visit, so their doses can be set right there.
   const [adding, setAdding] = useState<{ sessionId: string; added: string[]; query?: string }>();
   // One added exercise is open at a time: the newest, so its dose can be set at once; the rest stay one line each.
@@ -637,7 +651,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   function renderSession(s: Session) {
     const i = draft.sessions.indexOf(s);
     return (
-      <section key={s.id} className={`sp-session ${styles.session}`} aria-label={`Session ${i + 1}`}>
+      <section key={s.id} id={`session-${s.id}`} className={`sp-session ${styles.session}`} aria-label={`Session ${i + 1}`}>
         <div className="sp-session-head">
           <div>
             <small className={styles.weekday} data-attention={s.weekday ? undefined : "true"}>{s.scheduled_date ? `${calendarWeekday(s.scheduled_date)} · ${formatAppDate(s.scheduled_date)}` : s.weekday ?? "No day set"}</small>
@@ -666,7 +680,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
               allowProgression: [...(past?.values() ?? [])].some(entry => entry.allow_progression === true) }}>
             <ol className={`sp-blocks ex-rows ${styles.exercises}`}>
               {s.exercises.map((e) => (
-                <li key={e.id}>
+                <li key={e.id} id={`exercise-${e.id}`}>
                   <ExerciseRow block={{ ...draftBlock(e, s),
                     progression_hold: e.origin === "manual" && (e.exercise_type === "power" || e.exercise_type === "other") ? true : past?.get(e.origin === "catalogue" ? e.snapshot.exercise_key ?? "" : `custom-name:${e.name.trim().toLowerCase().replace(/\s+/g, " ")}`)?.progression_hold,
                     bodyweight_progression: past?.get(e.origin === "catalogue" ? e.snapshot.exercise_key ?? "" : `custom-name:${e.name.trim().toLowerCase().replace(/\s+/g, " ")}`)?.bodyweight_progression,
@@ -827,7 +841,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
       ) : null}
       {importedDraft && !draft.id ? <div className={styles.importNote} ref={importNoteRef}>
         <p role="status">Imported from {importedDraft.name}. {importedDraft.flags.length ? "Tick each thing to check once it's fixed or checked, then save." : "Check each session, then save."}</p>
-        {importedDraft.flags.length ? <ImportFlags flags={importedDraft.flags} open checked={checkedFlags}
+        {importedDraft.flags.length ? <ImportFlags flags={importedDraft.flags} open checked={checkedFlags} onOpen={openFlag}
           onCheck={(index, done) => { setCheckedFlags(current => done ? [...current, index] : current.filter(at => at !== index)); setError(undefined); }} /> : null}
       </div> : null}
       {message ? (
