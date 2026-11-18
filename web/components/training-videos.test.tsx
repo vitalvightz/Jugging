@@ -4,6 +4,7 @@ import "./test-dom";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { TrainingVideos, videoProblem } from "./training-videos";
+import { queuedVideos, queueVideo, setVideoQueueStorage, type QueuedVideo } from "@/lib/video-queue";
 
 const video = (id: string) => ({ id, created_at: "2026-11-18T10:00:00Z", media: {
   id: `media-${id}`, provider: "uploaded", video_id: null, asset_id: `asset-${id}`, start_s: 0, end_s: 12,
@@ -25,7 +26,7 @@ async function mount(element: (token: string) => React.ReactElement, { uploads =
     return Response.json(current);
   };
   // Settings are cached per token, so each test signs in fresh.
-  const token = `token-${Math.random()}`;
+  const token = `x.${Buffer.from(JSON.stringify({ sub: "athlete-1", n: Math.random() })).toString("base64url")}.y`;
   await act(async () => root.render(element(token)));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
   const button = (label: string) => [...host.querySelectorAll("button")].find(item => item.textContent === label || item.getAttribute("aria-label") === label);
@@ -92,4 +93,47 @@ test("only short phone videos are accepted before uploading", () => {
   assert.equal(videoProblem(file("video/quicktime", 5_000_000)), null);
   assert.match(videoProblem(file("image/png", 10))!, /MP4, MOV or WebM/);
   assert.match(videoProblem(file("video/mp4", 21 * 1024 * 1024))!, /over 20 MB/);
+});
+
+function memoryQueue() {
+  const rows = new Map<string, QueuedVideo>();
+  setVideoQueueStorage({ all: async () => [...rows.values()], put: async row => { rows.set(row.id, row); },
+    remove: async id => { rows.delete(id); }, clear: async () => rows.clear() });
+  return rows;
+}
+function setOnline(online: boolean) {
+  Object.defineProperty(window.navigator, "onLine", { configurable: true, get: () => online });
+}
+
+test("offline, a picked video is held on the device and shows as Queued", async () => {
+  memoryQueue();
+  const ui = await mount(token => <TrainingVideos token={token} label="Back squat" target={{ source: "external", target_id: "session", exercise_ref: "squat" }} />,
+    { rows: [] });
+  setOnline(false);
+  try {
+    const input = ui.host.querySelector<HTMLInputElement>('input[type="file"]')!;
+    Object.defineProperty(input, "files", { configurable: true, value: [new File(["v"], "squat.mp4", { type: "video/mp4" })] });
+    await act(async () => { input.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.equal((await queuedVideos("athlete-1", { source: "external", target_id: "session", exercise_ref: "squat" })).length, 1);
+    assert.match(ui.host.textContent ?? "", /Queued/);
+    assert.match(ui.host.textContent ?? "", /1 video uploads when you're back online/);
+    assert.match(ui.host.textContent ?? "", /1 of 6/);
+    assert.ok(!ui.calls.some(call => call.url.includes("/api/private-media/uploads")), "nothing sent while offline");
+  } finally { setOnline(true); ui.close(); setVideoQueueStorage(null); }
+});
+
+test("a held video the server refused shows why and can be removed", async () => {
+  const rows = memoryQueue();
+  const target = { source: "external" as const, target_id: "session", exercise_ref: "" };
+  const held = await queueVideo("athlete-1", new File(["v"], "long.mp4", { type: "video/mp4" }), target);
+  rows.set(held.id, { ...held, failed: "That video could not be used. Use a clip of 30 seconds or less." });
+  const ui = await mount(token => <TrainingVideos token={token} label="Pads" target={target} />, { rows: [] });
+  try {
+    assert.match(ui.host.querySelector('[role="alert"]')?.textContent ?? "", /30 seconds or less/);
+    await act(async () => ui.button("Remove video that could not be attached to Pads")!.click());
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.equal(rows.size, 0);
+    assert.equal(ui.host.querySelector('[role="alert"]'), null);
+  } finally { ui.close(); setVideoQueueStorage(null); }
 });

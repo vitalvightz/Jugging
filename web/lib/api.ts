@@ -89,7 +89,7 @@ export function getPrivateMedia(token: string, id: string, signal?: AbortSignal)
 export function createPrivateYouTubeClip(token: string, body: YouTubeClipInput, signal?: AbortSignal) {
   return readJson<PrivateMediaPreview>("/api/private-media/youtube", { token, method: "POST", body: JSON.stringify(body), signal });
 }
-export function reservePrivateUpload(token: string, file: File, signal?: AbortSignal) {
+export function reservePrivateUpload(token: string, file: { size: number; type: string }, signal?: AbortSignal) {
   return readJson<UploadPermission>("/api/private-media/uploads", {
     token, method: "POST", body: JSON.stringify({ size_bytes: file.size, content_type: file.type }), signal,
   });
