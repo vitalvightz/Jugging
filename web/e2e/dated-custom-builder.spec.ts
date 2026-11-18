@@ -34,7 +34,7 @@ for (const role of ['athlete', 'coach']) for (const width of [390, 1440]) {
     } else await page.goto('/plans/custom');
     const calendar = page.getByRole('region', { name: 'Plan calendar', exact: true });
     await expect(calendar).toBeVisible();
-    await expect(page.getByLabel('Schedule mode', { exact: true })).toHaveValue('dated');
+    await expect(page.getByRole("button", { name: "Calendar", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(calendar.getByText('Fight day · Mon 23 Nov 2026')).toBeVisible();
     await expect(calendar.getByRole('button', { name: 'Select Tue 17 Nov 2026', exact: true })).toBeEnabled();
     const calendarBounds = await page.getByRole('region', { name: 'Plan calendar', exact: true }).boundingBox();
@@ -47,7 +47,6 @@ for (const role of ['athlete', 'coach']) for (const width of [390, 1440]) {
     }
     await page.screenshot({ path: test.info().outputPath(`dated-empty-${role}-${width}.png`), fullPage: true });
     await page.getByLabel('Plan name', { exact: true }).fill(`Dated ${role} block`);
-    if (width < 768) await page.getByRole('button', { name: 'Schedule settings', exact: true }).click();
     await page.getByLabel('Start date', { exact: true }).fill('2026-11-16');
     await page.getByRole('button', { name: width <= 600 ? 'Add session on Monday' : 'Add session on 2026-11-16', exact: true }).click();
     const session = page.getByRole('dialog', { name: 'New session', exact: true });
@@ -115,12 +114,12 @@ for (const role of ['athlete', 'coach']) for (const width of [390, 1440]) {
     expect(new Set(saved.sessions.map(s => s.exercises[0].id)).size).toBe(2);
     if (role === 'athlete') {
       await page.reload();
-      await expect(page.getByLabel('Schedule mode', { exact: true })).toHaveValue('dated');
+      await expect(page.getByRole("button", { name: "Calendar", exact: true })).toHaveAttribute("aria-pressed", "true");
       await expect(page.getByRole('button', { name: /^Open Technical day A on/ })).toHaveCount(1);
     } else {
       await page.getByRole('button', { name: 'View saved plans', exact: true }).click();
       await page.getByRole('button', { name: 'Edit draft', exact: true }).click();
-      await expect(page.getByLabel('Schedule mode', { exact: true })).toHaveValue('dated');
+      await expect(page.getByRole("button", { name: "Calendar", exact: true })).toHaveAttribute("aria-pressed", "true");
       await page.getByRole('button', { name: '← Saved plans', exact: true }).click();
       coachSaved.set(saved.id, { ...saved, assignment_status: 'pending', assigned_at: '2026-11-16T12:00:00Z', coach_name: 'Test Coach' } as CustomPlan);
       await page.getByRole('button', { name: 'Refresh plans', exact: true }).click();
@@ -131,8 +130,7 @@ for (const role of ['athlete', 'coach']) for (const width of [390, 1440]) {
       await expect(page.getByText(/Draft saved/)).toBeVisible();
       expect(coachSaved.size).toBe(2);
       page.once('dialog', dialog => dialog.accept());
-      if (page.viewportSize()!.width < 768 && await page.getByRole('button', { name: 'Schedule settings', exact: true }).getAttribute('aria-expanded') === 'false') await page.getByRole('button', { name: 'Schedule settings', exact: true }).click();
-      await page.getByLabel('Schedule mode', { exact: true }).selectOption('weekly');
+      await page.getByRole("button", { name: "Week", exact: true }).click();
       await expect(page.getByText('Fight day · Mon 23 Nov 2026')).toBeVisible();
       await page.getByRole('button', { name: 'Save draft', exact: true }).click();
       await expect.poll(() => coachSaved.size).toBe(3);

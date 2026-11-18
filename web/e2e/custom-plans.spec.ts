@@ -11,8 +11,7 @@ for (const width of [320, 390, 1280, 1600]) {
     const { mutations } = await setup(page, baseURL!);
     await page.goto("/create");
     await page.getByRole("link", { name: /^Build Your Own/ }).click();
-    if (page.viewportSize()!.width < 768) await page.getByRole('button', { name: 'Schedule settings', exact: true }).click();
-    await page.getByLabel("Schedule mode", { exact: true }).selectOption("weekly");
+    await page.getByRole("button", { name: "Week", exact: true }).click();
     await page.getByLabel("Plan name", { exact: true }).fill(`Weekly strength ${width}`);
     await page.getByRole("button", { name: /^Monday,/ }).click();
     await page.getByRole("button", { name: "Add session on Monday", exact: true }).click();
@@ -324,8 +323,7 @@ for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 844 });
     const { saved } = await setup(page, baseURL!);
     await page.goto('/plans/custom');
-    if (page.viewportSize()!.width < 768) await page.getByRole('button', { name: 'Schedule settings', exact: true }).click();
-    await page.getByLabel('Schedule mode', { exact: true }).selectOption('weekly');
+    await page.getByRole("button", { name: "Week", exact: true }).click();
     // New sessions always start on the day being viewed, so every one has a day.
     const days = ['Sunday', 'Friday', 'Monday', 'Wednesday', 'Tuesday', 'Thursday', 'Saturday', 'Monday'];
     for (const [index, day] of days.entries()) {
@@ -413,8 +411,7 @@ test("custom Back Squat Add/Edit shares Suggested and Last without replacing ath
   } }));
   await page.goto("/create");
   await page.getByRole("link", { name: /^Build Your Own/ }).click();
-  if (page.viewportSize()!.width < 768) await page.getByRole('button', { name: 'Schedule settings', exact: true }).click();
-  await page.getByLabel("Schedule mode", { exact: true }).selectOption("weekly");
+  await page.getByRole("button", { name: "Week", exact: true }).click();
   await page.getByRole("button", { name: /^Monday,/ }).click();
   await page.getByRole("button", { name: "Add session on Monday", exact: true }).click();
   const session = page.getByRole("dialog", { name: "New session", exact: true });
