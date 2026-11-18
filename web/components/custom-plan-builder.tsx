@@ -150,6 +150,10 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   const isDated = draft.schedule_mode === 'dated';
   const sessionLimit = isDated ? 336 : 28;
   const [copying, setCopying] = useState<{ ids: string[]; move?: boolean } | null>(null);
+  const [exerciseCopy, setExerciseCopy] = useState<Exercise>();
+  const [exerciseCutSource, setExerciseCutSource] = useState<string>();
+  const calendarRef = useRef<HTMLDivElement>(null);
+  const [pasteDay, setPasteDay] = useState<string>();
   const [copyToDay, setCopyToDay] = useState('');
   const [copyNote, setCopyNote] = useState('');
   const [loading, setLoading] = useState(!!planId),
@@ -289,9 +293,10 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   const layer = useRef<{ open: boolean; close: () => void }>({ open: false, close: () => {} });
   useEffect(() => {
     layer.current = {
-      open: Boolean(videoOpen || communityOpen || communityPreview || preview || editing || sessionEdit || adding || selecting || reviewOpen),
+      open: Boolean(videoOpen || communityOpen || communityPreview || preview || editing || sessionEdit || adding || selecting || reviewOpen || pasteDay),
       close: () => {
-        if (videoOpen) setVideoOpen(false);
+        if (pasteDay) setPasteDay(undefined);
+        else if (videoOpen) setVideoOpen(false);
         else if (communityOpen) setCommunityOpen(false);
         else if (communityPreview) setCommunityPreview(undefined);
         else if (preview) setPreview(undefined);
@@ -426,6 +431,43 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
       const sessions = moveSessionsToDay(draft.sessions, ids, day, draft.start_date!, draft.end_date!);
       change(current => ({ ...current, sessions })); setError(''); setSelectedDate(day); setCopying(null);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to move sessions.'); }
+  }
+  function startExerciseCopy(exercise: Exercise, source?: string) {
+    if (exerciseCopy?.id === exercise.id && exerciseCutSource === source) { setExerciseCopy(undefined); setExerciseCutSource(undefined); return; }
+    setCopying(null); setExerciseCopy(exercise); setExerciseCutSource(source); setError(undefined);
+    requestAnimationFrame(() => calendarRef.current?.scrollIntoView({ block: 'start' }));
+  }
+  function pasteExercise(day: string, sessionId?: string) {
+    if (!exerciseCopy) return;
+    const currentDraft = latest.current;
+    const weekday = isDated ? calendarWeekday(day) : day as Weekday;
+    if (isDated && (day < currentDraft.start_date! || day > currentDraft.end_date!)) return;
+    const source = exerciseCutSource ? currentDraft.sessions.find(s => s.id === exerciseCutSource) : undefined;
+    if (exerciseCutSource && !source?.exercises.some(e => e.id === exerciseCopy.id)) { setError('The original exercise is no longer available.'); return; }
+    if (exerciseCutSource && exerciseCutSource === sessionId) { setPasteDay(undefined); setExerciseCopy(undefined); setExerciseCutSource(undefined); return; }
+    const exercise = { ...(source?.exercises.find(e => e.id === exerciseCopy.id) ?? exerciseCopy), id: exerciseCutSource ? exerciseCopy.id : crypto.randomUUID() };
+    if (sessionId) {
+      const session = currentDraft.sessions.find(s => s.id === sessionId);
+      if (!session || session.session_type === 'rest' || session.exercises.length >= 100) { setError('Choose a session with room for another exercise.'); return; }
+      change(current => ({ ...current, sessions: current.sessions.map(s => s.id === sessionId ? { ...s, exercises: [...s.exercises, exercise] } : s.id === exerciseCutSource ? { ...s, exercises: s.exercises.filter(e => e.id !== exercise.id) } : s) }));
+    } else {
+      if (currentDraft.sessions.length >= sessionLimit || (isDated && currentDraft.sessions.filter(s => s.scheduled_date && calendarMonday(s.scheduled_date) === calendarMonday(day)).length >= 28)) { setError('This plan or week has reached its session limit.'); return; }
+      const session = { ...newSession(weekday), scheduled_date: isDated ? day : null, exercises: [exercise] };
+      change(current => ({ ...current, sessions: [...current.sessions.map(s => s.id === exerciseCutSource ? { ...s, exercises: s.exercises.filter(e => e.id !== exercise.id) } : s), session] }));
+    }
+    if (isDated) setSelectedDate(day); else setChosenDay(weekday);
+    setPasteDay(undefined); setError(undefined);
+    requestAnimationFrame(() => calendarRef.current?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')?.focus({ preventScroll: true }));
+    if (exerciseCutSource) { setExerciseCopy(undefined); setExerciseCutSource(undefined); }
+  }
+  function choosePasteDay(day: string) {
+    const sessions = latest.current.sessions.filter(s => (isDated ? s.scheduled_date === day : s.weekday === day) && s.session_type !== 'rest');
+    if (sessions.length) setPasteDay(day); else pasteExercise(day);
+  }
+  function moveWeeklySession(day: Weekday) {
+    if (!copying?.move) return;
+    change(current => ({ ...current, sessions: current.sessions.map(s => copying.ids.includes(s.id) ? { ...s, weekday: day } : s) }));
+    setChosenDay(day); setCopying(null);
   }
   function addDatedSession(day: string) {
     setSelectedDate(day);
@@ -599,7 +641,8 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
             <h2 className="sp-session-title">{s.name}</h2>
           </div>
           <div className={styles.sessionActions}>
-            <button type="button" className="ghost-button" disabled={draft.sessions.length >= sessionLimit} aria-pressed={isDated ? copying?.ids.length === 1 && copying.ids[0] === s.id && !copying.move : undefined} onClick={() => isDated ? setCopying(copying?.ids[0] === s.id && copying.ids.length === 1 ? null : { ids: [s.id] }) : change(current => ({ ...current, sessions: [...current.sessions, { ...s, id: crypto.randomUUID(), exercises: s.exercises.map(e => ({ ...e, id: crypto.randomUUID() })) }] }))}>Copy session</button>
+            <button type="button" className="ghost-button" disabled={draft.sessions.length >= sessionLimit} aria-pressed={isDated ? copying?.ids.length === 1 && copying.ids[0] === s.id && !copying.move : undefined} onClick={() => { setExerciseCopy(undefined); setExerciseCutSource(undefined); if (isDated) { setCopying(copying?.ids[0] === s.id && copying.ids.length === 1 && !copying.move ? null : { ids: [s.id] }); requestAnimationFrame(() => calendarRef.current?.scrollIntoView({ block: 'start' })); } else change(current => ({ ...current, sessions: [...current.sessions, { ...s, id: crypto.randomUUID(), exercises: s.exercises.map(e => ({ ...e, id: crypto.randomUUID() })) }] })); }}>Copy session</button>
+            <button type="button" className={styles.editButton} aria-label={`Cut session ${s.name}`} title="Move session" aria-pressed={copying?.move === true && copying.ids.includes(s.id)} onClick={() => { setExerciseCopy(undefined); setExerciseCutSource(undefined); setCopying(current => current?.move && current.ids.length === 1 && current.ids[0] === s.id ? null : { ids: [s.id], move: true }); requestAnimationFrame(() => calendarRef.current?.scrollIntoView({ block: 'start' })); }}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.5 7.5 20 18M8.5 16.5 20 6"/></svg></button>
             <button type="button" className={styles.editButton} aria-label={`Edit session ${i + 1}`} title="Edit session"
               onClick={() => openSession(s)}>
               <PencilIcon />
@@ -633,7 +676,9 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
                       </button>
                     } />
                   <div className={styles.quickControls}>
-                    <button type="button" aria-expanded={quickDose === e.id} onClick={() => setQuickDose(quickDose === e.id ? null : e.id)}>Quick dose for {nameOf(e)}</button>
+                    <button type="button" className={styles.copyExerciseButton} aria-label={`Cut ${nameOf(e)} to calendar`} title="Move exercise to calendar" aria-pressed={exerciseCutSource === s.id && exerciseCopy?.id === e.id} onClick={() => startExerciseCopy(e, s.id)}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.5 7.5 20 18M8.5 16.5 20 6"/></svg></button>
+                    <button type="button" className={styles.copyExerciseButton} aria-label={`Copy ${nameOf(e)} to calendar`} title="Copy exercise to calendar" aria-pressed={exerciseCopy?.id === e.id && !exerciseCutSource} onClick={() => startExerciseCopy(e)}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="5" width="13" height="16" rx="2"/><path d="M9 5.5V3h8v2.5M4 16V6a2 2 0 0 1 2-2"/></svg></button>
+                    <button type="button" aria-label={`Quick dose for ${nameOf(e)}`} aria-expanded={quickDose === e.id} onClick={() => setQuickDose(quickDose === e.id ? null : e.id)}>Quick dose</button>
                     {(['up', 'down'] as const).map(direction => <button key={direction} type="button" disabled={direction === 'up' ? s.exercises.indexOf(e) === 0 : s.exercises.indexOf(e) === s.exercises.length - 1} aria-label={`Move ${nameOf(e)} ${direction}`} onClick={() => sessionChange(s.id, session => { const exercises = [...session.exercises]; const index = exercises.findIndex(item => item.id === e.id); const target = index + (direction === 'up' ? -1 : 1); [exercises[index], exercises[target]] = [exercises[target], exercises[index]]; return { ...session, exercises }; })}>Move {direction}</button>)}
                   </div>
                   {quickDose === e.id ? <div className={styles.quickDose} role="group" aria-label={`Quick dose for ${nameOf(e)}`}><CustomDoseEditor dose={e.dose} movement={e.origin === 'catalogue' ? e.snapshot : e} onChange={dose => sessionChange(s.id, session => ({ ...session, exercises: session.exercises.map(item => item.id === e.id ? { ...item, dose, incomplete: exerciseIncomplete({ ...item, dose }) } : item) }))} /><button type="button" className="ghost-button" onClick={() => setQuickDose(null)}>Done editing dose</button></div> : null}
@@ -809,21 +854,21 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
             {isDated ? <><label>Start date<input type="date" value={startInput ?? draft.start_date!} onChange={event => setStartInput(event.target.value)} onBlur={() => { const next = startInput; setStartInput(undefined); if (next && next !== draft.start_date) resizeDates(next, Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!) + 86400000) / 604800000)); }} /></label><label>Weeks<input aria-label="Plan duration in weeks" type="number" min={1} max={12} value={Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!) + 86400000) / 604800000)} onChange={event => resizeDates(draft.start_date!, Number(event.target.value))} /></label></> : null}
           </div>
           <div className={isDated ? styles.calendarEditorLayout : styles.weeklyEditorLayout}>
-          <div>
-          {isDated ? <CustomPlanCalendar fightDate={scheduledFightDate} sessions={draft.sessions} start={draft.start_date!} end={draft.end_date!} selected={selectedDate} onSelect={setSelectedDate} onAdd={addDatedSession} onMove={moveSession} onCopy={(ids, days) => copyTo(draft.sessions.filter(s => ids.includes(s.id)), days)} onMoveMany={moveTo} copying={copying ? { ...copying, sessions: draft.sessions.filter(s => copying.ids.includes(s.id)) } : undefined} onStartCopying={(ids, move) => setCopying({ ids, move })} onStopCopying={() => setCopying(null)}
+          <div ref={calendarRef}>
+          {isDated ? <CustomPlanCalendar exerciseCopy={exerciseCopy ? nameOf(exerciseCopy) : undefined} onPasteExercise={choosePasteDay} exerciseMoving={Boolean(exerciseCutSource)} onStopExerciseCopy={() => { setExerciseCopy(undefined); setExerciseCutSource(undefined); }} fightDate={scheduledFightDate} sessions={draft.sessions} start={draft.start_date!} end={draft.end_date!} selected={selectedDate} onSelect={setSelectedDate} onAdd={addDatedSession} onMove={moveSession} onCopy={(ids, days) => copyTo(draft.sessions.filter(s => ids.includes(s.id)), days)} onMoveMany={moveTo} copying={copying ? { ...copying, sessions: draft.sessions.filter(s => copying.ids.includes(s.id)) } : undefined} onStartCopying={(ids, move) => { setExerciseCopy(undefined); setExerciseCutSource(undefined); setCopying({ ids, move }); }} onStopCopying={() => setCopying(null)}
             onOpen={id => openSession(draft.sessions.find(s => s.id === id)!)} onDuplicateWeek={() => { try { change(current => ({ ...current, sessions: duplicateCalendarWeek(current.sessions, selectedDate, current.start_date!, current.end_date!) })); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to copy week.'); } }} /> : <>{scheduledFightDate ? <p className={styles.calendarFightDate}>Fight day · {formatAppDate(scheduledFightDate)}</p> : null}<div className={styles.calendar} role="group" aria-label="Weekly training calendar">
             {weekdays.map(day => {
               const sessions = draft.sessions.filter(s => s.weekday === day);
               const label = sessions.length ? sessions.map(s => s.name).join(" / ") : "Rest";
-              return <button key={day} type="button" className={styles.dayTile} aria-label={`${day}, ${label}`}
-                aria-pressed={day === selectedDay} onClick={() => setChosenDay(day)}>
+              return <button key={day} type="button" className={styles.dayTile} aria-label={exerciseCopy ? `Paste ${nameOf(exerciseCopy)} on ${day}` : copying?.move ? `Move session to ${day}` : `${day}, ${label}`}
+                aria-pressed={day === selectedDay} data-copying={Boolean(exerciseCopy || copying?.move)} onClick={() => exerciseCopy ? choosePasteDay(day) : copying?.move ? moveWeeklySession(day) : setChosenDay(day)}>
                 <strong>{day.slice(0, 3)}</strong>
                 <small>{label}</small>
                 <span className={styles.dayDot} data-type={sessions.length ? dayType(sessions) : "none"}
                   data-attention={sessions.some(s => issueSessions.has(s.id)) ? "true" : undefined} aria-hidden="true" />
               </button>;
             })}
-          </div></>}
+          </div>{exerciseCopy || copying?.move ? <div className={styles.copyBanner} role="status"><p>{exerciseCopy ? `${exerciseCutSource ? 'Moving' : 'Copying'} ${nameOf(exerciseCopy)}` : 'Moving session'} · Choose a day.</p><button type="button" onClick={() => { setExerciseCopy(undefined); setExerciseCutSource(undefined); setCopying(null); }}>Done</button></div> : null}</>}
           </div>
           <div className={styles.sessionPanel}>
           <div className={styles.dayView}>
@@ -907,6 +952,11 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
           <button type="button" className="ghost-button" onClick={() => setReviewOpen(false)}>Back to programme</button>
         </div>
       </InjuryDetailSheet> : null}
+      {pasteDay && exerciseCopy ? <InjuryDetailSheet title="Choose a session" onClose={() => setPasteDay(undefined)}><div className={styles.sheet}>
+        <p>Paste {nameOf(exerciseCopy)} on {isDated ? formatAppDate(pasteDay) : pasteDay}.</p>
+        {draft.sessions.filter(s => (isDated ? s.scheduled_date === pasteDay : s.weekday === pasteDay) && s.session_type !== 'rest').map(session => <button key={session.id} type="button" className="ghost-button" disabled={session.exercises.length >= 100} onClick={() => pasteExercise(pasteDay, session.id)}>{session.name} · {session.exercises.length} exercises</button>)}
+        <button type="button" className="ghost-button" disabled={draft.sessions.length >= sessionLimit || (isDated && draft.sessions.filter(s => s.scheduled_date && calendarMonday(s.scheduled_date) === calendarMonday(pasteDay)).length >= 28)} onClick={() => pasteExercise(pasteDay)}>Create new session</button>
+      </div></InjuryDetailSheet> : null}
       {sessionEdit ? (
         <InjuryDetailSheet
           title={sessionFresh ? "New session" : "Edit session"}
