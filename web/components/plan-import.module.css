@@ -8,9 +8,9 @@
   display: grid;
   justify-items: center;
   align-content: center;
-  gap: 12px;
-  min-height: 220px;
-  padding: 28px 20px;
+  gap: 8px;
+  min-height: 180px;
+  padding: 12px 20px;
   border: 1.5px dashed var(--border-strong);
   border-radius: 18px;
   background: var(--bg-surface-alt);
@@ -88,7 +88,10 @@
 
 .problem { margin: 14px 0 0; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--brand-red) 45%, transparent); border-radius: 12px;
   color: var(--text-primary); font-size: 14px; line-height: 1.45; }
-.notes { display: grid; gap: 6px; margin: 18px 0 0; padding: 0 0 0 18px; color: var(--text-muted); font-size: 13px; line-height: 1.45; }
+.handling { margin-top: 12px; color: var(--text-muted); font-size: 13px; line-height: 1.45; }
+.handling summary { min-height: 44px; align-content: center; cursor: pointer; }
+.handling summary:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; border-radius: 6px; }
+.notes { display: grid; gap: 6px; margin: 0 0 8px; padding: 0 0 0 18px; color: var(--text-muted); font-size: 13px; line-height: 1.45; }
 .cancel { min-height: 44px; margin-top: 12px; padding: 0 4px; border: 0; background: none; color: var(--text-secondary); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
 .cancel:hover { color: var(--text-primary); }
 .cancel:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; border-radius: 6px; }
@@ -121,7 +124,7 @@
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 
 @media (min-width: 900px) {
-  .drop { min-height: 280px; }
+  .drop { min-height: 232px; }
   .dayRow { grid-template-columns: minmax(0, 1fr) 220px; align-items: center; column-gap: 20px; }
 }
 @media (max-width: 359px) {

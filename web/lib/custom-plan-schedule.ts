@@ -50,8 +50,8 @@ export function prepareCustomSession<T extends EditableSession>(session: T, me: 
   }] };
 }
 
-export function customScheduleIssues(sessions: EditableSession[]): Array<{ sessionId?: string; message: string }> {
-  const issues: Array<{ sessionId?: string; message: string }> = [];
+export function customScheduleIssues(sessions: EditableSession[]): Array<{ sessionId?: string; message: string; prescription?: boolean }> {
+  const issues: Array<{ sessionId?: string; message: string; prescription?: boolean }> = [];
   const weeklyCounts = new Map<string, number>();
   for (const session of sessions) {
     if (session.scheduled_date) {
@@ -60,14 +60,14 @@ export function customScheduleIssues(sessions: EditableSession[]): Array<{ sessi
     }
     const type = session.session_type ?? "mixed";
     const label = session.scheduled_date ? `${session.scheduled_date}’s ${sessionNames[type]}` : session.weekday ? `${session.weekday}’s ${sessionNames[type]}` : session.name;
-    const add = (message: string) => issues.push({ sessionId: session.id, message });
+    const add = (message: string, prescription?: boolean) => issues.push({ sessionId: session.id, message, ...(prescription ? { prescription } : {}) });
     if (!session.weekday) add(`Choose a day for ${session.name}.`);
     if (type === "rest") {
       continue;
     } else if (!session.exercises.length && !["recovery", "skill", "sparring"].includes(type)) {
       add(`${label} session has no exercises.`);
     } else if (session.exercises.some(e => exerciseIncomplete(e))) {
-      add(`Finish the exercise doses in ${label}.`);
+      add(`Finish the exercise doses in ${label}.`, true);
     }
   }
   for (const [week, count] of weeklyCounts)

@@ -6,7 +6,7 @@ import { ExerciseLogProvider } from "./exercise-log";
 import { personalPerformance } from "@/lib/weight-recommendation";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { formatAppDate, formatAppDateRange } from "@/lib/date-format";
 import { customPlanInput } from "@/lib/custom-plan-share";
 import { trackProductEvent, productEventIdentity, deleteCustomPlan, getCommunityExercise, getCustomDoseSuggestion, getCustomPlan, getExerciseLibrary, getTrainingLibraryEntry, publishCustomPlan, saveCustomPlan } from "@/lib/api";
@@ -161,6 +161,9 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   const [adding, setAdding] = useState<{ sessionId: string; added: string[]; query?: string }>();
   // One added exercise is open at a time: the newest, so its dose can be set at once; the rest stay one line each.
   const [openAdded, setOpenAdded] = useState<string>();
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const scheduleId = useId();
   const [quickDose, setQuickDose] = useState<string | null>(null);
   // A typed date passes through partial values; commit once on leaving the field, not per keystroke.
   const [startInput, setStartInput] = useState<string>();
@@ -284,7 +287,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   const layer = useRef<{ open: boolean; close: () => void }>({ open: false, close: () => {} });
   useEffect(() => {
     layer.current = {
-      open: Boolean(videoOpen || communityOpen || communityPreview || preview || editing || sessionEdit || adding || selecting),
+      open: Boolean(videoOpen || communityOpen || communityPreview || preview || editing || sessionEdit || adding || selecting || reviewOpen),
       close: () => {
         if (videoOpen) setVideoOpen(false);
         else if (communityOpen) setCommunityOpen(false);
@@ -294,7 +297,8 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
         else if (sessionEdit) closeSession();
         // The full library covers the add sheet it was opened from, so it closes first.
         else if (selecting) setSelecting(undefined);
-        else setAdding(undefined);
+        else if (adding) setAdding(undefined);
+        else setReviewOpen(false);
       },
     };
   });
@@ -568,14 +572,14 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   const selectedDay = isDated ? calendarWeekday(selectedDate) : chosenDay ?? firstScheduledDay(draft.sessions);
   const daySessions = draft.sessions.filter(s => isDated ? s.scheduled_date === selectedDate : s.weekday === selectedDay);
   const unassigned = draft.sessions.filter(s => !s.weekday);
-  const issueSessions = new Set(issues.map(issue => issue.sessionId).filter(Boolean));
-  function fixIssue(sessionId: string) {
-    const session = draft.sessions.find(s => s.id === sessionId)!;
-    if (session.scheduled_date) setSelectedDate(session.scheduled_date);
-    if (session.weekday) setChosenDay(session.weekday);
-    const exercise = session.exercises.find(e => exerciseIncomplete(e));
-    if (exercise) edit(session.id, exercise); else openSession(session);
-  }
+  // The count and Fix entries share the exercise data, independently of session-level validation.
+  const reviewSessions = draft.sessions.map(session => ({
+    session,
+    incomplete: session.session_type === "rest" ? [] : session.exercises.filter(e => exerciseIncomplete(e)),
+    sessionIssues: issues.filter(issue => issue.sessionId === session.id && !issue.prescription),
+  })).filter(group => group.incomplete.length || group.sessionIssues.length);
+  const issueSessions = new Set(reviewSessions.map(group => group.session.id));
+  const incompleteCount = reviewSessions.reduce((count, group) => count + group.incomplete.length, 0);
   function createManual(sessionId: string, name = "") {
     edit(sessionId, {
       id: crypto.randomUUID(), origin: "manual", exercise_type: null, name, equipment: null, notes: null, media_id: null,
@@ -604,7 +608,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
             </button>
           </div>
         </div>
-        <div className="sp-session-meta"><span className="sp-tag">{sessionNames[s.session_type ?? "mixed"]}</span></div>
+        <div className="sp-session-meta"><span className="sp-tag">{sessionNames[s.session_type ?? "mixed"]}</span><span className={styles.badge}>{s.exercises.length} {s.exercises.length === 1 ? "exercise" : "exercises"}{issueSessions.has(s.id) ? " · Incomplete" : ""}</span></div>
         {s.notes?.trim() ? <p className={styles.sessionNotes}>{s.notes}</p> : null}
         {s.session_type !== "rest" ? <PrivateExerciseMediaProvider token={accessToken}>
           <ExerciseMediaProvider media={Object.fromEntries(s.exercises.flatMap(e => e.origin === "catalogue" && e.snapshot.media && e.snapshot.exercise_key
@@ -692,7 +696,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
       savedSnapshot.current = JSON.stringify(orderedDraft(saved)); undoStack.current = []; redoStack.current = []; setHistoryVersion(n => n + 1);
       setOpened(true);
       setDirty(false);
-      setMessage(coachFighterId ? "Draft saved. Assign it from Plans." : saved.incomplete ? "Draft saved. Finish the workouts below." : "Plan saved. View your plan to activate it.");
+      setMessage(coachFighterId ? "Draft saved. Assign it from Plans." : saved.incomplete ? "Draft saved." : "Plan saved. View your plan to activate it.");
       if (!coachFighterId) window.history.replaceState(window.history.state, "", `/plans/custom?plan=${saved.id}`);
       loaded.current = true;
       if (viewPlan && !coachFighterId) {
@@ -759,10 +763,10 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
           </h1>
           <span className={styles.badge}>{dirty ? "Unsaved" : draft.id ? "Saved" : "New"}</span>
         </div>
-        <p className="muted">{isDated ? 'Each date has its own workout.' : 'Repeats every week. Switch to Calendar to vary weeks.'}</p>
+        <p className={`muted ${styles.scheduleHint}`}>{isDated ? 'Each date has its own workout.' : 'Repeats every week. Switch to Calendar to vary weeks.'}</p>
         <div className={styles.historyToolbar} data-version={historyVersion}>
-          <button type="button" className="ghost-button" disabled={pending || sheetDirty || !undoStack.current.length} onClick={() => travelHistory('undo')}>Undo</button>
-          <button type="button" className="ghost-button" disabled={pending || sheetDirty || !redoStack.current.length} onClick={() => travelHistory('redo')}>Redo</button>
+          <button type="button" className="ghost-button" disabled={pending || sheetDirty || !undoStack.current.length} onClick={() => travelHistory('undo')} aria-label="Undo" title="Undo last plan change"><span aria-hidden="true">↶</span><span className={styles.historyLabel}> Undo</span></button>
+          <button type="button" className="ghost-button" disabled={pending || sheetDirty || !redoStack.current.length} onClick={() => travelHistory('redo')} aria-label="Redo" title="Redo last plan change"><span aria-hidden="true">↷</span><span className={styles.historyLabel}> Redo</span></button>
           <span>{isDated ? formatAppDateRange(draft.start_date, draft.end_date) : 'Repeats every week'}</span>
         </div>
       </header>
@@ -797,7 +801,8 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
               onChange={(e) => { const name = e.target.value; change(current => ({ ...current, name })); }}
             />
           </label>
-          <div className={styles.scheduleSettings}>
+          <button type="button" className={`ghost-button ${styles.scheduleToggle}`} aria-expanded={scheduleOpen} aria-controls={scheduleId} onClick={() => setScheduleOpen(open => !open)}>Schedule settings</button>
+          <div id={scheduleId} className={styles.scheduleSettings} data-expanded={scheduleOpen}>
             <label>Schedule<select aria-label="Schedule mode" value={draft.schedule_mode ?? 'weekly'} onChange={event => selectScheduleMode(event.target.value as 'weekly' | 'dated')}><option value="dated">Calendar</option><option value="weekly">Weekly</option></select></label>
             {isDated ? <><label>Start date<input type="date" value={startInput ?? draft.start_date!} onChange={event => setStartInput(event.target.value)} onBlur={() => { const next = startInput; setStartInput(undefined); if (next && next !== draft.start_date) resizeDates(next, Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!) + 86400000) / 604800000)); }} /></label><label>Weeks<input aria-label="Plan duration in weeks" type="number" min={1} max={12} value={Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!) + 86400000) / 604800000)} onChange={event => resizeDates(draft.start_date!, Number(event.target.value))} /></label></> : null}
           </div>
@@ -845,27 +850,17 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
             {unassigned.map(renderSession)}
           </div> : null}
           <div className={styles.saveBar} ref={saveBar}>
-            <p className={styles.saveStatus} role="status" data-attention={issues.length ? "true" : undefined}>
-              {issues.length ? issues[0].message : coachFighterId ? "Ready to assign" : "Ready to activate"}
-              {dirty ? " · Unsaved changes" : ""}
+            <p className={styles.saveStatus} role="status" data-attention={issues.length || incompleteCount ? "true" : undefined}>
+              {incompleteCount ? `${incompleteCount} ${incompleteCount === 1 ? "prescription" : "prescriptions"} incomplete` : issues.length ? `${issues.length} ${issues.length === 1 ? "thing" : "things"} to review` : coachFighterId ? "Ready to assign" : "Ready to activate"}
+              {dirty ? <span className={styles.unsavedStatus}> · Unsaved<span className={styles.unsavedDetail}> changes</span></span> : ""}
             </p>
-            {issues[0]?.sessionId ? <button type="button" className={`ghost-button ${styles.fixButton}`} onClick={() => fixIssue(issues[0].sessionId!)}>
-              Fix
-            </button> : null}
-            {issues.length > 1 ? <details className={styles.issues}>
-              <summary>{issues.length - 1} more to fix</summary>
-              <ul>{issues.slice(1).map((issue, index) => <li key={index}>
-                {issue.message} {issue.sessionId ? <button type="button" className="ghost-button" onClick={() => fixIssue(issue.sessionId!)}>
-                  Fix
-                </button> : null}
-              </li>)}</ul>
-            </details> : null}
+            {issues.length || incompleteCount ? <button type="button" className={`ghost-button ${styles.fixButton}`} aria-haspopup="dialog" onClick={() => setReviewOpen(true)}>Review</button> : null}
             <div className={styles.saveActions}>
               {/* One primary at a time: Save draft until the plan can be published, then Save & view plan. */}
               <button type="submit" className={publishable && !coachFighterId ? "ghost-button" : "cta"} disabled={!draftValid}>
                 {pending ? "Saving…" : "Save draft"}
               </button>
-              {!coachFighterId ? <button type="button" className={publishable ? "cta" : "ghost-button"} disabled={!publishable} onClick={() => void save(true)}>
+              {!coachFighterId && publishable ? <button type="button" className="cta" onClick={() => void save(true)}>
                 Save &amp; view plan
               </button> : null}
             </div>
@@ -892,6 +887,24 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
           Delete plan
         </button>
       ) : null}
+      {reviewOpen ? <InjuryDetailSheet title="Review plan" panelClassName={styles.reviewPanel} inactive={Boolean(editing || sessionEdit || adding)} onClose={() => setReviewOpen(false)}>
+        <div className={`${styles.sheet} ${styles.reviewContent}`}>
+          <p>Save incomplete prescriptions as a draft. Complete them before activating your plan.</p>
+          {reviewSessions.map(({ session, incomplete, sessionIssues }) => {
+            return <section key={session.id} aria-label={`Review ${session.name}`}>
+              <h3>{session.name}</h3>
+              <p className={styles.badge}>{session.scheduled_date ? formatAppDate(session.scheduled_date) : session.weekday ?? "No day set"}</p>
+              <ul className={styles.reviewIssues}>
+                {incomplete.map(exercise => <li key={exercise.id}><span>{nameOf(exercise)}</span><button type="button" className="ghost-button" aria-label={`Fix ${nameOf(exercise)} in ${session.name}`} onClick={() => edit(session.id, exercise)}>Fix</button></li>)}
+                {sessionIssues.map(issue => <li key={issue.message}><span>{issue.message}</span><button type="button" className="ghost-button" aria-label={`Fix ${issue.message}`} onClick={() => openSession(session)}>Fix</button></li>)}
+              </ul>
+            </section>;
+          })}
+          {issues.filter(issue => !issue.sessionId).map(issue => <p key={issue.message}>{issue.message}</p>)}
+          {!issues.length && !incompleteCount ? <p role="status">All prescriptions complete. Your plan is ready.</p> : null}
+          <button type="button" className="ghost-button" onClick={() => setReviewOpen(false)}>Back to programme</button>
+        </div>
+      </InjuryDetailSheet> : null}
       {sessionEdit ? (
         <InjuryDetailSheet
           title={sessionFresh ? "New session" : "Edit session"}

@@ -119,7 +119,7 @@ for (const width of [320, 390, 1280]) {
     await expect(page.getByLabel("Session name", { exact: true })).toHaveValue("Strength & Power");
     await page.getByRole("button", { name: "Add session", exact: true }).click();
     await page.getByRole("dialog", { name: "Add to Strength & Power", exact: true }).getByRole("button", { name: "Done", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Save & view plan", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Save & view plan", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Save draft", exact: true })).toBeEnabled();
     await page.getByRole("button", { name: "Edit session 7", exact: true }).click();
     await expect(sessionType("Strength / power")).toHaveAttribute("aria-pressed", "true");

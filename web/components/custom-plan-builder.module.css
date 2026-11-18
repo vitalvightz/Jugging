@@ -142,9 +142,10 @@
   line-height: 1.35;
   color: var(--text-secondary);
 }
+.unsavedStatus { white-space: nowrap; }
 .saveStatus[data-attention="true"] { color: var(--progress-gold); }
 /* Doubled class beats the global mobile rule that stretches every ghost button. */
-.saveBar .fixButton { width: auto; min-height: 36px; padding: 4px 14px; font-size: 13px; flex-shrink: 0; }
+.saveBar .fixButton { width: auto; min-height: 44px; padding: 4px 14px; font-size: 13px; flex-shrink: 0; }
 .saveActions { flex: 1 1 100%; display: flex; gap: 8px; }
 .saveActions :global(.cta) { flex: 1 1 auto; width: auto; min-height: 48px; }
 .saveActions :global(.ghost-button) { flex: 0 0 auto; width: auto; min-height: 48px; padding: 0 14px; font-size: 14px; }
@@ -298,10 +299,6 @@
 }
 .addExercise:hover:not(:disabled) { border-color: var(--border-strong); }
 .addExercise:disabled { opacity: 0.5; cursor: not-allowed; }
-.issues { flex: 1 1 100%; font-size: 12px; color: var(--text-secondary); }
-.issues summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
-.issues ul { margin: 4px 0 0; padding-left: 16px; max-height: min(25vh, 180px); overflow-y: auto; }
-.issues .ghost-button { padding: 4px 8px; min-height: 32px; font-size: 12px; width: auto; }
 .cardAction {
   position: relative;
   z-index: 1;
@@ -508,3 +505,28 @@
 .importNote { display: grid; gap: 8px; min-width: 0; }
 .importNote > p { margin: 0; }
 .sessionNotes { margin: 6px 0 0; color: var(--text-secondary); font-size: 14px; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
+
+/* One scrolling sheet; the review position survives an exercise editor opening above it. */
+.reviewPanel:global(.injury-sheet) { width: min(100%, 640px); }
+.reviewContent p { margin: 0; color: var(--text-secondary); font-size: 14px; line-height: 1.5; }
+.reviewContent h3 { margin: 0 0 4px; font-size: 17px; overflow-wrap: anywhere; }
+.reviewIssues { list-style: none; padding: 0; margin: 8px 0 0; }
+.reviewIssues li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border-default); }
+.reviewIssues li > span { min-width: 0; overflow-wrap: anywhere; }
+.reviewIssues :global(.ghost-button) { flex: 0 0 auto; width: auto; min-height: 44px; padding: 8px 14px; }
+.scheduleToggle:global(.ghost-button) { display: none; }
+@media (max-width: 767px) {
+  .builder { gap: 16px; }
+  .saveBar { width: calc(100% - 24px); gap: 4px 8px; padding: 6px 10px 10px; }
+  .unsavedDetail, .scheduleHint { display: none; }
+  .historyToolbar { gap: 4px; flex-wrap: nowrap; }
+  .historyToolbar :global(.ghost-button) { width: 44px; min-height: 44px; padding: 4px; font-size: 22px; }
+  .historyToolbar button > span:first-child { font-size: 20px; }
+  .historyToolbar .historyLabel { display: none; }
+  .historyToolbar > span { flex: 1 1 auto; margin-left: auto; text-align: right; }
+  .scheduleToggle:global(.ghost-button) { display: block; width: auto; justify-self: start; min-height: 44px; padding: 8px 0; font-size: 14px; }
+  .scheduleSettings[data-expanded="false"] { display: none; }
+  .session :global(.sp-session-head) { flex-wrap: wrap; gap: 8px; }
+  .sessionActions :global(.ghost-button) { width: auto; min-height: 44px; padding: 8px 10px; font-size: 13px; }
+  .quickControls button { min-height: 44px; }
+}
