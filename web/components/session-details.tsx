@@ -408,6 +408,13 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
         {!details && !error ? <SessionRecordSkeleton /> : null}
         {error ? <div role="alert"><p>Unable to load session details. Try again.</p><button type="button" className="secondary-button" onClick={() => { setError(false); setAttempt(value => value + 1); }}>Retry</button></div> : null}
         {details?.athlete_id && record ? <CoachFeedback token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} editable={viewer === "coach" && details.coach_feedback_allowed} /> : null}
+        {/* Files on the session itself, first thing in the record, whether or not it has
+            exercises. A sparring session's files belong to its report. */}
+        {details?.athlete_id && record && (row.source === "external" || row.source === "unlxck") ? <section className={styles.section}>
+          <TrainingVideos key={`files:${row.id}`} token={token} viewer={viewer ?? "athlete"} athleteId={details.athlete_id}
+            heading="Attachments" label={details.sparring?.id ? "Sparring" : title || "this session"}
+            target={details.sparring?.id ? { source: "sparring", target_id: details.sparring.id } : { source: row.source, target_id: row.id }} />
+        </section> : null}
         {details && record && run ? <div className={styles.recordContent}>
           <RunRecord run={run} history={details.runs ?? null} onEditRun={onEditRun ? () => onEditRun(run) : undefined} viewer={viewer} />
           {details.blocks.length || onEditExercises ? <section className={styles.section}>
@@ -440,17 +447,12 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
               </> : undefined}
               open={expanded.has(index)} onToggle={() => setOpen(new Set(expanded.has(index) ? [...expanded].filter(item => item !== index) : [...expanded, index]))} />)}</ol>
               : record.source === "external" ? <p className={styles.quiet}>No exercises recorded.</p> : null}
-            {/* A session without exercises (pads, a class) takes videos on the session itself. */}
-            {!details.blocks.length && !details.sparring && details.athlete_id && (row.source === "external" || row.source === "unlxck") ? <TrainingVideos token={token}
-              viewer={viewer ?? "athlete"} athleteId={details.athlete_id} label={title || "this session"} target={{ source: row.source, target_id: row.id }} /> : null}
           </section>
           {details.sparring ? <section className={styles.section}><h3>Sparring report</h3><p>{details.sparring.rounds_completed} rounds{details.sparring.round_seconds != null ? ` · ${details.sparring.round_seconds} sec` : ""} · {details.sparring.intensity}</p>
             {details.sparring.head_contact ? <p>Head contact: {details.sparring.head_contact}</p> : null}
             {details.sparring.rocked != null ? <p>Rocked: {details.sparring.rocked ? "Yes" : "No"}</p> : null}
             {details.sparring.id && details.athlete_id ? <CoachFeedback token={token} athleteId={details.athlete_id} source="sparring" targetId={details.sparring.id} editable={viewer === "coach" && details.coach_feedback_allowed} /> : null}
-            {details.sparring.notes ? <p className={styles.note}>{details.sparring.notes}</p> : null}
-            {details.sparring.id && details.athlete_id ? <TrainingVideos token={token} viewer={viewer ?? "athlete"} athleteId={details.athlete_id} label="Sparring"
-              target={{ source: "sparring", target_id: details.sparring.id }} /> : null}</section> : null}
+            {details.sparring.notes ? <p className={styles.note}>{details.sparring.notes}</p> : null}</section> : null}
           {details.message ? <p className={styles.quiet}>{details.message}</p> : null}
           {record.notes || record.modification_reason || record.takeaway ? <section className={styles.section}><h3>Session Notes</h3>
             {record.modification_reason ? <p className={styles.note}>Modification: {record.modification_reason}</p> : null}

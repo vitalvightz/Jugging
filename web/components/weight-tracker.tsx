@@ -5,6 +5,7 @@ import { type CSSProperties, useEffect, useState } from "react";
 
 import { RequireAuth } from "@/components/auth-guard";
 import { useAppSession } from "@/components/auth-provider";
+import { PROGRESS_PHOTO_LIMIT, TrainingVideos } from "@/components/training-videos";
 import { useOnReconnect } from "@/components/connection-status-banner";
 import { SafetyNote } from "@/components/safety-note";
 import { Skeleton } from "@/components/skeleton";
@@ -306,6 +307,15 @@ export function WeightTracker() {
                     {showAll ? "Show fewer" : `Show all ${newestFirst.length} entries`}
                   </button>
                 ) : null}
+              </section>
+            ) : null}
+
+            {session?.access_token && me?.profile.role === "athlete" && me.profile.athlete_id ? (
+              <section className={styles.listSection} aria-label="Progress photos">
+                <TrainingVideos token={session.access_token} heading="Progress photos" label="Progress photos"
+                  only={["photo"]} limit={PROGRESS_PHOTO_LIMIT}
+                  target={{ source: "progress", target_id: me.profile.athlete_id }}
+                  emptyText="Add a photo now and then to see changes over your camp. Only you and coaches you share photos with can see them." />
               </section>
             ) : null}
 

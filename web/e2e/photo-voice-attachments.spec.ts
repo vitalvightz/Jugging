@@ -168,3 +168,52 @@ test("navigation during microphone permission closes a late stream", async ({ pa
   expect(errors).toEqual([]);
   await page.screenshot({ path: info.outputPath("late-microphone-navigation.png") });
 });
+
+// Thumbnails: real previews in the tiles, and an opened photo that appears at
+// once on its preview, keeps its shape, and fades to the full photo when it lands.
+const THUMB_SVG = PHOTO_SVG.replace('width="1200" height="900"', 'width="360" height="270" viewBox="0 0 1200 900"');
+for (const width of [320, 390, 1280]) {
+  test(`photo tiles show previews and open instantly at ${width}px`, async ({ page, baseURL }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await setup(page, baseURL!);
+    let releaseFull: () => void = () => undefined;
+    const fullHeld = new Promise<void>(resolve => { releaseFull = resolve; });
+    await page.route(`${storage}/storage/v1/object/sign/**`, async route => {
+      if (route.request().url().includes("thumb")) return route.fulfill({ contentType: "image/svg+xml", body: THUMB_SVG });
+      await fullHeld;
+      return route.fulfill({ contentType: "image/svg+xml", body: PHOTO_SVG });
+    });
+    await page.route("**/api/training/attachments?**", route => route.fulfill({ json: ["p1", "p2"].map(id => {
+      const item = row(id, "photo");
+      return { ...item, file: { ...item.file, thumb_url: `${storage}/storage/v1/object/sign/attachment-ready/${id}/thumb.jpg?token=t` } };
+    }) }));
+    await page.goto("/history");
+    await page.getByRole("button", { name: /View Boxing details/ }).click();
+    const dialog = page.getByRole("dialog", { name: "Boxing" });
+    const tile = dialog.getByRole("button", { name: "Open photo 1 for Boxing" });
+    const preview = tile.locator("img");
+    await expect.poll(() => preview.evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    // The tile is the preview itself: no grey box, no "Photo 1" label.
+    await expect(tile.getByText("Photo 1")).toHaveCount(0);
+
+    await tile.click();
+    const frame = dialog.locator("[data-loaded], div:has(> img[aria-hidden='true'])").first();
+    await expect(dialog.getByRole("status").filter({ hasText: "Loading photo…" })).toBeVisible();
+    const before = await frame.boundingBox();
+    // Space is reserved at the photo's shape (1200 x 900) before the full photo arrives, never over 60% of the screen.
+    expect(Math.abs(before!.width / before!.height - 4 / 3)).toBeLessThan(0.02);
+    expect(before!.height).toBeLessThanOrEqual(900 * 0.6 + 1);
+    releaseFull();
+    const full = dialog.getByRole("img", { name: "Photo 1 for Boxing" });
+    await expect.poll(() => full.evaluate(image => getComputedStyle(image).opacity)).toBe("1");
+    await expect(dialog.getByText("Loading photo…")).toHaveCount(0);
+    const after = await frame.boundingBox();
+    expect(Math.abs(after!.height - before!.height)).toBeLessThan(1);
+    expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    if (process.env.PHOTO_SCREENSHOTS) {
+      await page.screenshot({ path: `${process.env.PHOTO_SCREENSHOTS}/photo-open-${width}.png` });
+      await tile.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `${process.env.PHOTO_SCREENSHOTS}/photo-tiles-${width}.png` });
+    }
+  });
+}

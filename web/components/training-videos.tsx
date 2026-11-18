@@ -5,25 +5,28 @@ import {
   attachFighterVoiceNote, attachTrainingFile, attachTrainingVideo, getAttachmentSettings, getPrivateMediaSettings,
   getPrivateUpload, listFighterTrainingAttachments, listTrainingAttachments, playFighterTrainingAttachment,
   playTrainingAttachment, processFileUpload, removeFighterTrainingAttachment, removeTrainingAttachment,
-  reserveFileUpload, reservePrivateUpload, type AttachmentTarget,
+  reserveDocumentUpload, reserveFileUpload, reservePrivateUpload, type AttachmentTarget,
 } from "@/lib/api";
 import type { TrainingAttachment } from "@/lib/api-schema.generated";
 import { formatDuration, photoProblem, preparePhoto, VOICE_MAX_SECONDS, VoiceRecorder } from "@/lib/attachments";
 import { describeLoadFailure } from "@/lib/connectivity";
+import { formatBytes, pdfProblem, renderPdfPages } from "@/lib/pdf-pages";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { PrivateVideoPlayer } from "./private-exercise-video";
 import styles from "./training-videos.module.css";
 
 export const MAX_VIDEOS = 6;
 export const MAX_FILES = MAX_VIDEOS;
+/** Progress photos on an athlete's profile (the database enforces the same number). */
+export const PROGRESS_PHOTO_LIMIT = 24;
 const MAX_BYTES = 20 * 1024 * 1024;
 const VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/webm"];
 const POLL_MS = 2_000;
 const POLL_LIMIT = 60;
 
-type Kind = "video" | "photo" | "voice";
+export type Kind = "video" | "photo" | "voice" | "pdf";
 type Kinds = Record<Kind, boolean>;
-const NONE: Kinds = { video: false, photo: false, voice: false };
+const NONE: Kinds = { video: false, photo: false, voice: false, pdf: false };
 
 // One settings read per signed-in view and viewer, shared by every record on
 // screen. Fails closed: if the server can't say a type is on, it stays hidden.
@@ -37,7 +40,7 @@ function availableKinds(token: string, athlete: boolean) {
     pending = Promise.all([video, files]).then(([videoOn, fileSettings]) => {
       if (videoOn === null || fileSettings === null) kindsByKey.delete(key);
       return { video: videoOn === true, photo: athlete && fileSettings?.photos_available === true,
-        voice: fileSettings?.voice_available === true };
+        voice: fileSettings?.voice_available === true, pdf: fileSettings?.pdfs_available === true };
     });
     kindsByKey.set(key, pending);
   }
@@ -86,31 +89,80 @@ async function uploadFile(token: string, kind: "photo" | "voice", blob: Blob, at
   return attach(permission.asset_id);
 }
 
+/**
+ * PDFs: the browser draws each page to a fresh JPEG and drops the original.
+ * Every page goes to quarantine, is rebuilt one at a time on the server, then
+ * the server writes a new image-only PDF. Any bad page rejects the whole file.
+ */
+async function uploadDocument(token: string, file: File, attach: (assetId: string) => Promise<TrainingAttachment>,
+  onStage: (stage: string) => void) {
+  onStage("Reading PDF…");
+  const { pages, totalBytes } = await renderPdfPages(file, (page, total) => onStage(`Preparing ${page} of ${total}…`));
+  const permission = await reserveDocumentUpload(token, totalBytes, pages.length, file.name);
+  const storage = getSupabaseBrowserClient().storage.from(permission.bucket);
+  for (const [index, page] of pages.entries()) {
+    onStage(`Uploading ${index + 1} of ${pages.length}…`);
+    const { error } = await storage.upload(`${permission.path}/${String(index + 1).padStart(3, "0")}.jpg`, page,
+      { contentType: "image/jpeg", upsert: false });
+    if (error) throw new Error("Upload failed. Check your connection and try again.");
+  }
+  for (let page = 1; page <= pages.length; page += 1) {
+    onStage(`Checking ${page} of ${pages.length}…`);
+    const result = await processFileUpload(token, permission.asset_id, page);
+    if (result.status !== "page_ready") throw new Error(result.reason || "That PDF could not be used.");
+  }
+  onStage("Finishing…");
+  const result = await processFileUpload(token, permission.asset_id);
+  if (result.status !== "ready") throw new Error(result.reason || "That PDF could not be used.");
+  return attach(permission.asset_id);
+}
+
+/** Saves a file from a one-off link. The link itself forces a download; nothing opens inline. */
+function download(url: string, name: string) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.rel = "noopener noreferrer";
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
 export function videoProblem(file: File): string | null {
   if (!VIDEO_TYPES.includes(file.type)) return "Choose an MP4, MOV or WebM video.";
   if (file.size > MAX_BYTES) return "That video is over 20 MB. Trim it to 30 seconds or less.";
   return null;
 }
 
-const NOUN: Record<Kind, string> = { video: "Video", photo: "Photo", voice: "Voice note" };
+const NOUN: Record<Kind, string> = { video: "Video", photo: "Photo", voice: "Voice note", pdf: "PDF" };
 const kindOf = (row: TrainingAttachment): Kind => (row.kind ?? "video") as Kind;
 
 type Recording = { stage: "recording"; seconds: number } | { stage: "preview"; wav: Blob; url: string; durationMs: number };
 
 /**
  * Files on one logged record: a session, one exercise in it, or a sparring
- * report. The athlete attaches photos, videos and voice notes and removes
- * anything; a coach sees them only while the athlete shares photos and voice
- * notes (enforced by the API), and can leave voice feedback.
+ * report. The athlete attaches photos, videos, voice notes and PDFs and
+ * removes anything; a coach sees them only while the athlete shares media
+ * (enforced by the API), and can leave voice feedback and share PDFs.
  */
-export function TrainingVideos({ token, target, viewer = "athlete", athleteId, label }: {
+export function TrainingVideos({ token, target, viewer = "athlete", athleteId, label, heading, only, limit = MAX_FILES, emptyText }: {
   token: string; target: AttachmentTarget; viewer?: "athlete" | "coach"; athleteId?: string;
   /** What the files are for, used in accessible names ("Back squat"). */
   label: string;
+  /** A section title. With one, Attach sits beside it at the top instead of under the files. */
+  heading?: string;
+  /** Limits what can be attached here (progress photos are photos only). */
+  only?: Kind[];
+  /** How many files this place holds (the database enforces the same number). */
+  limit?: number;
+  /** The headed empty state, when the default sentence doesn't fit. */
+  emptyText?: string;
 }) {
   const [rows, setRows] = useState<TrainingAttachment[]>([]);
   const [kinds, setKinds] = useState<Kinds>(NONE);
   const [stage, setStage] = useState<string | null>(null);
+  const [busyKind, setBusyKind] = useState<Kind | null>(null);
+  const [fetching, setFetching] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [opened, setOpened] = useState<TrainingAttachment | null>(null);
   const [menu, setMenu] = useState(false);
@@ -118,7 +170,9 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
   const [recording, setRecording] = useState<Recording | null>(null);
   const videoInput = useRef<HTMLInputElement>(null);
   const photoInput = useRef<HTMLInputElement>(null);
+  const pdfInput = useRef<HTMLInputElement>(null);
   const recorder = useRef<VoiceRecorder | null>(null);
+  const opening = useRef<string | null>(null);
   const athlete = viewer === "athlete";
   const { source, target_id: targetId, exercise_ref: exerciseRef = "" } = target;
   const key: AttachmentTarget = { source, target_id: targetId, exercise_ref: exerciseRef };
@@ -144,17 +198,19 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
   useEffect(() => () => { if (recording?.stage === "preview") URL.revokeObjectURL(recording.url); }, [recording]);
 
   const busy = stage !== null;
-  const full = rows.length >= MAX_FILES;
-  // Coaches only leave voice notes, and only on a fighter whose files they can see.
-  const offered = (["photo", "voice", "video"] as Kind[]).filter(kind => kinds[kind] && (athlete || (kind === "voice" && !!athleteId)));
+  const full = rows.length >= limit;
+  // Coaches leave voice notes and share PDFs, only on a fighter whose files they can see.
+  const offered = (["photo", "voice", "pdf", "video"] as Kind[]).filter(kind => kinds[kind]
+    && (!only || only.includes(kind)) && (athlete || ((kind === "voice" || kind === "pdf") && !!athleteId)));
   const attachable = !full && offered.length > 0;
 
   function added(row: TrainingAttachment) {
     setRows(current => [...current.filter(item => item.id !== row.id), row]);
   }
 
-  async function run(task: () => Promise<TrainingAttachment>, fallback: string) {
+  async function run(task: () => Promise<TrainingAttachment>, fallback: string, kind: Kind = "photo") {
     setProblem(null);
+    setBusyKind(kind);
     try {
       added(await task());
       return true;
@@ -163,6 +219,7 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
       return false;
     } finally {
       setStage(null);
+      setBusyKind(null);
     }
   }
 
@@ -170,7 +227,7 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
     if (!file || busy) return;
     const reason = videoProblem(file);
     setProblem(reason);
-    if (!reason) await run(() => uploadVideo(token, file, key, setStage), "Video could not be attached. Try again.");
+    if (!reason) await run(() => uploadVideo(token, file, key, setStage), "Video could not be attached. Try again.", "video");
     if (videoInput.current) videoInput.current.value = "";
   }
 
@@ -186,6 +243,18 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
       }, "Photo could not be attached. Try again.");
     }
     if (photoInput.current) photoInput.current.value = "";
+  }
+
+  async function attachPdf(file: File | undefined) {
+    if (!file || busy) return;
+    const reason = pdfProblem(file);
+    setProblem(reason);
+    if (!reason) {
+      const attach = (assetId: string) => athlete ? attachTrainingFile(token, assetId, key)
+        : attachFighterVoiceNote(token, athleteId ?? "", assetId, key);
+      await run(() => uploadDocument(token, file, attach, setStage), "PDF could not be attached. Try again.", "pdf");
+    }
+    if (pdfInput.current) pdfInput.current.value = "";
   }
 
   async function startRecording() {
@@ -227,7 +296,7 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
     const { wav } = recording;
     const attach = (assetId: string) => athlete ? attachTrainingFile(token, assetId, key)
       : attachFighterVoiceNote(token, athleteId ?? "", assetId, key);
-    const sent = await run(() => uploadFile(token, "voice", wav, attach, setStage), "Voice note could not be sent. Try again.");
+    const sent = await run(() => uploadFile(token, "voice", wav, attach, setStage), "Voice note could not be sent. Try again.", "voice");
     if (sent) setRecording(null);
   }
 
@@ -244,6 +313,7 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
   function choose(kind: Kind) {
     setMenu(false);
     if (kind === "photo") photoInput.current?.click();
+    else if (kind === "pdf") pdfInput.current?.click();
     else if (kind === "video") videoInput.current?.click();
     else void startRecording();
   }
@@ -252,10 +322,33 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
     // Lists carry no links. A 60-second link is issued for this one file only
     // now, after the server re-checks ownership (and a coach's consent).
     setProblem(null);
+    if (kindOf(row) === "pdf") {
+      // PDFs are never shown here: the link only ever downloads the rebuilt copy.
+      if (fetching) return;
+      setFetching(row.id);
+      try {
+        const fresh = athlete ? await playTrainingAttachment(token, row.id)
+          : await playFighterTrainingAttachment(token, athleteId ?? "", row.id);
+        if (!fresh.file?.url) throw new Error("PDF unavailable. Try again.");
+        download(fresh.file.url, fresh.file.name ?? "Document.pdf");
+      } catch (error) {
+        setProblem(describeLoadFailure(error, "PDF unavailable. Try again."));
+      } finally {
+        setFetching(null);
+      }
+      return;
+    }
+    // A photo opens at once on its thumbnail; the full photo sharpens over it when it arrives.
+    if (kindOf(row) === "photo") setOpened(row);
+    opening.current = row.id;
     try {
-      setOpened(athlete ? await playTrainingAttachment(token, row.id)
-        : await playFighterTrainingAttachment(token, athleteId ?? "", row.id));
+      const fresh = athlete ? await playTrainingAttachment(token, row.id)
+        : await playFighterTrainingAttachment(token, athleteId ?? "", row.id);
+      // A slow answer for a file the person has already moved on from is dropped.
+      if (opening.current !== row.id) return;
+      setOpened({ ...fresh, file: fresh.file ? { ...fresh.file, thumb_url: fresh.file.thumb_url ?? row.file?.thumb_url ?? null } : fresh.file });
     } catch (error) {
+      if (opening.current !== row.id) return;
       setOpened(null);
       setProblem(describeLoadFailure(error, `${NOUN[kindOf(row)]} unavailable. Try again.`));
     }
@@ -277,52 +370,90 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
     setDragging(false);
     const file = event.dataTransfer.files[0];
     if (!file) return;
-    if (file.type.startsWith("video/") && kinds.video && athlete) void attachVideo(file);
-    else if (kinds.photo && athlete) void attachPhoto(file);
-    else setProblem("Drop a photo or a video.");
+    if (file.type.startsWith("video/") && offered.includes("video")) void attachVideo(file);
+    else if ((file.type === "application/pdf" || /\.pdf$/i.test(file.name)) && offered.includes("pdf")) void attachPdf(file);
+    else if (file.type.startsWith("image/") && offered.includes("photo")) void attachPhoto(file);
+    else setProblem(`Drop ${dropKinds.map(kind => kind === "pdf" ? "a PDF" : `a ${NOUN[kind].toLowerCase()}`).join(" or ")}.`);
   }
 
-  const tiles = rows.filter(row => kindOf(row) !== "voice");
+  const tiles = rows.filter(row => kindOf(row) === "photo" || kindOf(row) === "video");
   const notes = rows.filter(row => kindOf(row) === "voice");
+  const docs = rows.filter(row => kindOf(row) === "pdf");
+  const whoFor = (row: TrainingAttachment) => row.author === "coach" ? (athlete ? "Coach" : "You") : (athlete ? "You" : "Athlete");
+  const pendingTile = busy && !recording && busyKind !== "pdf";
+  const pendingDoc = busy && busyKind === "pdf";
   const numbered = (row: TrainingAttachment) => rows.filter(item => kindOf(item) === kindOf(row)).indexOf(row) + 1;
-  const visualOpen = opened && kindOf(opened) !== "voice" ? opened : null;
+  const visualOpen = opened && (kindOf(opened) === "photo" || kindOf(opened) === "video") ? opened : null;
 
   if (!rows.length && !attachable && !busy && !recording) return null;
-  return <div className={styles.videos} data-dragging={dragging || undefined}
+  const singleLabel = offered.length !== 1 ? "" : offered[0] === "voice" ? "Record voice note"
+    : offered[0] === "pdf" ? "Attach PDF" : `Attach ${NOUN[offered[0]].toLowerCase()}`;
+  const attachControl = attachable && !recording ? <div className={styles.attachWrap}>
+    <button type="button" className={styles.attach} disabled={busy} aria-label={singleLabel || undefined} aria-haspopup={offered.length > 1 ? "menu" : undefined}
+      aria-expanded={offered.length > 1 ? menu : undefined}
+      onClick={() => offered.length > 1 ? setMenu(value => !value) : choose(offered[0])}>
+      {offered.length === 1 && offered[0] === "voice" ? <MicIcon /> : <PaperclipIcon />}
+      {offered.length > 1 ? "Attach" : <>
+        <span className={styles.attachFull}>{singleLabel}</span>
+        {/* On the narrowest cards the title keeps its room and the button says just "Attach" or "Record". */}
+        <span className={styles.attachShort} aria-hidden="true">{offered[0] === "voice" ? "Record" : "Attach"}</span>
+      </>}
+    </button>
+    {menu ? <div className={styles.menu} data-align={heading ? "end" : undefined} role="menu" aria-label={`Attach to ${label}`}>
+      {offered.map(kind => <button key={kind} type="button" role="menuitem" className={styles.menuItem} onClick={() => choose(kind)}>
+        {kind === "photo" ? <PhotoIcon /> : kind === "voice" ? <MicIcon /> : kind === "pdf" ? <DocIcon /> : <VideoIcon />}
+        {NOUN[kind]}
+      </button>)}
+    </div> : null}
+  </div> : null;
+  return <div className={styles.videos} data-headed={heading ? true : undefined} data-dragging={dragging || undefined}
     onDragOver={attachable && dropKinds.length ? event => { event.preventDefault(); setDragging(true); } : undefined}
     onDragLeave={attachable ? () => setDragging(false) : undefined} onDrop={drop}>
-    {tiles.length || (busy && !recording) ? <ul className={styles.grid} aria-label={`Photos and videos for ${label}`}>
+    {heading ? <div className={styles.head}>
+      {/* The count sits under the title, so the title keeps the width beside Attach. */}
+      <div className={styles.headText}>
+        <h3 className={styles.headTitle} title={heading}>{heading}</h3>
+        {rows.length ? <span className={styles.headCount}>{rows.length} of {limit}</span> : null}
+      </div>
+      {attachControl}
+    </div> : null}
+    {tiles.length || pendingTile ? <ul className={styles.grid} aria-label={`Photos and videos for ${label}`}>
       {tiles.map(row => <li key={row.id}>
         <button type="button" className={styles.thumb} aria-pressed={opened?.id === row.id}
           aria-label={`${kindOf(row) === "photo" ? "Open photo" : "Play video"} ${numbered(row)} for ${label}`}
           onClick={() => void open(row)}>
-          {/* No preview: nothing loads until the file is asked for. */}
-          {kindOf(row) === "photo" ? <PhotoIcon /> : <span className={styles.play} aria-hidden="true" />}
-          <span className={styles.thumbLabel} aria-hidden="true">{NOUN[kindOf(row)]} {numbered(row)}</span>
+          {/* Photos show a small preview rebuilt from the clean file; videos load nothing until played. */}
+          {kindOf(row) === "photo" && row.file?.thumb_url
+            // A plain <img>: next/image would route the private, short-lived link through the image optimizer.
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img className={styles.thumbImage} src={row.file.thumb_url} alt="" loading="lazy" decoding="async"
+                referrerPolicy="no-referrer" draggable={false} />
+            : <>
+              {kindOf(row) === "photo" ? <PhotoIcon /> : <span className={styles.play} aria-hidden="true" />}
+              <span className={styles.thumbLabel} aria-hidden="true">{NOUN[kindOf(row)]} {numbered(row)}</span>
+            </>}
         </button>
       </li>)}
-      {busy && !recording ? <li><span className={styles.pending} role="status">{stage}</span></li> : null}
+      {pendingTile ? <li><span className={styles.pending} role="status">{stage}</span></li> : null}
     </ul> : null}
     {visualOpen ? <div className={styles.player}>
-      {kindOf(visualOpen) === "photo" && visualOpen.file?.url
-        // A plain <img>: next/image would route the private, short-lived link through the image optimizer.
-        // eslint-disable-next-line @next/next/no-img-element
-        ? <img className={styles.photo} src={visualOpen.file.url} alt={`Photo ${numbered(rows.find(r => r.id === visualOpen.id) ?? visualOpen)} for ${label}`}
-            referrerPolicy="no-referrer" draggable={false} />
+      {kindOf(visualOpen) === "photo"
+        ? <PhotoFrame key={visualOpen.id} file={visualOpen.file}
+            alt={`Photo ${numbered(rows.find(r => r.id === visualOpen.id) ?? visualOpen)} for ${label}`} />
         : visualOpen.media ? <PrivateVideoPlayer key={visualOpen.media.url ?? visualOpen.id} media={visualOpen.media} name={label} kind="Form check" /> : null}
       <div className={styles.playerSide}>
         {athlete ? <p className={styles.who}>Only you and coaches you share photos and voice notes with can see this.</p> : null}
         <div className={styles.playerActions}>
           {visualOpen.removable ? <button type="button" className={styles.textAction} onClick={() => void remove(visualOpen)}>
             Remove {NOUN[kindOf(visualOpen)].toLowerCase()}</button> : null}
-          <button type="button" className={styles.textAction} onClick={() => setOpened(null)}>Close</button>
+          <button type="button" className={styles.textAction} onClick={() => { opening.current = null; setOpened(null); }}>Close</button>
         </div>
       </div>
     </div> : null}
     {notes.length ? <ul className={styles.notes} aria-label={`Voice notes for ${label}`}>
       {notes.map(row => {
         const playing = opened?.id === row.id && opened.file?.url;
-        const who = row.author === "coach" ? (athlete ? "Coach" : "You") : (athlete ? "You" : "Athlete");
+        const who = whoFor(row);
         return <li key={row.id} className={styles.note}>
           {playing ? <audio className={styles.audio} src={opened.file!.url!} controls autoPlay
             aria-label={`Voice note from ${who.toLowerCase()} for ${label}`} />
@@ -335,10 +466,36 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
             </button>}
           {playing ? <div className={styles.noteActions}>
             {row.removable ? <button type="button" className={styles.textAction} onClick={() => void remove(row)}>Remove</button> : null}
-            <button type="button" className={styles.textAction} onClick={() => setOpened(null)}>Close</button>
+            <button type="button" className={styles.textAction} onClick={() => { opening.current = null; setOpened(null); }}>Close</button>
           </div> : null}
         </li>;
       })}
+    </ul> : null}
+    {docs.length || pendingDoc ? <ul className={styles.docs} aria-label={`PDFs for ${label}`}>
+      {docs.map(row => {
+        const name = row.file?.name ?? "Document.pdf";
+        const pages = row.file?.pages ?? 0;
+        const meta = [pages ? `${pages} ${pages === 1 ? "page" : "pages"}` : "", formatBytes(row.file?.size_bytes), whoFor(row)].filter(Boolean);
+        return <li key={row.id} className={styles.doc}>
+          <span className={styles.docIcon} aria-hidden="true"><DocIcon /></span>
+          <span className={styles.docText}>
+            <span className={styles.docName} title={name}>{name}</span>
+            <span className={styles.docMeta}>{meta.join(" · ")}</span>
+          </span>
+          <button type="button" className={styles.docDownload} onClick={() => void open(row)}
+            aria-label={`Download ${name}`} aria-busy={fetching === row.id || undefined} disabled={fetching === row.id}>
+            <DownloadIcon /><span className={styles.docDownloadLabel}>Download</span>
+          </button>
+          {row.removable ? <button type="button" className={styles.docRemove} onClick={() => void remove(row)}
+            aria-label={`Remove ${name}`}><TrashIcon /></button>
+            // Keeps Download lined up across rows that can't be removed.
+            : <span className={styles.docRemove} aria-hidden="true" />}
+        </li>;
+      })}
+      {pendingDoc ? <li className={`${styles.doc} ${styles.docPending}`}>
+        <span className={styles.docIcon} aria-hidden="true"><DocIcon /></span>
+        <span className={styles.docMeta} role="status">{stage}</span>
+      </li> : null}
     </ul> : null}
     {recording ? <div className={styles.recorder} role="group" aria-label={`Voice note for ${label}`}>
       {recording.stage === "recording" ? <>
@@ -359,26 +516,18 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
         </div>
       </>}
     </div> : null}
-    {(attachable && !recording) || rows.length ? <div className={styles.bar}>
-      {attachable && !recording ? <div className={styles.attachWrap}>
-        <button type="button" className={styles.attach} disabled={busy} aria-haspopup={offered.length > 1 ? "menu" : undefined}
-          aria-expanded={offered.length > 1 ? menu : undefined}
-          onClick={() => offered.length > 1 ? setMenu(value => !value) : choose(offered[0])}>
-          {offered.length === 1 && offered[0] === "voice" ? <MicIcon /> : <PaperclipIcon />}
-          {offered.length > 1 ? "Attach" : offered[0] === "voice" ? "Record voice note" : `Attach ${NOUN[offered[0]].toLowerCase()}`}
-        </button>
-        {menu ? <div className={styles.menu} role="menu" aria-label={`Attach to ${label}`}>
-          {offered.map(kind => <button key={kind} type="button" role="menuitem" className={styles.menuItem} onClick={() => choose(kind)}>
-            {kind === "photo" ? <PhotoIcon /> : kind === "voice" ? <MicIcon /> : <VideoIcon />}
-            {kind === "photo" ? "Photo" : kind === "voice" ? "Voice note" : "Video"}
-          </button>)}
-        </div> : null}
-      </div> : null}
+    {!heading && ((attachable && !recording) || rows.length) ? <div className={styles.bar}>
+      {attachControl}
       {attachable && !recording && dropKinds.length ? <span className={styles.dropHint}>or drop one here</span> : null}
-      {rows.length ? <span className={styles.count}>{rows.length} of {MAX_FILES}</span> : null}
+      {rows.length ? <span className={styles.count}>{rows.length} of {limit}</span> : null}
     </div> : null}
+    {heading && !rows.length && attachable && !busy && !recording ? <p className={styles.empty}>
+      {emptyText ?? (athlete ? `Add ${describeKinds(offered)} to this ${label === "Sparring" ? "report" : "session"}.`
+        : `Share ${describeKinds(offered)} with your fighter.`)}</p> : null}
     {kinds.photo && athlete ? <input ref={photoInput} type="file" accept="image/jpeg,image/png,image/heic,image/heif,image/webp" hidden
       aria-label={`Attach a photo to ${label}`} onChange={event => void attachPhoto(event.target.files?.[0])} /> : null}
+    {kinds.pdf && (athlete || athleteId) ? <input ref={pdfInput} type="file" accept="application/pdf,.pdf" hidden
+      aria-label={`Attach a PDF to ${label}`} onChange={event => void attachPdf(event.target.files?.[0])} /> : null}
     {kinds.video && athlete ? <input ref={videoInput} type="file" accept="video/mp4,video/quicktime,video/webm" hidden
       aria-label={`Attach a video to ${label}`} onChange={event => void attachVideo(event.target.files?.[0])} /> : null}
     {problem ? <p className={styles.problem} role="alert">{problem}</p> : null}
@@ -387,6 +536,34 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
 }
 
 export const TrainingAttachments = TrainingVideos;
+
+/**
+ * An opened photo: its space is reserved from the known size (no jump), it is
+ * never taller than about 60% of the screen, the thumbnail shows at once and
+ * the full photo fades in over it once it has loaded.
+ */
+function PhotoFrame({ file, alt }: { file: TrainingAttachment["file"]; alt: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const width = file?.width || 4;
+  const height = file?.height || 3;
+  return <div className={styles.photoFrame} data-loaded={loaded || undefined}
+    style={{ aspectRatio: `${width} / ${height}`, maxWidth: `min(100%, calc(60vh * ${width / height}))` }}>
+    {/* Plain <img>s: next/image would route the private, short-lived links through the image optimizer. */}
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    {file?.thumb_url ? <img className={styles.photoPreview} src={file.thumb_url} alt="" aria-hidden="true"
+      referrerPolicy="no-referrer" draggable={false} /> : null}
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    {file?.url ? <img className={styles.photo} src={file.url} alt={alt} decoding="async" referrerPolicy="no-referrer"
+      draggable={false} onLoad={() => setLoaded(true)} /> : null}
+    {!loaded ? <span className={styles.photoLoading} role="status">Loading photo…</span> : null}
+  </div>;
+}
+
+/** "photos, voice notes or PDFs" for the kinds on offer. */
+function describeKinds(kinds: Kind[]) {
+  const words = kinds.map(kind => kind === "pdf" ? "PDFs" : `${NOUN[kind].toLowerCase()}s`);
+  return words.length > 1 ? `${words.slice(0, -1).join(", ")} or ${words.at(-1)}` : words[0] ?? "files";
+}
 
 const iconProps = {
   width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2,
@@ -401,6 +578,15 @@ function PhotoIcon() {
 }
 function MicIcon() {
   return <svg {...iconProps}><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0014 0M12 18v3" /></svg>;
+}
+function DocIcon() {
+  return <svg {...iconProps}><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></svg>;
+}
+function DownloadIcon() {
+  return <svg {...iconProps}><path d="M12 4v11M7 10l5 5 5-5M5 20h14" /></svg>;
+}
+function TrashIcon() {
+  return <svg {...iconProps}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M9 7V4h6v3" /></svg>;
 }
 function VideoIcon() {
   return <svg {...iconProps}><rect x="3" y="6" width="13" height="12" rx="2" /><path d="M16 10l5-3v10l-5-3" /></svg>;

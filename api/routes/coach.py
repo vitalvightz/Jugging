@@ -21,7 +21,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from api.contracts.custom_plans import CustomPlanInput, CoachPlan
-from api.contracts.training_attachments import AttachmentSource, CoachVoiceInput, TrainingAttachment
+from api.contracts.training_attachments import AttachmentSource, CoachVoiceInput, FighterMedia, TrainingAttachment
 from api.services.training_attachments import attach_file, attachment_views, playable
 from api.routes.training_attachments import NO_STORE as TRAINING_ATTACHMENT_NO_STORE
 from api.services.coach_notifications import notify_fighter_of_feedback, notify_fighter_of_plan
@@ -280,8 +280,22 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
         can show an injury, so they follow the fighter's own media-sharing choice."""
         if not fighter.share_media:
             return []
+        if source == "progress" and (str(target_id) != fighter.profile.athlete_id or exercise_ref):
+            return []
         rows = store.list_training_attachments(fighter.profile.athlete_id, source, str(target_id), exercise_ref)
         return attachment_views(store, fighter.profile.athlete_id, rows, viewer_id=fighter.coach.athlete_id)
+
+    @router.get("/api/coach/fighters/{athlete_id}/media", response_model=FighterMedia)
+    def fighter_media(response: Response, fighter: ConnectedFighter = Depends(connected_fighter),
+                      store: AppStore = Depends(get_store)):
+        """The fighter's progress photos count and the latest records with files,
+        so a coach can open them from the fighter's page. Empty unless shared."""
+        response.headers.update(TRAINING_ATTACHMENT_NO_STORE)
+        if not fighter.share_media:
+            return FighterMedia(share_media=False)
+        athlete_id = fighter.profile.athlete_id
+        return FighterMedia(share_media=True, progress_count=store.count_progress_photos(athlete_id),
+                            recent=store.recent_attachment_targets(athlete_id, limit=4))
 
     @router.get("/api/coach/fighters/{athlete_id}/training/attachments/{attachment_id}/play",
                 response_model=TrainingAttachment)

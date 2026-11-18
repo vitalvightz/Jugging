@@ -12,7 +12,7 @@ import type { CoachPlannedSession, CoachFighterWeight, SessionDetails, ExerciseL
 import type { ManualExerciseEntry, ManualExerciseListResponse, PerformedExerciseInput } from "@/lib/api-schema.generated";
 import type { LibraryFeaturedResponse, LibraryPreview, LibrarySearchResponse } from "@/lib/api-schema.generated";
 import type { CustomDoseSuggestion, CustomPlan, CustomPlanInput, CoachPlan } from "@/lib/api-schema.generated";
-import type { AttachmentSettings, FileUploadPermission, FileUploadResult, PrivateMediaPreview, PrivateMediaSettings, TrainingAttachment, TrainingAttachmentInput, UploadPermission, UploadState, YouTubeClipInput } from "@/lib/api-schema.generated";
+import type { AttachmentSettings, FighterMedia, FileUploadPermission, FileUploadResult, PrivateMediaPreview, PrivateMediaSettings, TrainingAttachment, TrainingAttachmentInput, UploadPermission, UploadState, YouTubeClipInput } from "@/lib/api-schema.generated";
 import type {
   ApproveAndResumeGenerationRequest,
   AdminAthleteRecord,
@@ -131,16 +131,24 @@ export function reserveFileUpload(token: string, kind: "photo" | "voice", sizeBy
     token, method: "POST", body: JSON.stringify({ kind, size_bytes: sizeBytes }),
   });
 }
-/** The server has the upload rebuilt in isolation; only the clean copy is ever usable. */
-export function processFileUpload(token: string, assetId: string) {
-  return readJson<FileUploadResult>(`/api/attachments/uploads/${encodeURIComponent(assetId)}/process`, { token, method: "POST" });
+/** A PDF is reserved as its page images; the name is only shown and offered as the download name. */
+export function reserveDocumentUpload(token: string, sizeBytes: number, pageCount: number, fileName: string) {
+  return readJson<FileUploadPermission>("/api/attachments/uploads", {
+    token, method: "POST", body: JSON.stringify({ kind: "pdf", size_bytes: sizeBytes, page_count: pageCount, file_name: fileName }),
+  });
+}
+/** The server has the upload rebuilt in isolation; only the clean copy is ever usable.
+ * A PDF is rebuilt one page per call, then assembled by a call without a page. */
+export function processFileUpload(token: string, assetId: string, page?: number) {
+  const query = page ? `?page=${page}` : "";
+  return readJson<FileUploadResult>(`/api/attachments/uploads/${encodeURIComponent(assetId)}/process${query}`, { token, method: "POST" });
 }
 export function attachTrainingFile(token: string, assetId: string, target: AttachmentTarget) {
   return readJson<TrainingAttachment>("/api/training/attachments", {
     token, method: "POST", body: JSON.stringify({ asset_id: assetId, exercise_ref: "", ...target }),
   });
 }
-/** A coach's voice feedback on a fighter's record (needs the fighter's media sharing). */
+/** A coach's voice feedback or shared PDF on a fighter's record (needs the fighter's media sharing). */
 export function attachFighterVoiceNote(token: string, athleteId: string, assetId: string, target: AttachmentTarget) {
   return readJson<TrainingAttachment>(`/api/coach/fighters/${encodeURIComponent(athleteId)}/training/attachments`, {
     token, method: "POST", body: JSON.stringify({ asset_id: assetId, exercise_ref: "", ...target }),
@@ -151,6 +159,11 @@ export function removeFighterTrainingAttachment(token: string, athleteId: string
     { token, method: "DELETE" });
 }
 /** A coach reads a fighter's files only while the fighter shares photos and voice notes. */
+/** A fighter's progress-photo count and latest records with files; empty unless they share media. */
+export function getFighterMedia(token: string, athleteId: string, signal?: AbortSignal) {
+  return readJson<FighterMedia>(`/api/coach/fighters/${encodeURIComponent(athleteId)}/media`, { token, signal });
+}
+
 export function listFighterTrainingAttachments(token: string, athleteId: string, target: AttachmentTarget, signal?: AbortSignal) {
   return readJson<TrainingAttachment[]>(
     `/api/coach/fighters/${encodeURIComponent(athleteId)}/training/attachments?${attachmentQuery(target)}`, { token, signal });

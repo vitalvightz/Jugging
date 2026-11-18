@@ -106,11 +106,40 @@ class PrivateMediaStoreMixin:
         if not rows:
             return None
         row = rows[0]
+        if row["source"] == "progress":
+            return row if row["target_id"] == athlete_id and not row.get("exercise_ref") else None
         valid = self.client.rpc("training_record_available", {
             "p_athlete_id": athlete_id, "p_source": row["source"],
             "p_target_id": row["target_id"], "p_ref": row.get("exercise_ref") or "",
         }).execute()
         return row if valid.data is True else None
+
+    def recent_attachment_targets(self, athlete_id, *, limit=4):
+        """The latest records that carry files, newest first, each still available."""
+        response = (self.client.table("training_attachments").select("source,target_id,exercise_ref,created_at")
+                    .eq("athlete_id", athlete_id).neq("source", "progress")
+                    .order("created_at", desc=True).limit(60).execute())
+        targets, seen = [], set()
+        for row in getattr(response, "data", None) or []:
+            key = (row["source"], row["target_id"], row.get("exercise_ref") or "")
+            if key in seen:
+                continue
+            seen.add(key)
+            valid = self.client.rpc("training_record_available", {
+                "p_athlete_id": athlete_id, "p_source": key[0], "p_target_id": key[1], "p_ref": key[2],
+            }).execute()
+            if valid.data is True:
+                targets.append({"source": key[0], "target_id": key[1], "exercise_ref": key[2],
+                                "last_at": row["created_at"]})
+            if len(targets) >= limit:
+                break
+        return targets
+
+    def count_progress_photos(self, athlete_id):
+        response = (self.client.table("training_attachments").select("id", count="exact")
+                    .eq("athlete_id", athlete_id).eq("source", "progress").eq("target_id", athlete_id)
+                    .limit(1).execute())
+        return int(getattr(response, "count", None) or 0)
 
     def delete_training_attachment(self, athlete_id, attachment_id):
         response = (self.client.table("training_attachments").delete()
@@ -142,23 +171,57 @@ class PrivateMediaStoreMixin:
                     .eq("status", "ready").execute())
         return {str(row["id"]): row for row in (getattr(response, "data", None) or [])}
 
-    def attachment_signed_url(self, path, *, expires_in):
-        response = self.client.storage.from_("attachment-ready").create_signed_url(path, expires_in)
+    def reserve_attachment_document(self, owner_id, size_bytes, page_count, file_name):
+        try:
+            response = self.client.rpc("reserve_attachment_document", {
+                "p_owner_id": owner_id, "p_size_bytes": size_bytes, "p_page_count": page_count, "p_file_name": file_name,
+            }).execute()
+        except PostgrestAPIError as exc:
+            if getattr(exc, "code", None) == "54000":
+                raise HTTPException(429, "Upload limit reached. Try again later.", headers={"Retry-After": "3600"}) from exc
+            raise _file_error(exc, "Uploads are unavailable. Try again.") from exc
+        if not response.data:
+            raise HTTPException(503, "Uploads are unavailable. Try again.")
+        return response.data[0]
+
+    def attachment_signed_url(self, path, *, expires_in, download=None):
+        # A download name makes Storage send Content-Disposition: attachment,
+        # so a PDF is saved, never rendered inline from the storage origin.
+        options = {"download": download} if download else None
+        response = self.client.storage.from_("attachment-ready").create_signed_url(path, expires_in, options)
         url = response.get("signedURL") or response.get("signedUrl")
         if not url:
             raise HTTPException(503, "Unable to open this file. Try again.")
         return url
 
-    def process_attachment(self, asset_id):
-        """Rebuild one upload in the process-attachment Edge Function (never in this process)."""
+    def attachment_signed_urls(self, paths, *, expires_in):
+        """Short-lived links for several rebuilt files at once (photo thumbnails
+        in a list). Files that don't exist are simply left out."""
+        if not paths:
+            return {}
+        try:
+            items = self.client.storage.from_("attachment-ready").create_signed_urls(list(paths), expires_in)
+        except Exception:  # noqa: BLE001 - previews are optional; the list still works without them
+            logger.warning("[attachments] thumbnail signing failed")
+            return {}
+        return {item["path"]: item.get("signedURL") or item.get("signedUrl")
+                for item in items or [] if not item.get("error") and (item.get("signedURL") or item.get("signedUrl"))}
+
+    def process_attachment(self, asset_id, *, page=None, assemble=False):
+        """Rebuild one upload (or one PDF page, or assemble a PDF) in the
+        process-attachment Edge Function, never in this process."""
         url = os.getenv("SUPABASE_URL", "").rstrip("/")
         key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
         headers = {"apikey": key, "Content-Type": "application/json"}
         if key.count(".") == 2:
             headers["Authorization"] = f"Bearer {key}"
+        body = {"asset_id": asset_id}
+        if page:
+            body["page"] = page
+        if assemble:
+            body["assemble"] = True
         try:
-            response = httpx.post(f"{url}/functions/v1/process-attachment", json={"asset_id": asset_id},
-                                  headers=headers, timeout=60)
+            response = httpx.post(f"{url}/functions/v1/process-attachment", json=body, headers=headers, timeout=60)
         except httpx.HTTPError as exc:
             logger.warning("[attachments] processor unreachable error=%s", type(exc).__name__)
             raise HTTPException(503, "Checking is unavailable. Try again in a minute.") from exc
@@ -176,6 +239,8 @@ class PrivateMediaStoreMixin:
                 "p_target_id": target_id, "p_exercise_ref": exercise_ref,
             }).execute()
         except PostgrestAPIError as exc:
+            if source == "progress" and getattr(exc, "code", None) == "54000":
+                raise HTTPException(409, "You have 24 progress photos. Remove one to add another.") from exc
             raise _file_error(exc, "Unable to attach the file. Try again.") from exc
         if not response.data:
             raise HTTPException(409, "That file is already attached.")

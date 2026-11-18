@@ -279,17 +279,32 @@ export type AthleteProfileInput = {
   athlete_locale?: string;
 };
 
-/** A rebuilt photo or voice note. url is set only on a play response. */
+/**
+ * A rebuilt photo, voice note or PDF. url is set only on a play response;
+ * for a PDF it is a download-only link that carries the display name.
+ */
 export type AttachmentFile = {
   url: string | null;
+  thumb_url: string | null;
   width: number | null;
   height: number | null;
   duration_ms: number | null;
+  name: string | null;
+  pages: number | null;
+  size_bytes: number | null;
 };
 
 export type AttachmentSettings = {
   photos_available: boolean;
   voice_available: boolean;
+  pdfs_available: boolean;
+};
+
+export type AttachmentTarget = {
+  source: "external" | "sparring" | "unlxck";
+  target_id: string;
+  exercise_ref: string;
+  last_at: string;
 };
 
 /**
@@ -447,6 +462,7 @@ export type CoachPlannedSession = {
   blocks: SessionDetailBlock[];
 };
 
+/** A coach replies on a logged record only; progress photos are the athlete's own. */
 export type CoachVoiceInput = {
   asset_id: string;
   source: "external" | "sparring" | "unlxck";
@@ -1219,9 +1235,25 @@ export type FeedbackRecord = {
   updated_at: string;
 };
 
+/**
+ * What a coach may open from a fighter's media: nothing at all unless the
+ * fighter shares media with this coach, and only records that still exist.
+ */
+export type FighterMedia = {
+  share_media: boolean;
+  progress_count: number;
+  recent: AttachmentTarget[];
+};
+
+/**
+ * A PDF is reserved as its page images: size_bytes is their total, and
+ * file_name is a display name only (it is cleaned and never used in a path).
+ */
 export type FileUploadInput = {
-  kind: "photo" | "voice";
+  kind: "pdf" | "photo" | "voice";
   size_bytes: number;
+  page_count?: number | null;
+  file_name?: string | null;
 };
 
 export type FileUploadPermission = {
@@ -1230,11 +1262,12 @@ export type FileUploadPermission = {
   path: string;
   content_type: "audio/wav" | "image/jpeg";
   expires_at: string;
+  page_count: number | null;
 };
 
 export type FileUploadResult = {
   asset_id: string;
-  status: "ready" | "rejected";
+  status: "page_ready" | "ready" | "rejected";
   reason: string | null;
 };
 
@@ -2857,7 +2890,7 @@ export type TodayInjuryDeclaration = {
 export type TrainingAttachment = {
   id: string;
   created_at: string;
-  kind: "photo" | "video" | "voice";
+  kind: "pdf" | "photo" | "video" | "voice";
   author: "athlete" | "coach";
   removable: boolean;
   media: PrivateMediaPreview | null;
@@ -2868,7 +2901,7 @@ export type TrainingAttachment = {
 export type TrainingAttachmentInput = {
   media_id?: string | null;
   asset_id?: string | null;
-  source: "external" | "sparring" | "unlxck";
+  source: "external" | "progress" | "sparring" | "unlxck";
   target_id: string;
   exercise_ref?: string;
 };

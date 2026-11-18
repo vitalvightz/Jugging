@@ -16,6 +16,7 @@ import { RequireAuth } from "@/components/auth-guard";
 import { ManualExerciseLogger } from "@/components/manual-exercise-logger";
 import { CoachPlans } from "./coach-plans";
 import { CoachFeedback } from "./coach-feedback";
+import { FighterMediaPanel } from "./fighter-media";
 import { LogTraining } from "@/components/log-training";
 import { useAppSession } from "@/components/auth-provider";
 import {
@@ -921,6 +922,7 @@ function FighterOverview({
           (weigh-ins, session rows, cached session records, an open record
           sheet) and reloads it under the new permissions. */}
       <FoldableSection id="fight-weight" title="Fight weight"><FightWeight key={`weight:${sharingKey}`} fighter={f} weight={weight} failed={Boolean(weightFailed)} /></FoldableSection>
+      <FoldableSection id="media" title="Photos and voice notes"><FighterMediaPanel token={token} fighter={f} /></FoldableSection>
       <FoldableSection id="training-history" title="Training history"><TrainingHistory
         key={`history:${sharingKey}:${historyKey}:${f.plan_id}:${f.today}`}
         token={token}
