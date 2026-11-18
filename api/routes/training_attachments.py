@@ -1,4 +1,4 @@
-"""Files on an athlete's own logged work: videos, photos and voice notes."""
+"""Files on an athlete's own logged work: videos, photos, voice notes and PDFs."""
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -60,7 +60,7 @@ def build_training_attachments_router(*, require_profile, get_store):
 
 
 def build_attachment_uploads_router(*, require_profile, get_store):
-    """Photo and voice-note uploads: reserve a quarantine path, then have it rebuilt."""
+    """Photo, voice-note and PDF uploads: reserve a quarantine path, then have it rebuilt."""
     router = APIRouter(prefix="/api/attachments", tags=["training attachments"])
 
     @router.get("/settings", response_model=AttachmentSettings)
@@ -71,13 +71,15 @@ def build_attachment_uploads_router(*, require_profile, get_store):
     def reserve(body: FileUploadInput, profile=Depends(require_profile), store=Depends(get_store)):
         if profile.access_status != "approved":
             raise HTTPException(403, "Your account is not approved yet.")
-        # Coaches only ever leave voice feedback.
-        if profile.role in {"coach", "admin"} and body.kind != "voice":
-            raise HTTPException(403, "Coaches can attach voice notes only.")
-        return reserve_file(store, profile.athlete_id, body.kind, body.size_bytes)
+        # Coaches leave voice feedback and share documents (plans, guides), never photos.
+        if profile.role in {"coach", "admin"} and body.kind not in {"voice", "pdf"}:
+            raise HTTPException(403, "Coaches can attach voice notes and PDFs only.")
+        return reserve_file(store, profile.athlete_id, body.kind, body.size_bytes,
+                            page_count=body.page_count, file_name=body.file_name)
 
     @router.post("/uploads/{asset_id}/process", response_model=FileUploadResult)
-    def process(asset_id: UUID, profile=Depends(require_profile), store=Depends(get_store)):
-        return process_file(store, profile.athlete_id, asset_id)
+    def process(asset_id: UUID, page: int | None = Query(default=None, ge=1, le=30),
+                profile=Depends(require_profile), store=Depends(get_store)):
+        return process_file(store, profile.athlete_id, asset_id, page)
 
     return router

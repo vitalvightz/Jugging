@@ -2227,6 +2227,12 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         self.attachment_assets[asset_id] = row
         return copy.deepcopy(row)
 
+    def reserve_attachment_document(self, owner_id: str, size_bytes: int, page_count: int, file_name: str) -> dict:
+        row = self.reserve_attachment_upload(owner_id, 'pdf', size_bytes, 'application/pdf')
+        stored = self.attachment_assets[row['id']]
+        stored.update(intake_path=f"{owner_id}/{row['id']}/pages", page_count=page_count, file_name=file_name)
+        return copy.deepcopy(stored)
+
     def get_attachment_asset(self, owner_id: str, asset_id: str) -> dict | None:
         row = self.attachment_assets.get(asset_id)
         return copy.deepcopy(row) if row and row['owner_id'] == owner_id else None
@@ -2235,10 +2241,10 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         return {i: copy.deepcopy(self.attachment_assets[i]) for i in asset_ids
                 if i in self.attachment_assets and self.attachment_assets[i]['status'] == 'ready'}
 
-    def attachment_signed_url(self, path: str, *, expires_in: int) -> str:
+    def attachment_signed_url(self, path: str, *, expires_in: int, download: str | None = None) -> str:
         raise HTTPException(503, 'Attachment storage is unavailable.')
 
-    def process_attachment(self, asset_id: str) -> dict:
+    def process_attachment(self, asset_id: str, *, page: int | None = None, assemble: bool = False) -> dict:
         raise HTTPException(503, 'Checking is unavailable. Try again in a minute.')
 
     def attach_training_asset(self, author_id: str, athlete_id: str, asset_id: str, source: str, target_id: str,
@@ -2250,7 +2256,7 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
             raise HTTPException(409, 'That file is still being checked. Try again in a moment.')
         if author_id != athlete_id:
             connection = self.get_accepted_coach_connection(author_id, athlete_id)
-            if asset['kind'] != 'voice' or not connection or connection.get('share_media') is not True:
+            if asset['kind'] not in ('voice', 'pdf') or not connection or connection.get('share_media') is not True:
                 raise HTTPException(404, 'That record or file is not available.')
         records = {
             'external': lambda: (self.external_training_sessions.get(target_id) or {}).get('athlete_id') == athlete_id,

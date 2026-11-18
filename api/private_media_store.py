@@ -142,23 +142,44 @@ class PrivateMediaStoreMixin:
                     .eq("status", "ready").execute())
         return {str(row["id"]): row for row in (getattr(response, "data", None) or [])}
 
-    def attachment_signed_url(self, path, *, expires_in):
-        response = self.client.storage.from_("attachment-ready").create_signed_url(path, expires_in)
+    def reserve_attachment_document(self, owner_id, size_bytes, page_count, file_name):
+        try:
+            response = self.client.rpc("reserve_attachment_document", {
+                "p_owner_id": owner_id, "p_size_bytes": size_bytes, "p_page_count": page_count, "p_file_name": file_name,
+            }).execute()
+        except PostgrestAPIError as exc:
+            if getattr(exc, "code", None) == "54000":
+                raise HTTPException(429, "Upload limit reached. Try again later.", headers={"Retry-After": "3600"}) from exc
+            raise _file_error(exc, "Uploads are unavailable. Try again.") from exc
+        if not response.data:
+            raise HTTPException(503, "Uploads are unavailable. Try again.")
+        return response.data[0]
+
+    def attachment_signed_url(self, path, *, expires_in, download=None):
+        # A download name makes Storage send Content-Disposition: attachment,
+        # so a PDF is saved, never rendered inline from the storage origin.
+        options = {"download": download} if download else None
+        response = self.client.storage.from_("attachment-ready").create_signed_url(path, expires_in, options)
         url = response.get("signedURL") or response.get("signedUrl")
         if not url:
             raise HTTPException(503, "Unable to open this file. Try again.")
         return url
 
-    def process_attachment(self, asset_id):
-        """Rebuild one upload in the process-attachment Edge Function (never in this process)."""
+    def process_attachment(self, asset_id, *, page=None, assemble=False):
+        """Rebuild one upload (or one PDF page, or assemble a PDF) in the
+        process-attachment Edge Function, never in this process."""
         url = os.getenv("SUPABASE_URL", "").rstrip("/")
         key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
         headers = {"apikey": key, "Content-Type": "application/json"}
         if key.count(".") == 2:
             headers["Authorization"] = f"Bearer {key}"
+        body = {"asset_id": asset_id}
+        if page:
+            body["page"] = page
+        if assemble:
+            body["assemble"] = True
         try:
-            response = httpx.post(f"{url}/functions/v1/process-attachment", json={"asset_id": asset_id},
-                                  headers=headers, timeout=60)
+            response = httpx.post(f"{url}/functions/v1/process-attachment", json=body, headers=headers, timeout=60)
         except httpx.HTTPError as exc:
             logger.warning("[attachments] processor unreachable error=%s", type(exc).__name__)
             raise HTTPException(503, "Checking is unavailable. Try again in a minute.") from exc

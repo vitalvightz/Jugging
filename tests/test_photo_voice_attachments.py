@@ -22,11 +22,11 @@ def media(camp, monkeypatch):  # noqa: F811 - pytest fixture injection
     signed: list[str] = []
     processed: list[str] = []
 
-    def sign(path, *, expires_in):
+    def sign(path, *, expires_in, download=None):
         signed.append(path)
         return f"{SIGNED}{path}?ttl={expires_in}"
 
-    def process(asset_id):
+    def process(asset_id, page=None, assemble=False):
         # Stands in for the Edge Function: a "bad" upload is rejected, others rebuilt.
         processed.append(asset_id)
         asset = store.attachment_assets[asset_id]
@@ -111,11 +111,12 @@ def test_each_type_is_off_unless_switched_on_and_fails_closed(media, monkeypatch
     assert client.post(URL, headers=AS_FIGHTER, json={"asset_id": ready["asset_id"], "source": "external",
                                                       "target_id": target}).status_code == 503
     assert client.get("/api/attachments/settings", headers=AS_FIGHTER).json() == {
-        "photos_available": False, "voice_available": True}
+        "photos_available": False, "voice_available": True, "pdfs_available": False}
     # Voice notes are separate, and capped at 2 MB (about a minute of audio).
     assert client.post(UPLOADS, headers=AS_FIGHTER, json={"kind": "voice", "size_bytes": 3_000_000}).status_code == 422
-    # Unknown types (PDFs) are not accepted at all.
-    assert client.post(UPLOADS, headers=AS_FIGHTER, json={"kind": "pdf", "size_bytes": 10}).status_code == 422
+    # PDFs have their own switch, off here.
+    assert client.post(UPLOADS, headers=AS_FIGHTER, json={"kind": "pdf", "size_bytes": 10, "page_count": 1}).status_code == 503
+    assert client.post(UPLOADS, headers=AS_FIGHTER, json={"kind": "zip", "size_bytes": 10}).status_code == 422
     assert client.post(UPLOADS, headers=AS_FIGHTER, json={"kind": "photo", "size_bytes": 9 * 1024 * 1024}).status_code == 422
     # The processor being down rejects nothing silently and attaches nothing.
     monkeypatch.setenv("ATTACHMENT_PHOTOS_ENABLED", "true")
@@ -131,7 +132,7 @@ def test_coach_voice_feedback_needs_media_sharing_and_the_coach_removes_only_the
     params = {"source": "external", "target_id": target}
     athlete_photo, _ = _upload(client, AS_FIGHTER)
     photo = client.post(URL, headers=AS_FIGHTER, json={"asset_id": athlete_photo["asset_id"], **params}).json()
-    # Coaches upload voice notes only.
+    # Coaches upload voice notes and PDFs, never photos.
     assert client.post(UPLOADS, headers=AS_COACH, json={"kind": "photo", "size_bytes": 10}).status_code == 403
     voice, _ = _upload(client, AS_COACH, kind="voice")
     assert voice["path"].startswith(f"{COACH}/") and voice["content_type"] == "audio/wav"

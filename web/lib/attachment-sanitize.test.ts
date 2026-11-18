@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import jpeg from "jpeg-js";
 import {
-  cleanPhoto, cleanVoice, jpegFrameSize, LIMITS, Rejected, wav, type JpegCodec,
+  cleanPage, cleanPhoto, cleanVoice, imagePdf, jpegFrameSize, LIMITS, Rejected, wav, type JpegCodec,
 } from "../../supabase/functions/process-attachment/sanitize";
 
 const codec: JpegCodec = {
@@ -127,4 +127,48 @@ test("files pretending to be WAV are refused", () => {
   rejects(() => cleanVoice(concat(noData, new Uint8Array(16))), /Damaged/);
   rejects(() => cleanVoice(recording(1), 5), /size mismatch/);
   rejects(() => cleanVoice(new Uint8Array(LIMITS.voiceBytes + 1)), /too large/);
+});
+
+// PDF pages: each page image is rebuilt like a photo, then written into a new
+// image-only PDF. Nothing from the uploader's file can reach the output.
+// A mostly white page with dark text-like bars, like a rendered document.
+function documentPage(width: number, height: number): Uint8Array {
+  const data = new Uint8Array(width * height * 4).fill(255);
+  for (let y = 80; y < height - 80; y += 40) {
+    for (let x = 80; x < width - 80; x += 1) {
+      for (let row = 0; row < 12; row += 1) data.fill(30, ((y + row) * width + x) * 4, ((y + row) * width + x) * 4 + 3);
+    }
+  }
+  return new Uint8Array(jpeg.encode({ width, height, data }, 85).data);
+}
+
+test("a PDF page is rebuilt from pixels within the page limits", () => {
+  const page = withExif(documentPage(1131, 1600));
+  const clean = cleanPage(page, codec);
+  assert.deepEqual([clean.width, clean.height], [1131, 1600]);
+  assert.ok(!contains(clean.bytes, "GPSLatitude") && !contains(clean.bytes, "<script"));
+  rejects(() => cleanPage(documentPage(1601, 900), codec), /Page is too large/);
+  rejects(() => cleanPage(documentPage(1500, 1500), codec), /Page is too large/);
+  rejects(() => cleanPage(new Uint8Array(LIMITS.pageBytes + 1), codec), /Page is too large/);
+  rejects(() => cleanPage(text("%PDF-1.7 /JavaScript (app.alert(1))"), codec), /Not a JPEG/);
+});
+
+test("the rebuilt PDF holds only page images", async () => {
+  const pages = [cleanPage(documentPage(900, 1273), codec), cleanPage(documentPage(1273, 900), codec)];
+  const pdf = imagePdf(pages);
+  const source = Buffer.from(pdf).toString("latin1");
+  assert.ok(source.startsWith("%PDF-1.4"));
+  for (const banned of ["/JavaScript", "/JS", "/OpenAction", "/AA", "/URI", "/Launch", "/EmbeddedFile", "/AcroForm", "/Font", "/Info"]) {
+    assert.ok(!source.includes(banned), banned);
+  }
+  assert.equal(source.match(/\/Subtype \/Image/g)?.length, 2);
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const doc = await getDocument({ data: new Uint8Array(pdf), isEvalSupported: false }).promise;
+  assert.equal(doc.numPages, 2);
+  const [first, second] = [await doc.getPage(1), await doc.getPage(2)];
+  assert.ok(first.view[3] > first.view[2] && second.view[2] > second.view[3]);
+  assert.equal(Math.round(Math.max(first.view[2], first.view[3])), 842);
+  await doc.cleanup();
+  assert.throws(() => imagePdf([]), Rejected);
+  assert.throws(() => imagePdf(Array.from({ length: 31 }, () => pages[0])), Rejected);
 });
