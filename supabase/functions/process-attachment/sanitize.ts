@@ -7,7 +7,9 @@
 
 export const LIMITS = {
   photoBytes: 8 * 1024 * 1024,
-  photoMaxSide: 2048,
+  // Sized so a worst-case (high-entropy) photo rebuilds well inside the Edge
+  // Function limits (2 s CPU, 256 MB): about 0.6 s and 120 MB measured with jpeg-js.
+  photoMaxSide: 1280,
   photoQuality: 82,
   voiceBytes: 2 * 1024 * 1024,
   voiceSampleRate: 16000,
