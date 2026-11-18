@@ -82,7 +82,7 @@ STRUCTURE
 - every_week: a weekly schedule or overview ("Weekly Schedule Overview", "Each week: ...") can name sessions that recur every week but are not written out in the week sections, such as "Tue/Thu/Sat: Boxing skill work, sparring and roadwork" or "Sunday: Complete rest". Put each of those, once, in every_week (with its days), not in the weeks. An overview line that only summarises a session the week sections write out in full (e.g. "Monday: Upper Body Push/Pull" when every week has its own Monday session) is NOT repeated anywhere: leave it out. A written rest day is a session with session_type rest and no exercises. No overview: every_week is empty.
 - session_type: strength_power (lifting, plyos), conditioning (runs, intervals, circuits), skill (pads, bag, drilling, technique), sparring, recovery (mobility, stretching, easy aerobic), rest (rest days written in the programme), otherwise mixed.
 - instructions: the coach's session-level instructions or focus written for that session as a whole (e.g. "Focus: head movement, stay off the ropes"), verbatim; otherwise null.
-- date: the calendar date written for the session ("Wednesday, Nov 18"), as YYYY-MM-DD, with the year from the programme or its start date; null when no date is written.
+- date: the calendar date written for the session. As YYYY-MM-DD when the programme gives the year; when no year is written, the date exactly as written ("Wed, Nov 18"), never with a guessed year. null when no date is written.
 - A table or list that maps day labels to weekdays ("Mon (Day 1)", "Tue (Day 2)"): give each "Day N" session those weekdays in days. Rows in such a table for days with no session written out below ("Sat: Recovery / Freestyle (Optional)", "Sun: Full Rest") go in every_week.
 
 EXERCISES, in written order (warm-up and cool-down lines written as exercises stay as exercises)
@@ -246,6 +246,9 @@ class ReadPlan(BaseModel):
     every_week: list[ReadSession] = Field(default_factory=list)
     skipped: list[str] = Field(default_factory=list)
     corrections: list[ReadCorrection] = Field(default_factory=list)
+    # When the plan is imported (set by build_draft, never read from the model):
+    # a date written without a year is the one nearest this.
+    imported_on: date | None = Field(default=None, exclude=True)
 
 
 # -- API contract --
@@ -752,7 +755,7 @@ class SourceCheck:
         # recovery ("15 sec on -> 45 sec recovery") reads as a time.
         verify("rest", item.rest_seconds, "rest", seconds=True, also=("work",) if not read.roles["rest"] or item.blocks else ())
         # Repeated blocks: the repeat is written ("a second block", "x2 blocks"), never folded into rounds.
-        repeats = re.search(r"\b(?:repeat\w*|blocks?)\b", window, re.I)
+        repeats = re.search(r"\b(?:repeat\w*|blocks?)\b", re.sub(r"repeat\w*\s*\d+\s*x?\s*=\s*(?:1|one)\s+round", "", window, flags=re.I), re.I)
         if isinstance(item.blocks, int) and item.blocks > 1:
             words = {2: r"second|two|twice|2nd|double", 3: r"third|three|3rd|triple"}.get(item.blocks)
             if f"{item.blocks}" not in read.bare and not (words and re.search(rf"\b(?:{words})\b", window, re.I)):
@@ -785,7 +788,8 @@ class SourceCheck:
             problems.append(f"reps {item.reps} was written as the range {read.rep_ranges[0]}")
         # "each side" is only true if the line says so (and left out if it does).
         says_per_side = bool(PER_SIDE.search(window))
-        if item.per_side and not says_per_side:
+        # "each way" / "per direction" (neck holds) may be read either way.
+        if item.per_side and not says_per_side and not EACH_WAY.search(window):
             problems.append("per side isn't written")
         elif says_per_side and not item.per_side and (item.reps or item.seconds):
             problems.append("the line says each side")
@@ -803,6 +807,7 @@ DISTANCE = re.compile(rf"(?<![\d.])(\d+(?:\.\d+)?)\s*({DIST_UNITS})\b", re.I)
 WEIGHT = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*(kgs?|lbs?|pounds?|%)", re.I)
 RPE_AT = re.compile(r"\brpe\s*:?\s*(\d+(?:\.\d+)?)(?:\s*[-\u2013]\s*(\d+(?:\.\d+)?))?|@\s*(\d+(?:\.\d+)?)\b(?!\s*(?:kgs?|lbs?|%))", re.I)
 # "/leg" counts only after a dose ("6 reps/leg", "8 sec max speed/side"), never in a name ("Knee/Leg Raises").
+EACH_WAY = re.compile(r"\b(?:each|per|every)\s+(?:way|direction)\b|/\s*direction\b", re.I)
 PER_SIDE = re.compile(r"\b(?:each|per|every)\s+(?:side|leg|arm|hand|foot)\b|\d\s*(?:(?:reps?|secs?|seconds?|s|m|meters?|metres?|mins?|minutes?|yds?|yards?)\b[\w .]{0,20}?)?/\s*(?:side|leg|arm|hand|foot)\b|\bboth\s+(?:sides|legs|arms)\b|\balternating\b", re.I)
 REST_AFTER = re.compile(r"^\W{0,3}(?:rest|off|easy|recover\w*|walk\w*|break)\b", re.I)
 REST_BEFORE = re.compile(r"\brest\w*\W{0,3}(?:of\W{0,2})?$", re.I)
@@ -881,6 +886,7 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
     # A rest week the programme writes keeps its place wherever it is, first
     # week included, so every week keeps its date. An empty week that isn't
     # written as rest is not something the coach wrote, and is left out.
+    read = read.model_copy(update={"imported_on": start})
     read = resolve_references(read, lambda where, message: flag(where, message))
     written_weeks = [week for week in read.weeks if week.sessions or week.rest]
     every_week = read.every_week
@@ -1194,6 +1200,10 @@ def _implied_reference(item: ReadExercise) -> None:
     day = re.search(r"\bday\s*\d{1,2}\b", name, re.I)
     when = re.search(rf"\b(?:{'|'.join(MONTHS)})[a-z]*\.?\s+\d{{1,2}}\b|\b\d{{1,2}}\s+(?:{'|'.join(MONTHS)})[a-z]*\b|\d{{4}}-\d{{2}}-\d{{2}}", name, re.I)
     named = next((m.group(0) for m in (week, day, when) if m), None)
+    # "Same workout, heaviest weights on lifts": what follows the first comma is the change.
+    name, change = (re.split(r",|\.\s", name, maxsplit=1) + [""])[:2]
+    if _clean(change) and not _clean(item.notes):
+        item.notes = _clean(change)
     rest = re.sub(REFERENCE_NAME, "", name)
     rest = re.sub(r"\bas\b.*$", "", rest, flags=re.I) if named else rest
     item.refers_to_day = named or ("above" if re.search(r"\babove\b", name, re.I) else "previous week")
@@ -1202,14 +1212,17 @@ def _implied_reference(item: ReadExercise) -> None:
         item.refers_to_section = _clean(rest)
 
 
-def _year(read: ReadPlan) -> int:
+def _year(read: ReadPlan, month: int, day: int) -> int:
+    """The written year if the programme gives one; otherwise the year that puts
+    the date nearest the import (a December plan running into January)."""
     for value in [read.start_date, *[s.date for w in read.weeks for s in w.sessions]]:
         try:
             if value:
                 return date.fromisoformat(value).year
         except ValueError:
             continue
-    return date.today().year
+    anchor = read.imported_on or date.today()
+    return min((anchor.year + d for d in (-1, 0, 1)), key=lambda y: abs((date(y, month, min(day, 28)) - anchor).days))
 
 
 def _written_date(text: str | None, read: ReadPlan) -> date | None:
@@ -1224,7 +1237,8 @@ def _written_date(text: str | None, read: ReadPlan) -> date | None:
         return None
     month = MONTHS.get(match.group(1) or match.group(4))
     try:
-        return date(_year(read), month, int(match.group(2) or match.group(3))) if month else None
+        day = int(match.group(2) or match.group(3))
+        return date(_year(read, month, day), month, day) if month else None
     except ValueError:
         return None
 

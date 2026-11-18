@@ -1,0 +1,242 @@
+{
+ "name": "Boxing S&C 4 weeks",
+ "start_date": null,
+ "weeks": [
+  {
+   "repeat": 1,
+   "rest": false,
+   "sessions": [
+    {
+     "days": [
+      "Wednesday"
+     ],
+     "date": "Wed, Nov 18",
+     "name": "Lower & Rotation",
+     "session_type": "strength_power",
+     "exercises": [
+      {
+       "name": "Med Ball Rotational Toss",
+       "sets": 4,
+       "reps": 5,
+       "per_side": true
+      },
+      {
+       "name": "Trap Bar Deadlift (or Squat)",
+       "sets": 4,
+       "reps": 5
+      },
+      {
+       "name": "Bulgarian Split Squat",
+       "sets": 3,
+       "reps": 6,
+       "per_side": true
+      },
+      {
+       "name": "Broad Jumps",
+       "sets": 3,
+       "reps": 4
+      },
+      {
+       "name": "Pallof Press",
+       "sets": 3,
+       "reps": 10,
+       "per_side": true
+      }
+     ]
+    },
+    {
+     "days": [
+      "Friday"
+     ],
+     "date": "Fri, Nov 20",
+     "name": "Upper, Speed & Neck",
+     "session_type": "strength_power",
+     "exercises": [
+      {
+       "name": "Plyo Push-Ups (or Med Ball Chest Pass)",
+       "sets": 4,
+       "reps": 5
+      },
+      {
+       "name": "Weighted Pull-Ups",
+       "sets": 4,
+       "reps": 5
+      },
+      {
+       "name": "Landmine Single-Arm Press",
+       "sets": 3,
+       "reps": 6,
+       "per_side": true
+      },
+      {
+       "name": "Chest-Supported DB Row",
+       "sets": 3,
+       "reps": 8
+      },
+      {
+       "name": "4-Way Neck Iso/Harness",
+       "sets": 2,
+       "seconds": 15,
+       "per_side": true
+      },
+      {
+       "name": "Hanging Leg Raises",
+       "sets": 3,
+       "reps": 10
+      }
+     ]
+    },
+    {
+     "days": [
+      "Monday"
+     ],
+     "date": "Mon, Nov 23",
+     "name": "Conditioning (4 Rounds)",
+     "session_type": "conditioning",
+     "exercises": [
+      {
+       "name": "10s max sprint + 50s easy pace (repeat 3x = 1 round)",
+       "rounds": 4,
+       "rest_seconds": 60
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "repeat": 1,
+   "rest": false,
+   "sessions": [
+    {
+     "days": [
+      "Wednesday"
+     ],
+     "date": "Wed, Nov 25",
+     "name": "Lower & Rotation",
+     "session_type": "strength_power",
+     "exercises": [
+      {
+       "name": "Same workout as Nov 18, add 2.5–5 kg to Deadlift & Split Squats."
+      }
+     ]
+    },
+    {
+     "days": [
+      "Friday"
+     ],
+     "date": "Fri, Nov 27",
+     "name": "Upper, Speed & Neck",
+     "session_type": "strength_power",
+     "exercises": [
+      {
+       "name": "Same workout as Nov 20, add 2.5–5 kg to Pull-Ups & Landmine Press."
+      }
+     ]
+    },
+    {
+     "days": [
+      "Monday"
+     ],
+     "date": "Mon, Nov 30",
+     "name": "Conditioning (5 Rounds)",
+     "session_type": "conditioning",
+     "exercises": [
+      {
+       "name": "Same 3-min round intervals. Do 5 rounds."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "repeat": 1,
+   "rest": false,
+   "sessions": [
+    {
+     "days": [
+      "Wednesday"
+     ],
+     "date": "Wed, Dec 2",
+     "name": "Lower & Rotation",
+     "session_type": "strength_power",
+     "exercises": [
+      {
+       "name": "Same workout, heaviest weights on lifts, max speed on throws/jumps."
+      }
+     ]
+    },
+    {
+     "days": [
+      "Friday"
+     ],
+     "date": "Fri, Dec 4",
+     "name": "Upper, Speed & Neck",
+     "session_type": "strength_power",
+     "exercises": [
+      {
+       "name": "Same workout, heaviest weights on lifts, max speed on plyos."
+      }
+     ]
+    },
+    {
+     "days": [
+      "Monday"
+     ],
+     "date": "Mon, Dec 7",
+     "name": "Conditioning (6 Rounds)",
+     "session_type": "conditioning",
+     "exercises": [
+      {
+       "name": "Same 3-min round intervals. Do 6 rounds."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "repeat": 1,
+   "rest": false,
+   "sessions": [
+    {
+     "days": [
+      "Wednesday"
+     ],
+     "date": "Wed, Dec 9",
+     "name": "Lower & Rotation",
+     "session_type": "strength_power",
+     "exercises": [
+      {
+       "name": "Same exercises, cut 1 set off everything and drop weights by 15%."
+      }
+     ]
+    },
+    {
+     "days": [
+      "Friday"
+     ],
+     "date": "Fri, Dec 11",
+     "name": "Upper, Speed & Neck",
+     "session_type": "strength_power",
+     "exercises": [
+      {
+       "name": "Same exercises, cut 1 set off everything and drop weights by 15%."
+      }
+     ]
+    },
+    {
+     "days": [
+      "Monday"
+     ],
+     "date": "Mon, Dec 14",
+     "name": "Conditioning (3 Rounds)",
+     "session_type": "conditioning",
+     "exercises": [
+      {
+       "name": "Same 3-min round intervals. Do 3 sharp rounds."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

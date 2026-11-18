@@ -4,7 +4,7 @@ When a later week is written as "Same as Week 1" plus a change, only changes
 that are exact arithmetic on a dose are applied:
 
   * sets   - "Cut 1 set from every exercise", "add 2 sets", "one set fewer"
-  * rounds - "Increase volume to 5 rounds", "Peak at 6 rounds", "down to 3 rounds"
+  * rounds - "Increase volume to 5 rounds", "Peak at 6 rounds", "Do 3 sharp rounds"
 
 Everything else ("drop lift weights by 15%", "increase reps if easy") is kept
 in the notes for the person to apply. A change that names a specific exercise
@@ -26,8 +26,8 @@ _SETS_DOWN = [re.compile(rf"\b{_FEWER}\s+(?:by\s+)?{_COUNT}\s+sets?\b", re.I),
               re.compile(rf"\b{_COUNT}\s+sets?\s+(?:fewer|less)\b", re.I)]
 _SETS_UP = [re.compile(rf"\b{_MORE}\s+(?:by\s+)?{_COUNT}\s+(?:extra\s+|more\s+)?sets?\b", re.I),
             re.compile(rf"\b{_COUNT}\s+(?:extra|more)\s+sets?\b", re.I)]
-# "to 5 rounds", "at 6 rounds", "down to 3 sharp rounds": the new total is written.
-_ROUNDS_TO = re.compile(r"\b(?:to|at)\s+(\d+)\s+(?:[a-z]+\s+){0,2}rounds?\b", re.I)
+# "to 5 rounds", "at 6 rounds", "Do 3 sharp rounds": the new total is written.
+_ROUNDS_TO = re.compile(r"\b(?:to|at|do|complete|for)\s+(\d+)\s+(?:[a-z]+\s+){0,2}rounds?\b", re.I)
 
 
 def _count(word: str) -> int:
