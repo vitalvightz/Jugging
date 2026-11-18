@@ -141,7 +141,7 @@ def custom_open_plan_result(draft: dict, profile, *, training_day: str) -> dict:
                 "session_id": session_id, "session_type": session.get("session_type", "mixed"),
                 "prescription_source": "athlete",
                 "optional": True if session.get("session_type") == "recovery" else None,
-                "title": session["name"], "objective": "", "mindset_anchor": anchor,
+                "title": session["name"], "objective": (session.get("notes") or "").strip(), "mindset_anchor": anchor,
                 "execution_order": position, "blocks": blocks,
             })
         days.append({

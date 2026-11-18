@@ -740,6 +740,7 @@ export type CustomSession = {
   weekday: "Friday" | "Monday" | "Saturday" | "Sunday" | "Thursday" | "Tuesday" | "Wednesday" | null;
   scheduled_date: string | null;
   session_type: "conditioning" | "mixed" | "recovery" | "rest" | "skill" | "sparring" | "strength_power";
+  notes?: string | null;
   exercises: (CustomExercise | ManualExercise)[];
 };
 
@@ -749,6 +750,7 @@ export type CustomSessionInput = {
   weekday?: "Friday" | "Monday" | "Saturday" | "Sunday" | "Thursday" | "Tuesday" | "Wednesday" | null;
   scheduled_date?: string | null;
   session_type?: "conditioning" | "mixed" | "recovery" | "rest" | "skill" | "sparring" | "strength_power";
+  notes?: string | null;
   exercises?: (CustomExerciseInput | ManualExerciseInput)[];
 };
 
@@ -1361,6 +1363,17 @@ export type HistoryCompletionEdit = {
   notes?: string;
 };
 
+/**
+ * Something in the programme that couldn't be carried into the plan exactly.
+ *
+ * ``where`` names the session (and exercise) so the person can find it in the
+ * builder; ``message`` says what to check, quoting the coach where it helps.
+ */
+export type ImportFlag = {
+  where: string;
+  message: string;
+};
+
 export type InjuryEpisodeObservation = {
   injury_id: string;
   injury_episode_id: string;
@@ -1628,6 +1641,16 @@ export type MorningCheckIn = {
   pain: number;
   location: string | null;
   injury_specific: Record<string, unknown> | null;
+};
+
+/**
+ * A session the coach gave no day. The person picks the day before the draft
+ * opens; until then its sessions sit on their week's Monday as a placeholder
+ * (a dated plan needs a date) or have no weekday (a weekly plan).
+ */
+export type NeedsDay = {
+  where: string;
+  session_ids: string[];
 };
 
 /**
@@ -2019,6 +2042,22 @@ export type PlanDetail = {
   schedule_context: PlanScheduleContext | null;
   profile_refresh_failed: boolean;
   rehab_label_policy: RehabLabelPolicy;
+};
+
+export type PlanImportRequest = {
+  text?: string;
+  images?: string[];
+  file_name?: string | null;
+  start_date: string;
+};
+
+export type PlanImportResult = {
+  plan: Record<string, unknown>;
+  weeks: number;
+  sessions: number;
+  exercises: number;
+  flags: ImportFlag[];
+  needs_day: NeedsDay[];
 };
 
 /** Top-level plan metadata (Section B). */

@@ -1,0 +1,13 @@
+{"name": "", "start_date": null, "skipped": [], "weeks": [{"repeat": 1, "sessions": [
+ {"day": "Monday", "name": "Pads", "session_type": "skill", "instructions": null, "exercises": [
+  {"name": "Pads", "sets": null, "reps": null, "seconds": null, "rounds": 5, "work_seconds": 180, "rest_seconds": 60, "distance": null, "distance_unit": null, "per_side": null, "load": null, "rpe": null, "prescription": null, "equipment": null, "cues": ["keep hands up!!"], "stop_rules": [], "notes": null}]},
+ {"day": "Tuesday", "name": "Run", "session_type": "conditioning", "instructions": null, "exercises": [
+  {"name": "Run", "sets": null, "reps": null, "seconds": null, "rounds": null, "work_seconds": null, "rest_seconds": null, "distance": 8, "distance_unit": "km", "per_side": null, "load": "steady", "rpe": null, "prescription": null, "equipment": null, "cues": [], "stop_rules": [], "notes": null}]},
+ {"day": "Thursday", "name": "Gym", "session_type": "strength_power", "instructions": null, "exercises": [
+  {"name": "Squats", "sets": 3, "reps": 5, "seconds": null, "rounds": null, "work_seconds": null, "rest_seconds": null, "distance": null, "distance_unit": null, "per_side": null, "load": "100", "rpe": null, "prescription": null, "equipment": null, "cues": [], "stop_rules": [], "notes": null},
+  {"name": "Pull ups", "sets": 3, "reps": 8, "seconds": null, "rounds": null, "work_seconds": null, "rest_seconds": null, "distance": null, "distance_unit": null, "per_side": null, "load": null, "rpe": null, "prescription": null, "equipment": null, "cues": [], "stop_rules": [], "notes": null},
+  {"name": "Plank", "sets": 3, "reps": null, "seconds": 45, "rounds": null, "work_seconds": null, "rest_seconds": null, "distance": null, "distance_unit": null, "per_side": null, "load": null, "rpe": null, "prescription": null, "equipment": null, "cues": [], "stop_rules": [], "notes": null}]},
+ {"day": "Friday", "name": "Sparring", "session_type": "sparring", "instructions": null, "exercises": [
+  {"name": "Sparring", "sets": null, "reps": null, "seconds": null, "rounds": 4, "work_seconds": null, "rest_seconds": null, "distance": null, "distance_unit": null, "per_side": null, "load": "light", "rpe": null, "prescription": null, "equipment": null, "cues": [], "stop_rules": [], "notes": null}]},
+ {"day": "Sunday", "name": "Off", "session_type": "rest", "instructions": null, "exercises": []}
+]}]}

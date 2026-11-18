@@ -124,6 +124,9 @@ class CustomSessionInput(DraftModel):
     weekday: Weekday | None = None
     scheduled_date: date | None = None
     session_type: Literal["mixed", "strength_power", "conditioning", "skill", "sparring", "recovery", "rest"] = "mixed"
+    # The coach's note for the whole session, shown with it on Today. Older
+    # saved sessions have none, so responses may leave it out.
+    notes: str | None = Field(None, max_length=2000, json_schema_extra={"x-response-optional": True})
     exercises: list[ExerciseInput] = Field(default_factory=list, max_length=100)
 
     @model_validator(mode="before")

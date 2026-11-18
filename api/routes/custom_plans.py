@@ -5,6 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 
 from api.contracts.custom_plans import CustomDoseSuggestion, CustomPlan, CustomPlanInput, CoachPlan
 from api.services.custom_plans import plan_fields, publish_custom_plan, source_suggestion
+from api.services.plan_import import PlanImportRequest, PlanImportResult
 from api.models import PlanSummary
 from api.routes.plans import PlanActivationRequest, reconcile_plan_activation
 from api.plan_mappers import _map_plan_summary
@@ -67,6 +68,13 @@ def build_custom_plans_router(*, require_profile, get_store):
                                       fighter_name=profile.full_name, accepted=True)
         return _map_plan_summary(plan)
 
+    @router.post("/import", response_model=PlanImportResult)
+    def import_custom_plan(body: PlanImportRequest, profile=Depends(require_profile)):
+        """Read the text of a plan file into a draft. Nothing is saved: the draft
+        opens in the builder, and only a save there stores it."""
+        from api.services import plan_import
+        return plan_import.import_plan(str(profile.athlete_id), body, reader=plan_import.get_plan_reader())
+
     @router.get("/source-suggestion", response_model=CustomDoseSuggestion)
     def suggest(catalogue_id: str, profile=Depends(require_profile)):
         from api.contracts.custom_plans import CustomDose
@@ -89,7 +97,7 @@ def build_custom_plans_router(*, require_profile, get_store):
         body = CustomPlanInput.model_validate({
             **{k: row.get(k) for k in ("schedule_mode", "start_date", "end_date") if row.get(k) is not None},
             "name": row["name"], "sessions": [
-                {**{k: s[k] for k in ("id", "name", "weekday")}, "scheduled_date": s.get("scheduled_date"), "session_type": s.get("session_type", "mixed"),
+                {**{k: s[k] for k in ("id", "name", "weekday")}, "scheduled_date": s.get("scheduled_date"), "session_type": s.get("session_type", "mixed"), "notes": s.get("notes"),
                  "exercises": [{k: v for k, v in e.items() if k not in {"snapshot", "incomplete"}}
                                for e in s["exercises"]]} for s in row["sessions"]
             ],

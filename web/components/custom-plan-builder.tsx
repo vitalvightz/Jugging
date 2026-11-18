@@ -17,9 +17,11 @@ import { ExerciseMediaProvider } from "./exercise-demo";
 import { customSchedulePrefill, customScheduleIssues, prepareCustomSession, customPlanError, sessionNames } from "@/lib/custom-plan-schedule";
 import type {
   CommunityEntry,
+  CustomDose,
   CustomDoseSuggestion,
   CustomExercise,
   CustomSession,
+  CustomPlanInput,
   LibraryEntry,
   LibraryPreview,
   ManualExercise,
@@ -35,6 +37,7 @@ import { blankDose, doseSummary, doseIncomplete, libraryPrefill } from "@/lib/cu
 import { CustomExercisePicker } from "./custom-exercise-picker";
 import styles from "./custom-plan-builder.module.css";
 import { useFadeNavigate } from "@/components/fade-through";
+import { ImportFlags, type ImportedPlan } from "./plan-import";
 type Exercise = (Omit<CustomExercise, "snapshot"> & { snapshot: LibraryEntry }) | ManualExercise;
 type Session = Omit<CustomSession, "exercises" | "session_type"> & { exercises: Exercise[]; session_type?: CustomSession["session_type"] };
 type Draft = { id?: string; name: string; sessions: Session[]; incomplete?: boolean; schedule_mode?: "weekly" | "dated"; start_date?: string | null; end_date?: string | null };
@@ -60,6 +63,15 @@ const SESSION_TYPES: Array<[CustomSession["session_type"], string]> = [
   ["mixed", "Workout"], ["strength_power", "Strength / power"], ["conditioning", "Conditioning"],
   ["skill", "Light technical / skill"], ["sparring", "Hard sparring"], ["recovery", "Recovery"], ["rest", "Off / Rest"],
 ];
+/** A draft read from a plan file: every exercise is as written (manual), nothing saved yet.
+ * A dose the coach left open is marked unfinished, the same as one added by hand. */
+function importedPlanDraft(plan: CustomPlanInput): Draft {
+  return orderedDraft({ ...plan, sessions: (plan.sessions ?? []).map(session => ({
+    ...session, scheduled_date: session.scheduled_date ?? null,
+    weekday: session.weekday ?? (session.scheduled_date ? calendarWeekday(session.scheduled_date) as Session["weekday"] : null),
+    exercises: (session.exercises ?? []).map(exercise => ({ ...exercise, incomplete: !exercise.dose || doseIncomplete(exercise.dose as CustomDose) }) as Exercise),
+  })) });
+}
 function orderedDraft(draft: Draft): Draft {
   const day = (session: Session) => session.weekday ? weekdays.indexOf(session.weekday) : 7;
   return { ...draft, sessions: [...draft.sessions].sort((a, b) => (a.scheduled_date ?? "").localeCompare(b.scheduled_date ?? "") || day(a) - day(b)) };
@@ -116,7 +128,7 @@ function PencilIcon() {
     </svg>
   );
 }
-export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessionDate, onboarding = null, coachFighterId, onCoachClose, initialPlan, athleteTimezone, fightDate }: { fightDate?: string | null; athleteTimezone?: string; initialPlan?: CustomPlan; onCoachClose?: () => void; coachFighterId?: string; accessToken: string; planId?: string; addSessionDay?: string | null; addSessionDate?: string | null; onboarding?: MeResponse | null }) {
+export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessionDate, onboarding = null, coachFighterId, onCoachClose, initialPlan, importedDraft, athleteTimezone, fightDate }: { importedDraft?: ImportedPlan; fightDate?: string | null; athleteTimezone?: string; initialPlan?: CustomPlan; onCoachClose?: () => void; coachFighterId?: string; accessToken: string; planId?: string; addSessionDay?: string | null; addSessionDate?: string | null; onboarding?: MeResponse | null }) {
   const router = useRouter();
   const requestId = useRef(crypto.randomUUID());
   const savedPlansHref = coachFighterId ? "/coach/plans" : "/plans#custom-plans";
@@ -127,6 +139,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   const fadeNavigate = useFadeNavigate();
   const [draft, setDraft] = useState<Draft>(() => {
     if (initialPlan) return orderedDraft({ ...initialPlan, id: undefined, name: `${initialPlan.name} revision`.slice(0, 100) });
+    if (importedDraft) return importedPlanDraft(importedDraft.plan);
     const start = nextCalendarMonday(athleteTimezone ?? onboarding?.profile.athlete_timezone ?? 'UTC');
     return { name: "My Training Plan", schedule_mode: 'dated', start_date: start, end_date: addCalendarDays(start, 27),
       sessions: planId ? [] : datedCopy(customSchedulePrefill(onboarding), start, addCalendarDays(start, 27)) };
@@ -140,7 +153,8 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   const [loading, setLoading] = useState(!!planId),
     [retry, setRetry] = useState(0),
     [pending, setPending] = useState(false),
-    [dirty, setDirty] = useState(false);
+    // An imported plan is unsaved until it is saved here.
+    [dirty, setDirty] = useState(!!importedDraft);
   const [opened, setOpened] = useState(!planId);
   const [chosenDay, setChosenDay] = useState<Weekday>();
   // The add sheet remembers what it added this visit, so their doses can be set right there.
@@ -190,7 +204,10 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   const touched = useRef(new Set<string>());
   const latest = useRef(draft);
   const undoStack = useRef<Draft[]>([]), redoStack = useRef<Draft[]>([]);
-  const savedSnapshot = useRef(JSON.stringify(draft));
+  const savedSnapshot = useRef(importedDraft ? "" : JSON.stringify(draft));
+  const [checkedFlags, setCheckedFlags] = useState<number[]>([]);
+  const flagsLeft = importedDraft && !draft.id ? importedDraft.flags.length - checkedFlags.length : 0;
+  const importNoteRef = useRef<HTMLDivElement>(null);
   const [historyVersion, setHistoryVersion] = useState(0);
   useEffect(() => { latest.current = draft; });
   // Read only once an exercise is open, for last time's weight.
@@ -588,6 +605,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
           </div>
         </div>
         <div className="sp-session-meta"><span className="sp-tag">{sessionNames[s.session_type ?? "mixed"]}</span></div>
+        {s.notes?.trim() ? <p className={styles.sessionNotes}>{s.notes}</p> : null}
         {s.session_type !== "rest" ? <PrivateExerciseMediaProvider token={accessToken}>
           <ExerciseMediaProvider media={Object.fromEntries(s.exercises.flatMap(e => e.origin === "catalogue" && e.snapshot.media && e.snapshot.exercise_key
             ? [[`exercise:${e.snapshot.exercise_key}`, e.snapshot.media]] : []))}>
@@ -651,6 +669,13 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   }
   async function save(viewPlan = false) {
     if (!draftValid || (viewPlan && !publishable)) return;
+    // An imported plan keeps its "things to check" until each is ticked as fixed or checked.
+    if (flagsLeft) {
+      setError(`Tick the ${flagsLeft === 1 ? "last thing" : `${flagsLeft} things`} to check above before saving.`);
+      importNoteRef.current?.querySelector("details")?.setAttribute("open", "");
+      importNoteRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+      return;
+    }
     setPending(true);
     setError(undefined);
     try {
@@ -746,6 +771,11 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
           {error}
         </p>
       ) : null}
+      {importedDraft && !draft.id ? <div className={styles.importNote} ref={importNoteRef}>
+        <p role="status">Imported from {importedDraft.name}. {importedDraft.flags.length ? "Tick each thing to check once it's fixed or checked, then save." : "Check each session, then save."}</p>
+        {importedDraft.flags.length ? <ImportFlags flags={importedDraft.flags} open checked={checkedFlags}
+          onCheck={(index, done) => { setCheckedFlags(current => done ? [...current, index] : current.filter(at => at !== index)); setError(undefined); }} /> : null}
+      </div> : null}
       {message ? (
         <p role="status">
           {message} {onCoachClose ? <button type="button" className="ghost-button" onClick={() => void closeCoach()}>View saved plans</button> : <Link href={savedPlansHref}>View saved plans</Link>}
@@ -924,6 +954,16 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
               </select>
             </label>
             </>}
+            <label className={styles.wideField}>
+              <span>Session notes <span className="muted">(optional)</span></span>
+              <textarea
+                rows={3}
+                maxLength={2000}
+                value={sessionEdit.notes ?? ""}
+                placeholder="Focus or instructions for the whole session"
+                onChange={(e) => setSessionEdit({ ...sessionEdit, notes: e.target.value || null })}
+              />
+            </label>
             <button className="cta" disabled={!sessionEdit.weekday}>{sessionFresh ? "Add session" : "Done"}</button>
             {sessionFresh ? null : <button
               type="button"

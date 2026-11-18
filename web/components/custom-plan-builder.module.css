@@ -318,7 +318,7 @@
   .editorPanel > :global(.injury-sheet-header) { position: sticky; top: 0; z-index: 2; padding: 20px 28px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-panel); }
   .editorPanel .sheet { padding: 24px 28px 28px; gap: 24px; }
   .sessionSheet { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .sessionSheet > .typeField { grid-column: 1 / -1; }
+  .sessionSheet > .typeField, .sessionSheet > .wideField { grid-column: 1 / -1; }
   .exerciseEditor { grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); align-items: start; }
   .exercisePrescription { border-left: 1px solid var(--border-subtle); padding-left: 24px; }
   .exerciseEditor > .editorActions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: flex-end; padding-top: 20px; border-top: 1px solid var(--border-subtle); }
@@ -503,3 +503,8 @@
 .datedCalendar[data-readonly="true"] .selectedDaySessions { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
 .datedCalendar[data-readonly="true"] .selectedDaySessions li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 10px; border-left: 3px solid var(--session-colour); border-radius: 6px; background: var(--bg-input); font-size: 12px; font-weight: 550; }
 .datedCalendar[data-readonly="true"] .selectedDaySessions small { color: var(--text-secondary); font-size: 11px; font-weight: 400; }
+
+/* An imported plan: the note and what to check, above the sessions. */
+.importNote { display: grid; gap: 8px; min-width: 0; }
+.importNote > p { margin: 0; }
+.sessionNotes { margin: 6px 0 0; color: var(--text-secondary); font-size: 14px; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }

@@ -27,7 +27,7 @@ export function fitWithin(width: number, height: number, maxSide = PHOTO_MAX_SID
 }
 
 /** Re-draws a photo into a fresh JPEG (camera rotation applied, metadata dropped). */
-export async function preparePhoto(file: Blob): Promise<Blob> {
+export async function preparePhoto(file: Blob, { maxSide = PHOTO_MAX_SIDE, quality = PHOTO_QUALITY } = {}): Promise<Blob> {
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
@@ -35,7 +35,7 @@ export async function preparePhoto(file: Blob): Promise<Blob> {
     throw new Error("This photo can't be opened here. Try a JPG or PNG.");
   }
   try {
-    const size = fitWithin(bitmap.width, bitmap.height);
+    const size = fitWithin(bitmap.width, bitmap.height, maxSide);
     const canvas = document.createElement("canvas");
     canvas.width = size.width;
     canvas.height = size.height;
@@ -44,7 +44,7 @@ export async function preparePhoto(file: Blob): Promise<Blob> {
     context.fillStyle = "#fff";
     context.fillRect(0, 0, size.width, size.height);
     context.drawImage(bitmap, 0, 0, size.width, size.height);
-    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/jpeg", PHOTO_QUALITY));
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/jpeg", quality));
     if (!blob) throw new Error("This photo can't be opened here. Try a JPG or PNG.");
     return blob;
   } finally {

@@ -596,6 +596,8 @@
 .planCardActions > button:hover, .planCardActions > a:hover { border-color: #656a74; background: #24272c; }
 .newPlanAction { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 48px; padding: 12px; border: 1px solid #69303d; border-radius: 11px; background: #29161c; color: #f5e8ed; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 .newPlanAction:hover { background: #371c24; border-color: #974357; }
+.importPlanAction { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 48px; margin-top: 8px; padding: 12px; border: 1px solid var(--border-default); border-radius: 11px; background: none; color: var(--text-primary); font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.importPlanAction:hover { border-color: var(--border-strong); }
 .planEmpty { padding: 24px 20px; border: 1px dashed #35383f; border-radius: 16px; }
 .planEmpty p { margin-bottom: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
 @media (min-width: 760px) {
@@ -612,7 +614,7 @@
 .plansWorkspace { max-width: none; }
 .plansPageHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .plansPageHeader p { margin: 7px 0 0; color: var(--text-secondary); font-size: 12px; }
-.desktopPlanText, .desktopCreatePlan, .planCalendarIcon { display: none; }
+.desktopPlanText, .desktopCreatePlan, .desktopImportPlan, .planCalendarIcon { display: none; }
 .planCardActions > .desktopScheduleAction { display: none; }
 .planFilters { display: none; gap: 10px; flex-wrap: wrap; }
 .multiplePlanFilters { display: flex; }
@@ -629,7 +631,9 @@
   .plansSelectorRow .fighterSelector select { min-height: 44px; background: #15171c; }
   .desktopCreatePlan { display: flex; align-items: center; justify-content: center; gap: 10px; flex: 0 0 210px; min-height: 50px; padding: 14px 22px; border: 1px solid #cf1235; border-radius: 11px; background: #ca1032; color: #fff; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
   .desktopCreatePlan:hover { background: #dc1840; }
-  .newPlanAction { display: none; }
+  .newPlanAction, .importPlanAction { display: none; }
+  .desktopImportPlan { display: flex; align-items: center; justify-content: center; flex: 0 0 auto; min-height: 50px; padding: 14px 22px; border: 1px solid var(--border-strong); border-radius: 11px; background: none; color: var(--text-primary); font: inherit; font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+  .desktopImportPlan:hover { border-color: var(--text-secondary); }
   .planFilters { display: flex; }
   .coachPlanCard { padding: 24px; background: #0e1012; }
   .planCardHeader { align-items: center; gap: 16px; }

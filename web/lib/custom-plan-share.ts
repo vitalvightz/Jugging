@@ -16,6 +16,7 @@ export function customPlanInput(plan: PlanLike, fresh = false): CustomPlanInput 
       name: s.name,
       weekday: s.weekday, scheduled_date: s.scheduled_date ?? null,
       session_type: s.session_type ?? "mixed",
+      notes: s.notes?.trim() || null,
       exercises: s.exercises.map(e => e.origin === "manual"
         ? {
             id: id(e.id), origin: e.origin, name: e.name, equipment: e.equipment, exercise_type: e.exercise_type, notes: e.notes,

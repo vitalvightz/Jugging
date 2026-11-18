@@ -15,6 +15,7 @@ const OPTIONS = [
   { href: "/quick-build", title: "Quick Build", body: "A personalised programme in minutes." },
   { href: "/onboarding", title: "Full Camp Setup", body: "A detailed programme around your fight and schedule." },
   { href: "/plans/custom", title: "Build Your Own", body: "Create a programme or add the one you already follow." },
+  { href: "/plans/import", title: "Import Your Plan", body: "Turn a PDF, Word file, screenshot or pasted plan into sessions you can edit." },
 ] as const;
 
 export default function CreatePage() {

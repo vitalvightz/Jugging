@@ -11,7 +11,7 @@ import type { ExternalTrainingFields, TrainingHistoryPage, TrainingHistorySessio
 import type { CoachPlannedSession, CoachFighterWeight, SessionDetails, ExerciseLibraryResponse, ExercisePerformancesResponse } from "@/lib/api-schema.generated";
 import type { ManualExerciseEntry, ManualExerciseListResponse, PerformedExerciseInput } from "@/lib/api-schema.generated";
 import type { LibraryFeaturedResponse, LibraryPreview, LibrarySearchResponse } from "@/lib/api-schema.generated";
-import type { CustomDoseSuggestion, CustomPlan, CustomPlanInput, CoachPlan } from "@/lib/api-schema.generated";
+import type { CustomDoseSuggestion, CustomPlan, CustomPlanInput, CoachPlan, PlanImportResult as PlanImportResponse } from "@/lib/api-schema.generated";
 import type { AttachmentSettings, FighterMedia, FileUploadPermission, FileUploadResult, PrivateMediaPreview, PrivateMediaSettings, TrainingAttachment, TrainingAttachmentInput, UploadPermission, UploadState, YouTubeClipInput } from "@/lib/api-schema.generated";
 import type {
   ApproveAndResumeGenerationRequest,
@@ -201,6 +201,14 @@ export function saveCustomPlan(token: string, body: CustomPlanInput, id?: string
   return readJson<CustomPlan>(path, {
     token, method: id ? "PUT" : "POST", body: JSON.stringify(body),
   });
+}
+
+/** The server sends the draft as a validated CustomPlanInput. */
+export type PlanImportResult = Omit<PlanImportResponse, "plan"> & { plan: CustomPlanInput };
+
+/** Reads the text of a plan file into a draft for the builder. Nothing is saved. */
+export function importPlanText(token: string, body: { text: string; images?: string[]; file_name: string; start_date: string }, signal?: AbortSignal) {
+  return readJson<PlanImportResult>("/api/custom-plans/import", { token, method: "POST", body: JSON.stringify(body), signal });
 }
 
 export function deleteCustomPlan(token: string, id: string) {
