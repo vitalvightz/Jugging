@@ -36,6 +36,7 @@ import { PrivateExerciseMediaProvider, PrivateExerciseVideo, PrivateExerciseVide
 import { blankDose, doseSummary, doseIncomplete, exerciseIncomplete, libraryPrefill } from "@/lib/custom-plan-dose";
 import { CustomExercisePicker } from "./custom-exercise-picker";
 import styles from "./custom-plan-builder.module.css";
+import { sessionActivity } from "@/lib/session-activity";
 import { useFadeNavigate } from "@/components/fade-through";
 import { ImportFlags, type ImportedPlan } from "./plan-import";
 import type { ImportFlag } from "@/lib/api-schema.generated";
@@ -85,7 +86,9 @@ function draftBlock(exercise: Exercise, session: Session): StructuredBlock {
   const snapshot = exercise.origin === "catalogue" ? exercise.snapshot : null;
   const type = snapshot?.content_type ?? (exercise.origin === "manual"
     ? ({ strength: "strength", bodyweight: "strength", power: "power", other: "" }[exercise.exercise_type ?? "other"]) : undefined);
-  const blockType = exercise.block_type ?? ({ conditioning: "conditioning", skill: "skill", strength: "strength", power: "plyometric_power", speed: "speed" } as Record<string, string>)[type ?? ""]
+  const activity = sessionActivity(nameOf(exercise));
+  const activityType = activity === "Roadwork" ? "conditioning" : activity === "Sparring" ? "sparring" : activity ? "skill" : null;
+  const blockType = activityType ?? exercise.block_type ?? ({ conditioning: "conditioning", skill: "skill", strength: "strength", power: "plyometric_power", speed: "speed" } as Record<string, string>)[type ?? ""]
     ?? ({ strength_power: "strength", conditioning: "conditioning", skill: "skill", sparring: "sparring", recovery: "cooldown_recovery" } as Record<string, string>)[session.session_type ?? "mixed"]
     ?? "accessory";
   const weight = dose.load_or_intensity?.trim().match(/^(\d+(?:\.\d+)?)\s*(kg|lb|lbs)$/i);

@@ -31,7 +31,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field, PrivateAttr, ValidationError
 
 from api.contracts.custom_plans import WEEKDAYS, CustomDose, CustomExerciseSnapshot, CustomPlanInput
-from api.services.custom_plans import dose_optional
+from api.services.custom_plans import activity_block_type, dose_optional, session_activity
 from api.services.plan_import_check import TIME, SourceCheck, written_layout_flags
 from api.services.plan_import_match import LibraryMatcher, linked
 from api.services.plan_import_patch import PATCH_INSTRUCTIONS, apply_patch, patch_schema
@@ -233,7 +233,7 @@ def _with_read_values(prescription: str | None, item: ReadExercise) -> str | Non
     "8-10" becomes "4 × 8-10", never just "8-10" with the sets lost."""
     if not prescription:
         return prescription
-    if item.sets and re.match(r"^\s*\d+(?:\.\d+)?\s*[-\u2013]\s*\d", prescription) and not re.search(r"\d\s*[x\u00d7*]\s*\d", prescription, re.I):
+    if item.sets and re.match(r"^\s*\d+(?:\.\d+)?\s*[-\u2010-\u2015\u2212]\s*\d", prescription) and not re.search(r"\d\s*[x\u00d7*]\s*\d", prescription, re.I):
         return f"{_number(item.sets)} \u00d7 {prescription}"[:500]
     read_numbers = [n for n in _numbers(_written_dose(item))]
     missing = [n for n in read_numbers if n not in _numbers(prescription)]
@@ -318,7 +318,7 @@ def _exercise(item: ReadExercise, flag) -> dict | None:
     if section and (TIME.search(section) or dose_optional(section)) and not re.search(r"\brounds?\b", section, re.I) \
             and not _written_dose(item) and not _clean(item.prescription):
         item = item.model_copy(update={"prescription": f"Within {section}"[:500]})
-    dose = dose_from(item, (lambda message: None) if dose_optional(full_name) and not _written_dose(item) else flag)
+    dose = dose_from(item, (lambda message: None) if session_activity(full_name) or (dose_optional(full_name) and not _written_dose(item)) else flag)
     cues, extra_cues = _lines(item.cues)
     stops, extra_stops = _lines(item.stop_rules)
     equipment = _clean(item.equipment)
@@ -358,7 +358,7 @@ def _exercise(item: ReadExercise, flag) -> dict | None:
     if text and len(text) > 2000:
         flag("Notes were longer than 2,000 characters and were shortened.")
         text = text[:2000]
-    return {"id": str(uuid4()), "origin": "manual", "block_type": EXERCISE_KINDS.get(item.kind or ""), "name": name, "equipment": equipment, "notes": text,
+    return {"id": str(uuid4()), "origin": "manual", "block_type": activity_block_type(full_name) or EXERCISE_KINDS.get(item.kind or ""), "name": name, "equipment": equipment, "notes": text,
             "coaching_cues": cues, "stop_rules": stops, "dose": dose.model_dump(exclude_none=True)}
 
 

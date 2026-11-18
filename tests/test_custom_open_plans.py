@@ -114,6 +114,22 @@ def test_publication_validates_exact_doses_and_uses_shared_detail(api):
     assert len(detail["outputs"]["structured_plan"]["weeks"]) == 4
 
 
+def test_session_activities_publish_without_doses_and_keep_their_kinds(api):
+    client, store = api
+    prescription = body()
+    names = ["Boxing session", "Technical/pads session", "Light technical", "Sparring", "Roadwork"]
+    prescription["sessions"] = [{
+        "id": str(uuid4()), "name": "Roadwork + Boxing", "weekday": "Monday", "session_type": "mixed",
+        "exercises": [{"id": str(uuid4()), "origin": "manual", "name": name, "dose": {"mode": "reps"}}
+                      for name in names],
+    }]
+    draft, plan_id = publish(client, prescription)
+    assert not draft["incomplete"]
+    blocks = store.plans[plan_id]["structured_plan"]["weeks"][0]["days"][0]["sessions"][0]["blocks"]
+    assert [b["block_type"] for b in blocks] == ["skill", "skill", "skill", "sparring", "conditioning"]
+    assert [b["display_name"] for b in blocks] == names
+
+
 def test_publishing_first_custom_plan_activates_it_via_route(api):
     client, store = api
 

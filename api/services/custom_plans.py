@@ -33,7 +33,28 @@ DOSE_OPTIONAL = re.compile(
 
 
 def dose_optional(name) -> bool:
-    return bool(DOSE_OPTIONAL.search(str(name or "")))
+    return bool(DOSE_OPTIONAL.search(str(name or ""))) or session_activity(name) is not None
+
+
+def session_activity(name) -> str | None:
+    """Keep in sync with web/lib/session-activity.ts; never inherit a session name."""
+    text = str(name or "")
+    for pattern, label in (
+        (r"\b(?:light[\s/-]+technical|technical[\s/-]+(?:sparring|rounds)|light[\s/-]+sparring|skill\s+session)\b", "Light technical"),
+        (r"\b(?:pads?|pad[\s-]*work|mitts?)\b", "Pads"),
+        (r"\bsparring\b", "Sparring"),
+        (r"\b(?:boxing|box[\s-]*ing|bag[\s-]+work|shadow[\s-]*boxing)\b", "Boxing"),
+        (r"\b(?:road[\s-]*work|easy\s+run)\b", "Roadwork"),
+        (r"\btechnical\s+(?:session|work|drills?)\b", "Light technical"),
+    ):
+        if re.search(pattern, text, re.I):
+            return label
+    return None
+
+
+def activity_block_type(name) -> str | None:
+    label = session_activity(name)
+    return "conditioning" if label == "Roadwork" else "sparring" if label == "Sparring" else "skill" if label else None
 
 
 def exercise_name(exercise: dict) -> str:
@@ -51,6 +72,8 @@ def exercise_incomplete(exercise: dict) -> bool:
     needs none, but only while nothing is written: a started dose ("3 sets") is
     checked like any other."""
     dose = exercise["dose"]
+    if session_activity(exercise_name(exercise)):
+        return False
     if dose_optional(exercise_name(exercise)) and dose_blank(dose):
         return False
     return dose_incomplete(dose)
@@ -129,7 +152,7 @@ def custom_open_plan_result(draft: dict, profile, *, training_day: str) -> dict:
                 content_type = snapshot.get("content_type") or {
                     "strength": "strength", "bodyweight": "strength", "power": "power",
                 }.get(exercise.get("exercise_type"))
-                block_type = exercise.get("block_type") or {"conditioning": "conditioning", "skill": "skill",
+                block_type = activity_block_type(exercise_name(exercise)) or exercise.get("block_type") or {"conditioning": "conditioning", "skill": "skill",
                               "strength": "strength", "power": "plyometric_power",
                               "speed": "speed"}.get(content_type) or {
                                   "strength_power": "strength", "conditioning": "conditioning",

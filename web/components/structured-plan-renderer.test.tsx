@@ -15,6 +15,14 @@ import {
 } from "./structured-plan-renderer";
 import { openBlockWeekIntent } from "@/lib/open-block";
 import { formatPlanLabel } from "@/lib/plan-labels";
+
+test("session activities show their actual label on exercise rows", () => {
+  for (const [display_name, label] of [["Boxing session", "Boxing"], ["Technical/pads session", "Pads"],
+    ["Light technical", "Light technical"], ["Sparring", "Sparring"], ["Roadwork", "Roadwork"]]) {
+    const html = renderToStaticMarkup(<ExerciseRow open={false} onToggle={() => {}} block={{ display_name, block_type: "accessory" }} />);
+    assert.match(html, new RegExp(`>${label}<`));
+  }
+});
 import type {
   PlanScheduleContext,
   RehabLabelPolicy,

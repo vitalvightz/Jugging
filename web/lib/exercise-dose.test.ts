@@ -59,7 +59,9 @@ test("switching format only saves fields for the selected format", () => {
 test("warm-ups, cooldowns, stretching and mobility never need a dose", () => {
   for (const name of ["Cooldown", "Warm-up", "warm up", "Warm down", "Cool-down jog", "Stretching", "Hip mobility", "Foam rolling", "Breathwork", "Yoga flow"])
     assert.equal(doseOptional(name), true, name);
-  for (const name of ["Back squat", "Pad rounds", "Sled push", "Hard sparring", "Easy run"])
+  for (const name of ["Pad rounds", "Hard sparring", "Easy run"])
+    assert.equal(doseOptional(name), true, name);
+  for (const name of ["Back squat", "Sled push"])
     assert.equal(doseOptional(name), false, name);
   // No dose is complete for them; for anything else it is still to finish.
   assert.equal(exerciseIncomplete({ name: "Cooldown", dose: blankDose("reps") }), false);

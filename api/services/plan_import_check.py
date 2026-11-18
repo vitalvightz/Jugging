@@ -114,12 +114,19 @@ class SourceCheck:
         if window is None:
             flag("Couldn't find its line to check the numbers. Check the dose.")
             return
+        # Typography must not change the meaning of a written range.
+        window = _range_dashes(window)
+        # A bare m is also used for metres. Read it as minutes only when the
+        # reading carries a time, without a distance; distance checks keep m.
+        if item.distance is None and (any(v is not None for v in (item.seconds, item.work_seconds, item.rest_seconds))
+                                      or TIME.search(item.prescription or "")):
+            window = re.sub(r"(\d)\s*m\b", r"\1 min", window, flags=re.I)
         # A circuit's rounds are written on its heading, not on each exercise's line.
         group = _clean(item.group)
         read = read_dose_line(f"{window} ({group})" if group else window)
         problems: list[str] = []
         # A rep range read without its sets ("8-10" from "Push-ups 4x8-10"): the sets are on the line.
-        written_range = re.match(r"^\s*(\d+\s*[-\u2013]\s*\d+)\b", item.prescription or "")
+        written_range = re.match(r"^\s*(\d+\s*[-\u2013]\s*\d+)\b", _range_dashes(item.prescription or ""))
         if item.sets is None and written_range:
             pair = re.search(rf"(\d+)\s*[x\u00d7*]\s*{re.escape(written_range.group(1))}", window, re.I)
             if pair:
@@ -205,9 +212,12 @@ class SourceCheck:
         for number, unit in WEIGHT.findall((item.load or "").replace(",", ".")):
             if (float(number), _weight_unit(unit)) not in read.weights:
                 problems.append(f"load {number}{unit} isn't written")
-        loose = [n for n in _numbers(" ".join(filter(None, [re.sub(WEIGHT, "", (item.load or "")), item.prescription])))]
+        prescription = item.prescription
+        if item.distance is None and TIME.search(window):
+            prescription = re.sub(r"(\d)\s*m\b", r"\1 min", prescription or "", flags=re.I)
+        loose = _dose_numbers(" ".join(filter(None, [re.sub(WEIGHT, "", (item.load or "")), prescription])))
         # Text doses ("4 × 8-10", "30-40 min") only have to be written on the line, in any role.
-        on_line = {f"{float(n.replace(',', '.')):g}" for n in _numbers(window)}
+        on_line = {f"{float(n.replace(',', '.')):g}" for n in _dose_numbers(window)}
         problems += [f"{n} isn't written" for n in loose if f"{float(n.replace(',', '.')):g}" not in on_line]
         # A single reps number read out of a written range collapses what the coach wrote.
         if isinstance(item.reps, int) and read.rep_ranges:
@@ -232,6 +242,26 @@ DIST_UNITS = r"(?:kms?|k|miles?|mi|metres?|meters?|m|yards?|yds?)"
 DOSE_PAIR = re.compile(r"\d\s*(?:x|\u00d7|\*)\s*\d", re.I)
 AXB = re.compile(rf"(?<![\d.])(\d+)\s*(?:x|\u00d7|\*)\s*(\d+(?:\.\d+)?)(?:\s*[-\u2013]\s*(\d+(?:\.\d+)?))?\s*(?:({TIME_UNITS})\b|({DIST_UNITS})\b)?", re.I)
 TIME = re.compile(rf"(?<![\d.])(\d+(?:\.\d+)?)(?:\s*[-\u2013]\s*(\d+(?:\.\d+)?))?\s*({TIME_UNITS})\b", re.I)
+
+
+def _range_dashes(text: str) -> str:
+    return re.sub(r"(?<=\d)\s*[-\u2010-\u2015\u2212]\s*(?=\d)", "-", text)
+
+
+def _dose_numbers(text: str) -> list[str]:
+    """Compare text doses in seconds so 300s and 5 minutes agree.
+
+    Keep both endpoints of a range; never accept an arbitrary value inside it.
+    Bare m stays a distance here, rather than guessing its meaning in text.
+    """
+    def seconds(match: re.Match) -> str:
+        low, high, unit = match.groups()
+        factor = 3600 if unit.lower().startswith("h") else 60 if unit.lower().startswith("m") else 1
+        return "-".join(f"{float(value) * factor:g}" for value in (low, high) if value is not None)
+
+    return _numbers(TIME.sub(seconds, _range_dashes(text)))
+
+
 DISTANCE = re.compile(rf"(?<![\d.])(\d+(?:\.\d+)?)\s*({DIST_UNITS})\b", re.I)
 WEIGHT = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*(kgs?|lbs?|pounds?|%)", re.I)
 RPE_AT = re.compile(r"\brpe\s*:?\s*(\d+(?:\.\d+)?)(?:\s*[-\u2013]\s*(\d+(?:\.\d+)?))?|@\s*(\d+(?:\.\d+)?)\b(?!\s*(?:kgs?|lbs?|%))", re.I)
@@ -269,6 +299,7 @@ def read_dose_line(text: str) -> DoseLine:
     """What each number on a source line is, by position and unit:
     "3 x 8" is 3 sets of 8 reps; "6 x 3 min" is 6 rounds of 180s; "1 min rest"
     is a rest; "5 km" is a distance; "140kg" is a weight."""
+    text = _range_dashes(text)
     text = text.replace(",", ".") if re.search(r"\d,\d", text) else text
     roles: dict[str, set[float]] = {"count": set(), "reps": set(), "work": set(), "rest": set(), "rpe": set()}
     distances: set[tuple[float, str]] = set()
