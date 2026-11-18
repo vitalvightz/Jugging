@@ -572,8 +572,14 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   const selectedDay = isDated ? calendarWeekday(selectedDate) : chosenDay ?? firstScheduledDay(draft.sessions);
   const daySessions = draft.sessions.filter(s => isDated ? s.scheduled_date === selectedDate : s.weekday === selectedDay);
   const unassigned = draft.sessions.filter(s => !s.weekday);
-  const issueSessions = new Set(issues.map(issue => issue.sessionId).filter(Boolean));
-  const incompleteCount = draft.sessions.reduce((count, session) => count + (session.session_type === "rest" ? 0 : session.exercises.filter(e => doseIncomplete(e.dose)).length), 0);
+  // The count and Fix entries share the exercise data, independently of session-level validation.
+  const reviewSessions = draft.sessions.map(session => ({
+    session,
+    incomplete: session.session_type === "rest" ? [] : session.exercises.filter(e => doseIncomplete(e.dose)),
+    sessionIssues: issues.filter(issue => issue.sessionId === session.id && !issue.prescription),
+  })).filter(group => group.incomplete.length || group.sessionIssues.length);
+  const issueSessions = new Set(reviewSessions.map(group => group.session.id));
+  const incompleteCount = reviewSessions.reduce((count, group) => count + group.incomplete.length, 0);
   function createManual(sessionId: string, name = "") {
     edit(sessionId, {
       id: crypto.randomUUID(), origin: "manual", exercise_type: null, name, equipment: null, notes: null, media_id: null,
@@ -844,11 +850,11 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
             {unassigned.map(renderSession)}
           </div> : null}
           <div className={styles.saveBar} ref={saveBar}>
-            <p className={styles.saveStatus} role="status" data-attention={issues.length ? "true" : undefined}>
+            <p className={styles.saveStatus} role="status" data-attention={issues.length || incompleteCount ? "true" : undefined}>
               {incompleteCount ? `${incompleteCount} ${incompleteCount === 1 ? "prescription" : "prescriptions"} incomplete` : issues.length ? `${issues.length} ${issues.length === 1 ? "thing" : "things"} to review` : coachFighterId ? "Ready to assign" : "Ready to activate"}
-              {dirty ? <span className={styles.unsavedStatus}> · Unsaved changes</span> : ""}
+              {dirty ? <span className={styles.unsavedStatus}> · Unsaved<span className={styles.unsavedDetail}> changes</span></span> : ""}
             </p>
-            {issues.length ? <button type="button" className={`ghost-button ${styles.fixButton}`} aria-haspopup="dialog" onClick={() => setReviewOpen(true)}>Review</button> : null}
+            {issues.length || incompleteCount ? <button type="button" className={`ghost-button ${styles.fixButton}`} aria-haspopup="dialog" onClick={() => setReviewOpen(true)}>Review</button> : null}
             <div className={styles.saveActions}>
               {/* One primary at a time: Save draft until the plan can be published, then Save & view plan. */}
               <button type="submit" className={publishable && !coachFighterId ? "ghost-button" : "cta"} disabled={!draftValid}>
@@ -884,19 +890,18 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
       {reviewOpen ? <InjuryDetailSheet title="Review plan" panelClassName={styles.reviewPanel} inactive={Boolean(editing || sessionEdit || adding)} onClose={() => setReviewOpen(false)}>
         <div className={`${styles.sheet} ${styles.reviewContent}`}>
           <p>Save incomplete prescriptions as a draft. Complete them before activating your plan.</p>
-          {draft.sessions.filter(session => issueSessions.has(session.id)).map(session => {
-            const incomplete = session.session_type === "rest" ? [] : session.exercises.filter(e => doseIncomplete(e.dose));
+          {reviewSessions.map(({ session, incomplete, sessionIssues }) => {
             return <section key={session.id} aria-label={`Review ${session.name}`}>
               <h3>{session.name}</h3>
               <p className={styles.badge}>{session.scheduled_date ? formatAppDate(session.scheduled_date) : session.weekday ?? "No day set"}</p>
               <ul className={styles.reviewIssues}>
                 {incomplete.map(exercise => <li key={exercise.id}><span>{nameOf(exercise)}</span><button type="button" className="ghost-button" aria-label={`Fix ${nameOf(exercise)} in ${session.name}`} onClick={() => edit(session.id, exercise)}>Fix</button></li>)}
-                {issues.filter(issue => issue.sessionId === session.id && !issue.prescription).map(issue => <li key={issue.message}><span>{issue.message}</span><button type="button" className="ghost-button" aria-label={`Fix ${issue.message}`} onClick={() => openSession(session)}>Fix</button></li>)}
+                {sessionIssues.map(issue => <li key={issue.message}><span>{issue.message}</span><button type="button" className="ghost-button" aria-label={`Fix ${issue.message}`} onClick={() => openSession(session)}>Fix</button></li>)}
               </ul>
             </section>;
           })}
           {issues.filter(issue => !issue.sessionId).map(issue => <p key={issue.message}>{issue.message}</p>)}
-          {!issues.length ? <p role="status">All prescriptions complete. Your plan is ready.</p> : null}
+          {!issues.length && !incompleteCount ? <p role="status">All prescriptions complete. Your plan is ready.</p> : null}
           <button type="button" className="ghost-button" onClick={() => setReviewOpen(false)}>Back to programme</button>
         </div>
       </InjuryDetailSheet> : null}

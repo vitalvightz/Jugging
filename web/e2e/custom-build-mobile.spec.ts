@@ -17,7 +17,7 @@ for (const width of [320, 390, 430, 1280]) {
       schedule_mode: 'weekly', start_date: null, end_date: null,
       created_at: '2026-11-18T12:00:00Z', updated_at: '2026-11-18T12:00:00Z',
       sessions: (['Monday', 'Friday'] as const).map((weekday, index) => ({
-        id: crypto.randomUUID(), name: `Training ${index + 1}`, weekday, scheduled_date: null, session_type: 'strength_power',
+        id: crypto.randomUUID(), name: `Training ${index + 1}`, weekday, scheduled_date: null, session_type: index === 0 ? 'recovery' : 'strength_power',
         exercises: Array.from({ length: 4 }, (_, exercise) => ({
           id: crypto.randomUUID(), origin: 'manual', name: `Movement ${index + 1}-${exercise + 1}`,
           exercise_type: 'strength', equipment: null, notes: null, media_id: null,
@@ -75,6 +75,16 @@ for (const width of [320, 390, 430, 1280]) {
     await expect(page.getByRole('status').filter({ hasText: '8 prescriptions incomplete' })).toBeVisible();
     await page.getByRole('button', { name: 'Redo', exact: true }).click();
     await expect(page.getByRole('status').filter({ hasText: '7 prescriptions incomplete' })).toBeVisible();
+    // The sticky footer keeps unsaved state visible even when the header is off-screen.
+    await page.getByRole('button', { name: 'Add exercise to Training 1', exact: true }).scrollIntoViewIfNeeded();
+    await expect(page.getByRole('heading', { level: 1, name: plan.name })).not.toBeInViewport();
+    await expect(footer.locator('span').filter({ hasText: /^ · Unsaved/ }).first()).toBeVisible();
+    expect((await footer.boundingBox())!.height).toBeLessThan(140);
+    expect((await save.boundingBox())!.y + (await save.boundingBox())!.height).toBeLessThan(width < 768 ? 780 : 844);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    if (process.env.CUSTOM_QA_DIR) await page.screenshot({ path: `${process.env.CUSTOM_QA_DIR}/compact-unsaved-${width}.png` });
+    await save.click();
+    await expect(footer.getByText(/Unsaved/)).toHaveCount(0);
     expect(errors).toEqual([]);
   });
 }

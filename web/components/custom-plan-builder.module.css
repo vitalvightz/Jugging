@@ -142,6 +142,7 @@
   line-height: 1.35;
   color: var(--text-secondary);
 }
+.unsavedStatus { white-space: nowrap; }
 .saveStatus[data-attention="true"] { color: var(--progress-gold); }
 /* Doubled class beats the global mobile rule that stretches every ghost button. */
 .saveBar .fixButton { width: auto; min-height: 44px; padding: 4px 14px; font-size: 13px; flex-shrink: 0; }
@@ -517,7 +518,7 @@
 @media (max-width: 767px) {
   .builder { gap: 16px; }
   .saveBar { width: calc(100% - 24px); gap: 4px 8px; padding: 6px 10px 10px; }
-  .unsavedStatus, .scheduleHint { display: none; }
+  .unsavedDetail, .scheduleHint { display: none; }
   .historyToolbar { gap: 4px; flex-wrap: nowrap; }
   .historyToolbar :global(.ghost-button) { width: 44px; min-height: 44px; padding: 4px; font-size: 22px; }
   .historyToolbar button > span:first-child { font-size: 20px; }
