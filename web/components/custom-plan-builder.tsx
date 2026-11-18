@@ -205,6 +205,9 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   const latest = useRef(draft);
   const undoStack = useRef<Draft[]>([]), redoStack = useRef<Draft[]>([]);
   const savedSnapshot = useRef(importedDraft ? "" : JSON.stringify(draft));
+  const [checkedFlags, setCheckedFlags] = useState<number[]>([]);
+  const flagsLeft = importedDraft && !draft.id ? importedDraft.flags.length - checkedFlags.length : 0;
+  const importNoteRef = useRef<HTMLDivElement>(null);
   const [historyVersion, setHistoryVersion] = useState(0);
   useEffect(() => { latest.current = draft; });
   // Read only once an exercise is open, for last time's weight.
@@ -602,6 +605,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
           </div>
         </div>
         <div className="sp-session-meta"><span className="sp-tag">{sessionNames[s.session_type ?? "mixed"]}</span></div>
+        {s.notes?.trim() ? <p className={styles.sessionNotes}>{s.notes}</p> : null}
         {s.session_type !== "rest" ? <PrivateExerciseMediaProvider token={accessToken}>
           <ExerciseMediaProvider media={Object.fromEntries(s.exercises.flatMap(e => e.origin === "catalogue" && e.snapshot.media && e.snapshot.exercise_key
             ? [[`exercise:${e.snapshot.exercise_key}`, e.snapshot.media]] : []))}>
@@ -665,6 +669,13 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
   }
   async function save(viewPlan = false) {
     if (!draftValid || (viewPlan && !publishable)) return;
+    // An imported plan keeps its "things to check" until each is ticked as fixed or checked.
+    if (flagsLeft) {
+      setError(`Tick the ${flagsLeft === 1 ? "last thing" : `${flagsLeft} things`} to check above before saving.`);
+      importNoteRef.current?.querySelector("details")?.setAttribute("open", "");
+      importNoteRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+      return;
+    }
     setPending(true);
     setError(undefined);
     try {
@@ -760,9 +771,10 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
           {error}
         </p>
       ) : null}
-      {importedDraft && dirty && !message ? <div className={styles.importNote}>
-        <p role="status">Imported from {importedDraft.name}. Check each session, then save.</p>
-        {importedDraft.flags.length ? <ImportFlags flags={importedDraft.flags} /> : null}
+      {importedDraft && !draft.id ? <div className={styles.importNote} ref={importNoteRef}>
+        <p role="status">Imported from {importedDraft.name}. {importedDraft.flags.length ? "Tick each thing to check once it's fixed or checked, then save." : "Check each session, then save."}</p>
+        {importedDraft.flags.length ? <ImportFlags flags={importedDraft.flags} open checked={checkedFlags}
+          onCheck={(index, done) => { setCheckedFlags(current => done ? [...current, index] : current.filter(at => at !== index)); setError(undefined); }} /> : null}
       </div> : null}
       {message ? (
         <p role="status">
@@ -942,6 +954,16 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
               </select>
             </label>
             </>}
+            <label className={styles.wideField}>
+              <span>Session notes <span className="muted">(optional)</span></span>
+              <textarea
+                rows={3}
+                maxLength={2000}
+                value={sessionEdit.notes ?? ""}
+                placeholder="Focus or instructions for the whole session"
+                onChange={(e) => setSessionEdit({ ...sessionEdit, notes: e.target.value || null })}
+              />
+            </label>
             <button className="cta" disabled={!sessionEdit.weekday}>{sessionFresh ? "Add session" : "Done"}</button>
             {sessionFresh ? null : <button
               type="button"

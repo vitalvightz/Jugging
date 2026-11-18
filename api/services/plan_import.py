@@ -44,7 +44,6 @@ SESSION_TYPES = ("mixed", "strength_power", "conditioning", "skill", "sparring",
 DISTANCE_UNITS = ("m", "km", "mi", "yd")
 # Only for dated plans, which need a date for every session: a session whose
 # day isn't written goes on the next of these, and is flagged.
-SPREAD = ("Monday", "Wednesday", "Friday", "Tuesday", "Thursday", "Saturday", "Sunday")
 
 INSTRUCTIONS = """You convert a combat-sports coach's or athlete's written training programme into structured JSON.
 
@@ -189,6 +188,14 @@ class ImportFlag(BaseModel):
     message: str
 
 
+class NeedsDay(BaseModel):
+    """A session the coach gave no day. The person picks the day before the draft
+    opens; until then its sessions sit on their week's Monday as a placeholder
+    (a dated plan needs a date) or have no weekday (a weekly plan)."""
+    where: str
+    session_ids: list[str]
+
+
 class PlanImportResult(BaseModel):
     # A validated CustomPlanInput, sent as plain JSON: the builder posts it back
     # unchanged, and typing it here would split the request type in the web schema.
@@ -197,6 +204,7 @@ class PlanImportResult(BaseModel):
     sessions: int
     exercises: int
     flags: list[ImportFlag]
+    needs_day: list[NeedsDay] = Field(default_factory=list)
 
 
 # -- The model call --
@@ -340,13 +348,13 @@ def dose_from(item: ReadExercise, flag=lambda message: None) -> CustomDose:
 
     When the written values don't fit one mode (e.g. reps and a distance), the
     whole dose is kept as written text instead of dropping part of it. A value
-    the builder can't hold (RPE 15) is left out and flagged."""
+    the builder can't hold (RPE 15) is flagged and kept in the notes by _exercise."""
     rest = _int(item.rest_seconds, 0, 3600)
     if item.rest_seconds is not None and rest is None:
-        flag(f"Rest of {_number(item.rest_seconds)}s isn't valid and was left out.")
+        flag(f"Rest of {_number(item.rest_seconds)}s doesn't fit the rest field, so it's kept in the notes.")
     rpe = item.rpe if isinstance(item.rpe, (int, float)) and not isinstance(item.rpe, bool) and 1 <= item.rpe <= 10 else None
     if item.rpe is not None and rpe is None:
-        flag(f"RPE {_number(item.rpe)} isn't valid and was left out.")
+        flag(f"RPE {_number(item.rpe)} isn't between 1 and 10, so it's kept in the notes.")
     load = _clean(item.load)
     if load and len(load) > 80:
         load = None  # Kept whole in the notes by _exercise.
@@ -413,6 +421,10 @@ def _exercise(item: ReadExercise, flag) -> dict | None:
     if equipment and len(equipment) > 120:
         notes.append(f"Equipment: {equipment}")
         equipment = None
+    if item.rpe is not None and dose.rpe is None:
+        notes.append(f"RPE as written: {_number(item.rpe)}")
+    if item.rest_seconds is not None and dose.rest_seconds is None:
+        notes.append(f"Rest as written: {_number(item.rest_seconds)}s")
     notes += [f"Cue: {line}" for line in extra_cues] + [f"Stop rule: {line}" for line in extra_stops]
     text = "\n".join(line for line in notes if line) or None
     if text and len(text) > 2000:
@@ -457,8 +469,9 @@ def build_draft(read: ReadPlan, start: date) -> PlanImportResult:
         kind = item.session_type if item.session_type in SESSION_TYPES else "mixed"
         title = _clean(item.name) or ("Rest" if kind == "rest" else f"Session {index + 1}")
         where = f"{label}{title}"
-        if item.instructions and _clean(item.instructions):
-            flag(where, f"Coach's session note (sessions have no notes field, add it to an exercise if it matters): \u201c{_clean(item.instructions, 500)}\u201d")
+        notes = _clean(item.instructions)
+        if notes and len(notes) > 2000:
+            flag(where, "The session note was longer than 2,000 characters and was shortened.")
         if len(item.exercises) > MAX_EXERCISES:
             flag(where, f"Only the first {MAX_EXERCISES} of {len(item.exercises)} exercises were brought in.")
         exercises = []
@@ -468,20 +481,27 @@ def build_draft(read: ReadPlan, start: date) -> PlanImportResult:
                 exercises.append(built)
         day = item.day if item.day in WEEKDAYS else None
         return {"id": str(uuid4()), "name": title[:100], "weekday": None if scheduled else day,
-                "scheduled_date": scheduled.isoformat() if scheduled else None, "session_type": kind, "exercises": exercises}
+                "scheduled_date": scheduled.isoformat() if scheduled else None, "session_type": kind,
+                "notes": notes[:2000] if notes else None, "exercises": exercises}
+
+    # Sessions with no written day, grouped so a repeated week asks once.
+    unplaced: dict[int, NeedsDay] = {}
+
+    def needs_day(item: ReadSession, where: str, built: dict):
+        unplaced.setdefault(id(item), NeedsDay(where=where, session_ids=[])).session_ids.append(built["id"])
 
     sessions: list[dict] = []
     if not dated:
         # One week, repeating: the builder's weekly plan. A session without a
-        # written day stays unplaced, and the builder asks for its day.
+        # written day stays unplaced until the person picks its day.
         items = expanded[0].sessions
         if len(items) > MAX_SESSIONS_PER_WEEK:
             flag("Plan", f"Only the first {MAX_SESSIONS_PER_WEEK} of {len(items)} sessions in the week were brought in.")
             items = items[:MAX_SESSIONS_PER_WEEK]
         for index, item in enumerate(items):
-            if item.day not in WEEKDAYS:
-                flag(_clean(item.name) or f"Session {index + 1}", "No day written. Choose its day in the builder.")
             sessions.append(session(item, index, "", None))
+            if item.day not in WEEKDAYS:
+                needs_day(item, sessions[-1]["name"], sessions[-1])
         body = {"name": name, "schedule_mode": "weekly", "sessions": sessions}
     else:
         stated = None
@@ -500,14 +520,12 @@ def build_draft(read: ReadPlan, start: date) -> PlanImportResult:
                 flag(labels[number], f"Only the first {MAX_SESSIONS_PER_WEEK} of {len(items)} sessions were brought in.")
                 items = items[:MAX_SESSIONS_PER_WEEK]
             monday = first + timedelta(days=7 * number)
-            spread = iter(day for day in SPREAD * 2 if day not in {i.day for i in items})
             for index, item in enumerate(items):
                 day = item.day if item.day in WEEKDAYS else None
+                # No day written: never guessed. It waits on Monday until the person picks its day.
+                sessions.append(session(item, index, f"{labels[number]} \u00b7 ", monday + timedelta(days=WEEKDAYS.index(day or "Monday"))))
                 if not day:
-                    # A dated plan needs a date, so the session goes on a free day and is flagged.
-                    day = next(spread, "Monday")
-                    flag(_clean(item.name) or f"Session {index + 1}", f"No day written, so it was put on {day}s. Move it if needed.")
-                sessions.append(session(item, index, f"{labels[number]} \u00b7 ", monday + timedelta(days=WEEKDAYS.index(day))))
+                    needs_day(item, f"{labels[number]} \u00b7 {sessions[-1]['name']}", sessions[-1])
         body = {"name": name, "schedule_mode": "dated", "start_date": first.isoformat(),
                 "end_date": (first + timedelta(days=7 * len(expanded) - 1)).isoformat(), "sessions": sessions}
     for line in read.skipped[:10]:
@@ -519,7 +537,8 @@ def build_draft(read: ReadPlan, start: date) -> PlanImportResult:
         logger.warning("plan import draft failed validation: %s", exc.errors()[:3])
         raise HTTPException(422, "That programme couldn't be read. Try a simpler file, or build it by hand.") from exc
     return PlanImportResult(plan=plan.model_dump(mode="json"), weeks=len(expanded), sessions=len(plan.sessions),
-                            exercises=sum(len(s.exercises) for s in plan.sessions), flags=flags)
+                            exercises=sum(len(s.exercises) for s in plan.sessions), flags=flags,
+                            needs_day=list(unplaced.values()))
 
 
 def checked_images(images: list[str]) -> list[str]:

@@ -63,11 +63,21 @@
 .flags dl > div { display: grid; gap: 4px; min-width: 0; }
 .flags dt { color: var(--text-primary); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
 .flags dd { display: grid; gap: 4px; margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
-@media (min-width: 900px) { .flags dl > div { grid-template-columns: 180px minmax(0, 1fr); column-gap: 20px; align-items: baseline; } }
+@media (min-width: 900px) { .flags dl > div { grid-template-columns: 240px minmax(0, 1fr); column-gap: 20px; align-items: baseline; } }
+.days { display: grid; gap: 12px; min-width: 0; margin: 0; padding: 16px; border: 1px solid var(--border-strong); border-radius: 14px; }
+.days legend { padding: 0 6px; font-size: 14px; font-weight: 600; }
+.days > p { margin: 0; color: var(--text-secondary); font-size: 14px; line-height: 1.5; }
+.dayRow { display: grid; gap: 6px; min-width: 0; font-size: 14px; }
+.dayRow span { font-weight: 600; overflow-wrap: anywhere; }
+.dayRow select { min-height: 44px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--bg-surface-alt); color: var(--text-primary); font: inherit; }
+.dayRow select:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; }
+.tick { display: flex; align-items: flex-start; gap: 10px; min-height: 32px; cursor: pointer; }
+.tick input { flex: none; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--text-primary); }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 
 @media (min-width: 900px) {
   .drop { min-height: 280px; }
+  .dayRow { grid-template-columns: minmax(0, 1fr) 220px; align-items: center; column-gap: 20px; }
 }
 @media (max-width: 359px) {
   .counts dd { font-size: 24px; }

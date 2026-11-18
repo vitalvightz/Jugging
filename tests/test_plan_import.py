@@ -14,13 +14,13 @@ import to three promises:
 import base64
 import json
 import re
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
-from api.contracts.custom_plans import CustomPlanInput
+from api.contracts.custom_plans import WEEKDAYS, CustomPlanInput
 from api.services import plan_import
 from api.services.coach_plans import saved_input
 from api.services.plan_import import (
@@ -68,6 +68,19 @@ def dose(exercise):
     return {key: value for key, value in exercise["dose"].items() if value is not None}
 
 
+def place(body, weekday):
+    """What the app does when the person picks a day for each session the coach left without one."""
+    plan = json.loads(json.dumps(body["plan"]))
+    waiting = {sid for group in body["needs_day"] for sid in group["session_ids"]}
+    for session in plan["sessions"]:
+        if session["id"] in waiting:
+            if session["scheduled_date"]:
+                monday = date.fromisoformat(session["scheduled_date"])
+                session["scheduled_date"] = (monday + timedelta(days=WEEKDAYS.index(weekday) - monday.weekday())).isoformat()
+            session["weekday"] = weekday
+    return plan
+
+
 def run_import(client, monkeypatch, reading=READING, text=PROGRAMME):
     use(monkeypatch, FakeReader(reading))
     response = client.post(URL, json={"text": text, "file_name": "camp.docx", "start_date": MONDAY}, headers=AUTH)
@@ -103,13 +116,13 @@ def test_the_model_schema_is_strict_and_every_draft_is_a_custom_plan_input():
         CustomPlanInput.model_validate(result.plan)
     exercise = result.plan["sessions"][0]["exercises"][0]
     assert exercise["name"] == "y" * 100 and exercise["coaching_cues"] == ["ok"]
-    assert exercise["notes"].splitlines() == [f"Full name: {'y' * 150}", f"Load: {'z' * 120}", f"Equipment: {'e' * 200}", f"Cue: {'c' * 600}"]
+    assert exercise["notes"].splitlines() == [f"Full name: {'y' * 150}", f"Load: {'z' * 120}", f"Equipment: {'e' * 200}", "RPE as written: 11", "Rest as written: 9999s", f"Cue: {'c' * 600}"]
 
 
 def test_the_draft_saves_through_the_existing_endpoint_and_reads_back_identical(api):
     client, _, monkeypatch = api
     body = run_import(client, monkeypatch)
-    draft = body["plan"]
+    draft = place(body, "Friday")
     # Nothing is stored by the import itself.
     assert client.get("/api/custom-plans", headers=AUTH).json() == []
     saved = client.post("/api/custom-plans", json=draft, headers=AUTH)
@@ -131,7 +144,7 @@ def test_a_coach_import_saves_and_reloads_through_the_coach_plan_path(plans, mon
     use(monkeypatch, FakeReader(READING))
     imported = client.post(URL, json={"text": PROGRAMME, "start_date": MONDAY}, headers=AS_COACH)
     assert imported.status_code == 200, imported.text
-    draft = imported.json()["plan"]
+    draft = place(imported.json(), "Thursday")
     created = client.post(f"{BASE}/plans?request_id={uuid4()}", headers=AS_COACH, json=draft)
     assert created.status_code == 201, created.text
     reloaded = client.get(f"{BASE}/plans/{created.json()['id']}", headers=AS_COACH).json()
@@ -149,10 +162,17 @@ def test_the_coach_programme_arrives_exactly_as_written(api):
     assert plan["name"] == "Fight Camp – Phase 1"
     assert (plan["schedule_mode"], plan["start_date"], plan["end_date"]) == ("dated", "2026-11-23", "2026-12-13")
     week = plan["sessions"][:4]
-    # Written days are kept; the unnamed "Day 3" goes on a free day and is flagged.
-    assert [(s["name"], s["scheduled_date"], s["weekday"], s["session_type"]) for s in week] == [
-        ("Strength", "2026-11-23", "Monday", "strength_power"), ("Pads", "2026-11-25", "Wednesday", "skill"),
-        ("Day 3 - Roadwork", "2026-11-27", "Friday", "conditioning"), ("Sparring", "2026-11-28", "Saturday", "sparring")]
+    # Written days are kept. "Day 3" has no weekday, so it isn't given one: the
+    # person picks it before the draft opens (it waits on Monday until then).
+    assert [(s["name"], s["scheduled_date"], s["session_type"]) for s in week] == [
+        ("Strength", "2026-11-23", "strength_power"), ("Day 3 - Roadwork", "2026-11-23", "conditioning"),
+        ("Pads", "2026-11-25", "skill"), ("Sparring", "2026-11-28", "sparring")]
+    road_ids = [s["id"] for s in plan["sessions"] if s["name"] == "Day 3 - Roadwork"]
+    assert body["needs_day"] == [{"where": "Weeks 1-3 · Day 3 - Roadwork", "session_ids": road_ids}] and len(road_ids) == 3
+    # The coach's session note is kept on the session itself, word for word.
+    assert week[0]["notes"] == "Focus: brace hard, own every rep."
+    assert [s["notes"] for s in week[1:]] == [None, None, None]
+    week = [week[0], week[2], week[1], week[3]]
     strength, pads, road, sparring = (s["exercises"] for s in week)
     deadlift = strength[0]
     assert (deadlift["origin"], deadlift["name"]) == ("manual", "Trap bar deadlift")
@@ -174,12 +194,10 @@ def test_the_coach_programme_arrives_exactly_as_written(api):
     assert dose(road[1]) == {"mode": "text", "prescription": "AMRAP 10 min"}
     assert dose(sparring[0]) == {"mode": "intervals", "rounds": 6, "work_seconds": 180}
     # The repeat copies week 1 exactly, a week apart.
-    assert [s["scheduled_date"] for s in plan["sessions"][4:8]] == ["2026-11-30", "2026-12-02", "2026-12-04", "2026-12-05"]
+    assert [s["scheduled_date"] for s in plan["sessions"][4:8]] == ["2026-11-30", "2026-11-30", "2026-12-02", "2026-12-05"]
     assert [e["name"] for e in plan["sessions"][4]["exercises"]] == [e["name"] for e in strength]
     assert body["flags"] == [
         {"where": "Plan", "message": "No upcoming start date written, so it starts Monday 23 Nov. Change the start date in the builder if needed."},
-        {"where": "Weeks 1-3 · Strength", "message": "Coach's session note (sessions have no notes field, add it to an exercise if it matters): “Focus: brace hard, own every rep.”"},
-        {"where": "Day 3 - Roadwork", "message": "No day written, so it was put on Fridays. Move it if needed."},
         {"where": "Not placed", "message": "“Sauna 2x a week if cutting”"},
     ]
 
@@ -220,27 +238,28 @@ def test_weekly_plans_leave_unwritten_days_open_for_the_builder_to_ask(api):
     body = run_import(client, monkeypatch, reading)
     plan = body["plan"]
     assert plan["schedule_mode"] == "weekly" and plan["name"] == "Imported plan"
-    assert [s["weekday"] for s in plan["sessions"]] == [None, "Wednesday", None] or \
-        sorted(str(s["weekday"]) for s in plan["sessions"]) == ["None", "None", "Wednesday"]
+    assert sorted(str(s["weekday"]) for s in plan["sessions"]) == ["None", "None", "Wednesday"]
+    assert [group["where"] for group in body["needs_day"]] == ["Day 1 - Strength", "Day 3 - Pads"]
     assert dose(next(s for s in plan["sessions"] if s["name"] == "Bike")["exercises"][0]) == {
         "mode": "duration", "sets": 4, "duration_seconds": 240}
     pads = next(s for s in plan["sessions"] if s["name"] == "Day 3 - Pads")["exercises"][0]
     assert dose(pads) == {"mode": "reps"}
     assert body["flags"] == [
-        {"where": "Day 1 - Strength", "message": "No day written. Choose its day in the builder."},
-        {"where": "Day 3 - Pads", "message": "No day written. Choose its day in the builder."},
         {"where": "Day 3 - Pads · Pads", "message": "No sets, reps, time or distance written. Add the dose, or leave it open."},
     ]
-    # It still saves as it is; the builder lists the open days for the person to place.
-    assert client.post("/api/custom-plans", json=plan, headers=AUTH).status_code == 201
+    # Once the person picks the days, it saves with nothing left open.
+    saved = client.post("/api/custom-plans", json=place(body, "Tuesday"), headers=AUTH).json()
+    assert sorted(s["weekday"] for s in saved["sessions"]) == ["Tuesday", "Tuesday", "Wednesday"]
 
 
 def test_values_the_builder_cannot_hold_are_kept_as_written_or_flagged():
     flags = []
-    # Out of range: left out and flagged, never clamped to a made-up value.
+    # Out of range: flagged and kept in the notes as written, never clamped to a made-up value.
     assert dose_from(ReadExercise(name="x", sets=3, reps=5, rpe=15), flags.append).model_dump(exclude_none=True) == {
         "mode": "reps", "sets": 3, "reps": 5}
-    assert flags == ["RPE 15 isn't valid and was left out."]
+    assert flags == ["RPE 15 isn't between 1 and 10, so it's kept in the notes."]
+    built = plan_import._exercise(ReadExercise(name="x", sets=3, reps=5, rpe=15, rest_seconds=-30, notes="heavy"), lambda m: None)
+    assert built["notes"] == "heavy\nRPE as written: 15\nRest as written: -30s"
     # Values that don't fit one mode keep the whole written dose as text.
     assert dose_from(ReadExercise(name="x", reps=10, distance=400, distance_unit="m")).model_dump(exclude_none=True) == {
         "mode": "text", "prescription": "10 reps, 400 m"}
@@ -309,3 +328,41 @@ def test_screenshots_go_to_the_model_once_and_anything_else_is_refused(api):
     too_many = client.post(URL, json={"images": [JPEG] * 5, "start_date": MONDAY}, headers=AUTH)
     assert too_many.status_code == 422
     assert len(reader.texts) == 1
+
+
+def test_the_coachs_session_note_reaches_the_session_on_today(api):
+    from api.services.custom_plans import dated_custom_plan_result
+    from api.plan_mappers import _map_profile_row
+    client, store, monkeypatch = api
+    draft = place(run_import(client, monkeypatch), "Friday")
+    for session in draft["sessions"]:  # The person finishes the doses the coach left open.
+        for exercise in session["exercises"]:
+            if exercise["dose"]["mode"] == "intervals":
+                exercise["dose"].update(work_seconds=180, rest_seconds=60)
+    saved = client.post("/api/custom-plans", json=draft, headers=AUTH).json()
+    assert saved["incomplete"] is False
+    result = dated_custom_plan_result(saved, _map_profile_row(store.profiles["athlete-1"]), training_day=MONDAY)
+    monday = result["structured_plan"]["weeks"][0]["days"][0]
+    strength = next(s for s in monday["sessions"] if s["title"] == "Strength")
+    assert strength["objective"] == "Focus: brace hard, own every rep."
+
+
+def test_the_accuracy_check_finds_no_differences_against_its_own_hand_checked_readings():
+    """The real-model check (tools/plan_import_eval.py) scores a perfect reading as perfect,
+    and catches a wrong day, a changed dose and an invented exercise."""
+    from tools.plan_import_eval import FIXTURES as CASES, cases, compare
+    found = list(cases(CASES / "eval"))
+    assert [name for name, *_ in found] == ["coach_programme", "strength_block", "whatsapp_week"]
+    for _, text, _, truth in found:
+        assert text.strip()
+        assert compare(truth, truth)["errors"] == []
+    truth = found[2][3]
+    wrong = truth.model_copy(deep=True)
+    wrong.weeks[0].sessions[0].day = "Tuesday"
+    wrong.weeks[0].sessions[2].exercises[0].reps = 6
+    wrong.weeks[0].sessions[2].exercises.append(ReadExercise(name="Bicep curl", sets=3, reps=12))
+    assert compare(truth, wrong)["errors"] == [
+        "Pads: day expected 'Monday', read 'Tuesday'",
+        "Gym · Squats: dose expected {'mode': 'reps', 'sets': 3, 'reps': 5, 'load_or_intensity': '100'}, read {'mode': 'reps', 'sets': 3, 'reps': 6, 'load_or_intensity': '100'}",
+        "Gym: invented exercise 'Bicep curl'",
+    ]

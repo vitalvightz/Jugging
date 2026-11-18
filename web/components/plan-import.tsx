@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ApiError, importPlanText, type PlanImportResult } from "@/lib/api";
-import type { CustomPlanInput, ImportFlag } from "@/lib/api-schema.generated";
-import { nextCalendarMonday } from "@/lib/custom-plan-calendar";
+import type { CustomPlanInput, ImportFlag, NeedsDay } from "@/lib/api-schema.generated";
+import { addCalendarDays, calendarMonday, calendarWeekdays, nextCalendarMonday } from "@/lib/custom-plan-calendar";
 import { describeLoadFailure } from "@/lib/connectivity";
 import { MAX_SCREENSHOTS, PLAN_TEXT_MAX_CHARS, PlanFileError, extractPlanText, planFileKind, screenshotData } from "@/lib/plan-text";
 import styles from "./plan-import.module.css";
@@ -83,7 +83,7 @@ export function PlanImport({ accessToken, timezone, onReview, onCancel, forFight
       <p className={styles.lede}>Upload a PDF, a Word file or screenshots, or paste the programme. We read the sessions and exercises, then you check and edit everything before it&apos;s saved.</p>
     </header>
 
-    {stage.step === "done" ? <Result stage={stage} onReview={() => onReview({ plan: stage.result.plan, name: stage.name, flags: stage.result.flags })}
+    {stage.step === "done" ? <Result stage={stage} onReview={days => onReview({ plan: withDays(stage.result.plan, stage.result.needs_day, days), name: stage.name, flags: stage.result.flags })}
       onAnother={() => setStage({ step: "pick" })} />
       : <>
         {pasting && !busy ? <form className={styles.paste} onSubmit={event => { event.preventDefault(); void run({ text: pasted }); }}>
@@ -128,12 +128,27 @@ export function PlanImport({ accessToken, timezone, onReview, onCancel, forFight
   </section>;
 }
 
+type Weekday = (typeof calendarWeekdays)[number];
+
+/** Put each session the coach left without a day on the day the person picked. */
+function withDays(plan: CustomPlanInput, groups: NeedsDay[], days: Weekday[]): CustomPlanInput {
+  const chosen = new Map(groups.flatMap((group, index) => group.session_ids.map(id => [id, days[index]] as const)));
+  return { ...plan, sessions: (plan.sessions ?? []).map(session => {
+    const day = chosen.get(session.id);
+    if (!day) return session;
+    return session.scheduled_date
+      ? { ...session, weekday: day, scheduled_date: addCalendarDays(calendarMonday(session.scheduled_date), calendarWeekdays.indexOf(day)) }
+      : { ...session, weekday: day };
+  }) };
+}
+
 function Result({ stage, onReview, onAnother }: {
-  stage: Extract<Stage, { step: "done" }>; onReview: () => void; onAnother: () => void;
+  stage: Extract<Stage, { step: "done" }>; onReview: (days: Weekday[]) => void; onAnother: () => void;
 }) {
   const { result } = stage;
-  const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
   const weekly = result.plan.schedule_mode === "weekly";
+  const [days, setDays] = useState<(Weekday | "")[]>(() => result.needs_day.map(() => ""));
+  const left = days.filter(day => !day).length;
   return <div className={styles.result}>
     <div className={styles.summary} role="status">
       <p className={styles.found}>Found in <strong className={styles.fileName}>{stage.name}</strong></p>
@@ -144,23 +159,43 @@ function Result({ stage, onReview, onAnother }: {
       </dl>
       <p className={styles.planName}>{result.plan.name}</p>
     </div>
+    {result.needs_day.length ? <fieldset className={styles.days}>
+      <legend>Choose a day</legend>
+      <p>No day was written for {result.needs_day.length === 1 ? "this session" : "these sessions"}. Pick one{weekly ? "" : " and it applies to every week it repeats"}.</p>
+      {result.needs_day.map((group, index) => <label key={group.session_ids[0]} className={styles.dayRow}>
+        <span>{group.where}</span>
+        <select value={days[index]} onChange={event => setDays(current => current.map((day, at) => at === index ? event.target.value as Weekday : day))}>
+          <option value="" disabled>Choose a day</option>
+          {calendarWeekdays.map(day => <option key={day}>{day}</option>)}
+        </select>
+      </label>)}
+    </fieldset> : null}
     {result.flags.length ? <ImportFlags flags={result.flags} open /> : null}
     <p className={styles.check}>{result.flags.length ? "Everything else came in as written." : "Everything came in as written."} Check each session against your file before saving.</p>
     <div className={styles.actions}>
-      <button type="button" className="cta" onClick={onReview}>Review and edit</button>
+      <button type="button" className="cta" disabled={left > 0} onClick={() => onReview(days as Weekday[])}>Review and edit</button>
       <button type="button" className={styles.cancel} onClick={onAnother}>Choose another file</button>
     </div>
+    {left ? <p className={styles.hint}>Choose {left === 1 ? "a day" : `${left} days`} above to continue.</p> : null}
   </div>;
 }
 
 /** What couldn't be carried over exactly, grouped by where it belongs. */
-export function ImportFlags({ flags, open }: { flags: ImportFlag[]; open?: boolean }) {
-  const groups = new Map<string, string[]>();
-  for (const flag of flags) groups.set(flag.where, [...(groups.get(flag.where) ?? []), flag.message]);
+export function ImportFlags({ flags, open, checked, onCheck }: {
+  flags: ImportFlag[]; open?: boolean;
+  /** In the builder: each one is ticked once it's been fixed or checked, and saving waits for all of them. */
+  checked?: number[]; onCheck?: (index: number, done: boolean) => void;
+}) {
+  const groups = new Map<string, { message: string; index: number }[]>();
+  flags.forEach((flag, index) => groups.set(flag.where, [...(groups.get(flag.where) ?? []), { message: flag.message, index }]));
+  const left = onCheck ? flags.length - (checked?.length ?? 0) : 0;
   return <details className={styles.flags} open={open}>
-    <summary>{flags.length} {flags.length === 1 ? "thing" : "things"} to check</summary>
-    <dl>{[...groups].map(([where, messages]) => <div key={where}><dt>{where}</dt>
-      <dd>{messages.map((message, index) => <span key={index}>{message}</span>)}</dd></div>)}</dl>
+    <summary>{flags.length} {flags.length === 1 ? "thing" : "things"} to check{onCheck ? left ? ` · ${left} left` : " · all checked" : ""}</summary>
+    <dl>{[...groups].map(([where, items]) => <div key={where}><dt>{where}</dt>
+      <dd>{items.map(({ message, index }) => onCheck
+        ? <label key={index} className={styles.tick}><input type="checkbox" checked={checked?.includes(index) ?? false}
+          onChange={event => onCheck(index, event.target.checked)} /><span>{message}</span></label>
+        : <span key={index}>{message}</span>)}</dd></div>)}</dl>
   </details>;
 }
 

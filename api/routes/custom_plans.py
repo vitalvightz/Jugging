@@ -97,7 +97,7 @@ def build_custom_plans_router(*, require_profile, get_store):
         body = CustomPlanInput.model_validate({
             **{k: row.get(k) for k in ("schedule_mode", "start_date", "end_date") if row.get(k) is not None},
             "name": row["name"], "sessions": [
-                {**{k: s[k] for k in ("id", "name", "weekday")}, "scheduled_date": s.get("scheduled_date"), "session_type": s.get("session_type", "mixed"),
+                {**{k: s[k] for k in ("id", "name", "weekday")}, "scheduled_date": s.get("scheduled_date"), "session_type": s.get("session_type", "mixed"), "notes": s.get("notes"),
                  "exercises": [{k: v for k, v in e.items() if k not in {"snapshot", "incomplete"}}
                                for e in s["exercises"]]} for s in row["sessions"]
             ],

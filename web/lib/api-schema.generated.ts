@@ -740,6 +740,7 @@ export type CustomSession = {
   weekday: "Friday" | "Monday" | "Saturday" | "Sunday" | "Thursday" | "Tuesday" | "Wednesday" | null;
   scheduled_date: string | null;
   session_type: "conditioning" | "mixed" | "recovery" | "rest" | "skill" | "sparring" | "strength_power";
+  notes?: string | null;
   exercises: (CustomExercise | ManualExercise)[];
 };
 
@@ -749,6 +750,7 @@ export type CustomSessionInput = {
   weekday?: "Friday" | "Monday" | "Saturday" | "Sunday" | "Thursday" | "Tuesday" | "Wednesday" | null;
   scheduled_date?: string | null;
   session_type?: "conditioning" | "mixed" | "recovery" | "rest" | "skill" | "sparring" | "strength_power";
+  notes?: string | null;
   exercises?: (CustomExerciseInput | ManualExerciseInput)[];
 };
 
@@ -1642,6 +1644,16 @@ export type MorningCheckIn = {
 };
 
 /**
+ * A session the coach gave no day. The person picks the day before the draft
+ * opens; until then its sessions sit on their week's Monday as a placeholder
+ * (a dated plan needs a date) or have no weekday (a weekly plan).
+ */
+export type NeedsDay = {
+  where: string;
+  session_ids: string[];
+};
+
+/**
  * What the AI made of one saved note, read right after the save.
  *
  * ``pending`` until the background inference finishes (including before it
@@ -2045,6 +2057,7 @@ export type PlanImportResult = {
   sessions: number;
   exercises: number;
   flags: ImportFlag[];
+  needs_day: NeedsDay[];
 };
 
 /** Top-level plan metadata (Section B). */

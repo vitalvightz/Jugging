@@ -44,19 +44,23 @@ function textPdf(lines: string[]) {
 }
 
 const id = () => crypto.randomUUID();
+const mondays = ["2026-11-23", "2026-11-30", "2026-12-07", "2026-12-14"];
+const padIds = mondays.map(() => id());
 const result = {
   weeks: 4, sessions: 8, exercises: 8,
   flags: [
     { where: "Plan", message: "No upcoming start date written, so it starts Monday 23 Nov. Change the start date in the builder if needed." },
-    { where: "Weeks 1-4 · Strength", message: "Coach's session note (sessions have no notes field, add it to an exercise if it matters): “Brace hard, own every rep.”" },
+    { where: "Weeks 1-4 · Strength · Trap bar deadlift", message: "RPE 15 isn't between 1 and 10, so it's kept in the notes." },
     { where: "Not placed", message: "“Drink 3L water a day”" },
   ],
+  // The coach wrote no day for pads: they wait on Monday until the person picks one.
+  needs_day: [{ where: "Weeks 1-4 · Pads", session_ids: padIds }],
   plan: {
     name: "Fight camp block", schedule_mode: "dated", start_date: "2026-11-23", end_date: "2026-12-20",
-    sessions: [0, 1, 2, 3].flatMap(week => [
-      { id: id(), name: "Strength", weekday: null, scheduled_date: `2026-${week < 2 ? "11" : "12"}-${String(week < 2 ? 23 + 7 * week : 7 * week - 7).padStart(2, "0")}`, session_type: "strength_power",
-        exercises: [{ id: id(), origin: "manual", name: "Trap bar deadlift", notes: null, dose: { mode: "reps", sets: 3, reps: 5, load_or_intensity: "140kg" } }] },
-      { id: id(), name: "Pads", weekday: null, scheduled_date: `2026-${week < 1 ? "11" : "12"}-${String(week < 1 ? 25 : 7 * week - 5).padStart(2, "0")}`, session_type: "skill",
+    sessions: mondays.flatMap((monday, week) => [
+      { id: id(), name: "Strength", weekday: null, scheduled_date: monday, session_type: "strength_power", notes: "Brace hard, own every rep.",
+        exercises: [{ id: id(), origin: "manual", name: "Trap bar deadlift", notes: "RPE as written: 15", dose: { mode: "reps", sets: 3, reps: 5, load_or_intensity: "140kg" } }] },
+      { id: padIds[week], name: "Pads", weekday: null, scheduled_date: monday, session_type: "skill", notes: null,
         exercises: [{ id: id(), origin: "manual", name: "Pad rounds", notes: "Finish on the jab", dose: { mode: "intervals", rounds: 6, work_seconds: 180, rest_seconds: 60 } }] },
     ]),
   },
@@ -103,29 +107,43 @@ for (const width of [320, 390, 1280]) {
     // What couldn't be mapped exactly is listed openly, by where it belongs.
     await expect(page.getByText("3 things to check")).toBeVisible();
     await expect(page.getByText("“Drink 3L water a day”")).toBeVisible();
-    await expect(page.getByText("Weeks 1-4 · Strength")).toBeVisible();
+    // No day was written for pads: nothing opens until the person picks one.
+    const review = page.getByRole("button", { name: "Review and edit" });
+    await expect(review).toBeDisabled();
+    await expect(page.getByText("Choose a day above to continue.")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath(`${width}-3-found.png`) });
     expect((await new AxeBuilder({ page }).include("main").analyze()).violations
       .filter(v => ["serious", "critical"].includes(v.impact ?? ""))).toEqual([]);
 
-    await page.getByRole("button", { name: "Review and edit" }).click();
+    await page.getByLabel("Weeks 1-4 · Pads").selectOption("Wednesday");
+    await expect(review).toBeEnabled();
+    await review.click();
     await expect(page).toHaveURL(/\/plans\/custom\?imported=1/);
-    await expect(page.getByText("Imported from Camp plan.docx. Check each session, then save.")).toBeVisible();
-    // The same list stays with the draft in the builder, closed until opened.
-    await page.getByText("3 things to check").click();
-    await expect(page.getByText("“Brace hard, own every rep.”")).toBeVisible();
+    await expect(page.getByText("Imported from Camp plan.docx. Tick each thing to check once it's fixed or checked, then save.")).toBeVisible();
+    // The coach's session note is on the session itself.
+    await expect(page.getByText("Brace hard, own every rep.").first()).toBeVisible();
     await expect(page.getByText("Trap bar deadlift").first()).toBeVisible();
     // Nothing is saved until the person saves it.
     expect(saved.size).toBe(0);
     await page.screenshot({ path: info.outputPath(`${width}-4-builder.png`) });
     const save = page.getByRole("button", { name: "Save draft", exact: true });
     await expect(save).toBeEnabled();
+    // The things to check stay until each one is ticked.
+    await save.click();
+    await expect(page.getByRole("main").getByRole("alert")).toContainText("Tick the 3 things to check above before saving.");
+    expect(saved.size).toBe(0);
+    for (const box of await page.getByRole("checkbox").all()) await box.check();
+    await expect(page.getByText("3 things to check · all checked")).toBeVisible();
     await save.click();
     await expect.poll(() => saved.size).toBe(1);
     const plan = [...saved.values()][0];
     expect(plan.name).toBe("Fight camp block");
     expect(plan.sessions).toHaveLength(8);
+    // Pads went on the day the person picked, every week; the session note was saved with Strength.
+    expect(plan.sessions.filter(s => s.name === "Pads").map(s => s.scheduled_date))
+      .toEqual(["2026-11-25", "2026-12-02", "2026-12-09", "2026-12-16"]);
+    expect(plan.sessions.find(s => s.name === "Strength")?.notes).toBe("Brace hard, own every rep.");
     expect(errors).toEqual([]);
   });
 }
@@ -182,6 +200,7 @@ test("screenshots are redrawn as plain JPEGs and sent once; pasted text works to
   await page.getByRole("button", { name: "Import text" }).click();
   await expect(page.getByText("Found in")).toBeVisible();
   expect(bodies[1]).toMatchObject({ text: "Mon: Strength\nTrap bar deadlift 3x5 @ 140kg\nWed: Pads 6 x 3 min rounds", images: [], file_name: "pasted text" });
+  await page.getByLabel("Weeks 1-4 · Pads").selectOption("Thursday");
   await page.getByRole("button", { name: "Review and edit" }).click();
-  await expect(page.getByText("Imported from pasted text. Check each session, then save.")).toBeVisible();
+  await expect(page.getByText("Imported from pasted text. Tick each thing to check once it's fixed or checked, then save.")).toBeVisible();
 });
