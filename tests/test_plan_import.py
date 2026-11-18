@@ -1349,3 +1349,46 @@ def test_unitless_uniform_weight_survives_the_new_reader_contract_without_invent
     assert exercise["dose"]["load_or_intensity"] == "225"
     assert exercise["block_type"] == "strength"
     assert exercise["dose"]["sets"] == 3 and exercise["dose"]["reps"] == 5
+
+
+
+def test_targeted_second_look_does_not_overwrite_other_loading_rows_with_the_same_code():
+    from api.services.plan_import_patch import apply_patch
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[ReadSession(name="Lift", exercises=[
+        ReadExercise(name="A1 Clean", sets=2, reps=2, load="50%"),
+        ReadExercise(name="A1 Clean", sets=3, reps=1, load="95%"),
+    ])])])
+    patched = apply_patch(reading, [{"id": 0, "session": "Lift", "name": "A1 Clean", "exercise_index": 0}],
+                          [{"id": 0, "sets": 1, "reps": 2, "load": "50%"}])
+    stages = build_draft(patched, date(2026, 11, 23)).plan["sessions"][0]["exercises"][0]["dose"]["prescribed_sets"]
+    assert [(stage["sets"], stage["reps"]) for stage in stages] == [(1, 2), (3, 1)]
+    assert stages[1]["source_text"] == "95%"
+    assert reading.weeks[0].sessions[0].exercises[0].sets == 2
+
+
+def test_actual_screenshot_model_response_replays_without_losing_training_cells():
+    reading = ReadPlan.model_validate_json((FIXTURES / "sc_week5.live-model.json").read_text(encoding="utf-8"))
+    result = build_draft(reading, date(2026, 11, 23), "")
+    session = result.plan["sessions"][0]
+    assert session["programme_week"] == 5 and session["weekday"] is None
+    assert session["name"] == "Day 1 (Total)"
+    rows = session["exercises"]
+    assert [row["exercise_code"] for row in rows] == ["A1", "A2", "B1", "B2", "C1", "C2", "D1"]
+    assert all(not row.get("group_type") for row in rows)
+    for index, percentages, weights, repetitions in [
+        (0, [50, 60, 70, 75, 80, 85, 90, 95], [120, 140, 165, 175, 190, 200, 210, 225], [2, 1, 1, 1, 1, 1, 1, 1]),
+        (2, [50, 60, 70, 75, 80, 88], [170, 200, 235, 250, 270, 295], [3, 2, 1, 1, 1, 1]),
+    ]:
+        stages = rows[index]["dose"]["prescribed_sets"]
+        assert [stage["percentage"] for stage in stages] == percentages
+        for stage, weight, reps in zip(stages, weights, repetitions):
+            assert f"WT: {weight}" in stage["source_text"]
+            assert stage["reps"] == reps or f"Sets x Reps: {reps};" in stage["source_text"]
+        assert stages[-1]["sets"] == (3 if index == 0 else 7)
+        assert stages[-1]["reps"] == 1
+    assert rows[1]["dose"]["sets"] == 3 and rows[1]["dose"]["duration_seconds"] == 25
+    assert rows[3]["dose"]["prescription"] == "2 x 2 Ea" and rows[3]["dose"]["per_side"] is True
+    assert [stage["reps"] for stage in rows[4]["dose"]["prescribed_sets"]] == ["4e"] * 3
+    assert rows[5]["dose"]["sets"] == 3 and rows[5]["dose"]["reps"] == 4
+    assert rows[6]["dose"]["sets"] == 3 and rows[6]["dose"]["reps"] == 5
+    assert rows[6]["dose"]["load_or_intensity"] == "225"

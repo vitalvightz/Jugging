@@ -1,0 +1,142 @@
+{
+  "name": "Week 5 Strength Phase 2",
+  "weeks": [
+    {
+      "week_index": 5,
+      "sessions": [
+        {
+          "name": "Day 1 (Total)",
+          "session_type": "strength_power",
+          "exercises": [
+            {
+              "exercise_code": "A1",
+              "prescribed_sets": [
+                {
+                  "percentage": 50,
+                  "source_text": "Sets x Reps: 2; WT: 120"
+                },
+                {
+                  "percentage": 60,
+                  "source_text": "Sets x Reps: 1; WT: 140"
+                },
+                {
+                  "percentage": 70,
+                  "source_text": "Sets x Reps: 1; WT: 165"
+                },
+                {
+                  "percentage": 75,
+                  "source_text": "Sets x Reps: 1; WT: 175"
+                },
+                {
+                  "percentage": 80,
+                  "source_text": "Sets x Reps: 1; WT: 190"
+                },
+                {
+                  "percentage": 85,
+                  "source_text": "Sets x Reps: 1; WT: 200"
+                },
+                {
+                  "percentage": 90,
+                  "source_text": "Sets x Reps: 1; WT: 210"
+                },
+                {
+                  "sets": 3,
+                  "reps": 1,
+                  "percentage": 95,
+                  "source_text": "WT: 225"
+                }
+              ],
+              "name": "Clean",
+              "kind": "power"
+            },
+            {
+              "exercise_code": "A2",
+              "name": "Back Extension Iso",
+              "sets": 3,
+              "seconds": 25,
+              "kind": "strength"
+            },
+            {
+              "exercise_code": "B1",
+              "prescribed_sets": [
+                {
+                  "percentage": 50,
+                  "source_text": "Sets x Reps: 3; WT: 170"
+                },
+                {
+                  "percentage": 60,
+                  "source_text": "Sets x Reps: 2; WT: 200"
+                },
+                {
+                  "percentage": 70,
+                  "source_text": "Sets x Reps: 1; WT: 235"
+                },
+                {
+                  "percentage": 75,
+                  "source_text": "Sets x Reps: 1; WT: 250"
+                },
+                {
+                  "percentage": 80,
+                  "source_text": "Sets x Reps: 1; WT: 270"
+                },
+                {
+                  "sets": 7,
+                  "reps": 1,
+                  "percentage": 88,
+                  "source_text": "WT: 295"
+                }
+              ],
+              "name": "Back Squat",
+              "kind": "strength"
+            },
+            {
+              "exercise_code": "B2",
+              "name": "Ankle PAIL&RAIL",
+              "sets": 2,
+              "reps": 2,
+              "per_side": true,
+              "kind": "recovery",
+              "prescription": "2 x 2 Ea"
+            },
+            {
+              "exercise_code": "C1",
+              "prescribed_sets": [
+                {
+                  "reps": "4e",
+                  "source_text": "4e"
+                },
+                {
+                  "reps": "4e",
+                  "source_text": "4e"
+                },
+                {
+                  "reps": "4e",
+                  "source_text": "4e"
+                }
+              ],
+              "name": "S.A. DB High Incline Bench",
+              "kind": "strength",
+              "equipment": "DB"
+            },
+            {
+              "exercise_code": "C2",
+              "name": "Lat Pull Down",
+              "sets": 3,
+              "reps": 4,
+              "kind": "strength"
+            },
+            {
+              "exercise_code": "D1",
+              "name": "Barbell RDL",
+              "sets": 3,
+              "reps": 5,
+              "load": "225",
+              "kind": "strength",
+              "equipment": "Barbell"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
