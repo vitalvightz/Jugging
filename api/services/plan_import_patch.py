@@ -55,7 +55,10 @@ def apply_patch(read: ReadPlan, items: list[dict], fixes: list[dict]) -> ReadPla
             for session in week.sessions:
                 if (session.name or "") != item["session"]:
                     continue
-                for exercise in session.exercises:
+                for exercise_index, exercise in enumerate(session.exercises):
+                    # Repeated loading rows can share a code/name but have different doses.
+                    if item.get("exercise_index") is not None and item["exercise_index"] != exercise_index:
+                        continue
                     if (exercise.name or "") == item["name"]:
                         for field in DOSE_FIELDS:
                             setattr(exercise, field, fix.get(field))

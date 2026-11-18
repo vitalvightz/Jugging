@@ -117,6 +117,14 @@ def _wrap(type_text: str) -> str:
 REQUEST_SUFFIX = "Request"
 
 
+def _type_name(name: str) -> str:
+    # FastAPI splits a nested model when request and serialized shapes differ.
+    # Retain the existing Foo/FooRequest public names, not invalid Foo-Input TS.
+    if name.endswith("-Input"):
+        return name.removesuffix("-Input") + REQUEST_SUFFIX
+    return name.removesuffix("-Output")
+
+
 class _Renderer:
     """Renders schemas as the server sends them, or as a client may send them.
 
@@ -133,7 +141,7 @@ class _Renderer:
         self.two_way = two_way
 
     def ref_name(self, name: str) -> str:
-        return f"{name}{REQUEST_SUFFIX}" if self.as_request and name in self.two_way else name
+        return _type_name(name) + REQUEST_SUFFIX if self.as_request and name in self.two_way else _type_name(name)
 
     def type_of(self, schema: Any, indent: str) -> str:
         if schema is True or schema == {}:
@@ -219,10 +227,10 @@ def render(spec: dict[str, Any]) -> str:
     variants: list[tuple[str, str, bool]] = []
     for name in schemas:
         if name in two_way:
-            variants.append((name, name, False))
-            variants.append((f"{name}{REQUEST_SUFFIX}", name, True))
+            variants.append((_type_name(name), name, False))
+            variants.append((_type_name(name) + REQUEST_SUFFIX, name, True))
         else:
-            variants.append((name, name, name in requested))
+            variants.append((_type_name(name), name, name in requested))
     parts = [HEADER]
     for type_name, schema_name, as_request in sorted(variants):
         schema = schemas[schema_name]

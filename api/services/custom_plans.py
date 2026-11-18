@@ -70,7 +70,7 @@ def exercise_name(exercise: dict) -> str:
 def dose_blank(dose: dict) -> bool:
     """Nothing written at all: only the mode is set."""
     return not any(value not in (None, "", False) and not (isinstance(value, str) and not value.strip())
-                   for key, value in (dose or {}).items() if key != "mode")
+                   for key, value in (dose or {}).items() if key != "mode" and value != [])
 
 
 def exercise_incomplete(exercise: dict) -> bool:
@@ -169,6 +169,9 @@ def custom_open_plan_result(draft: dict, profile, *, training_day: str) -> dict:
                 block = {
                     "block_id": str(uuid5(UUID(plan_id), exercise["id"])), "block_type": block_type,
                     "display_name": exercise.get("name") or snapshot["name"],
+                    "exercise_code": exercise.get("exercise_code"),
+                    "exercise_block": exercise["exercise_code"][0].upper() if exercise.get("exercise_code") else None,
+                    "group_type": exercise.get("group_type"),
                     "order_index": order, "exercise_key": snapshot.get("exercise_key"),
                     "catalogue_id": exercise.get("catalogue_id"),
                     "private_media_id": exercise.get("media_id"), "notes": exercise.get("notes"),
@@ -218,7 +221,7 @@ def custom_open_plan_result(draft: dict, profile, *, training_day: str) -> dict:
                           "status": "draft", "created_by": profile.athlete_id},
         "athlete_context": {"athlete_id": profile.athlete_id, "sport_profile": ", ".join(profile.technical_style)},
         "event_context": {"event_type": "none"},
-        "weeks": [{"week_id": "custom-template", "week_index": 1, "phase_label": "GPP",
+        "weeks": [{"week_id": "custom-template", "week_index": next((s["programme_week"] for s in sessions if s.get("programme_week")), 1), "phase_label": "GPP",
                    "week_goal": "", "start_date": "", "end_date": "",
                    "load_focus": {k: "maintain" for k in ("volume", "intensity", "specificity", "fatigue_target")},
                    "progression": {"week_type": "stabilise", "planned_change_from_previous": ""},
@@ -293,7 +296,9 @@ def dated_custom_plan_result(draft: dict, profile, *, training_day: str) -> dict
             day['today_card']['coach_led_contact'] = 'Hard sparring' if any(s['session_type'] == 'sparring' for s in day['sessions']) else None
             day['day_type'] = 'moderate' if workouts else 'recovery' if recovery else 'rest'
             days.append(day)
-        weeks.append({**deepcopy(template), 'week_id': f'dated-{cursor}', 'week_index': len(weeks)+1,
+        source_weeks = {s['programme_week'] for s in draft['sessions'] if s.get('programme_week') and s.get('scheduled_date') and str(cursor) <= s['scheduled_date'] <= str(week_end)}
+        week_index = next(iter(source_weeks)) if len(source_weeks) == 1 else len(weeks) + 1
+        weeks.append({**deepcopy(template), 'week_id': f'dated-{cursor}', 'week_index': week_index,
                       'start_date': str(cursor), 'end_date': str(week_end), 'days': days})
         cursor = week_end + timedelta(days=1)
     structured['weeks'] = weeks
@@ -309,6 +314,8 @@ def dated_custom_plan_result(draft: dict, profile, *, training_day: str) -> dict
 def dose_block_fields(dose: dict) -> dict:
     """The shared numeric block fields for one athlete dose (CustomDose shape)."""
     fields: dict = {}
+    if dose.get("mode") == "stages":
+        fields["prescribed_sets"] = deepcopy(dose.get("prescribed_sets") or [])
     if dose.get("mode") == "text":
         from api.rep_range import authored_rep_range
         from api.structured_plan_deterministic_fallback import _lift_dose_fields
@@ -337,11 +344,52 @@ def dose_block_fields(dose: dict) -> dict:
     return fields
 
 
+def _stage_text(stage: dict) -> str:
+    parts = []
+    if stage.get("percentage") is not None:
+        parts.append(f"{stage['percentage']:g}%")
+    quantity = stage.get("reps")
+    if quantity is None and stage.get("duration"):
+        quantity = f"{stage['duration']['value']:g} {stage['duration']['unit']}".strip()
+    if quantity is not None:
+        parts.append(f"{stage['sets']} × {quantity}" if stage.get("sets") else str(quantity))
+    if stage.get("duration") and stage.get("reps") is not None:
+        parts.append(f"{stage['duration']['value']:g} {stage['duration']['unit']}")
+    if quantity is None and stage.get("sets"):
+        parts.append(f"{stage['sets']} sets")
+    for key in ("weight", "load", "rest", "work", "distance"):
+        value = stage.get(key)
+        if value:
+            text = value.get("display") or f"{value['value']:g} {value.get('unit') or ''}".strip()
+            parts.append(f"{key}: {text}" if key in {"rest", "work", "distance"} else text)
+    if stage.get("rounds"):
+        parts.append(f"{stage['rounds']} rounds")
+    if stage.get("effort"):
+        effort = stage['effort']
+        scale = f" ({effort['scale']})" if effort.get("scale") else ""
+        parts.append(f"{effort['method']} {effort['value']}{scale}")
+    for key in ("intensity", "per_side", "source_text"):
+        if stage.get(key):
+            parts.append(str(stage[key]))
+    if stage.get("tempo"):
+        parts.append("tempo " + "-".join(str(stage['tempo'].get(key) if stage['tempo'].get(key) is not None else "?") for key in ("eccentric", "pause_bottom", "concentric", "pause_top")))
+    return " · ".join(parts)
+
+
 def dose_text(dose: dict) -> str:
     return _dose_text(dose)
 
 
 def _dose_text(dose: dict) -> str:
+    if dose.get("mode") == "stages":
+        common = [dose.get("load_or_intensity"),
+                  f"rest {dose['rest_seconds']}s" if dose.get("rest_seconds") is not None else None,
+                  f"RPE {dose['rpe']:g}" if dose.get("rpe") is not None else None,
+                  f"tempo {dose['tempo']}" if dose.get("tempo") else None]
+        lines = [_stage_text(stage) for stage in dose.get("prescribed_sets") or []]
+        if any(common):
+            lines.append(" · ".join(str(value) for value in common if value))
+        return "\n".join(lines)
     if not any(value not in (None, "", False) for key, value in dose.items() if key != "mode"):
         return ""  # nothing written (a warm-up or cooldown with no dose)
     if dose["mode"] == "reps":
@@ -415,6 +463,11 @@ def publish_custom_plan(store, draft: dict, profile, *, awaiting_assignment: boo
 
 def plan_fields(store, body: CustomPlanInput, previous: dict | None = None, *, athlete_id: str | None = None) -> dict:
     fields = body.model_dump(mode="json")
+    previous_sessions = {session["id"]: session for session in (previous or {}).get("sessions", [])}
+    session_fields = {str(session.id): session.model_fields_set for session in body.sessions}
+    for session in fields["sessions"]:
+        if session["id"] in previous_sessions and "programme_week" not in session_fields[session["id"]]:
+            session["programme_week"] = previous_sessions[session["id"]].get("programme_week")
     old = {
         exercise["catalogue_id"]: exercise["snapshot"]
         for session in (previous or {}).get("sessions", [])
@@ -451,6 +504,9 @@ def plan_fields(store, body: CustomPlanInput, previous: dict | None = None, *, a
                 422,
                 "An exercise occurrence cannot change origin or catalogue identity.",
             )
+        for field in ("exercise_code", "group_type"):
+            if prior and field not in supplied[exercise["id"]]:
+                exercise[field] = prior.get(field)
         exercise["incomplete"] = exercise_incomplete(exercise)
         if exercise["origin"] == "manual":
             if prior and "exercise_type" not in supplied[exercise["id"]]:
@@ -510,6 +566,24 @@ def plan_fields(store, body: CustomPlanInput, previous: dict | None = None, *, a
 
 
 def dose_incomplete(dose):
+    if dose.get("mode") == "stages":
+        stages = dose.get("prescribed_sets") or []
+        def has_prescription(stage):
+            # Counts, loading, rest and effort alone leave the actual work unknown.
+            def positive(value):
+                return isinstance(value, (int, float)) and not isinstance(value, bool) and 0 < value < float("inf")
+
+            reps = stage.get("reps")
+            if isinstance(reps, str):
+                try:
+                    has_reps = positive(float(reps))
+                except ValueError:
+                    has_reps = bool(reps.strip())
+            else:
+                has_reps = positive(reps)
+            return has_reps or any(positive((stage.get(key) or {}).get("value")) for key in ("duration", "work", "distance")) or bool((stage.get("source_text") or "").strip())
+
+        return not stages or any(not has_prescription(stage) for stage in stages)
     mode = dose["mode"]
     if mode == "distance":
         return not (dose.get("distance") and dose.get("distance_unit"))

@@ -16,14 +16,14 @@ export function customPlanInput(plan: PlanLike, fresh = false): CustomPlanInput 
       name: s.name,
       weekday: s.weekday, scheduled_date: s.scheduled_date ?? null,
       session_type: s.session_type ?? "mixed",
-      notes: s.notes?.trim() || null,
+      notes: s.notes?.trim() || null, programme_week: s.programme_week,
       exercises: s.exercises.map(e => e.origin === "manual"
         ? {
             id: id(e.id), origin: e.origin, name: e.name, equipment: e.equipment, exercise_type: e.exercise_type, block_type: e.block_type ?? null, notes: e.notes,
             media_id: e.media_id, community_id: e.community_id, community_revision_id: e.community_revision_id,
-            dose: e.dose, coaching_cues: e.coaching_cues, stop_rules: e.stop_rules,
+            exercise_code: e.exercise_code, group_type: e.group_type, dose: e.dose, coaching_cues: e.coaching_cues, stop_rules: e.stop_rules,
           }
-        : { id: id(e.id), origin: "catalogue" as const, catalogue_id: e.catalogue_id, block_type: e.block_type ?? null, dose: e.dose, coaching_cues: e.coaching_cues, stop_rules: e.stop_rules }),
+        : { id: id(e.id), origin: "catalogue" as const, catalogue_id: e.catalogue_id, block_type: e.block_type ?? null, exercise_code: e.exercise_code, group_type: e.group_type, dose: e.dose, coaching_cues: e.coaching_cues, stop_rules: e.stop_rules }),
     })),
   };
 }

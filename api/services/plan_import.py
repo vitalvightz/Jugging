@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field, PrivateAttr, ValidationError
 from api.contracts.custom_plans import WEEKDAYS, CustomDose, CustomExerciseSnapshot, CustomPlanInput
 from api.services.custom_plans import activity_block_type, dose_optional, session_activity
 from api.services.plan_import_check import TIME, SourceCheck, written_layout_flags
+from api.structured_plan_models import ExercisePrescription
 from api.services.plan_import_match import LibraryMatcher, linked
 from api.services.plan_import_patch import PATCH_INSTRUCTIONS, apply_patch, patch_schema
 from api.services.plan_import_reading import (
@@ -259,6 +260,9 @@ def dose_from(item: ReadExercise, flag=lambda message: None) -> CustomDose:
     tempo = tempo if tempo and len(tempo) <= 40 else None  # A longer one stays in the notes.
     common = {"rest_seconds": rest, "load_or_intensity": load, "rpe": rpe, "tempo": tempo,
               "per_side": True if item.per_side else None}
+    if item.prescribed_sets:
+        stages = [stage.model_copy(update={"per_side": "each side"}) if item.per_side and not stage.per_side else stage for stage in item.prescribed_sets]
+        return CustomDose(mode="stages", prescribed_sets=stages, **common)
     sets, reps, seconds = _int(item.sets, 1, 100), _int(item.reps, 1, 1000), _int(item.seconds, 1, 36_000)
     rounds, work = _int(item.rounds, 1, 100), _int(item.work_seconds, 1, 36_000)
     distance = float(item.distance) if isinstance(item.distance, (int, float)) and 0 < item.distance <= 100_000 else None
@@ -302,8 +306,75 @@ def _lines(values: list[str], *, limit: int = 10, length: int = 500) -> tuple[li
     return fits or None, [line for line in lines if line not in fits]
 
 
+def _explicit_group_type(item: ReadExercise) -> str | None:
+    if item.group_type in {"superset", "circuit", "alternating_sets"}:
+        return item.group_type
+    match = re.match(r"^(?:[A-Za-z]\s*[:—–-]\s*)?(superset|circuit|alternating sets)\b", item.group or "", re.I)
+    return match[1].lower().replace(" ", "_") if match else None
+
+
+def _coded_name(item: ReadExercise) -> tuple[str | None, str]:
+    match = re.match(r"^\s*([A-Za-z][1-9][0-9]*)[.):]?\s+(?:[-—–]\s+)?(.+)$", item.name)
+    code = item.exercise_code
+    if code and not re.fullmatch(r"[A-Za-z][1-9][0-9]*", code):
+        code = None
+    return (code or match[1], match[2]) if match else (code, item.name)
+
+
+def _row_prescription(item: ReadExercise) -> ExercisePrescription:
+    # Retain numeric cells separately; notation without explicit units stays text.
+    return ExercisePrescription(
+        sets=item.sets, reps=item.reps,
+        duration={"value": item.seconds, "unit": "seconds"} if item.seconds else None,
+        rest={"value": item.rest_seconds, "unit": "seconds"} if item.rest_seconds is not None else None,
+        work={"value": item.work_seconds, "unit": "seconds"} if item.work_seconds else None,
+        rounds=item.rounds,
+        distance={"value": item.distance, "unit": item.distance_unit} if item.distance and item.distance_unit else None,
+        effort={"method": "RPE", "value": item.rpe} if item.rpe else None,
+        per_side="each side" if item.per_side else None,
+        source_text=" · ".join(str(v) for v in (
+            item.prescription, item.load, item.notes,
+            f"Tempo: {item.tempo}" if item.tempo else None,
+            f"Equipment: {item.equipment}" if item.equipment else None,
+            f"{item.blocks} blocks" if item.blocks else None,
+            f"Block rest: {item.block_rest_seconds}s" if item.block_rest_seconds is not None else None,
+            " / ".join(item.stages) if item.stages else None,
+        ) if v) or None,
+    )
+
+
+def _consolidate_rows(exercises: list[ReadExercise], origins: dict[int, list[int]]) -> list[ReadExercise]:
+    rows: list[ReadExercise] = []
+    for source in exercises:
+        item = source.model_copy(deep=True)
+        code, name = _coded_name(item)
+        item.exercise_code, item.name = code, name
+        item.group_type = _explicit_group_type(item)
+        previous = rows[-1] if rows else None
+        same_code = previous and previous.exercise_code and code == previous.exercise_code
+        continuation = previous and (previous.exercise_code or previous.prescribed_sets) and not name.strip() and (not code or same_code)
+        if previous and not item.is_reference and (continuation or (same_code and name == previous.name)) and item.group_type in (None, previous.group_type) and (not item.group or item.group == previous.group):
+            origins[id(previous)].append(id(source))
+            was_uniform = not previous.prescribed_sets
+            if was_uniform:
+                first = _row_prescription(previous)
+                previous.prescribed_sets = [first] if any(v is not None for v in first.model_dump().values()) else []
+            stage = _row_prescription(item)
+            previous.prescribed_sets.extend(item.prescribed_sets or ([stage] if any(v is not None for v in stage.model_dump().values()) else []))
+            if was_uniform:
+                for field in ("sets", "reps", "seconds", "rounds", "work_seconds", "rest_seconds", "distance", "distance_unit", "load", "rpe", "per_side", "prescription", "tempo", "blocks", "block_rest_seconds"):
+                    setattr(previous, field, None)
+            previous.cues = list(dict.fromkeys([*previous.cues, *item.cues]))
+            previous.stop_rules = list(dict.fromkeys([*previous.stop_rules, *item.stop_rules]))
+        else:
+            rows.append(item)
+            origins[id(item)] = [id(source)]
+    return rows
+
+
 def _exercise(item: ReadExercise, flag) -> dict | None:
-    full_name = _clean(LIST_LABEL.sub("", item.name or "", count=1)) or _clean(item.name)
+    code, read_name = _coded_name(item)
+    full_name = _clean(LIST_LABEL.sub("", read_name, count=1)) or _clean(read_name)
     if not full_name:
         written = _written_dose(item) or _clean(item.prescription) or _clean(item.notes, 80)
         if written:
@@ -359,7 +430,9 @@ def _exercise(item: ReadExercise, flag) -> dict | None:
     if text and len(text) > 2000:
         flag("Notes were longer than 2,000 characters and were shortened.")
         text = text[:2000]
-    return {"id": str(uuid4()), "origin": "manual", "block_type": block_type, "name": name, "equipment": equipment, "notes": text,
+    return {"id": str(uuid4()), "origin": "manual", "block_type": block_type, "name": name,
+            **({"exercise_code": code} if code else {}),
+            **({"group_type": item.group_type} if item.group_type in {"superset", "circuit", "alternating_sets"} else {}), "equipment": equipment, "notes": text,
             "coaching_cues": cues, "stop_rules": stops, "dose": dose.model_dump(exclude_none=True)}
 
 
@@ -397,17 +470,20 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
     # Each written week, repeated as written. A repeated week is flagged once,
     # under its week range ("Weeks 1-3"), not once per copy.
     runs = [(week, max(1, int(week.repeat or 1))) for week in written_weeks]
-    expanded = [week for week, count in runs for _ in range(count)]
+    expanded = [week.model_copy(update={"week_index": week.week_index + offset}) if week.week_index else week
+                for week, count in runs for offset in range(count)]
     if len(expanded) > MAX_WEEKS:
         flag("Plan", f"The programme runs {len(expanded)} weeks. Plans hold up to {MAX_WEEKS}, so weeks {MAX_WEEKS + 1}-{len(expanded)} weren't brought in.")
         expanded = expanded[:MAX_WEEKS]
     labels: list[str] = []
     for week, count in runs:
-        first_number = len(labels) + 1
-        last = min(first_number + count - 1, len(expanded))
-        if first_number > last:
+        first_position = len(labels) + 1
+        last_position = min(first_position + count - 1, len(expanded))
+        if first_position > last_position:
             break
-        labels += [f"Week {first_number}" if first_number == last else f"Weeks {first_number}-{last}"] * (last - first_number + 1)
+        first_number = week.week_index or first_position
+        last = first_number + last_position - first_position
+        labels += [f"Week {first_number}" if first_number == last else f"Weeks {first_number}-{last}"] * (last_position - first_position + 1)
         if not week.sessions:
             flag(labels[-1], "Written as a rest week, so it has no sessions.")
     name = _clean(read.name, 100) or "Imported plan"
@@ -439,7 +515,11 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
         if not session_days(item):
             flag("Every week", f"“{_clean(item.name, 80) or 'A session'}” has no day, so it wasn't added.")
 
-    def session(item: ReadSession, index: int, label: str, scheduled: date | None, day: str | None = None) -> dict:
+    consolidated_rows: dict[int, list[ReadExercise]] = {}
+    row_origins: dict[int, list[int]] = {}
+    row_flags: dict[int, list[ImportFlag]] = {}
+
+    def session(item: ReadSession, index: int, label: str, scheduled: date | None, day: str | None = None, programme_week: int | None = None) -> dict:
         kind = item.session_type if item.session_type in SESSION_TYPES else "mixed"
         title = _clean(item.name) or ("Rest" if kind == "rest" else f"Session {index + 1}")
         where = f"{label}{title}"
@@ -448,6 +528,19 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
         notes = _clean(item.instructions)
         if notes and len(notes) > 2000:
             flag(where, "The session note was longer than 2,000 characters and was shortened.")
+        if checker:
+            checker.session = item.name or ""
+            for exercise_index, raw in enumerate(item.exercises):
+                if raw.name.strip() and not raw.copied:
+                    mark = len(flags)
+                    failed_mark = len(checker.failed)
+                    checker.check(raw, lambda message, raw=raw: flag(f"{where} · {_clean(raw.name, 60)}", message))
+                    for failed in checker.failed[failed_mark:]:
+                        failed["exercise_index"] = exercise_index
+                    row_flags.setdefault(id(raw), []).extend(flags[mark:])
+        if id(item) not in consolidated_rows:
+            consolidated_rows[id(item)] = _consolidate_rows(item.exercises, row_origins)
+        item = item.model_copy(update={"exercises": consolidated_rows[id(item)]})
         if len(item.exercises) > MAX_EXERCISES:
             flag(where, f"Only the first {MAX_EXERCISES} of {len(item.exercises)} exercises were brought in.")
         exercises = []
@@ -461,9 +554,6 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
             # Numbers are checked against the written line first, so one the line
             # settles is fixed before the exercise is built.
             mark = len(flags)
-            if checker and not exercise.copied and _clean(exercise.name):
-                checker.session = item.name or ""
-                checker.check(exercise, say)
             # A copy made from a reference was flagged where it was first written.
             built = _exercise(exercise, (lambda message: None) if exercise.copied else say)
             if built and matcher:
@@ -476,9 +566,10 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
                     built = swapped
             if built:
                 exercises.append(built)
-                for raised in flags[mark:]:
+                original_flags = [raised for original in row_origins[id(exercise)] for raised in row_flags.get(original, [])]
+                for raised in [*flags[mark:], *original_flags]:
                     raised.exercise_id = raised.exercise_id or built["id"]
-        return {"id": session_id, "name": title[:100], "weekday": None if scheduled else day,
+        return {"id": session_id, "name": title[:100], **({"programme_week": programme_week} if programme_week else {}), "weekday": None if scheduled else day,
                 "scheduled_date": scheduled.isoformat() if scheduled else None, "session_type": kind,
                 "notes": notes[:2000] if notes else None, "exercises": exercises}
 
@@ -498,7 +589,7 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
             flag("Plan", f"Only the first {MAX_SESSIONS_PER_WEEK} of {len(items)} sessions in the week were brought in.")
             items = items[:MAX_SESSIONS_PER_WEEK]
         for index, (item, day, where) in enumerate(items):
-            sessions.append(session(item, index, where, None, day))
+            sessions.append(session(item, index, where, None, day, expanded[0].week_index))
             if not day:
                 needs_day(item, sessions[-1]["name"], sessions[-1])
         body = {"name": name, "schedule_mode": "weekly", "sessions": sessions}
@@ -531,7 +622,7 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
                 written = _session_date(item, read) if once else None
                 if written and not (first <= written < first + timedelta(days=7 * MAX_WEEKS)) or (written and day and written.strftime("%A") != day):
                     written = None
-                sessions.append(session(item, index, where, written or monday + timedelta(days=WEEKDAYS.index(day or "Monday"))))
+                sessions.append(session(item, index, where, written or monday + timedelta(days=WEEKDAYS.index(day or "Monday")), programme_week=week.week_index))
                 if not day:
                     needs_day(item, f"{labels[number]} \u00b7 {sessions[-1]['name']}", sessions[-1])
         body = {"name": name, "schedule_mode": "dated", "start_date": first.isoformat(),
@@ -543,7 +634,7 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
         waiting = {sid for group in unplaced.values() for sid in group.session_ids}
         placed = {s["weekday"] if s.get("weekday") else WEEKDAYS[date.fromisoformat(s["scheduled_date"]).weekday()]
                   for s in sessions if s["id"] not in waiting and (s.get("weekday") or s.get("scheduled_date"))}
-        written_layout_flags(source, len(expanded), placed, flag)
+        written_layout_flags(source, len(expanded), placed, flag, {w.week_index for w in expanded if w.week_index})
     corrections_flags(read, flag, source or "")
     if source is not None and not source.strip():
         flag("Plan", "Read from screenshots, so doses weren't double-checked. Compare them with your screenshots.")

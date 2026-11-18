@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from api.contracts.training_library import LibraryEntry
+from api.structured_plan_models import ExercisePrescription
 
 Name = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
@@ -27,7 +28,7 @@ class DraftModel(BaseModel):
 
 
 class CustomDose(DraftModel):
-    mode: Literal["reps", "duration", "intervals", "distance", "text"] = "reps"
+    mode: Literal["reps", "duration", "intervals", "distance", "text", "stages"] = "reps"
     sets: int | None = Field(None, strict=True, ge=1, le=100)
     reps: int | None = Field(None, strict=True, ge=1, le=1000)
     duration_seconds: int | None = Field(None, strict=True, ge=1, le=36000)
@@ -42,6 +43,8 @@ class CustomDose(DraftModel):
     distance: float | None = Field(None, strict=True, gt=0, le=100000)
     distance_unit: Literal["m", "km", "mi", "yd"] | None = None
     prescription: str | None = Field(None, max_length=500)
+
+    prescribed_sets: list[ExercisePrescription] | None = Field(None, max_length=100, json_schema_extra={"x-response-optional": True})
 
     @model_validator(mode="after")
     def matching_mode(self):
@@ -74,6 +77,9 @@ class CustomDose(DraftModel):
                 "distance_unit",
             ),
         }
+        fields["stages"] = (*fields["text"], "prescription")
+        if self.mode != "stages" and self.prescribed_sets:
+            raise ValueError("Loading stages require the stages dose mode.")
         if any(getattr(self, field) is not None for field in fields[self.mode]):
             raise ValueError("Fields do not match the selected dose mode.")
         return self
@@ -85,6 +91,8 @@ ExerciseBlockType = Literal["preparation", "strength", "plyometric_power", "cond
 
 
 class CustomExerciseInput(DraftModel):
+    exercise_code: str | None = Field(None, pattern=r"^[A-Za-z][1-9][0-9]*$", json_schema_extra={"x-response-optional": True})
+    group_type: Literal["superset", "circuit", "alternating_sets"] | None = Field(None, json_schema_extra={"x-response-optional": True})
     id: UUID
     origin: Literal["catalogue"] = "catalogue"
     catalogue_id: str = Field(min_length=1, max_length=250)
@@ -95,6 +103,8 @@ class CustomExerciseInput(DraftModel):
 
 
 class ManualExerciseInput(DraftModel):
+    exercise_code: str | None = Field(None, pattern=r"^[A-Za-z][1-9][0-9]*$", json_schema_extra={"x-response-optional": True})
+    group_type: Literal["superset", "circuit", "alternating_sets"] | None = Field(None, json_schema_extra={"x-response-optional": True})
     id: UUID
     origin: Literal["manual"]
     exercise_type: Literal["strength", "bodyweight", "power", "other"] | None = None
@@ -126,6 +136,7 @@ def legacy_origins(value):
 
 
 class CustomSessionInput(DraftModel):
+    programme_week: int | None = Field(None, ge=1, json_schema_extra={"x-response-optional": True})
     id: UUID
     name: Name
     weekday: Weekday | None = None

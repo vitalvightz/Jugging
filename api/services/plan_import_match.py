@@ -113,4 +113,5 @@ def linked(built: dict, match: Match) -> dict | None:
     if len(cues) > 10 or any(len(line) > 500 for line in cues):
         return None
     return {"id": built["id"], "origin": "catalogue", "catalogue_id": match.catalogue_id, "block_type": built.get("block_type"), "dose": built["dose"],
-            "coaching_cues": cues or None, "stop_rules": built.get("stop_rules") or None}
+            "coaching_cues": cues or None, "stop_rules": built.get("stop_rules") or None,
+            **{key: built[key] for key in ("exercise_code", "group_type") if key in built}}

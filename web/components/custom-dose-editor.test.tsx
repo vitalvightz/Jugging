@@ -1,10 +1,10 @@
-import "./test-dom";
+import { window } from "./test-dom";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { CustomDoseEditor } from "./custom-dose-editor";
-import { blankDose } from "@/lib/custom-plan-dose";
+import { blankDose, blankPrescribedSet } from "@/lib/custom-plan-dose";
 import type { CustomDose, PersonalExercise } from "@/lib/api-schema.generated";
 
 test("custom Add and Edit share history, leave edits intact and apply weights only on request", async () => {
@@ -63,3 +63,57 @@ test("earned custom weights stay optional and editable until explicitly applied"
     assert.equal(past.latest_values.load!.value, 80);
   } finally { await act(async () => root.unmount()); }
 });
+
+
+test("loading-stage editing and reordering preserve every other prescribed detail", async () => {
+  const node = document.createElement("div");
+  const root = createRoot(node);
+  const source = { ...blankPrescribedSet(), sets: 3, reps: 1, percentage: 95, source_text: "WT: 225",
+    rest: { value: 120, unit: "seconds" }, per_side: "E/S", tempo: { eccentric: 0, pause_bottom: null, concentric: "X", pause_top: null } };
+  let dose: CustomDose = { ...blankDose("stages"), prescribed_sets: [source, { ...blankPrescribedSet(), reps: "4e" }] };
+  const render = () => root.render(<CustomDoseEditor dose={dose} onChange={next => { dose = next; render(); }} />);
+  try {
+    await act(async () => render());
+    const percentage = node.querySelector<HTMLInputElement>('[aria-label="Stage 1 percentage"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!.call(percentage, "90");
+      percentage.dispatchEvent(new window.Event("input", { bubbles: true }));
+    });
+    assert.equal(dose.prescribed_sets![0].percentage, 90);
+    assert.equal(dose.prescribed_sets![0].source_text, "WT: 225");
+    assert.deepEqual(dose.prescribed_sets![0].rest, source.rest);
+    assert.deepEqual(dose.prescribed_sets![0].tempo, source.tempo);
+    assert.equal(dose.prescribed_sets![0].per_side, "E/S");
+    await act(async () => node.querySelector<HTMLButtonElement>('[aria-label="Move stage 1 down"]')!.click());
+    assert.equal(dose.prescribed_sets![0].reps, "4e");
+    assert.equal(dose.prescribed_sets![1].percentage, 90);
+    assert.deepEqual(dose.prescribed_sets![1].rest, source.rest);
+    assert.equal(dose.mode, "stages");
+    assert.ok(!node.textContent!.includes("Use last weight"));
+  } finally { await act(async () => root.unmount()); }
+});
+
+
+for (const essential of [false, true]) {
+  test(`dose format remains selectable before and after loading stages (essential=${essential})`, async () => {
+    const node = document.createElement("div");
+    const root = createRoot(node);
+    let dose: CustomDose = blankDose();
+    const render = () => root.render(<CustomDoseEditor essential={essential} dose={dose} onChange={next => { dose = next; render(); }} />);
+    const select = async (value: string) => {
+      const selector = node.querySelector<HTMLSelectElement>('[aria-label="Dose format"]')!;
+      assert.ok(selector);
+      await act(async () => { selector.value = value; selector.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    };
+    try {
+      await act(async () => render());
+      await select("stages");
+      assert.equal(dose.mode, "stages");
+      assert.match(node.textContent!, /Add prescribed set/);
+      await select("duration");
+      assert.equal(dose.mode, "duration");
+      assert.ok(node.querySelector('[aria-label="Duration"]'));
+      assert.equal(node.textContent!.includes("Add prescribed set"), false);
+    } finally { await act(async () => root.unmount()); }
+  });
+}

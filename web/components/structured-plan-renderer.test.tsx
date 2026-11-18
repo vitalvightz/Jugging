@@ -8,6 +8,7 @@ import {
   ExerciseRationaleProvider,
   ExerciseRow,
   SessionCard,
+  groupBlockRows,
   SessionlessDayCard,
   TodayCard,
   StructuredPlanRenderer,
@@ -51,6 +52,41 @@ test("the competition day retains the fight-day protocol instruction", () => {
     today_card: {headline: "Fight day"}, sessions: []}} />);
   assert.match(html, /warm-up and fight protocol; no additional S&amp;C/);
 });
+
+import { buildStructuredPlanFromText } from "@/lib/plan-text-adapter";
+import { readFileSync } from "node:fs";
+
+test("screenshot renders one card per exercise, grouped by source block, with all stages", () => {
+  const text = readFileSync(new URL("../../tests/fixtures/sc_week5.txt", import.meta.url), "utf8");
+  const blocks = buildStructuredPlanFromText(text).weeks![0].days![0].sessions![0].blocks!;
+  const html = renderToStaticMarkup(<ExerciseBlocks blocks={blocks} />);
+  assert.equal(countOccurrences(html, 'class="sp-block"'), 7);
+  assert.equal(countOccurrences(html, "A1 — Clean"), 1);
+  assert.equal(countOccurrences(html, "B1 — Back Squat"), 1);
+  assert.equal(countOccurrences(html, "C1 — S.A. DB High Incline Bench"), 1);
+  assert.equal(countOccurrences(html, 'aria-label="Exercise block'), 4);
+  assert.equal(countOccurrences(html, 'aria-label="Prescribed sets"'), 7);
+  for (const percentage of [50, 60, 70, 75, 80, 85, 90, 95]) assert.ok(html.includes(`${percentage}%`));
+  for (const weight of [120, 140, 165, 175, 190, 200, 210, 225, 170, 235, 250, 270, 295]) assert.ok(html.includes(`WT: ${weight}`));
+  assert.ok(html.includes("95% · 3 × 1 · WT: 225"));
+  assert.ok(html.includes("88% · 7 × 1 · WT: 295"));
+  assert.equal(countOccurrences(html, ">4e</li>"), 3);
+  assert.ok(html.includes("3 × 25 sec"));
+  assert.ok(html.includes("2 × 2 Ea"));
+  assert.ok(!html.includes("superset"));
+});
+
+test("uncoded cards have no invented block and explicit circuits remain visible", () => {
+  const html = renderToStaticMarkup(<ExerciseBlocks blocks={[{ display_name: "Hold", group_type: "circuit",
+    prescribed_sets: [{ sets: 3, duration: { value: 25, unit: "seconds" }, per_side: "each side" }] }]} />);
+  assert.ok(html.includes("circuit"));
+  assert.ok(html.includes("3 × 25 seconds · each side"));
+  assert.ok(!html.includes("Exercise block"));
+});
+
+function ExerciseBlocks({ blocks }: { blocks: import("@/lib/types").StructuredBlock[] }) {
+  return <>{groupBlockRows(blocks, (block, index) => <BlockCard key={index} block={block} />)}</>;
+}
 
 function countOccurrences(text: string, needle: string): number {
   return text.split(needle).length - 1;

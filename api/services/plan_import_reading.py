@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from api.contracts.custom_plans import WEEKDAYS
+from api.structured_plan_models import ExercisePrescription, _strictify_schema_node
 
 
 
@@ -35,7 +36,7 @@ UNIT_NAMES = {"m": "m", "meter": "m", "meters": "m", "metre": "m", "metres": "m"
               "mi": "mi", "mile": "mi", "miles": "mi", "yd": "yd", "yds": "yd", "yard": "yd", "yards": "yd"}
 # List labels in front of an exercise name: "A1.", "B2)", "1.", "-", "•".
 # A decimal is not a label: "1.5 mile run" keeps its number.
-LIST_LABEL = re.compile(r"^\s*(?:[A-Za-z]\d{1,2}\s*[.):-]|\d{1,2}\s*[.):](?!\d)|[-•*–—·])\s*")
+LIST_LABEL = re.compile(r"^\s*(?:[A-Za-z][1-9]\d*\s*[.):-]|\d{1,2}\s*[.):](?!\d)|[-•*–—·])\s*")
 
 INSTRUCTIONS = """You convert a combat-sports coach's or athlete's written training programme into structured JSON.
 
@@ -45,7 +46,7 @@ THE ONE RULE: COPY, NEVER INVENT
 - Every value you return must be written in the programme. If something is not written, return null (or an empty list). Never guess days, sets, reps, times, loads, RPE, rest or equipment, and never add exercises.
 - Keep the coach's own words for names and instructions.
 - Correct spelling mistakes in names, cues, stop rules, notes and instructions ("bulgarain split sqaut" -> "Bulgarian split squat", "shadwo boxing" -> "shadow boxing", "kettelbell" -> "kettlebell"). Only spelling: never change numbers, units, loads, meaning or the coach's tone, and leave slang, abbreviations ("DB", "RDL", "KB") and names you don't recognise as written. List every correction in corrections as {written, corrected}, using the words as they appear.
-- Leave list labels and bullets ("A1.", "B2)", "1.", "-", "•") out of exercise names.
+- Put exercise codes such as A1/B2 in exercise_code, preserving their spelling and order. Leave their prefix and ordinary bullets out of names.
 
 
 USE COMMON SENSE
@@ -64,6 +65,10 @@ STRUCTURE
 - A table or list that maps day labels to weekdays ("Mon (Day 1)", "Tue (Day 2)"): give each "Day N" session those weekdays in days. Rows in such a table for days with no session written out below ("Sat: Recovery / Freestyle (Optional)", "Sun: Full Rest") go in every_week.
 
 EXERCISES, in written order (warm-up and cool-down lines written as exercises stay as exercises)
+- Preserve A1/A2/B1/B2/Z123 as exercise_code (without punctuation), not days or sessions. Name excludes only the code prefix. A shared letter never implies a superset. group_type is superset/circuit/alternating_sets ONLY when the source explicitly says so; otherwise null.
+- One exercise per movement/code, with ALL warm-up, working, loading and repeated table rows in ordered prescribed_sets. Clean's eight percentage/WT rows are one exercise with eight stages; Back Squat's six rows are one exercise; three 4e bench rows are three prescribed_sets. Never emit a card per percentage/weight/set. Preserve percentages AND weights, reps/sets, holds, rest, and side instructions. A bare WT has unknown units: keep it as source_text, never assume kg/lb or a 1RM reference. Ambiguous notation stays verbatim in source_text. Sets are null when the row states reps only. Top-level dose fields are null when stages own the varying dose. prescribed_sets is empty for uniform prescriptions.
+- "REPS X SETS" uses reps first; "Sets x Reps" uses sets first. Keep "4e", "2 Ea", "E/S" and timed holds. Week 5 is week_index=5, Day 1 (Total) is the session name with days=[] unless an explicit weekday is supplied; A1 is not either. No invented weekdays.
+
 - "3x5" -> sets 3, reps 5. "3x8 each side" -> reps 8, sets 3, per_side true. "5x3 min" -> sets 5, seconds 180. "30 sec hold" -> seconds 30.
 - Rounds of work: "6 x 3 min rounds, 1 min rest" -> rounds 6, work_seconds 180, rest_seconds 60.
 - Repeated blocks: "6 rounds of 15 sec on / 45 sec off, rest 2 minutes, then repeat for a second block of 6 rounds" -> rounds 6, work_seconds 15, rest_seconds 45, blocks 2, block_rest_seconds 120. blocks is how many times the whole set of rounds is done; null when written once. Never fold blocks into rounds (never rounds 12).
@@ -72,7 +77,7 @@ EXERCISES, in written order (warm-up and cool-down lines written as exercises st
 - A circuit or finisher heading with exercises listed under it ("Clinch Finisher (3 Rounds, 60s rest):" then each exercise on its own line): each listed exercise is its own exercise, with sets set to the circuit's rounds and its own written time, reps or distance; group is the heading as written ("Clinch Finisher (3 Rounds, 60s rest)"). The circuit's rest between rounds stays in group only, not in rest_seconds. group is null for an exercise not in a circuit.
 - A pair like "5x3" with no unit is sets x reps only for lifts and bodyweight work. For rounds-based work (pads, bag, sparring, intervals) never assume the second number is minutes or reps: put the text as written in prescription (and any written rest in rest_seconds). Never swap the two numbers of a pair: "3x8" is sets 3, reps 8.
 - "5 km run" -> distance 5, distance_unit km. "400m" -> distance 400, distance_unit m. "2 miles" -> distance 2, distance_unit mi. Never convert between units.
-- load: the written weight or intensity ("140kg", "70% 1RM", "zone 2", "bodyweight").
+- load: the written weight or intensity ("140kg", "70% 1RM", "zone 2", "bodyweight"). A numeric WT/Weight cell is still a prescribed load when its unit is missing: copy it verbatim into load for a uniform exercise (e.g. "225"), or source_text for a loading stage. Never drop a weight because the source omits kg/lb; never supply a unit. Check every row against every column before returning, including the last exercise, and retain both its sets/reps and its weight.
 - rpe: only a single written RPE number. An RPE range ("RPE 7-8") goes in load as written.
 - kind: what this exercise is, whatever the session is: warm_up (warm-up and activation items), strength (lifts, carries, core and accessory lifting), power (jumps, throws, plyos, med ball), conditioning (runs, bike, intervals, circuits, roadwork, skipping for fitness), skill (pads, bag, shadow boxing, drilling, technical or light sparring), sparring (hard or full sparring), recovery (cool-down, stretching, mobility, breathing). Judge by the coach's words: "bag work 6 x 30s high output" is skill, "light technical rounds" is skill, "hard sparring" is sparring. null only when it can't be told.
 - tempo: a written lifting tempo ("3-1-1-0", "31X1", "3-sec eccentric", "2-sec pause"), as written; otherwise null.
@@ -97,12 +102,17 @@ def response_schema() -> dict[str, Any]:
         return {"type": [kind, "null"], **extra}
 
     strings = {"type": "array", "items": {"type": "string"}}
+    stage = _strictify_schema_node(ExercisePrescription.model_json_schema())
+    definitions = stage.pop("$defs", {})
     exercise = {
         "type": "object", "additionalProperties": False,
         "required": ["name", "sets", "reps", "seconds", "rounds", "work_seconds", "rest_seconds", "blocks", "block_rest_seconds",
                      "distance", "distance_unit", "per_side", "load", "rpe", "tempo", "kind", "prescription", "equipment", "cues", "stop_rules",
-                     "notes", "stages", "group", "refers_to_day", "refers_to_section"],
+                     "notes", "stages", "group", "refers_to_day", "refers_to_section", "exercise_code", "group_type", "prescribed_sets"],
         "properties": {
+            "exercise_code": nullable("string"),
+            "group_type": {"type": ["string", "null"], "enum": ["superset", "circuit", "alternating_sets", None]},
+            "prescribed_sets": {"type": "array", "items": stage},
             "name": {"type": "string"},
             "sets": nullable("integer"), "reps": nullable("integer"), "seconds": nullable("integer"),
             "rounds": nullable("integer"), "work_seconds": nullable("integer"), "rest_seconds": nullable("integer"),
@@ -129,13 +139,14 @@ def response_schema() -> dict[str, Any]:
         },
     }
     week = {
-        "type": "object", "additionalProperties": False, "required": ["repeat", "rest", "sessions"],
-        "properties": {"repeat": {"type": "integer"}, "rest": {"type": "boolean"},
+        "type": "object", "additionalProperties": False, "required": ["repeat", "rest", "sessions", "week_index"],
+        "properties": {"week_index": nullable("integer"), "repeat": {"type": "integer"}, "rest": {"type": "boolean"},
                        "sessions": {"type": "array", "items": session}},
     }
     return {
         "type": "json_schema", "name": "imported_plan", "strict": True,
         "schema": {
+            "$defs": definitions,
             "type": "object", "additionalProperties": False,
             "required": ["name", "start_date", "weeks", "every_week", "skipped", "corrections"],
             "properties": {
@@ -155,6 +166,9 @@ def response_schema() -> dict[str, Any]:
 # -- What the model returns (lenient: anything odd is dropped and flagged, never trusted) --
 
 class ReadExercise(BaseModel):
+    exercise_code: str | None = None
+    group_type: str | None = None
+    prescribed_sets: list[ExercisePrescription] = Field(default_factory=list)
     name: str = ""
     sets: int | None = None
     reps: int | None = None
@@ -209,6 +223,7 @@ class ReadSession(BaseModel):
 
 
 class ReadWeek(BaseModel):
+    week_index: int | None = None
     repeat: int = 1
     # The programme writes this week as a rest, recovery or off week.
     rest: bool = False

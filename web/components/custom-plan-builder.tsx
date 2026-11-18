@@ -99,6 +99,8 @@ function draftBlock(exercise: Exercise, session: Session): StructuredBlock {
     exercise_key: snapshot?.exercise_key, catalogue_id: exercise.origin === "catalogue" ? exercise.catalogue_id : null,
     private_media_id: exercise.origin === "manual" ? exercise.media_id : null,
     community_revision_id: exercise.origin === "manual" ? exercise.community_revision_id : null,
+    exercise_code: exercise.exercise_code, exercise_block: exercise.exercise_code?.[0].toUpperCase(),
+    group_type: exercise.group_type, prescribed_sets: dose.prescribed_sets,
     athlete_dose: dose, prescription_text: doseSummary(dose, nameOf(exercise)),
     notes: exercise.origin === "manual" ? exercise.notes : null,
     intensity: dose.load_or_intensity,
@@ -673,7 +675,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
             </button>
           </div>
         </div>
-        <div className="sp-session-meta"><span className="sp-tag">{sessionNames[s.session_type ?? "mixed"]}</span><span className={styles.badge}>{s.exercises.length} {s.exercises.length === 1 ? "exercise" : "exercises"}{issueSessions.has(s.id) ? " · Incomplete" : ""}</span></div>
+        <div className="sp-session-meta"><span className="sp-tag">{sessionNames[s.session_type ?? "mixed"]}</span><span className={styles.badge}>{s.programme_week ? `Week ${s.programme_week} · ` : ""}{s.exercises.length} {s.exercises.length === 1 ? "exercise" : "exercises"}{issueSessions.has(s.id) ? " · Incomplete" : ""}</span></div>
         {s.notes?.trim() ? <p className={styles.sessionNotes}>{s.notes}</p> : null}
         {s.session_type !== "rest" ? <PrivateExerciseMediaProvider token={accessToken}>
           <ExerciseMediaProvider media={Object.fromEntries(s.exercises.flatMap(e => e.origin === "catalogue" && e.snapshot.media && e.snapshot.exercise_key
@@ -682,8 +684,10 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
               recentPerformances: [...(past?.values() ?? [])].map(entry => personalPerformance(entry)),
               allowProgression: [...(past?.values() ?? [])].some(entry => entry.allow_progression === true) }}>
             <ol className={`sp-blocks ex-rows ${styles.exercises}`}>
-              {s.exercises.map((e) => (
+              {s.exercises.map((e, index) => (
                 <li key={e.id} id={`exercise-${e.id}`}>
+                  {e.exercise_code && (index === 0 || s.exercises[index - 1].exercise_code?.[0].toUpperCase() !== e.exercise_code[0].toUpperCase())
+                    ? <p className="sp-stat-label">Block {e.exercise_code[0].toUpperCase()}</p> : null}
                   <ExerciseRow block={{ ...draftBlock(e, s),
                     progression_hold: e.origin === "manual" && (e.exercise_type === "power" || e.exercise_type === "other") ? true : past?.get(e.origin === "catalogue" ? e.snapshot.exercise_key ?? "" : `custom-name:${e.name.trim().toLowerCase().replace(/\s+/g, " ")}`)?.progression_hold,
                     bodyweight_progression: past?.get(e.origin === "catalogue" ? e.snapshot.exercise_key ?? "" : `custom-name:${e.name.trim().toLowerCase().replace(/\s+/g, " ")}`)?.bodyweight_progression,
@@ -1145,6 +1149,9 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
             }}
           >
             <section className={styles.exerciseContext} aria-label="Exercise details"><h3>Exercise details</h3>
+            <label><span>Exercise code (optional)</span><input aria-label="Exercise code" maxLength={20}
+              value={editing.exercise.exercise_code ?? ""} pattern="[A-Za-z][1-9][0-9]*"
+              onChange={event => setEditing(current => current ? { ...current, exercise: { ...current.exercise, exercise_code: event.target.value || null } } : current)} /></label>
             {editing.exercise.origin === "manual" ? (
               <>
                 <label>

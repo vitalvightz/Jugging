@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import { blankDose } from "../lib/custom-plan-dose";
+import { blankDose, blankPrescribedSet, doseIncomplete } from "../lib/custom-plan-dose";
 import { customScheduleIssues } from "../lib/custom-plan-schedule";
 import { isolateFromNetwork } from "./support";
 import type { CustomPlan, CustomPlanInput, LibraryEntry } from "../lib/api-schema.generated";
@@ -148,15 +148,13 @@ export async function setup(page: Page, baseURL: string, role = "athlete", fight
         session_type: session.session_type ?? "mixed",
         weekday: session.weekday ?? null,
         exercises: (session.exercises ?? []).map((exercise) => {
-          const dose = { ...blankDose(), ...exercise.dose };
-          const incomplete =
-            dose.mode === "reps"
-              ? !dose.sets || !dose.reps
-              : dose.mode === "duration"
-                ? !dose.duration_seconds
-                : dose.mode === "intervals"
-                  ? !dose.rounds || !dose.work_seconds || dose.rest_seconds == null
-                  : !dose.prescription;
+          const dose = { ...blankDose(), ...exercise.dose, prescribed_sets: exercise.dose?.prescribed_sets?.map(stage => ({
+            ...blankPrescribedSet(), ...stage,
+            load: stage.load ? { ref: null, display: null, ...stage.load } : null,
+            effort: stage.effort ? { scale: null, ...stage.effort } : null,
+            tempo: stage.tempo ? { eccentric: null, pause_bottom: null, concentric: null, pause_top: null, ...stage.tempo } : null,
+          })) ?? null };
+          const incomplete = doseIncomplete(dose);
           if (exercise.origin === "manual")
             return {
               ...exercise,

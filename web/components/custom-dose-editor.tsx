@@ -6,7 +6,7 @@ import { parseLoad } from "@/lib/load-entry";
 import { useState } from "react";
 import type { CustomDose } from "@/lib/api-schema.generated";
 import styles from "./custom-plan-builder.module.css";
-import { blankDose } from "@/lib/custom-plan-dose";
+import { blankDose, blankPrescribedSet } from "@/lib/custom-plan-dose";
 import type { PersonalExercise } from "@/lib/api-schema.generated";
 import { pastLoad, weighedFormat } from "@/lib/load-entry";
 import { LoadField } from "./load-field";
@@ -54,6 +54,47 @@ function DurationField({
     </label>
   );
 }
+function PrescribedSetsEditor({ dose, onChange }: { dose: CustomDose; onChange: (dose: CustomDose) => void }) {
+  const stages = dose.prescribed_sets ?? [];
+  type Stage = (typeof stages)[number];
+  const update = (index: number, patch: Partial<Stage>) => onChange({ ...dose,
+    prescribed_sets: stages.map((stage, position) => position === index ? { ...stage, ...patch } : stage) });
+  return <div className={styles.dose}>
+    <p className={styles.wide}>Prescribed sets · in source order</p>
+    {stages.map((stage, index) => <fieldset className={styles.wide} key={index}>
+      <legend>Stage {index + 1}</legend>
+      <div className={styles.dose}>
+        <label><span>Sets</span><input aria-label={`Stage ${index + 1} sets`} type="number" min="1" max="100"
+          value={stage.sets ?? ""} onChange={event => update(index, { sets: event.target.value ? Number(event.target.value) : null })} /></label>
+        <label><span>Reps / hold</span><input aria-label={`Stage ${index + 1} reps or hold`}
+          value={stage.reps ?? (stage.duration ? `${stage.duration.value} ${stage.duration.unit}` : "")}
+          onChange={event => update(index, { duration: null, reps: !event.target.value ? null : /^\d+$/.test(event.target.value) ? Number(event.target.value) : event.target.value })} /></label>
+        <label><span>Percentage</span><input aria-label={`Stage ${index + 1} percentage`} type="number" min="0" step="any"
+          value={stage.percentage ?? ""} onChange={event => update(index, { percentage: event.target.value ? Number(event.target.value) : null })} /></label>
+        <label><span>Weight</span><input aria-label={`Stage ${index + 1} weight`} type="number" min="0" step="any"
+          value={stage.weight?.value ?? ""} onChange={event => update(index, { weight: event.target.value ? { value: Number(event.target.value), unit: stage.weight?.unit ?? "" } : null })} /></label>
+        <label><span>Weight unit (if written)</span><input aria-label={`Stage ${index + 1} weight unit`} disabled={!stage.weight}
+          value={stage.weight?.unit ?? ""} onChange={event => stage.weight && update(index, { weight: { ...stage.weight, unit: event.target.value } })} /></label>
+        <label><span>Per side</span><input aria-label={`Stage ${index + 1} per side`} value={stage.per_side ?? ""}
+          onChange={event => update(index, { per_side: event.target.value || null })} /></label>
+        <label className={styles.wide}><span>Source notation / other details</span><textarea aria-label={`Stage ${index + 1} source notation`}
+          value={stage.source_text ?? ""} onChange={event => update(index, { source_text: event.target.value || null })} /></label>
+      </div>
+      <div className={styles.row}>
+        {([-1, 1] as const).map(direction => <button type="button" className="ghost-button" key={direction}
+          disabled={index + direction < 0 || index + direction >= stages.length}
+          aria-label={`Move stage ${index + 1} ${direction === -1 ? "up" : "down"}`}
+          onClick={() => { const reordered = [...stages]; [reordered[index], reordered[index + direction]] = [reordered[index + direction], reordered[index]]; onChange({ ...dose, prescribed_sets: reordered }); }}>
+          {direction === -1 ? "Up" : "Down"}</button>)}
+        <button type="button" className="ghost-button" aria-label={`Remove stage ${index + 1}`}
+          onClick={() => onChange({ ...dose, prescribed_sets: stages.filter((_, position) => position !== index) })}>Remove</button>
+      </div>
+    </fieldset>)}
+    <button type="button" className="ghost-button" disabled={stages.length >= 100}
+      onClick={() => onChange({ ...dose, prescribed_sets: [...stages, blankPrescribedSet()] })}>Add prescribed set</button>
+  </div>;
+}
+
 export function CustomDoseEditor({ dose, onChange, movement, past, essential = false }: {
   dose: CustomDose;
   onChange: (dose: CustomDose) => void;
@@ -65,6 +106,22 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
   essential?: boolean;
 }) {
   const context = useWeightContext();
+  const formatSelector = <label className={styles.wide}>
+    <span>Format</span>
+    <select
+      aria-label="Dose format"
+      value={dose.mode}
+      onChange={(event) => onChange(blankDose(event.target.value as CustomDose["mode"]))}
+    >
+      <option value="reps">Sets × reps</option>
+      <option value="duration">Continuous</option>
+      <option value="intervals">Intervals / rounds</option>
+      <option value="distance">Distance / carries</option>
+      <option value="text">Text prescription</option>
+      <option value="stages">Loading stages / prescribed sets</option>
+    </select>
+  </label>;
+  if (dose.mode === "stages") return <div className={styles.dose}>{formatSelector}<div className={styles.wide}><PrescribedSetsEditor dose={dose} onChange={onChange} /></div></div>;
   const load = parseLoad(dose.load_or_intensity);
   const exerciseType = movement && "exercise_type" in movement ? movement.exercise_type : null;
   const recommendation = personalWeightRecommendation({
@@ -113,7 +170,7 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
     const box = (field: "sets" | "reps" | "rest_seconds" | "rounds" | "distance", label: string, min: number, max: number, step = 1) =>
       <input aria-label={label} type="number" inputMode="decimal" min={min} max={max} step={step} value={dose[field] ?? ""}
         onChange={(event) => onChange({ ...dose, [field]: event.target.value === "" ? null : Number(event.target.value) })} />;
-    return <>{weightPreview}<div className={styles.inlineDose}>
+    return <>{formatSelector}{weightPreview}<div className={styles.inlineDose}>
       {dose.mode === "reps" ? <>{box("sets", "Sets", 1, 100)}<span aria-hidden="true">×</span>{box("reps", "Reps", 1, 1000)}<span>{dose.per_side ? "reps / side" : "reps"}</span></>
         : dose.mode === "intervals" ? <>{box("rounds", "Rounds", 1, 100)}<span aria-hidden="true">×</span>
           <DurationField inline value={dose.work_seconds} label="Work duration" onChange={(value) => onChange({ ...dose, work_seconds: value })} />
@@ -135,20 +192,7 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
   return (
     <div className={styles.dose}>
       <div style={{ gridColumn: "1 / -1" }}>{weightPreview}</div>
-      <label>
-        <span>Format</span>
-        <select
-          aria-label="Dose format"
-          value={dose.mode}
-          onChange={(event) => onChange(blankDose(event.target.value as CustomDose["mode"]))}
-        >
-          <option value="reps">Sets × reps</option>
-          <option value="duration">Continuous</option>
-          <option value="intervals">Intervals / rounds</option>
-          <option value="distance">Distance / carries</option>
-          <option value="text">Text prescription</option>
-        </select>
-      </label>
+      {formatSelector}
       {dose.mode === "reps" ? (
         <>
           {number("sets", "Sets", 1, 100)}

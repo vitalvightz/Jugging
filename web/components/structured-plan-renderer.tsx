@@ -10,6 +10,8 @@ import { getRehabExerciseGuide, rehabExerciseTarget } from "@/lib/rehab-exercise
 import {
   compactTimeUnits,
   readableExerciseMetrics,
+  formatExercisePrescription,
+  safeArray,
   classifySessionlessDay,
   isPlainRestDay,
   PLAIN_REST_HEADLINE_RE,
@@ -424,7 +426,8 @@ function useBlockPrescription(block: StructuredBlock, sourceCountdown?: string |
   const sourceText = useContext(PlanSourceTextContext);
   const planSafetyTexts = useContext(PlanSafetyTextContext);
   const title = cleanText(block.display_name) || "Block";
-  const sourceOverrides = getSourcePrescriptionRangeOverrides(sourceText, title, sourceCountdown);
+  const sourceOverrides = block.prescribed_sets?.length ? { sets: null, rest: null, effort: null }
+    : getSourcePrescriptionRangeOverrides(sourceText, title, sourceCountdown);
   // Loads are authored lower-case ("bodyweight", "easy angle"); they sit as a
   // value beside "RPE 4", so read them sentence-case like the other values.
   const loadText = formatBlockLoad(block.load)
@@ -435,7 +438,7 @@ function useBlockPrescription(block: StructuredBlock, sourceCountdown?: string |
   // An AI card can omit the quantitative dose even when its saved final text
   // states it exactly. Recover only a uniquely matched scalar source line.
   // Do not replace authored metrics or athlete-edited prescriptions.
-  const sourceVolume = block.prescription_source !== "athlete"
+  const sourceVolume = !block.prescribed_sets?.length && block.prescription_source !== "athlete"
     && !block.athlete_change
     && block.sets == null && block.reps == null
     && block.rounds == null && block.work == null && block.duration == null
@@ -556,7 +559,8 @@ export function BlockCard({
       {/* Embedded, the exercise row's header already carries the name and type. */}
       {embedded ? null : (
         <div className="sp-block-head">
-          <span className="sp-block-title">{title}</span>
+          <span className="sp-block-title">{block.exercise_code ? `${block.exercise_code} — ` : ""}{title}</span>
+          {block.group_type ? <span className="sp-tag">{block.group_type.replace(/_/g, " ")}</span> : null}
           {tagLabel ? (
             <span className="sp-tag">
               {tagLabel}
@@ -568,9 +572,17 @@ export function BlockCard({
         </div>
       )}
       {!hideInstructions ? <ExecutionInstructions block={block} /> : null}
-      {prescriptionText && !showMetricTiles ? <p className="sp-block-purpose">{prescriptionText}</p> : null}
+      {prescriptionText && !showMetricTiles && !block.prescribed_sets?.length ? <p className="sp-block-purpose">{prescriptionText}</p> : null}
       {block.notes && !hasAthleteMetrics ? <p className="sp-block-purpose">{block.notes}</p> : null}
       <RehabPrescription block={block} />
+      {safeArray(block.prescribed_sets).length > 0 ? (
+        <ol className="sp-cues sp-prescribed-sets" aria-label="Prescribed sets">
+          {safeArray(block.prescribed_sets).map((stage, index) => (
+            <li key={index}>{formatExercisePrescription(stage)}</li>
+          ))}
+        </ol>
+      ) : null}
+
       {/* Athlete entries retain their exact text (tempo, side, free-form load)
           alongside the same metric tiles used by generated sessions. */}
       {showMetricTiles ? (
@@ -773,10 +785,28 @@ function blockComponentGroup(block: StructuredBlock): string | null {
 export function groupBlockRows(
   blocks: StructuredBlock[],
   renderRow: (block: StructuredBlock, index: number) => ReactNode,
+  groupCodes = true,
 ): ReactNode[] {
   // Every member of a group renders inside one section placed at its first
   // member, even when the written plan interleaved another exercise between
   // them. Each member keeps its own row and original index (swap, edit, log).
+  if (groupCodes && blocks.some(block => block.exercise_block)) {
+    const coded: { letter: string | null; start: number; blocks: StructuredBlock[] }[] = [];
+    blocks.forEach((block, index) => {
+      const letter = cleanText(block.exercise_block);
+      const previous = coded.at(-1);
+      if (previous && previous.letter === letter) previous.blocks.push(block);
+      else coded.push({ letter, start: index, blocks: [block] });
+    });
+    return coded.flatMap<ReactNode>((group, index) => {
+      const rows = groupBlockRows(group.blocks, (block, offset) => renderRow(block, group.start + offset), false);
+      return group.letter ? [
+        <section key={`block-${index}`} className="sp-blocks" aria-label={`Exercise block ${group.letter}`}>
+          <p className="sp-stat-label">Block {group.letter}</p>{rows}
+        </section>,
+      ] : rows;
+    });
+  }
   const groups = new Map<string, number[]>();
   blocks.forEach((block, index) => {
     const group = blockComponentGroup(block);
@@ -839,9 +869,9 @@ export function ExerciseRow({
   const resolvedMedia = useExerciseMedia(block.display_name, block.exercise_key);
   const media = block.prescription_source === "athlete" && !block.exercise_key ? null : resolvedMedia;
   const weightContext = useWeightContext();
-  const guidance = weightContext && !weightContext.hideWeightGuidance && !weightContext.logs[block.block_id || ""]
+  const guidance = !block.prescribed_sets?.length && weightContext && !weightContext.hideWeightGuidance && !weightContext.logs[block.block_id || ""]
     ? weightRecommendation(block, weightContext) : null;
-  const rawSummary = exerciseRowSummary(block, prescription, compact);
+  const rawSummary = block.prescribed_sets?.length ? `${block.prescribed_sets.length} prescribed ${block.prescribed_sets.length === 1 ? "stage" : "stages"}` : exerciseRowSummary(block, prescription, compact);
   // A standalone numeric load is already led by the guidance beneath the dose.
   // Keep authored instructions and ranges intact.
   const suggestedText = guidance?.suggested ? `${guidance.suggested.value} ${guidance.suggested.unit}` : null;
@@ -908,7 +938,8 @@ export function ExerciseRow({
             aria-haspopup={detail === "sheet" ? "dialog" : undefined}
             onClick={onToggle}
           >
-            <span className="ex-row-title">{title}</span>
+            <span className="ex-row-title">{block.exercise_code ? `${block.exercise_code} — ` : ""}{title}</span>
+            {block.group_type ? <span className="sp-tag">{block.group_type.replace(/_/g, " ")}</span> : null}
             {media || block.private_media_id || block.community_revision_id ? <span className="sr-only"> Has demo video.</span> : null}
           </button>
           {!compact ? metadata : null}

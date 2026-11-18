@@ -1169,3 +1169,223 @@ def test_a_slow_first_read_skips_the_second_look(monkeypatch):
     result = _import(reader)
     assert reader.reviews == [None], "only the first read"
     assert result.plan["sessions"][0]["exercises"][0]["dose"]["sets"] == 6
+
+
+@pytest.mark.parametrize("screenshots", [False, True])
+def test_sc_week5_live_import_edit_save_reload_and_publication_keep_seven_exercises(api, screenshots):
+    from api.plan_mappers import _map_profile_row
+    from api.services.custom_plans import custom_open_plan_result
+
+    client, store, monkeypatch = api
+    reading = ReadPlan.model_validate_json((FIXTURES / "sc_week5.model.json").read_text(encoding="utf-8"))
+    assert len(reading.weeks[0].sessions[0].exercises) == 21
+    reader = FakeReader(reading)
+    use(monkeypatch, reader)
+    source = (FIXTURES.parent / "sc_week5.txt").read_text(encoding="utf-8")
+    request = {"images": [JPEG], "start_date": MONDAY} if screenshots else {"text": source, "start_date": MONDAY}
+    imported = client.post(URL, json=request, headers=AUTH)
+    assert imported.status_code == 200, imported.text
+    result = imported.json()
+    assert result["exercises"] == 7
+    plan = result["plan"]
+    session = plan["sessions"][0]
+    assert session["programme_week"] == 5 and session["name"] == "Day 1 (Total)"
+    assert session["weekday"] is None and session["scheduled_date"] is None
+    assert len(result["needs_day"]) == 1
+    exercises = session["exercises"]
+    assert [e["exercise_code"] for e in exercises] == ["A1", "A2", "B1", "B2", "C1", "C2", "D1"]
+    assert [len(e["dose"]["prescribed_sets"]) for e in exercises] == [8, 1, 6, 1, 3, 1, 1]
+    assert all(not e.get("group_type") for e in exercises)
+    assert all(e["dose"]["mode"] == "stages" for e in exercises)
+    assert exercises[0]["dose"]["prescribed_sets"][-1]["percentage"] == 95
+    assert exercises[2]["dose"]["prescribed_sets"][-1]["sets"] == 7
+    assert [s["reps"] for s in exercises[4]["dose"]["prescribed_sets"]] == ["4e"] * 3
+    assert exercises[1]["dose"]["prescribed_sets"][0]["reps"] == "25 sec"
+    assert exercises[3]["dose"]["prescribed_sets"][0]["reps"] == "2 Ea"
+    assert "kg" not in json.dumps(exercises) and "lb" not in json.dumps(exercises)
+    # The normal scheduling workflow assigns the day only after user choice.
+    session["weekday"] = "Wednesday"
+    created = client.post("/api/custom-plans", json=plan, headers=AUTH)
+    assert created.status_code == 201, created.text
+    saved = created.json()
+    assert not saved["incomplete"]
+    assert saved["sessions"][0]["exercises"][0]["dose"]["prescribed_sets"] == exercises[0]["dose"]["prescribed_sets"]
+    # Edit one loading stage through the real update endpoint; all other rows survive.
+    exercises[0]["dose"]["prescribed_sets"][-1]["source_text"] = "WT: 230"
+    edited = client.put(f"/api/custom-plans/{saved['id']}", json=plan, headers=AUTH)
+    assert edited.status_code == 200, edited.text
+    reopened = client.get(f"/api/custom-plans/{saved['id']}", headers=AUTH).json()
+    assert edited.json() == reopened
+    assert len(reopened["sessions"][0]["exercises"]) == 7
+    assert saved_input(reopened).sessions[0].programme_week == 5
+    compiled = custom_open_plan_result(reopened, _map_profile_row(store.profiles["athlete-1"]), training_day=MONDAY)
+    week = compiled["structured_plan"]["weeks"][0]
+    assert week["week_index"] == 5
+    day = next(d for d in week["days"] if d["sessions"])
+    assert day["weekday"] == "Wed"
+    blocks = day["sessions"][0]["blocks"]
+    assert len(blocks) == 7
+    assert [b["exercise_code"] for b in blocks] == [e["exercise_code"] for e in exercises]
+    assert [b["exercise_block"] for b in blocks] == ["A", "A", "B", "B", "C", "C", "D"]
+    for block, exercise in zip(blocks, exercises):
+        assert block["prescribed_sets"] == exercise["dose"]["prescribed_sets"]
+    assert blocks[0]["prescribed_sets"][-1]["source_text"] == "WT: 230"
+    if screenshots:
+        assert reader.images == [JPEG]
+
+
+def test_sc_import_consolidates_coded_uniform_rows_without_losing_units_or_instructions():
+    read = ReadPlan(weeks=[ReadWeek(sessions=[ReadSession(name="Day 2", exercises=[
+        ReadExercise(name="Z123. Clean", reps=2, load="50% · WT 120", notes="warm-up"),
+        ReadExercise(name="Z123. Clean", sets=3, reps=1, load="95% · WT 225", rest_seconds=120),
+        ReadExercise(name="Z124. Hold", sets=3, seconds=25, per_side=True),
+    ])])])
+    draft = build_draft(read, date(2026, 11, 23))
+    rows = draft.plan["sessions"][0]["exercises"]
+    assert len(rows) == 2 and rows[0]["exercise_code"] == "Z123"
+    stages = rows[0]["dose"]["prescribed_sets"]
+    assert stages[0]["reps"] == 2 and stages[0]["source_text"] == "50% · WT 120 · warm-up"
+    assert stages[1]["sets"] == 3 and stages[1]["rest"] == {"value": 120, "unit": "seconds"}
+    assert rows[1]["dose"]["duration_seconds"] == 25 and rows[1]["dose"]["per_side"] is True
+    assert draft.plan["sessions"][0]["weekday"] is None
+    assert all(not r.get("group_type") for r in rows)
+
+
+def test_sc_browser_fixture_is_the_live_importer_response(monkeypatch):
+    from itertools import count
+    from uuid import UUID, uuid5
+    ids = count()
+    monkeypatch.setattr(plan_import, "uuid4", lambda: uuid5(UUID("3f9cbac9-59d9-4800-aa55-06be5a3f78c8"), str(next(ids))))
+    reading = ReadPlan.model_validate_json((FIXTURES / "sc_week5.model.json").read_text(encoding="utf-8"))
+    source = (FIXTURES.parent / "sc_week5.txt").read_text(encoding="utf-8")
+    live = build_draft(reading, date(2026, 11, 23), source).model_dump(mode="json")
+    assert live == json.loads((FIXTURES / "sc_week5.draft.json").read_text(encoding="utf-8"))
+    assert live["flags"] == []
+
+
+@pytest.mark.parametrize("heading, expected", [("Superset A", "superset"), ("Circuit A", "circuit"), ("Alternating sets", "alternating_sets"), ("A", None)])
+def test_import_keeps_explicit_groups_without_turning_letters_into_supersets(heading, expected):
+    read = ReadPlan(weeks=[ReadWeek(sessions=[ReadSession(name="Day 1", exercises=[
+        ReadExercise(name="Squat", group=heading, sets=3, reps=5),
+        ReadExercise(name="Pull", group=heading, sets=3, reps=8),
+    ])])])
+    result = build_draft(read, date(2026, 11, 23))
+    exercises = result.plan["sessions"][0]["exercises"]
+    assert len(exercises) == 2
+    assert all(e.get("group_type") == expected for e in exercises)
+    assert all(not e.get("exercise_code") for e in exercises)
+    assert all(e["dose"]["mode"] == "reps" for e in exercises)
+
+
+def test_import_retains_common_rest_effort_and_side_instructions_with_loading_stages():
+    read = ReadPlan(weeks=[ReadWeek(sessions=[ReadSession(name="Day 1", exercises=[
+        ReadExercise(name="A1 Press", per_side=True, rest_seconds=90, rpe=7,
+                     prescribed_sets=[{"reps": 4, "percentage": 50}, {"sets": 3, "reps": 4, "percentage": 70}]),
+    ])])])
+    exercise = build_draft(read, date(2026, 11, 23)).plan["sessions"][0]["exercises"][0]
+    dose = exercise["dose"]
+    assert dose["rest_seconds"] == 90 and dose["rpe"] == 7 and dose["per_side"] is True
+    assert all(s["per_side"] == "each side" for s in dose["prescribed_sets"])
+    from api.services.custom_plans import dose_block_fields, dose_text
+    fields = dose_block_fields(dose)
+    assert fields["rest"] == {"value": 90, "unit": "seconds"}
+    assert fields["effort"] == {"method": "RPE", "value": 7}
+    assert "rest 90s" in dose_text(dose) and "RPE 7" in dose_text(dose)
+
+
+def test_reps_first_sc_table_keeps_codes_volume_and_side_notation_without_false_flags():
+    source = "Day 1\nCode | Exercise | REPS X SETS | Weight\nA1 | Seated rotations E/S | 8 x 3 | BW\nB1 | Pogo jumps | 5 x 3 | BW"
+    read = ReadPlan(weeks=[ReadWeek(sessions=[ReadSession(name="Day 1", exercises=[
+        ReadExercise(name="A1. Seated rotations E/S", sets=3, reps=8, per_side=True, load="BW"),
+        ReadExercise(name="B1. Pogo jumps", sets=3, reps=5, load="BW"),
+    ])])])
+    draft = build_draft(read, date(2026, 11, 23), source)
+    assert not draft.flags
+    rows = draft.plan["sessions"][0]["exercises"]
+    assert [(e["exercise_code"], e["dose"]["sets"], e["dose"]["reps"]) for e in rows] == [("A1", 3, 8), ("B1", 3, 5)]
+    assert rows[0]["dose"]["per_side"] is True
+
+
+
+def test_numbered_week_ranges_keep_source_week_numbers_separate_from_dates():
+    read = ReadPlan(weeks=[ReadWeek(week_index=5, repeat=3, sessions=[ReadSession(
+        name="Day 1 (Total)", days=["Wednesday"], exercises=[ReadExercise(name="A1 Clean", sets=3, reps=1)],
+    )])])
+    result = build_draft(read, date(2026, 11, 23), "Weeks 5-7\nWednesday: Clean 3 x 1")
+    assert result.weeks == 3
+    assert [s["programme_week"] for s in result.plan["sessions"]] == [5, 6, 7]
+    assert [s["scheduled_date"] for s in result.plan["sessions"]] == ["2026-11-25", "2026-12-02", "2026-12-09"]
+    assert [s["name"] for s in result.plan["sessions"]] == ["Day 1 (Total)"] * 3
+    assert not [f for f in result.flags if "week is missing" in f.message]
+
+
+
+def test_coded_row_consolidation_keeps_main_source_corrections_kind_tempo_and_flag_targets():
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[ReadSession(name="Lift", day="Monday", exercises=[
+        ReadExercise(name="A1 Clean", kind="power", sets=8, reps=5, tempo="31X1"),
+        ReadExercise(name="A1 Clean", kind="power", sets=5, reps=3, tempo="X"),
+    ])])])
+    result = build_draft(reading, date(2026, 11, 23), "A1 Clean 3x5\nA1 Clean 3x5")
+    session = result.plan["sessions"][0]
+    assert len(session["exercises"]) == 1
+    exercise = session["exercises"][0]
+    assert exercise["block_type"] == "plyometric_power"
+    assert exercise["dose"]["prescribed_sets"][0]["sets"] == 3
+    assert "31X1" in exercise["dose"]["prescribed_sets"][0]["source_text"]
+    assert "Tempo: X" in exercise["dose"]["prescribed_sets"][1]["source_text"]
+    checks = [flag for flag in result.flags if flag.message.startswith("Check the dose")]
+    assert checks
+    assert all(flag.session_id == session["id"] and flag.exercise_id == exercise["id"] for flag in checks)
+
+
+def test_unitless_uniform_weight_survives_the_new_reader_contract_without_inventing_a_unit():
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[ReadSession(name="Day 1", exercises=[
+        ReadExercise(name="Barbell RDL", exercise_code="D1", kind="strength", sets=3, reps=5, load="225"),
+    ])])])
+    exercise = build_draft(reading, date(2026, 11, 23)).plan["sessions"][0]["exercises"][0]
+    assert exercise["dose"]["load_or_intensity"] == "225"
+    assert exercise["block_type"] == "strength"
+    assert exercise["dose"]["sets"] == 3 and exercise["dose"]["reps"] == 5
+
+
+
+def test_targeted_second_look_does_not_overwrite_other_loading_rows_with_the_same_code():
+    from api.services.plan_import_patch import apply_patch
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[ReadSession(name="Lift", exercises=[
+        ReadExercise(name="A1 Clean", sets=2, reps=2, load="50%"),
+        ReadExercise(name="A1 Clean", sets=3, reps=1, load="95%"),
+    ])])])
+    patched = apply_patch(reading, [{"id": 0, "session": "Lift", "name": "A1 Clean", "exercise_index": 0}],
+                          [{"id": 0, "sets": 1, "reps": 2, "load": "50%"}])
+    stages = build_draft(patched, date(2026, 11, 23)).plan["sessions"][0]["exercises"][0]["dose"]["prescribed_sets"]
+    assert [(stage["sets"], stage["reps"]) for stage in stages] == [(1, 2), (3, 1)]
+    assert stages[1]["source_text"] == "95%"
+    assert reading.weeks[0].sessions[0].exercises[0].sets == 2
+
+
+def test_actual_screenshot_model_response_replays_without_losing_training_cells():
+    reading = ReadPlan.model_validate_json((FIXTURES / "sc_week5.live-model.json").read_text(encoding="utf-8"))
+    result = build_draft(reading, date(2026, 11, 23), "")
+    session = result.plan["sessions"][0]
+    assert session["programme_week"] == 5 and session["weekday"] is None
+    assert session["name"] == "Day 1 (Total)"
+    rows = session["exercises"]
+    assert [row["exercise_code"] for row in rows] == ["A1", "A2", "B1", "B2", "C1", "C2", "D1"]
+    assert all(not row.get("group_type") for row in rows)
+    for index, percentages, weights, repetitions in [
+        (0, [50, 60, 70, 75, 80, 85, 90, 95], [120, 140, 165, 175, 190, 200, 210, 225], [2, 1, 1, 1, 1, 1, 1, 1]),
+        (2, [50, 60, 70, 75, 80, 88], [170, 200, 235, 250, 270, 295], [3, 2, 1, 1, 1, 1]),
+    ]:
+        stages = rows[index]["dose"]["prescribed_sets"]
+        assert [stage["percentage"] for stage in stages] == percentages
+        for stage, weight, reps in zip(stages, weights, repetitions):
+            assert f"WT: {weight}" in stage["source_text"]
+            assert stage["reps"] == reps or f"Sets x Reps: {reps};" in stage["source_text"]
+        assert stages[-1]["sets"] == (3 if index == 0 else 7)
+        assert stages[-1]["reps"] == 1
+    assert rows[1]["dose"]["sets"] == 3 and rows[1]["dose"]["duration_seconds"] == 25
+    assert rows[3]["dose"]["prescription"] == "2 x 2 Ea" and rows[3]["dose"]["per_side"] is True
+    assert [stage["reps"] for stage in rows[4]["dose"]["prescribed_sets"]] == ["4e"] * 3
+    assert rows[5]["dose"]["sets"] == 3 and rows[5]["dose"]["reps"] == 4
+    assert rows[6]["dose"]["sets"] == 3 and rows[6]["dose"]["reps"] == 5
+    assert rows[6]["dose"]["load_or_intensity"] == "225"
