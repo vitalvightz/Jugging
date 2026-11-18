@@ -63,7 +63,7 @@
 .flags dl > div { display: grid; gap: 4px; min-width: 0; }
 .flags dt { color: var(--text-primary); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
 .flags dd { display: grid; gap: 4px; margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
-@media (min-width: 900px) { .flags dl > div { grid-template-columns: 240px minmax(0, 1fr); column-gap: 20px; align-items: baseline; } }
+@media (min-width: 900px) { .flags dl > div { grid-template-columns: minmax(220px, 34%) minmax(0, 1fr); column-gap: 20px; align-items: baseline; } }
 .days { display: grid; gap: 12px; min-width: 0; margin: 0; padding: 16px; border: 1px solid var(--border-strong); border-radius: 14px; }
 .days legend { padding: 0 6px; font-size: 14px; font-weight: 600; }
 .days > p { margin: 0; color: var(--text-secondary); font-size: 14px; line-height: 1.5; }

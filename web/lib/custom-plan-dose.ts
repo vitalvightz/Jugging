@@ -18,23 +18,27 @@ export const blankDose = (mode: CustomDose["mode"] = "reps"): CustomDose => ({
   distance_unit: null,
   prescription: null,
 });
+/** The dose as written. A partly filled dose shows what is there and names
+ * what's missing ("3 rounds · duration unspecified"), never a bare "Set …". */
 export function doseSummary(d: CustomDose) {
   const time = (seconds: number) => seconds % 60 === 0 ? `${seconds / 60} min` : `${seconds}s`;
+  const count = (value: number, word: string) => `${value} ${word}${value === 1 ? "" : "s"}`;
+  const sets = d.sets ? `${d.sets} × ` : "";
   const parts = [
     d.mode === "reps"
-      ? d.sets && d.reps
-        ? `${d.sets} × ${d.reps}`
-        : "Set dose"
+      ? d.sets && d.reps ? `${d.sets} × ${d.reps}`
+        : d.sets ? `${count(d.sets, "set")} · reps unspecified`
+        : d.reps ? `${count(d.reps, "rep")} · sets unspecified` : "Set dose"
       : d.mode === "duration"
-        ? d.duration_seconds
-          ? `${d.sets ? `${d.sets} × ` : ""}${time(d.duration_seconds)}`
-          : "Set duration"
+        ? d.duration_seconds ? `${sets}${time(d.duration_seconds)}`
+          : d.sets ? `${count(d.sets, "set")} · duration unspecified` : "Set duration"
         : d.mode === "intervals"
-          ? d.rounds && d.work_seconds
-            ? `${d.rounds} × ${time(d.work_seconds)}`
-            : "Set intervals"
+          ? d.rounds && d.work_seconds ? `${d.rounds} × ${time(d.work_seconds)}`
+            : d.rounds ? `${count(d.rounds, "round")} · duration unspecified`
+            : d.work_seconds ? `${time(d.work_seconds)} rounds · number unspecified` : "Set intervals"
           : d.mode === "distance"
-            ? d.distance ? `${d.sets ? `${d.sets} × ` : ""}${d.distance} ${d.distance_unit ?? ""}` : "Set distance"
+            ? d.distance ? `${sets}${d.distance} ${d.distance_unit ?? "· unit unspecified"}`.trim()
+              : d.sets ? `${count(d.sets, "set")} · distance unspecified` : "Set distance"
             : d.prescription || "Set prescription",
   ];
   if (d.distance && d.mode !== "distance") parts.push(`${d.distance} ${d.distance_unit ?? ""}`);
