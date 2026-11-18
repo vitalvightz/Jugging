@@ -422,3 +422,37 @@ def test_custom_rep_ranges_are_authored_not_invented():
     from api.services.custom_plans import dose_block_fields
     assert dose_block_fields({"mode": "text", "prescription": "3x8-12", "rpe": 7})["reps"] == "8-12"
     assert dose_block_fields({"mode": "reps", "sets": 3, "reps": 10}) == {"sets": 3, "reps": 10}
+
+
+@pytest.mark.parametrize("stage, incomplete", [
+    ({}, True), ({"sets": 3}, True), ({"rounds": 3}, True), ({"percentage": 95}, True),
+    ({"weight": {"value": 225, "unit": ""}}, True), ({"rest": {"value": 60, "unit": "seconds"}}, True),
+    ({"intensity": "hard", "per_side": "E/S"}, True), ({"source_text": "  "}, True),
+    ({"reps": 0}, True), ({"reps": -1}, True), ({"reps": "0"}, True), ({"reps": "NaN"}, True),
+    ({"duration": {"value": 0, "unit": "seconds"}}, True),
+    ({"reps": 2}, False), ({"reps": "4e"}, False), ({"sets": 3, "reps": 1}, False),
+    ({"duration": {"value": 25, "unit": "seconds"}}, False), ({"work": {"value": 30, "unit": "seconds"}}, False),
+    ({"distance": {"value": 20, "unit": "m"}}, False), ({"source_text": "Build to a heavy single"}, False),
+    ({"percentage": 50, "source_text": "Sets x Reps: 2; WT: 120"}, False),
+])
+def test_stage_completion_requires_work_or_source_notation(stage, incomplete):
+    from api.services.custom_plans import dose_incomplete
+    assert dose_incomplete({"mode": "stages", "prescribed_sets": [stage]}) is incomplete
+    assert dose_incomplete({"mode": "stages", "prescribed_sets": [{"reps": 2}, stage]}) is incomplete
+    assert dose_incomplete({"mode": "stages", "prescribed_sets": []}) is True
+
+
+def test_incomplete_loading_stage_stays_flagged_through_save_and_reopen(api, identities):
+    client, _ = api
+    body = payload(identities)
+    body["sessions"] = body["sessions"][:1]
+    body["sessions"][0]["weekday"] = "Monday"
+    exercise = body["sessions"][0]["exercises"][0]
+    exercise["dose"] = {"mode": "stages", "prescribed_sets": [{"sets": 3}]}
+    saved = client.post(URL, headers=AUTH, json=body).json()
+    assert saved["incomplete"] and saved["sessions"][0]["exercises"][0]["incomplete"]
+    reopened = client.get(f"{URL}/{saved['id']}", headers=AUTH).json()
+    assert reopened["incomplete"]
+    exercise["dose"]["prescribed_sets"][0]["reps"] = 5
+    completed = client.put(f"{URL}/{saved['id']}", headers=AUTH, json=body).json()
+    assert not completed["incomplete"]

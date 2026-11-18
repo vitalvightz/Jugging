@@ -70,7 +70,13 @@ export function exerciseIncomplete(e: Dosed): boolean {
 }
 
 export function doseIncomplete(d: CustomDose): boolean {
-  if (d.mode === "stages") return !d.prescribed_sets?.length || d.prescribed_sets.some(stage => !formatExercisePrescription(stage).trim());
+  if (d.mode === "stages") return !d.prescribed_sets?.length || d.prescribed_sets.some(stage => {
+    // Sets, loading and rest describe work, but don't prescribe the work itself.
+    const positive = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value > 0;
+    const reps = typeof stage.reps === "string" ? stage.reps.trim() : stage.reps;
+    const hasReps = typeof reps === "string" ? Boolean(reps) && !/^(?:nan|[-+]?infinity)$/i.test(reps) && (Number.isNaN(Number(reps)) || positive(Number(reps))) : positive(reps);
+    return !(hasReps || [stage.duration, stage.work, stage.distance].some(value => positive(value?.value)) || stage.source_text?.trim());
+  });
   if (d.mode === "distance") return !(d.distance && d.distance_unit);
   if (d.mode === "reps") return !(d.sets && d.reps);
   if (d.mode === "duration") return !d.duration_seconds || Boolean(d.distance) !== Boolean(d.distance_unit);

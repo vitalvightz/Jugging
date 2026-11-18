@@ -92,3 +92,28 @@ test("loading-stage editing and reordering preserve every other prescribed detai
     assert.ok(!node.textContent!.includes("Use last weight"));
   } finally { await act(async () => root.unmount()); }
 });
+
+
+for (const essential of [false, true]) {
+  test(`dose format remains selectable before and after loading stages (essential=${essential})`, async () => {
+    const node = document.createElement("div");
+    const root = createRoot(node);
+    let dose: CustomDose = blankDose();
+    const render = () => root.render(<CustomDoseEditor essential={essential} dose={dose} onChange={next => { dose = next; render(); }} />);
+    const select = async (value: string) => {
+      const selector = node.querySelector<HTMLSelectElement>('[aria-label="Dose format"]')!;
+      assert.ok(selector);
+      await act(async () => { selector.value = value; selector.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    };
+    try {
+      await act(async () => render());
+      await select("stages");
+      assert.equal(dose.mode, "stages");
+      assert.match(node.textContent!, /Add prescribed set/);
+      await select("duration");
+      assert.equal(dose.mode, "duration");
+      assert.ok(node.querySelector('[aria-label="Duration"]'));
+      assert.equal(node.textContent!.includes("Add prescribed set"), false);
+    } finally { await act(async () => root.unmount()); }
+  });
+}

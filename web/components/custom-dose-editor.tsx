@@ -106,7 +106,22 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
   essential?: boolean;
 }) {
   const context = useWeightContext();
-  if (dose.mode === "stages") return <PrescribedSetsEditor dose={dose} onChange={onChange} />;
+  const formatSelector = <label className={styles.wide}>
+    <span>Format</span>
+    <select
+      aria-label="Dose format"
+      value={dose.mode}
+      onChange={(event) => onChange(blankDose(event.target.value as CustomDose["mode"]))}
+    >
+      <option value="reps">Sets × reps</option>
+      <option value="duration">Continuous</option>
+      <option value="intervals">Intervals / rounds</option>
+      <option value="distance">Distance / carries</option>
+      <option value="text">Text prescription</option>
+      <option value="stages">Loading stages / prescribed sets</option>
+    </select>
+  </label>;
+  if (dose.mode === "stages") return <div className={styles.dose}>{formatSelector}<div className={styles.wide}><PrescribedSetsEditor dose={dose} onChange={onChange} /></div></div>;
   const load = parseLoad(dose.load_or_intensity);
   const exerciseType = movement && "exercise_type" in movement ? movement.exercise_type : null;
   const recommendation = personalWeightRecommendation({
@@ -155,7 +170,7 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
     const box = (field: "sets" | "reps" | "rest_seconds" | "rounds" | "distance", label: string, min: number, max: number, step = 1) =>
       <input aria-label={label} type="number" inputMode="decimal" min={min} max={max} step={step} value={dose[field] ?? ""}
         onChange={(event) => onChange({ ...dose, [field]: event.target.value === "" ? null : Number(event.target.value) })} />;
-    return <>{weightPreview}<div className={styles.inlineDose}>
+    return <>{formatSelector}{weightPreview}<div className={styles.inlineDose}>
       {dose.mode === "reps" ? <>{box("sets", "Sets", 1, 100)}<span aria-hidden="true">×</span>{box("reps", "Reps", 1, 1000)}<span>{dose.per_side ? "reps / side" : "reps"}</span></>
         : dose.mode === "intervals" ? <>{box("rounds", "Rounds", 1, 100)}<span aria-hidden="true">×</span>
           <DurationField inline value={dose.work_seconds} label="Work duration" onChange={(value) => onChange({ ...dose, work_seconds: value })} />
@@ -177,21 +192,7 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
   return (
     <div className={styles.dose}>
       <div style={{ gridColumn: "1 / -1" }}>{weightPreview}</div>
-      <label>
-        <span>Format</span>
-        <select
-          aria-label="Dose format"
-          value={dose.mode}
-          onChange={(event) => onChange(blankDose(event.target.value as CustomDose["mode"]))}
-        >
-          <option value="reps">Sets × reps</option>
-          <option value="duration">Continuous</option>
-          <option value="intervals">Intervals / rounds</option>
-          <option value="distance">Distance / carries</option>
-          <option value="text">Text prescription</option>
-          <option value="stages">Loading stages / prescribed sets</option>
-        </select>
-      </label>
+      {formatSelector}
       {dose.mode === "reps" ? (
         <>
           {number("sets", "Sets", 1, 100)}

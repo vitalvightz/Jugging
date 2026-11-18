@@ -539,7 +539,22 @@ def plan_fields(store, body: CustomPlanInput, previous: dict | None = None, *, a
 def dose_incomplete(dose):
     if dose.get("mode") == "stages":
         stages = dose.get("prescribed_sets") or []
-        return not stages or any(not _stage_text(stage).strip() for stage in stages)
+        def has_prescription(stage):
+            # Counts, loading, rest and effort alone leave the actual work unknown.
+            def positive(value):
+                return isinstance(value, (int, float)) and not isinstance(value, bool) and 0 < value < float("inf")
+
+            reps = stage.get("reps")
+            if isinstance(reps, str):
+                try:
+                    has_reps = positive(float(reps))
+                except ValueError:
+                    has_reps = bool(reps.strip())
+            else:
+                has_reps = positive(reps)
+            return has_reps or any(positive((stage.get(key) or {}).get("value")) for key in ("duration", "work", "distance")) or bool((stage.get("source_text") or "").strip())
+
+        return not stages or any(not has_prescription(stage) for stage in stages)
     mode = dose["mode"]
     if mode == "distance":
         return not (dose.get("distance") and dose.get("distance_unit"))
