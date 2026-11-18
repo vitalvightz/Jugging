@@ -24,6 +24,7 @@ from api.contracts.custom_plans import WEEKDAYS, CustomPlanInput
 from api.services import plan_import
 from api.services.coach_plans import saved_input
 from api.services.plan_import import PlanImportRequest, build_draft, dose_from
+from api.services.plan_import_patch import DOSE_FIELDS
 from api.services.plan_import_reading import ReadCorrection, ReadExercise, ReadPlan, ReadSession, ReadWeek, response_schema
 from tests.support import _build_client
 from tests.test_coach_fighter_access import AS_COACH, BASE
@@ -42,7 +43,7 @@ class FakeReader:
     def __init__(self, plan: ReadPlan | Exception):
         self.plan, self.texts, self.images = plan, [], []
 
-    def read(self, text, images=(), review=None):
+    def read(self, text, images=()):
         self.texts.append(text)
         self.images = list(images)
         if isinstance(self.plan, Exception):
@@ -1011,12 +1012,19 @@ Notes
 # -- Second look: one retry with the failed checks, kept only if it is better --
 
 class TwoReadings:
+    """A reader whose second look returns ``second``'s doses as the fixes."""
     def __init__(self, first, second):
-        self.readings, self.reviews = [first, second], []
+        self.first, self.second, self.reviews = first, second, []
 
-    def read(self, text, images=(), review=None):
-        self.reviews.append(review)
-        return self.readings[len(self.reviews) - 1]
+    def read(self, text, images=()):
+        self.reviews.append(None)
+        return self.first
+
+    def patch(self, items, timeout=None):
+        self.reviews.append(items)
+        fixed = {e.name: e for w in self.second.weeks for s in w.sessions for e in s.exercises} if self.second else {}
+        return [{"id": item["id"], **{f: getattr(fixed[item["name"]], f) for f in DOSE_FIELDS}}
+                for item in items if item["name"] in fixed]
 
 
 def _one_exercise(sets, reps):
@@ -1034,7 +1042,8 @@ def test_a_reading_that_fails_its_checks_gets_one_second_look_and_keeps_the_bett
     plan_import.reset_import_limits()
     reader = TwoReadings(_one_exercise(6, 4), _one_exercise(4, 6))  # 4x6 read as 6 sets of 4
     result = _import(reader)
-    assert reader.reviews[0] is None and "sets 6" in reader.reviews[1]
+    assert reader.reviews[0] is None and [i["name"] for i in reader.reviews[1]] == ["Bench press"]
+    assert "Bench press 4x6" in reader.reviews[1][0]["line"], "only the flagged exercise and its own line are sent"
     assert result.plan["sessions"][0]["exercises"][0]["dose"]["reps"] == 6
     assert not [f for f in result.flags if f.message.startswith("Check the dose")]
 
@@ -1092,7 +1101,10 @@ def test_a_second_look_that_drops_an_exercise_is_never_kept():
     first = ReadPlan.model_validate({"name": "Plan", "weeks": [{"repeat": 1, "sessions": [{
         "days": ["Monday"], "name": "Strength", "session_type": "strength_power", "exercises": [
             {"name": "Bench press", "sets": 6, "reps": 4}, {"name": "Row", "sets": 3, "reps": 8}]}]}]})
-    reader = TwoReadings(first, _one_exercise(4, 6))  # fixed the bench press, but lost the row
+    second = ReadPlan.model_validate({"name": "Plan", "weeks": [{"repeat": 1, "sessions": [{
+        "days": ["Monday"], "name": "Strength", "session_type": "strength_power", "exercises": [
+            {"name": "Bench press", "sets": 4, "reps": 6}]}]}]})
+    reader = TwoReadings(first, second)  # only the flagged exercise is patched: the row can't be lost
     result = _import(reader, "Monday Strength\nBench press 4x6\nRow 3x8\n")
     assert len(reader.reviews) == 2
     assert [e["name"] for e in result.plan["sessions"][0]["exercises"]] == ["Bench press", "Row"]
@@ -1150,3 +1162,13 @@ def test_each_flag_points_at_its_session_and_exercise():
     assert by_where["Strength · Squat"] == (session["id"], session["exercises"][0]["id"])
     assert by_where["Strength · Pads"] == (session["id"], session["exercises"][1]["id"])
     assert all(sid is None for where, (sid, _) in by_where.items() if not where.startswith("Strength"))
+
+
+def test_a_slow_first_read_skips_the_second_look(monkeypatch):
+    """The second look never runs past the request's time budget."""
+    plan_import.reset_import_limits()
+    monkeypatch.setenv("UNLXCK_PLAN_IMPORT_BUDGET_SECONDS", "10")  # less than a second look needs
+    reader = TwoReadings(_one_exercise(6, 4), _one_exercise(4, 6))
+    result = _import(reader)
+    assert reader.reviews == [None], "only the first read"
+    assert result.plan["sessions"][0]["exercises"][0]["dose"]["sets"] == 6
