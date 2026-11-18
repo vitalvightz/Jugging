@@ -536,3 +536,48 @@ def test_each_exercise_on_a_shared_line_is_checked_against_its_own_part():
     # Pull ups given the squat's reps: 5 is on the line, but not in the pull-ups part.
     assert _flags_for(source, ReadExercise(name="Pull ups", sets=3, reps=5)) == [
         "Check the dose: reps 5 isn't written in “pull ups 3x8”."]
+
+
+def test_warm_ups_cooldowns_and_mobility_need_no_dose_and_are_not_flagged_for_it(api):
+    client, _, monkeypatch = api
+    reading = ReadPlan(weeks=[ReadWeek(sessions=[_session("Sparring", "Friday", session_type="sparring", exercises=[
+        ReadExercise(name="Hard sparring", rounds=3, work_seconds=180, rest_seconds=60),
+        ReadExercise(name="Cooldown"), ReadExercise(name="Warm-up"), ReadExercise(name="Hip mobility flow", seconds=300),
+        ReadExercise(name="Back squat")])])])
+    body = run_import(client, monkeypatch, reading, text="Fri: Sparring 3 x 3 min, 1 min rest\nCooldown\nWarm-up\nHip mobility flow 5 min\nBack squat")
+    # Only the lift with no dose is a gap; the cooldown, warm-up and mobility need none.
+    assert [(f["where"], f["message"]) for f in body["flags"]] == [
+        ("Sparring · Back squat", "No sets, reps, time or distance written. Add the dose, or leave it open.")]
+    saved = client.post("/api/custom-plans", json=body["plan"], headers=AUTH).json()
+    incomplete = {e["name"]: e["incomplete"] for s in saved["sessions"] for e in s["exercises"]}
+    assert incomplete == {"Hard sparring": False, "Cooldown": False, "Warm-up": False, "Hip mobility flow": False, "Back squat": True}
+
+
+def test_a_plan_with_a_dose_free_cooldown_is_complete_and_reaches_today_without_a_dose():
+    from api.services.custom_plans import _dose_text, dose_optional, exercise_incomplete, schedule_issues
+    assert [dose_optional(n) for n in ("Cooldown", "Warm down", "Stretching", "Mobility", "Foam rolling", "Back squat")] == [
+        True, True, True, True, True, False]
+    blank = {"mode": "reps"}
+    cooldown = {"name": "Cooldown", "origin": "manual", "dose": blank}
+    squat = {"name": "Back squat", "origin": "manual", "dose": blank}
+    assert (exercise_incomplete(cooldown), exercise_incomplete(squat)) == (False, True)
+    sessions = lambda *exercises: [{"name": "Sparring", "weekday": "Friday", "session_type": "sparring", "exercises": list(exercises)}]  # noqa: E731
+    assert schedule_issues(sessions(cooldown)) == []
+    assert schedule_issues(sessions(cooldown, squat)) == ["Finish the dose for Back squat in Friday's Hard Sparring."]
+    assert _dose_text(blank) == "" and _dose_text({"mode": "reps", "sets": 3, "reps": 5}) == "3 × 5"
+
+
+def test_a_dose_free_cooldown_saves_and_compiles_into_the_plan_shown_on_today(api):
+    from api.plan_mappers import _map_profile_row
+    from api.services.custom_plans import dated_custom_plan_result
+    client, store, monkeypatch = api
+    reading = ReadPlan(weeks=[ReadWeek(repeat=2, sessions=[_session("Sparring", "Monday", session_type="sparring", exercises=[
+        ReadExercise(name="Hard sparring", rounds=3, work_seconds=180, rest_seconds=60), ReadExercise(name="Cooldown")])])])
+    body = run_import(client, monkeypatch, reading, text="Mon: Hard sparring 3 x 3 min, 1 min rest\\nCooldown")
+    saved = client.post("/api/custom-plans", json=body["plan"], headers=AUTH)
+    assert saved.status_code == 201, saved.text
+    assert saved.json()["incomplete"] is False
+    result = dated_custom_plan_result(saved.json(), _map_profile_row(store.profiles["athlete-1"]), training_day=MONDAY)
+    blocks = result["structured_plan"]["weeks"][0]["days"][0]["sessions"][0]["blocks"]
+    cooldown = next(b for b in blocks if b["display_name"] == "Cooldown")
+    assert not cooldown.get("prescription_text")

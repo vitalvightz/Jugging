@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { doseFromBlock, finishedDose, validDose } from "./exercise-dose";
-import { blankDose, doseSummary } from "./custom-plan-dose";
+import { blankDose, doseOptional, doseSummary, exerciseIncomplete } from "./custom-plan-dose";
 
 test("short holds and interval work stay in seconds on custom cards", () => {
   assert.equal(doseSummary({ ...blankDose("duration"), sets: 3, duration_seconds: 12 }), "3 × 12s");
@@ -54,4 +54,20 @@ test("switching format only saves fields for the selected format", () => {
   assert.equal("rounds" in dose, false);
   assert.equal("distance" in dose, false);
   assert.equal(validDose({ mode: "reps", sets: 3, reps: 8, rpe: 11 }), false);
+});
+
+test("warm-ups, cooldowns, stretching and mobility never need a dose", () => {
+  for (const name of ["Cooldown", "Warm-up", "warm up", "Warm down", "Cool-down jog", "Stretching", "Hip mobility", "Foam rolling", "Breathwork", "Yoga flow"])
+    assert.equal(doseOptional(name), true, name);
+  for (const name of ["Back squat", "Pad rounds", "Sled push", "Hard sparring", "Easy run"])
+    assert.equal(doseOptional(name), false, name);
+  // No dose is complete for them; for anything else it is still to finish.
+  assert.equal(exerciseIncomplete({ name: "Cooldown", dose: blankDose("reps") }), false);
+  assert.equal(exerciseIncomplete({ snapshot: { name: "Dynamic warm-up" }, dose: blankDose("intervals") }), false);
+  assert.equal(exerciseIncomplete({ name: "Back squat", dose: blankDose("reps") }), true);
+  assert.equal(exerciseIncomplete({ name: "Back squat", dose: { ...blankDose("reps"), sets: 3, reps: 5 } }), false);
+  // Nothing written shows nothing; a dose that was written still shows.
+  assert.equal(doseSummary(blankDose("reps"), "Cooldown"), "");
+  assert.equal(doseSummary({ ...blankDose("duration"), duration_seconds: 600 }, "Cooldown"), "10 min");
+  assert.equal(doseSummary(blankDose("reps"), "Back squat"), "Set dose");
 });

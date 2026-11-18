@@ -25,6 +25,26 @@ SESSION_NAMES = {
 }
 
 
+# Warm-ups, cooldowns, stretching and mobility are done, not dosed: they never
+# need a prescription to count as finished.
+DOSE_OPTIONAL = re.compile(
+    r"\b(warm[\s-]?(?:up|down)s?|cool[\s-]?downs?|stretch(?:es|ing)?|mobility|flexibility"
+    r"|foam[\s-]?roll(?:ing|er)?|breath(?:ing|work)|yoga)\b", re.I)
+
+
+def dose_optional(name) -> bool:
+    return bool(DOSE_OPTIONAL.search(str(name or "")))
+
+
+def exercise_name(exercise: dict) -> str:
+    return exercise.get("name") or (exercise.get("snapshot") or {}).get("name") or ""
+
+
+def exercise_incomplete(exercise: dict) -> bool:
+    """A dose still to finish. Warm-up, cooldown, stretching and mobility work never is."""
+    return dose_incomplete(exercise["dose"]) and not dose_optional(exercise_name(exercise))
+
+
 def default_session_name(name: str, previous_type: str = "mixed") -> bool:
     return name.strip().casefold() in {
         "training", "workout", "session", SESSION_NAMES.get(previous_type, "Training").casefold(),
@@ -47,7 +67,7 @@ def schedule_issues(sessions: list[dict]) -> list[str]:
         if not session.get("exercises") and kind not in {"recovery", "skill", "sparring"}:
             issues.append(f"{label} session has no exercises.")
         for exercise in session.get("exercises", []):
-            if dose_incomplete(exercise["dose"]):
+            if exercise_incomplete(exercise):
                 name = exercise.get("name") or exercise.get("snapshot", {}).get("name") or "an exercise"
                 issues.append(f"Finish the dose for {name} in {label}.")
     if not any(s.get("session_type", "mixed") not in {"recovery", "rest"} for s in sessions):
@@ -282,6 +302,8 @@ def dose_text(dose: dict) -> str:
 
 
 def _dose_text(dose: dict) -> str:
+    if not any(value not in (None, "", False) for key, value in dose.items() if key != "mode"):
+        return ""  # nothing written (a warm-up or cooldown with no dose)
     if dose["mode"] == "reps":
         parts = [f'{dose["sets"]} × {dose["reps"]}']
     elif dose["mode"] == "duration":
@@ -389,7 +411,7 @@ def plan_fields(store, body: CustomPlanInput, previous: dict | None = None, *, a
                 422,
                 "An exercise occurrence cannot change origin or catalogue identity.",
             )
-        exercise["incomplete"] = dose_incomplete(exercise["dose"])
+        exercise["incomplete"] = exercise_incomplete(exercise)
         if exercise["origin"] == "manual":
             if prior and "exercise_type" not in supplied[exercise["id"]]:
                 exercise["exercise_type"] = prior.get("exercise_type")

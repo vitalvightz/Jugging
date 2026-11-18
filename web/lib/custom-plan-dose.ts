@@ -20,7 +20,8 @@ export const blankDose = (mode: CustomDose["mode"] = "reps"): CustomDose => ({
 });
 /** The dose as written. A partly filled dose shows what is there and names
  * what's missing ("3 rounds · duration unspecified"), never a bare "Set …". */
-export function doseSummary(d: CustomDose) {
+export function doseSummary(d: CustomDose, name?: string | null) {
+  if (doseOptional(name) && doseIncomplete(d) && !filled(d)) return "";
   const time = (seconds: number) => seconds % 60 === 0 ? `${seconds / 60} min` : `${seconds}s`;
   const count = (value: number, word: string) => `${value} ${word}${value === 1 ? "" : "s"}`;
   const sets = d.sets ? `${d.sets} × ` : "";
@@ -48,6 +49,17 @@ export function doseSummary(d: CustomDose) {
   if (d.tempo) parts.push(`tempo ${d.tempo}`);
   if (d.per_side) parts.push("per side");
   return parts.join(" · ");
+}
+
+/** Warm-ups, cooldowns, stretching and mobility are done, not dosed: they never need a prescription. */
+const DOSE_OPTIONAL = /\b(warm[\s-]?(?:up|down)s?|cool[\s-]?downs?|stretch(?:es|ing)?|mobility|flexibility|foam[\s-]?roll(?:ing|er)?|breath(?:ing|work)|yoga)\b/i;
+export const doseOptional = (name: string | null | undefined) => DOSE_OPTIONAL.test(name ?? "");
+
+type Dosed = { name?: string | null; snapshot?: { name?: string | null } | null; dose?: CustomDose | null };
+/** The exercise still needs its dose finished. Dose-optional work never does. */
+export function exerciseIncomplete(e: Dosed): boolean {
+  if (doseOptional(e.name ?? e.snapshot?.name)) return false;
+  return !e.dose || doseIncomplete(e.dose);
 }
 
 export function doseIncomplete(d: CustomDose): boolean {

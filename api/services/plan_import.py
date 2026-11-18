@@ -31,6 +31,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field, ValidationError
 
 from api.contracts.custom_plans import WEEKDAYS, CustomDose, CustomPlanInput
+from api.services.custom_plans import dose_optional
 
 logger = logging.getLogger(__name__)
 
@@ -467,7 +468,8 @@ def _exercise(item: ReadExercise, flag) -> dict | None:
             flag(f"An exercise with no name wasn't brought in: \u201c{written}\u201d. Add it by hand if it matters.")
         return None
     name = full_name[:100]
-    dose = dose_from(item, flag)
+    # A warm-up, cooldown, stretch or mobility line is done, not dosed: no dose is not a gap.
+    dose = dose_from(item, (lambda message: None) if dose_optional(full_name) and not _written_dose(item) else flag)
     cues, extra_cues = _lines(item.cues)
     stops, extra_stops = _lines(item.stop_rules)
     equipment = _clean(item.equipment)

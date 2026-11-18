@@ -17,7 +17,7 @@ export function AssignedPlanPreview({ plan }: { plan: CustomPlan }) {
         return <li key={exercise.id}>
           <div className={styles.planPreviewRow}>
             <strong>{exercise.origin === "manual" ? exercise.name : exercise.snapshot.name}</strong>
-            <span>{doseSummary(exercise.dose)}</span>
+            <span>{doseSummary(exercise.dose, exercise.origin === "manual" ? exercise.name : exercise.snapshot.name)}</span>
           </div>
           {hasDetails ? <details className={styles.planPreviewDetails}>
             <summary>Notes</summary>

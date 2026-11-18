@@ -33,7 +33,7 @@ import { usePastExercises } from "./load-field";
 import { pastExercisesByKey } from "@/lib/exercise-library";
 import { CommunityContributionSheet, CommunityExercisePreview, communityDetailsChanged } from "./community-exercises";
 import { PrivateExerciseMediaProvider, PrivateExerciseVideo, PrivateExerciseVideoSheet } from "./private-exercise-video";
-import { blankDose, doseSummary, doseIncomplete, libraryPrefill } from "@/lib/custom-plan-dose";
+import { blankDose, doseSummary, doseIncomplete, exerciseIncomplete, libraryPrefill } from "@/lib/custom-plan-dose";
 import { CustomExercisePicker } from "./custom-exercise-picker";
 import styles from "./custom-plan-builder.module.css";
 import { useFadeNavigate } from "@/components/fade-through";
@@ -69,7 +69,7 @@ function importedPlanDraft(plan: CustomPlanInput): Draft {
   return orderedDraft({ ...plan, sessions: (plan.sessions ?? []).map(session => ({
     ...session, scheduled_date: session.scheduled_date ?? null,
     weekday: session.weekday ?? (session.scheduled_date ? calendarWeekday(session.scheduled_date) as Session["weekday"] : null),
-    exercises: (session.exercises ?? []).map(exercise => ({ ...exercise, incomplete: !exercise.dose || doseIncomplete(exercise.dose as CustomDose) }) as Exercise),
+    exercises: (session.exercises ?? []).map(exercise => ({ ...exercise, incomplete: exerciseIncomplete(exercise as Parameters<typeof exerciseIncomplete>[0]) }) as Exercise),
   })) });
 }
 function orderedDraft(draft: Draft): Draft {
@@ -93,7 +93,7 @@ function draftBlock(exercise: Exercise, session: Session): StructuredBlock {
     exercise_key: snapshot?.exercise_key, catalogue_id: exercise.origin === "catalogue" ? exercise.catalogue_id : null,
     private_media_id: exercise.origin === "manual" ? exercise.media_id : null,
     community_revision_id: exercise.origin === "manual" ? exercise.community_revision_id : null,
-    athlete_dose: dose, prescription_text: doseSummary(dose),
+    athlete_dose: dose, prescription_text: doseSummary(dose, nameOf(exercise)),
     notes: exercise.origin === "manual" ? exercise.notes : null,
     intensity: dose.load_or_intensity,
     sets: dose.sets, reps: dose.reps, rounds: dose.rounds,
@@ -573,7 +573,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
     const session = draft.sessions.find(s => s.id === sessionId)!;
     if (session.scheduled_date) setSelectedDate(session.scheduled_date);
     if (session.weekday) setChosenDay(session.weekday);
-    const exercise = session.exercises.find(e => doseIncomplete(e.dose));
+    const exercise = session.exercises.find(e => exerciseIncomplete(e));
     if (exercise) edit(session.id, exercise); else openSession(session);
   }
   function createManual(sessionId: string, name = "") {
@@ -630,7 +630,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
                     <button type="button" aria-expanded={quickDose === e.id} onClick={() => setQuickDose(quickDose === e.id ? null : e.id)}>Quick dose for {nameOf(e)}</button>
                     {(['up', 'down'] as const).map(direction => <button key={direction} type="button" disabled={direction === 'up' ? s.exercises.indexOf(e) === 0 : s.exercises.indexOf(e) === s.exercises.length - 1} aria-label={`Move ${nameOf(e)} ${direction}`} onClick={() => sessionChange(s.id, session => { const exercises = [...session.exercises]; const index = exercises.findIndex(item => item.id === e.id); const target = index + (direction === 'up' ? -1 : 1); [exercises[index], exercises[target]] = [exercises[target], exercises[index]]; return { ...session, exercises }; })}>Move {direction}</button>)}
                   </div>
-                  {quickDose === e.id ? <div className={styles.quickDose} role="group" aria-label={`Quick dose for ${nameOf(e)}`}><CustomDoseEditor dose={e.dose} movement={e.origin === 'catalogue' ? e.snapshot : e} onChange={dose => sessionChange(s.id, session => ({ ...session, exercises: session.exercises.map(item => item.id === e.id ? { ...item, dose, incomplete: doseIncomplete(dose) } : item) }))} /><button type="button" className="ghost-button" onClick={() => setQuickDose(null)}>Done editing dose</button></div> : null}
+                  {quickDose === e.id ? <div className={styles.quickDose} role="group" aria-label={`Quick dose for ${nameOf(e)}`}><CustomDoseEditor dose={e.dose} movement={e.origin === 'catalogue' ? e.snapshot : e} onChange={dose => sessionChange(s.id, session => ({ ...session, exercises: session.exercises.map(item => item.id === e.id ? { ...item, dose, incomplete: exerciseIncomplete({ ...item, dose }) } : item) }))} /><button type="button" className="ghost-button" onClick={() => setQuickDose(null)}>Done editing dose</button></div> : null}
                 </li>
               ))}
             </ol></ExerciseLogProvider></ExerciseMediaProvider></PrivateExerciseMediaProvider> : <p className="muted">{REST_DAY_REMINDER}</p>}
@@ -992,18 +992,18 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
             {addedHere.length ? <section className={styles.added} aria-labelledby="custom-added-heading">
               <h3 id="custom-added-heading">Added · {addedHere.length}
                 {/* Collapsed rows still say which doses are missing, so none get lost. */}
-                {addedHere.some(e => doseIncomplete(e.dose)) ? <span className={styles.addedTodo}> · {addedHere.filter(e => doseIncomplete(e.dose)).length} to finish</span> : null}
+                {addedHere.some(e => exerciseIncomplete(e)) ? <span className={styles.addedTodo}> · {addedHere.filter(e => exerciseIncomplete(e)).length} to finish</span> : null}
               </h3>
               <ol>
                 {addedHere.map(exercise => {
                   const open = openAdded === exercise.id;
                   return <li key={exercise.id} className={styles.addedRow} role="group" aria-label={nameOf(exercise)}
-                    data-attention={doseIncomplete(exercise.dose) ? "true" : undefined}>
+                    data-attention={exerciseIncomplete(exercise) ? "true" : undefined}>
                     <button type="button" className={styles.addedHead} aria-expanded={open}
                       onClick={() => setOpenAdded(open ? undefined : exercise.id)}>
                       <span className={styles.addedText}>
                         <strong>{nameOf(exercise)}</strong>
-                        <small>{/^Set /.test(doseSummary(exercise.dose)) ? "Prescription not set" : doseSummary(exercise.dose)}</small>
+                        <small>{exerciseIncomplete(exercise) && /^Set /.test(doseSummary(exercise.dose)) ? "Prescription not set" : doseSummary(exercise.dose, nameOf(exercise)) || "No dose needed"}</small>
                       </span>
                       <span className={styles.chevron} aria-hidden="true" />
                     </button>
