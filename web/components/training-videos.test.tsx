@@ -5,12 +5,21 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { TrainingVideos, videoProblem } from "./training-videos";
 
-const video = (id: string) => ({ id, created_at: "2026-11-18T10:00:00Z", media: {
+const video = (id: string, removable = true) => ({ id, created_at: "2026-11-18T10:00:00Z", kind: "video" as const,
+  author: "athlete" as const, removable, media: {
   id: `media-${id}`, provider: "uploaded", video_id: null, asset_id: `asset-${id}`, start_s: 0, end_s: 12,
   channel_title: null, orientation: "portrait", url: `https://signed.example/${id}.mp4`,
 } });
 
-async function mount(element: (token: string) => React.ReactElement, { uploads = true, rows = [video("a"), video("b")] } = {}) {
+type Row = ReturnType<typeof video> | ReturnType<typeof file>;
+const file = (id: string, kind: "photo" | "voice", author: "athlete" | "coach" = "athlete", removable = true) => ({
+  id, created_at: "2026-11-18T10:00:00Z", kind, author, removable, media: null,
+  file: { url: null as string | null, width: kind === "photo" ? 800 : null, height: kind === "photo" ? 600 : null,
+    duration_ms: kind === "voice" ? 12_000 : null },
+});
+
+async function mount(element: (token: string) => React.ReactElement,
+  { uploads = true, photos = false, voice = false, rows = [video("a"), video("b")] as Row[] } = {}) {
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   const before = globalThis.fetch;
@@ -21,11 +30,13 @@ async function mount(element: (token: string) => React.ReactElement, { uploads =
     const method = init?.method ?? "GET";
     calls.push({ url, method });
     if (url.includes("/api/private-media/settings")) return Response.json({ uploads_available: uploads, youtube_available: false });
+    if (url.includes("/api/attachments/settings")) return Response.json({ photos_available: photos, voice_available: voice });
     if (url.includes("/play")) {
       const id = url.split("/").at(-2)!;
       const row = current.find(item => item.id === id);
-      return row ? Response.json({ ...row, media: { ...row.media, url: `https://signed.example/${id}.mp4` } })
-        : Response.json({ detail: "Video not available." }, { status: 404 });
+      if (!row) return Response.json({ detail: "Video not available." }, { status: 404 });
+      return row.media ? Response.json({ ...row, media: { ...row.media, url: `https://signed.example/${id}.mp4` } })
+        : Response.json({ ...row, file: { ...row.file, url: `https://signed.example/${id}` } });
     }
     if (method === "DELETE") { current = current.filter(row => !url.endsWith(row.id)); return new Response(null, { status: 204 }); }
     return Response.json(current);
@@ -69,12 +80,13 @@ test("nothing loads until a video is asked for; then one short link for that vid
 
 test("a coach watches through the consented coach route and gets no attach or remove controls", async () => {
   const ui = await mount(token => <TrainingVideos token={token} viewer="coach" athleteId="fighter" label="Sparring"
-    target={{ source: "sparring", target_id: "report" }} />);
+    target={{ source: "sparring", target_id: "report" }} />, { rows: [video("a", false), video("b", false)] });
   try {
     assert.ok(ui.calls.some(call => call.url.includes("/api/coach/fighters/fighter/training/attachments?")));
     assert.equal(ui.host.querySelector("video"), null);
     assert.ok(!ui.calls.some(call => call.url.includes("/api/private-media/settings")));
     assert.equal(ui.button("Attach video"), undefined);
+    assert.equal(ui.button("Record voice note"), undefined, "voice notes are off");
     await act(async () => ui.button("Play video 1 for Sparring")!.click());
     assert.ok(ui.calls.some(call => call.url.includes("/api/coach/fighters/fighter/training/attachments/a/play")));
     assert.equal(ui.button("Remove video"), undefined);
@@ -89,7 +101,7 @@ test("nothing renders when there are no videos and uploads are off", async () =>
 
 test("six videos fill a record, so Attach goes away", async () => {
   const ui = await mount(token => <TrainingVideos token={token} label="Back squat" target={{ source: "external", target_id: "session" }} />,
-    { rows: ["a", "b", "c", "d", "e", "f"].map(video) });
+    { rows: ["a", "b", "c", "d", "e", "f"].map(id => video(id)) });
   try {
     assert.equal(ui.button("Attach video"), undefined);
     assert.match(ui.host.textContent ?? "", /6 of 6/);
@@ -120,4 +132,61 @@ test("Attach stays hidden when the server can't confirm uploads are on", async (
     assert.equal(host.querySelector('input[type="file"]'), null);
     assert.ok(![...host.querySelectorAll("button")].some(button => button.textContent === "Attach video"));
   } finally { act(() => root.unmount()); host.remove(); globalThis.fetch = before; }
+});
+
+test("with photos and voice notes on, Attach opens a menu of the types that are on", async () => {
+  const ui = await mount(token => <TrainingVideos token={token} label="Back squat" target={{ source: "external", target_id: "session" }} />,
+    { photos: true, voice: true, uploads: false, rows: [] });
+  try {
+    const attach = ui.button("Attach")!;
+    assert.equal(attach.getAttribute("aria-haspopup"), "menu");
+    await act(async () => attach.click());
+    assert.deepEqual([...ui.host.querySelectorAll('[role="menuitem"]')].map(item => item.textContent), ["Photo", "Voice note"]);
+    assert.ok(ui.host.querySelector('input[type="file"][accept*="image/jpeg"]'), "photo picker (camera or library on phones)");
+    assert.equal(ui.host.querySelector('input[type="file"][accept*="video/"]'), null, "video stays off");
+  } finally { ui.close(); }
+});
+
+test("a photo opens only when tapped, through a one-off link, with no preview in the list", async () => {
+  const ui = await mount(token => <TrainingVideos token={token} label="Hand wraps" target={{ source: "external", target_id: "session" }} />,
+    { rows: [file("p", "photo")] });
+  try {
+    assert.equal(ui.host.querySelector("img"), null);
+    assert.ok(!ui.calls.some(call => call.url.includes("/play")));
+    await act(async () => ui.button("Open photo 1 for Hand wraps")!.click());
+    const image = ui.host.querySelector("img")!;
+    assert.equal(image.getAttribute("src"), "https://signed.example/p");
+    assert.equal(image.getAttribute("referrerpolicy"), "no-referrer");
+    await act(async () => ui.button("Remove photo")!.click());
+    assert.ok(ui.calls.some(call => call.method === "DELETE" && call.url.endsWith("/api/training/attachments/p")));
+    assert.equal(ui.host.querySelector("img"), null);
+  } finally { ui.close(); }
+});
+
+test("voice notes are rows that play only when pressed, labelled with who left them", async () => {
+  const ui = await mount(token => <TrainingVideos token={token} label="Sparring" target={{ source: "sparring", target_id: "report" }} />,
+    { rows: [file("v", "voice", "coach")] });
+  try {
+    assert.equal(ui.host.querySelector("audio"), null);
+    assert.match(ui.host.textContent ?? "", /Voice note.*Coach.*0:12/);
+    await act(async () => ui.button("Play voice note 1 from coach for Sparring")!.click());
+    assert.equal(ui.host.querySelector("audio")?.getAttribute("src"), "https://signed.example/v");
+    assert.ok(ui.button("Remove"), "the athlete can remove anything on their own record");
+  } finally { ui.close(); }
+});
+
+test("a coach can record voice feedback when voice notes are on, and removes only their own", async () => {
+  const ui = await mount(token => <TrainingVideos token={token} viewer="coach" athleteId="fighter" label="Sparring"
+    target={{ source: "sparring", target_id: "report" }} />,
+    { voice: true, photos: true, rows: [file("mine", "voice", "coach", true), file("theirs", "photo", "athlete", false)] });
+  try {
+    assert.ok(ui.button("Record voice note"), "coaches get voice only, no menu");
+    assert.equal(ui.button("Attach"), undefined);
+    assert.equal(ui.host.querySelector('input[type="file"]'), null);
+    await act(async () => ui.button("Open photo 1 for Sparring")!.click());
+    assert.equal(ui.button("Remove photo"), undefined);
+    await act(async () => ui.button("Play voice note 1 from you for Sparring")!.click());
+    await act(async () => ui.button("Remove")!.click());
+    assert.ok(ui.calls.some(call => call.method === "DELETE" && call.url.endsWith("/api/coach/fighters/fighter/training/attachments/mine")));
+  } finally { ui.close(); }
 });

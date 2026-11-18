@@ -194,13 +194,15 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
     const share = action === "accept" || action === "consent";
     try {
       await coachRpc(token, "coach_connection_command", {
-        p_action: action === "logging" ? "consent" : action,
+        p_action: ["logging", "media_on", "media_off"].includes(action) ? "consent" : action,
         p_id: id ?? null,
         p_email: action === "invite" ? email : null,
         p_recovery: share || connection?.share_recovery === true,
         p_injuries: share || connection?.share_injuries === true,
         p_weight: share || connection?.share_weight === true,
         p_logging: action === "accept" || action === "logging" || connection?.allow_session_logging === true,
+        // Photos and voice notes are never shared by accepting; only by asking for it here.
+        p_media: action === "media_on" || (action !== "media_off" && action !== "accept" && connection?.share_media === true),
       });
       if (action === "invite") setEmail("");
       await reload();
@@ -269,6 +271,13 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
               {!coach && !pending && sharing.note ? (
                 <small>{sharing.note}</small>
               ) : null}
+              {!coach && !pending && c.health_consent !== false ? (
+                <small className={styles.mediaSharing}>
+                  <span>{c.share_media ? "Sharing photos and voice notes" : "Not sharing photos and voice notes"}</span>
+                  {c.share_media ? <button type="button" className={styles.inlineAction} disabled={busy}
+                    onClick={() => void command("media_off", c.id, c)}>Stop</button> : null}
+                </small>
+              ) : null}
             </div>
             <div className={`${styles.actions} ${pending ? styles.invitationActions : ""}`}>
               {!coach && !pending && sharing.missing.length ? (
@@ -278,6 +287,11 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
                   onClick={() => void command("consent", c.id, c)}
                 >
                   Share {formatList(sharing.missing)}
+                </button>
+              ) : null}
+              {!coach && !pending && !c.share_media && c.health_consent !== false ? (
+                <button className="cta" disabled={busy} onClick={() => void command("media_on", c.id, c)}>
+                  Share photos &amp; voice notes
                 </button>
               ) : null}
               {!coach && !pending && !c.allow_session_logging ? (

@@ -755,3 +755,18 @@
 @media (max-width: 600px) {
   .inviteActions { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Photos and voice notes: their own line, with a quiet way to stop sharing. */
+.rowCopy > small.mediaSharing { display: flex; align-items: baseline; gap: 12px; white-space: nowrap; }
+.inlineAction {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.inlineAction:hover { color: var(--text-primary); }

@@ -10,6 +10,8 @@ export type Connection = {
   share_injuries?: boolean;
   share_weight?: boolean;
   allow_session_logging?: boolean;
+  // Photos, videos and voice notes on logged work: a separate choice, off by default.
+  share_media?: boolean;
   // The athlete's own health-data consent; only on the athlete's own rows.
   health_consent?: boolean | null;
 };

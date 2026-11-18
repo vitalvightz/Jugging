@@ -223,6 +223,7 @@ async function fixture(
           share_injuries: body.p_injuries,
           share_weight: body.p_weight,
           allow_session_logging: body.p_logging,
+          share_media: body.p_media,
           health_consent: c.health_consent ?? true,
         }));
       if (body.p_action === "invite")
@@ -486,6 +487,8 @@ test("athlete accepts with one tap, then disconnects", async ({
     p_injuries: true,
     p_weight: true,
     p_logging: true,
+    // Accepting never shares photos or voice notes.
+    p_media: false,
   });
   await expect(
     page.getByText(
@@ -1531,3 +1534,19 @@ for (const width of [390, 1440]) {
     await expect(fights.getByRole('group', { name: 'Training calendar' })).toHaveCount(0);
   });
 }
+
+test("photos and voice notes are shared only when the athlete turns them on, and can be stopped", async ({ page, baseURL }) => {
+  const state = await fixture(page, baseURL!, "athlete", false, {
+    status: "accepted", share_recovery: true, share_injuries: true, share_weight: true,
+    allow_session_logging: true, share_media: false, health_consent: true,
+  });
+  await page.goto("/settings/coach-access");
+  await expect(page.getByText("Not sharing photos and voice notes")).toBeVisible();
+  await page.getByRole("button", { name: "Share photos & voice notes" }).click();
+  await expect(page.getByText("Sharing photos and voice notes", { exact: true })).toBeVisible();
+  expect(state.actions[0]).toMatchObject({ p_action: "consent", p_media: true, p_recovery: true, p_injuries: true,
+    p_weight: true, p_logging: true });
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Share photos & voice notes" })).toBeVisible();
+  expect(state.actions[1]).toMatchObject({ p_action: "consent", p_media: false, p_recovery: true, p_injuries: true });
+});
