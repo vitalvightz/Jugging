@@ -269,3 +269,27 @@ def test_a_real_missing_session_is_still_flagged():
     reading = ReadPlan(weeks=[W(sessions=[S(name="Strength", days=["Monday"], exercises=[E(name="Back squat", sets=3, reps=5)])])])
     result = build_draft(reading, START, source)
     assert any("missing session" in f.message for f in result.flags)
+
+
+def test_same_day_different_names_are_distinct_sessions():
+    source = "Week 1\nMonday - Strength\nSquat 3x5\nMonday - Conditioning\nBike 10x30s"
+    read = ReadPlan(weeks=[W(week_index=1, sessions=[
+        S(name="Strength", days=["Monday"], exercises=[E(name="Squat", sets=3, reps=5)])])])
+    result = build_draft(read, START, source)
+    assert any("Possible missing session: Monday - Conditioning" in f.message for f in result.flags)
+
+
+def test_same_name_cannot_borrow_the_other_day():
+    source = "Week 1\nMonday - Strength\nSquat 3x5\nFriday - Strength\nDeadlift 4x3"
+    read = ReadPlan(weeks=[W(week_index=1, sessions=[
+        S(name="Strength", days=["Friday"], exercises=[E(name="Deadlift", sets=4, reps=3)])])])
+    result = build_draft(read, START, source)
+    assert any("Possible missing session: Monday - Strength" in f.message for f in result.flags)
+
+
+def test_unnamed_heading_can_still_match_its_explicit_weekday():
+    source = "Week 1\nMonday\nSquat 3x5"
+    read = ReadPlan(weeks=[W(week_index=1, sessions=[
+        S(name="Strength", days=["Monday"], exercises=[E(name="Squat", sets=3, reps=5)])])])
+    result = build_draft(read, START, source)
+    assert not any("Possible missing session" in f.message for f in result.flags)
