@@ -271,12 +271,13 @@ def test_a_real_missing_session_is_still_flagged():
     assert any("missing session" in f.message for f in result.flags)
 
 
-def test_same_day_different_names_are_distinct_sessions():
-    source = "Week 1\nMonday - Strength\nSquat 3x5\nMonday - Conditioning\nBike 10x30s"
+@pytest.mark.parametrize("missing_heading", ["Monday - Conditioning", "Monday: Conditioning"])
+def test_same_day_different_names_are_distinct_sessions(missing_heading):
+    source = f"Week 1\nMonday - Strength\nSquat 3x5\n{missing_heading}\nBike 10x30s"
     read = ReadPlan(weeks=[W(week_index=1, sessions=[
         S(name="Strength", days=["Monday"], exercises=[E(name="Squat", sets=3, reps=5)])])])
     result = build_draft(read, START, source)
-    assert any("Possible missing session: Monday - Conditioning" in f.message for f in result.flags)
+    assert any(f"Possible missing session: {missing_heading}" in f.message for f in result.flags)
 
 
 def test_same_name_cannot_borrow_the_other_day():
