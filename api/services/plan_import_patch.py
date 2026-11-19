@@ -11,11 +11,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from api.services.plan_import_reading import DISTANCE_UNITS, ReadPlan
+from pydantic import ValidationError
+
+from api.services.plan_import_reading import DISTANCE_UNITS, ReadExercise, ReadPlan
 
 # The dose fields a fix may change. Names, notes, cues and everything else stay as read.
 DOSE_FIELDS = ("sets", "reps", "seconds", "rounds", "work_seconds", "rest_seconds", "distance", "distance_unit",
-               "per_side", "load", "rpe", "prescription")
+               "per_side", "load", "rpe", "prescription", "tempo", "blocks", "block_rest_seconds")
 
 PATCH_INSTRUCTIONS = """You correct the dose of exercises read from a combat-sports training programme.
 
@@ -35,6 +37,7 @@ def patch_schema() -> dict[str, Any]:
             "distance": nullable("number"), "distance_unit": {"type": ["string", "null"], "enum": [*DISTANCE_UNITS, None]},
             "per_side": nullable("boolean"), "load": nullable("string"), "rpe": nullable("number"),
             "prescription": nullable("string"),
+            "tempo": nullable("string"), "blocks": nullable("integer"), "block_rest_seconds": nullable("integer"),
         },
     }
     return {"type": "json_schema", "name": "dose_fixes", "strict": True, "schema": {
@@ -43,23 +46,39 @@ def patch_schema() -> dict[str, Any]:
 
 
 def apply_patch(read: ReadPlan, items: list[dict], fixes: list[dict]) -> ReadPlan:
-    """A copy of ``read`` with each fixed dose put back on every exercise of that
-    name in that session (a repeated week holds the same exercise more than once)."""
+    """Patch one source row, never all rows sharing its name. Invalid IDs fail closed."""
     patched = read.model_copy(deep=True)
-    by_id = {fix.get("id"): fix for fix in fixes if isinstance(fix, dict)}
+    by_id = {fix.get("id"): fix for fix in fixes if isinstance(fix, dict)
+             and type(fix.get("id")) is int
+             and sum(isinstance(other, dict) and other.get("id") == fix.get("id") for other in fixes) == 1}
     for item in items:
-        fix = by_id.get(item["id"])
-        if not fix:
+        if not isinstance(item, dict):
             continue
-        for week in patched.weeks:
-            for session in week.sessions:
-                if (session.name or "") != item["session"]:
-                    continue
-                for exercise_index, exercise in enumerate(session.exercises):
-                    # Repeated loading rows can share a code/name but have different doses.
-                    if item.get("exercise_index") is not None and item["exercise_index"] != exercise_index:
-                        continue
-                    if (exercise.name or "") == item["name"]:
-                        for field in DOSE_FIELDS:
-                            setattr(exercise, field, fix.get(field))
+        fix = by_id.get(item.get("id"))
+        position = item.get("occurrence")
+        if not fix or not isinstance(position, (list, tuple)) or len(position) != 3:
+            continue
+        if any(type(n) is not int for n in position):
+            continue
+        week, session, row = position
+        if week < -1 or session < 0 or row < 0:
+            continue
+        if sum(isinstance(other, dict) and (other.get("id") == item.get("id") or
+               (isinstance(other.get("occurrence"), (list, tuple)) and tuple(other["occurrence"]) == tuple(position))) for other in items) != 1:
+            continue
+        try:
+            sessions = patched.every_week if week == -1 else patched.weeks[week].sessions
+            exercise = sessions[session].exercises[row]
+        except IndexError:
+            continue
+        # A stale review cannot target a changed reading. Names are a guard, not identity.
+        if exercise.name != item.get("name"):
+            continue
+        values = {field: fix[field] for field in DOSE_FIELDS if field in fix}
+        try:
+            checked = ReadExercise.model_validate({**exercise.model_dump(), **values}, strict=True)
+        except ValidationError:
+            continue
+        for field in values:
+            setattr(exercise, field, getattr(checked, field))
     return patched

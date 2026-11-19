@@ -4,7 +4,7 @@ with any exact written progression applied. Never guessed, never an exercise."""
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, timedelta
 
 
 
@@ -25,7 +25,7 @@ def _names_session(target: str, session: ReadSession) -> bool:
     return re.search(rf"(?<![a-z0-9]){re.escape(label)}(?![a-z0-9])", " ".join(re.findall(r"[a-z0-9]+", (session.name or "").lower()))) is not None
 
 
-def resolve_references(read: ReadPlan, flag) -> ReadPlan:
+def resolve_references(read: ReadPlan, flag, *, before_copy=None) -> ReadPlan:
     """Replace each reference to earlier training ("Same as Day 1", "Warm-up: same
     as Day 1", "Repeat ankle + hip drills") with copies of the exercises it names,
     from the source programme as read. A change written with it ("increase reps
@@ -37,6 +37,8 @@ def resolve_references(read: ReadPlan, flag) -> ReadPlan:
     for session in order:
         for item in session.exercises:
             _implied_reference(item)
+    if before_copy:
+        before_copy(read)
     # Each session's week (every-week sessions count as after the last week).
     week_of = [n for n, week in enumerate(read.weeks) for _ in week.sessions] + [len(read.weeks)] * len(read.every_week)
     if not any(e.is_reference for s in order for e in s.exercises):
@@ -168,22 +170,54 @@ def _written_date(text: str | None, read: ReadPlan) -> date | None:
         return date.fromisoformat(text)
     except ValueError:
         pass
-    match = re.search(r"\b([a-z]{3})[a-z]*\.?\s+(\d{1,2})\b|\b(\d{1,2})\s+([a-z]{3})[a-z]*\b", text.lower())
+    text = re.sub(r"(?<=\d)-(?=[a-z])|(?<=[a-z])-(?=\d)", " ", text.lower())
+    months = "|".join(MONTHS)
+    match = re.search(rf"\b({months})[a-z]*\.?\s+(\d{{1,2}})\b|\b(\d{{1,2}})\s+({months})[a-z]*\b", text)
     if not match:
         return None
     month = MONTHS.get(match.group(1) or match.group(4))
     try:
         day = int(match.group(2) or match.group(3))
-        return date(_year(read, month, day), month, day) if month else None
+        explicit_year = re.search(r"\b(\d{4})\b", text)
+        year = int(explicit_year[1]) if explicit_year else _year(read, month, day)
+        return date(year, month, day) if month else None
     except ValueError:
         return None
 
 
-def _session_date(session: ReadSession, read: ReadPlan) -> date | None:
+def _session_date(session: ReadSession, read: ReadPlan, anchor: date | None = None) -> date | None:
+    text = session.date or session.name
     try:
-        return date.fromisoformat(session.date) if session.date else _written_date(session.name, read)
+        return date.fromisoformat(text)
     except ValueError:
-        return _written_date(session.date, read)
+        pass
+    numeric = re.search(r"\b(\d{1,2})/(\d{1,2})(?:/(\d{4}))?\b", text)
+    if numeric:
+        try:
+            base = anchor or read.imported_on or date.today()
+            years = [int(numeric[3])] if numeric[3] else [base.year - 1, base.year, base.year + 1]
+            candidates = [date(y, int(numeric[2]), int(numeric[1])) for y in years]
+            return min(candidates, key=lambda d: abs((d - base).days))
+        except ValueError:
+            return None
+    written = _written_date(text, read)
+    if written and anchor and not re.search(r"\b\d{4}\b", text):
+        candidates = []
+        for year in (anchor.year - 1, anchor.year, anchor.year + 1):
+            try:
+                candidates.append(written.replace(year=year))
+            except ValueError:
+                pass
+        return min(candidates, key=lambda d: abs((d - anchor).days))
+    if written:
+        return written
+    # A day-of-month alone requires a bounded programme-week anchor. Day 1 and
+    # Session A are labels, never calendar dates.
+    short = re.search(r"\b(?:mon|tues?|wed(?:s|nesday)?|thu(?:rs)?|fri|sat|sun)(?:day)?\.?\s+(\d{1,2})\b", text, re.I)
+    if short and anchor:
+        dates = [anchor + timedelta(days=n) for n in range(7)]
+        return next((d for d in dates if d.day == int(short[1])), None)
+    return None
 
 
 def _slot_name(session: ReadSession) -> str:

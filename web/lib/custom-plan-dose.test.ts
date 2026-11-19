@@ -11,6 +11,14 @@ const past = (latest_values: Record<string, unknown>) => ({
   latest_performance: null, progression_hold: null, bodyweight_progression: null, allow_progression: true, latest_confirmed_as_prescribed: true, best_loads: [], latest_source: "plan", log_format: "strength",
 }) as PersonalExercise;
 
+test("authored rounds stay complete without inventing a rest interval", () => {
+  const dose = { ...blankDose("intervals"), rounds: 3, work_seconds: 180 };
+  assert.equal(doseIncomplete(dose), false);
+  assert.equal(dose.rest_seconds, null);
+  assert.equal(doseSummary(dose), "3 × 3 min");
+  assert.equal(doseIncomplete({ ...dose, work_seconds: null }), true);
+});
+
 test("the library's source dose wins over its format", () => {
   const dose = { ...blankDose("intervals"), rounds: 5, work_seconds: 300, rest_seconds: 30 };
   const result = libraryPrefill(suggestion({ dose, format_dose: { ...blankDose("reps"), sets: 3, reps: 8 } }), null);

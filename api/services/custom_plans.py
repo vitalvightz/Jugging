@@ -202,6 +202,7 @@ def custom_open_plan_result(draft: dict, profile, *, training_day: str) -> dict:
                 blocks.append(block)
             rendered.append({
                 "session_id": session_id, "session_type": session.get("session_type", "mixed"),
+                "programme_week": session.get("programme_week"),
                 "prescription_source": "athlete",
                 "optional": True if session.get("session_type") == "recovery" else None,
                 "title": session["name"], "objective": (session.get("notes") or "").strip(), "mindset_anchor": anchor,
@@ -594,10 +595,8 @@ def dose_incomplete(dose):
             dose.get("distance_unit")
         )
     if mode == "intervals":
-        return (
-            not (dose.get("rounds") and dose.get("work_seconds"))
-            or dose.get("rest_seconds") is None
-        )
+        # Authored rounds do not require an invented rest interval.
+        return not (dose.get("rounds") and dose.get("work_seconds"))
     return not (dose.get("prescription") or "").strip()
 
 

@@ -6,7 +6,7 @@ import re
 from datetime import date
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 from api.contracts.custom_plans import WEEKDAYS
 from api.structured_plan_models import ExercisePrescription, _strictify_schema_node
@@ -55,6 +55,9 @@ USE COMMON SENSE
 - Ignore page furniture (page numbers, headers, footers, logos, repeated titles) and introductions, coaching essays and advice that are not training lines.
 
 STRUCTURE
+- Source week identity is independent of Monday-Sunday calendar boundaries. Preserve week numbers, including a programme beginning at Week 5. W1, WK 1, Week One, First Week, phases and microcycles can be week headings when the layout establishes that role; mentions in advice are not headings.
+- PROGRESSION TABLES: columns labelled with different weeks or dates are distinct source occurrences. Read every cell under its own date column and subheaders (%, Sets x Reps, WT, rest). Follow continuation rows vertically within that column, then move to the next date column. Never copy the first date's loading stages, repetitions or set counts into later columns. Codes identify exercise rows, not shared prescriptions. Blank cells stay unknown unless an explicit merged cell or repeat instruction supplies the value. Distinct dated columns stay separate week objects even when some cells are identical.
+- A shared exercise/session name never proves an identical dose. Copy the progression actually written, including reductions and deloads; never infer progressive overload. These rules apply to every sport and training discipline.
 - A week template that the programme says repeats ("weeks 1-4", "repeat for 6 weeks", "x4 weeks") is ONE week object with repeat set to that number. Identical consecutive weeks are also one week object with repeat > 1. Different weeks are separate objects, in order. No weeks mentioned: one week, repeat 1.
 - A week the programme writes as a rest, recovery, deload or off week with no sessions listed is still a week object, with rest true and no sessions, so every week keeps its date. This holds for the first week too. rest is false for every other week.
 - days: every weekday written for the session, as full names, in order. One written day is a list of one. Several days written for the same session ("Tue/Thu/Sat", "Monday/Wed", "Mon, Wed & Fri", "Monday-Friday") are ONE session with all those days: ["Tuesday", "Thursday", "Saturday"]; a range covers every day in it. "Day 1", "Session A", "AM" are not weekdays: days is empty, and keep that label in the session name (e.g. "Day 1 - Strength").
@@ -65,6 +68,7 @@ STRUCTURE
 - A table or list that maps day labels to weekdays ("Mon (Day 1)", "Tue (Day 2)"): give each "Day N" session those weekdays in days. Rows in such a table for days with no session written out below ("Sat: Recovery / Freestyle (Optional)", "Sun: Full Rest") go in every_week.
 
 EXERCISES, in written order (warm-up and cool-down lines written as exercises stay as exercises)
+- Conditional loading stays conditional: "add 10kg if able" goes whole in load or prescription, never mandatory "10kg". Preserve all alternatives ("35-45 min or 20 min tempo", "sled push / hill sprints") in prescription or notes without selecting one. "As scheduled" has no invented rounds, time or rest. A weight without a unit keeps its unit unknown.
 - Preserve A1/A2/B1/B2/Z123 as exercise_code (without punctuation), not days or sessions. Name excludes only the code prefix. A shared letter never implies a superset. group_type is superset/circuit/alternating_sets ONLY when the source explicitly says so; otherwise null.
 - One exercise per movement/code, with ALL warm-up, working, loading and repeated table rows in ordered prescribed_sets. Clean's eight percentage/WT rows are one exercise with eight stages; Back Squat's six rows are one exercise; three 4e bench rows are three prescribed_sets. Never emit a card per percentage/weight/set. Preserve percentages AND weights, reps/sets, holds, rest, and side instructions. A bare WT has unknown units: keep it as source_text, never assume kg/lb or a 1RM reference. Ambiguous notation stays verbatim in source_text. Sets are null when the row states reps only. Top-level dose fields are null when stages own the varying dose. prescribed_sets is empty for uniform prescriptions.
 - "REPS X SETS" uses reps first; "Sets x Reps" uses sets first. Keep "4e", "2 Ea", "E/S" and timed holds. Week 5 is week_index=5, Day 1 (Total) is the session name with days=[] unless an explicit weekday is supplied; A1 is not either. No invented weekdays.
@@ -112,7 +116,7 @@ def response_schema() -> dict[str, Any]:
         "properties": {
             "exercise_code": nullable("string"),
             "group_type": {"type": ["string", "null"], "enum": ["superset", "circuit", "alternating_sets", None]},
-            "prescribed_sets": {"type": "array", "items": stage},
+            "prescribed_sets": {"type": "array", "items": stage, "description": "Ordered loading/table rows for this exercise under THIS date/week column. Preserve every percentage, weight, set/rep count and source notation. Never copy another column's stages."},
             "name": {"type": "string"},
             "sets": nullable("integer"), "reps": nullable("integer"), "seconds": nullable("integer"),
             "rounds": nullable("integer"), "work_seconds": nullable("integer"), "rest_seconds": nullable("integer"),
@@ -122,7 +126,7 @@ def response_schema() -> dict[str, Any]:
             "kind": {"type": ["string", "null"], "enum": [*EXERCISE_KINDS, None]},
             "prescription": nullable("string"), "equipment": nullable("string"),
             "cues": strings, "stop_rules": strings, "notes": nullable("string"),
-            "stages": strings, "group": nullable("string"),
+            "stages": {**strings, "description": "Only timed parts INSIDE rounds, usually with clock offsets. Never use for weight/percentage loading rows; those belong in prescribed_sets."}, "group": nullable("string"),
             "refers_to_day": nullable("string"), "refers_to_section": nullable("string"),
         },
     }
@@ -166,6 +170,8 @@ def response_schema() -> dict[str, Any]:
 # -- What the model returns (lenient: anything odd is dropped and flagged, never trusted) --
 
 class ReadExercise(BaseModel):
+    # Assigned before reference expansion; retained by deep copies, never model supplied.
+    _source_index: int = PrivateAttr(default=-1)
     exercise_code: str | None = None
     group_type: str | None = None
     prescribed_sets: list[ExercisePrescription] = Field(default_factory=list)
@@ -211,6 +217,7 @@ class ReadExercise(BaseModel):
 
 
 class ReadSession(BaseModel):
+    _source_position: tuple[int, int] = PrivateAttr(default=(-1, -1))
     days: list[str] = Field(default_factory=list)
     # An older reading's single day; may also be written as "Tue/Thu/Sat".
     day: str | None = None

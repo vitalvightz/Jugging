@@ -1355,7 +1355,7 @@ def test_targeted_second_look_does_not_overwrite_other_loading_rows_with_the_sam
         ReadExercise(name="A1 Clean", sets=2, reps=2, load="50%"),
         ReadExercise(name="A1 Clean", sets=3, reps=1, load="95%"),
     ])])])
-    patched = apply_patch(reading, [{"id": 0, "session": "Lift", "name": "A1 Clean", "exercise_index": 0}],
+    patched = apply_patch(reading, [{"id": 0, "session": "Lift", "name": "A1 Clean", "occurrence": (0, 0, 0)}],
                           [{"id": 0, "sets": 1, "reps": 2, "load": "50%"}])
     stages = build_draft(patched, date(2026, 11, 23)).plan["sessions"][0]["exercises"][0]["dose"]["prescribed_sets"]
     assert [(stage["sets"], stage["reps"]) for stage in stages] == [(1, 2), (3, 1)]

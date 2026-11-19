@@ -431,6 +431,9 @@ class Completion(BaseModel):
 class Session(BaseModel):
     """A single training session within a day (Section M)."""
 
+    # Authored programme weeks can cross calendar-week boundaries.
+    programme_week: int | None = Field(None, ge=1, json_schema_extra={"x-response-optional": True})
+
     # Completion writes still require a real id, but the read-only plan card can
     # safely render without one.  Do not replace missing identity with a generic
     # value that can collide with another session.
