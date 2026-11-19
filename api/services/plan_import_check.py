@@ -188,11 +188,15 @@ class SourceCheck:
                 previous_table_name = candidate
             else:
                 name_column = None
-                match = re.match(r"^\s*(?:☐|[•*]|\d+[.)]|[A-Za-z][1-9]\d*[.):])\s+(.+)$", line)
-                if not match:
+                match = re.match(r"^\s*(?:☐|[•*]|\d+[.)]|[A-Za-z][1-9]\d*[.):]|-)\s+(.+)$", line)
+                if match:
+                    candidate = match[1]
+                    candidate = re.sub(r"^\d+\s*(?:mins?|seconds?|secs?)\b\s*", "", candidate, flags=re.I)
+                elif (_has_dose(line) and not session_heading(line) and not week_heading(line)
+                      and not re.match(r"^(?:warm[ -]?up|cool[ -]?down|rest|repeat|note|focus|cue|rpe|sets?|reps?|rounds?|tempo|load)\b", line, re.I)):
+                    candidate = line
+                else:
                     continue
-                candidate = match[1]
-                candidate = re.sub(r"^\d+\s*(?:mins?|seconds?|secs?)\b\s*", "", candidate, flags=re.I)
             candidate = re.split(
                 r"\b\d+\s*[x×*]\s*\d+|\b\d+(?:\s*[-–]\s*\d+)?\s*(?:kgs?|lbs?|mins?|secs?|seconds?|km|metres?)\b|\s+[-–—]\s+",
                 candidate, maxsplit=1, flags=re.I,
