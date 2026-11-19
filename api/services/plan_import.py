@@ -499,6 +499,10 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
             source_missing[raw_session._source_position] = checker.missing_exercises(raw_session)
 
     read = resolve_references(read, lambda where, message: flag(where, message), before_copy=check_source if checker else None)
+    if checker:
+        for wi, heading in checker.missing_sessions(read):
+            flag(f"Week {read.weeks[wi].week_index or wi + 1}",
+                 f"Possible missing session: {heading}. Compare with the source.")
     written_weeks = [week for week in read.weeks if week.sessions or week.rest]
     every_week = read.every_week
     if not any(week.sessions for week in written_weeks) and every_week:
