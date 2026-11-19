@@ -206,7 +206,8 @@ class SourceCheck:
                 continue
             match = next((i for i, words in enumerate(remaining) if words and
                           sum(any(_same_word(word, other) for other in words) for word in wanted)
-                          >= max(1, min(len(wanted), len(words)) * 0.8)), None)
+                          >= max(1, min(len(wanted), len(words)) * 0.8) and
+                          (len(wanted) == len(words) or min(len(wanted), len(words)) > 1)), None)
             if match is None:
                 missing.append(candidate[:100])
             else:
