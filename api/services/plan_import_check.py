@@ -27,8 +27,20 @@ class SourceCheck:
     A number that isn't, or an exercise whose line can't be found, is flagged."""
 
     def __init__(self, source: str, corrections: list[ReadCorrection]):
-        self.lines = [" ".join(line.split()) for line in source.replace("\r", "").split("\n")]
-        self.lines = [line for line in self.lines if line]
+        self.lines = []
+        aligned = False
+        for line in source.replace("\r", "").split("\n"):
+            if re.match(r"^\s*(?:code\s{2,})?(?:exercise|movement|drill)\s{2,}", line, re.I):
+                aligned = True
+            if "\t" in line:
+                line = re.sub(r"\t+", " | ", line)
+            elif aligned and re.search(r" {2,}", line):
+                line = re.sub(r" {2,}", " | ", line)
+            else:
+                aligned = False
+            line = " ".join(line.split())
+            if line:
+                self.lines.append(line)
         self.source_lines = self.lines
         self.undo = [(c.corrected.lower(), c.written.lower()) for c in corrections if c.corrected and c.written]
         self.reps_first = False
@@ -152,6 +164,50 @@ class SourceCheck:
             return
         n = candidates[0]
         self.bounds = (titles[n][0], titles[n + 1][0] if n + 1 < len(titles) else hi)
+
+    def missing_exercises(self, session) -> list[str]:
+        """Flag clear source entries absent from the model reading, not prose or loading continuations."""
+        if self.bounds is None:
+            return []
+        lo, hi = self.bounds
+        remaining = [_name_words(e.name) for e in session.exercises if e.name.strip() and not e.is_reference]
+        missing = []
+        name_column = None
+        previous_table_name = None
+        for line in self.lines[lo:hi]:
+            cells = [cell.strip() for cell in line.split("|")]
+            headings = [i for i, cell in enumerate(cells) if re.fullmatch(r"exercise|movement|drill", cell, re.I)]
+            if len(cells) > 1 and headings:
+                name_column = headings[0]
+                previous_table_name = None
+                continue
+            if name_column is not None and "|" in line and len(cells) > name_column:
+                candidate = cells[name_column]
+                if not candidate or not _has_dose(line) or candidate == previous_table_name:
+                    continue
+                previous_table_name = candidate
+            else:
+                name_column = None
+                match = re.match(r"^\s*(?:☐|[•*]|\d+[.)]|[A-Za-z][1-9]\d*[.):])\s+(.+)$", line)
+                if not match:
+                    continue
+                candidate = match[1]
+                candidate = re.sub(r"^\d+\s*(?:mins?|seconds?|secs?)\b\s*", "", candidate, flags=re.I)
+            candidate = re.split(
+                r"\b\d+\s*[x×*]\s*\d+|\b\d+(?:\s*[-–]\s*\d+)?\s*(?:kgs?|lbs?|mins?|secs?|seconds?|km|metres?)\b|\s+[-–—]\s+",
+                candidate, maxsplit=1, flags=re.I,
+            )[0].strip(" :-–—")
+            wanted = _name_words(candidate)
+            if not wanted:
+                continue
+            match = next((i for i, words in enumerate(remaining) if words and
+                          sum(any(_same_word(word, other) for other in words) for word in wanted)
+                          >= max(1, min(len(wanted), len(words)) * 0.8)), None)
+            if match is None:
+                missing.append(candidate[:100])
+            else:
+                remaining.pop(match)
+        return missing
 
     def window(self, name: str) -> str | None:
         """The source line that names this exercise."""
@@ -294,8 +350,6 @@ class SourceCheck:
         name = _clean(item.name) or ""
         if item.prescribed_sets:
             self._check_stages(item, flag)
-            return
-        if not any(getattr(item, f) for f in DOSE_FIELDS) and not item.tempo:
             return
         window = self.window(name)
         if window is None:
