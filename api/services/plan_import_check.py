@@ -484,7 +484,7 @@ class SourceCheck:
                 problems.append("keep the written time range")
         if re.search(r"\b(?:if able|if possible|optional)\b", window, re.I) and item.load and not re.search(r"\b(?:if able|if possible|optional)\b", item.load, re.I):
             problems.append("the load is optional")
-        preserved = " ".join(filter(None, [item.name, item.prescription, item.notes, item.load, item.tempo, item.equipment, item.group, *item.cues, *item.stages]))
+        preserved = " ".join(filter(None, [item.name, prescription, item.notes, item.load, item.tempo, item.equipment, item.group, *item.cues, *item.stages]))
         if re.search(r"\bor\b", window, re.I) and not re.search(r"\bor\b|/", preserved, re.I):
             problems.append("keep the written alternative")
         if item.tempo and re.sub(r"\s+", "", item.tempo.lower()) not in re.sub(r"\s+", "", window.lower()):
@@ -633,7 +633,7 @@ def _short_minutes(text: str, *, context: str = "") -> str:
     ambiguous and are reviewed rather than using the model's reading as proof.
     """
     activity = f"{context} {text}"
-    timed = re.search(r"\b(?:stretch\w*|mobility|plank|skip\w*|jump[ -]+rope|boxing|pads?|warm[ -]?up|cool[ -]?down|breath\w*)\b", activity, re.I)
+    timed = re.search(r"\b(?:stretch\w*|mobility|plank|skip\w*|jump[ -]+rope|warm[ -]?up|cool[ -]?down|breath\w*)\b", activity, re.I)
     distance = re.search(r"\b(?:run\w*|roadwork|sprint\w*|walk\w*|swim\w*|row\w*|cycl\w*|bike|distance|metres?|meters?)\b", activity, re.I)
 
     def replace(match: re.Match) -> str:
