@@ -165,6 +165,52 @@ class SourceCheck:
         n = candidates[0]
         self.bounds = (titles[n][0], titles[n + 1][0] if n + 1 < len(titles) else hi)
 
+    def missing_sessions(self, plan) -> list[tuple[int, str]]:
+        """Report source session headings absent from an identifiable programme week."""
+        headings = [(i, week_heading(line)) for i, line in enumerate(self.source_lines) if week_heading(line)]
+        date_ranges = bool(headings) and all(numbers == {-1} for _, numbers in headings)
+        if headings and any(numbers == {-1} for _, numbers in headings) and not date_ranges:
+            return []  # Mixed labels have no safe positional correspondence.
+        if date_ranges and len(headings) != len(plan.weeks):
+            return []
+        if not headings and len(plan.weeks) != 1:
+            return []
+        missing = []
+        for wi, week in enumerate(plan.weeks):
+            if headings:
+                if date_ranges:
+                    index = wi
+                elif week.week_index is None and len(headings) == len(plan.weeks):
+                    index = wi
+                else:
+                    choices = [n for n, (_, numbers) in enumerate(headings) if week.week_index in numbers]
+                    if len(choices) != 1:
+                        continue
+                    index = choices[0]
+                lo = headings[index][0] + 1
+                hi = headings[index + 1][0] if index + 1 < len(headings) else len(self.source_lines)
+            else:
+                lo, hi = 0, len(self.source_lines)
+            hi = next((i for i in range(lo, hi) if re.fullmatch(
+                r"(?:key |general |coaching )?notes:?", self.source_lines[i], re.I)), hi)
+            remaining = list(week.sessions)
+            for heading in (line for line in self.source_lines[lo:hi] if session_heading(line)):
+                words, days = _name_words(heading), set(_heading_days(heading))
+                named = [i for i, session in enumerate(remaining)
+                         if _name_words(session.name) and _name_words(session.name) <= words]
+                matched = next((i for i in named if days and days <= set(session_days(remaining[i]))), None)
+                if matched is None and named:
+                    matched = named[0]
+                if matched is None and days:
+                    same_day = [i for i, session in enumerate(remaining) if days <= set(session_days(session))]
+                    if len(same_day) == 1:
+                        matched = same_day[0]
+                if matched is None:
+                    missing.append((wi, heading[:100]))
+                else:
+                    remaining.pop(matched)
+        return missing
+
     def missing_exercises(self, session) -> list[str]:
         """Flag clear source entries absent from the model reading, not prose or loading continuations."""
         if self.bounds is None:
@@ -186,32 +232,39 @@ class SourceCheck:
                 if not candidate or not _has_dose(line) or candidate == previous_table_name:
                     continue
                 previous_table_name = candidate
+                candidates = [candidate]
             else:
                 name_column = None
-                match = re.match(r"^\s*(?:☐|[•*]|\d+[.)]|[A-Za-z][1-9]\d*[.):]|-)\s+(.+)$", line)
+                # A comma-separated warm-up or exercise line can name several
+                # independent movements; rest/cues are not separate exercises.
+                content = re.sub(r"^warm[ -]?up[^:]*:\s*", "", line, flags=re.I)
+                parts = [part.strip() for part in re.split(r"[,;]", content)]
+                entries = [part for part in parts if _has_dose(part) and re.match(
+                    r"^(?:[☐•*-]\s*)?(?:[A-Za-z][1-9]\d*[.):]\s*)?[A-Za-z]",
+                    part) and not re.match(r"^(?:rest|recovery|tempo|sets?|reps?|rounds?|load|rpe|note)\b", part, re.I)]
+                candidates = entries if len(entries) >= 2 else [line]
+            for candidate in candidates:
+                match = re.match(r"^\s*(?:☐|[•*]|\d+[.)]|[A-Za-z][1-9]\d*[.):]|-)\s+(.+)$", candidate)
                 if match:
-                    candidate = match[1]
-                    candidate = re.sub(r"^\d+\s*(?:mins?|seconds?|secs?)\b\s*", "", candidate, flags=re.I)
-                elif (_has_dose(line) and not session_heading(line) and not week_heading(line)
-                      and not re.match(r"^(?:warm[ -]?up|cool[ -]?down|rest|repeat|note|focus|cue|rpe|sets?|reps?|rounds?|tempo|load)\b", line, re.I)):
-                    candidate = line
-                else:
+                    candidate = re.sub(r"^\d+\s*(?:mins?|seconds?|secs?)\b\s*", "", match[1], flags=re.I)
+                elif (not _has_dose(candidate) or session_heading(candidate) or week_heading(candidate)
+                      or re.match(r"^(?:warm[ -]?up|cool[ -]?down|rest|repeat|note|focus|cue|rpe|sets?|reps?|rounds?|tempo|load)\b", candidate, re.I)):
                     continue
-            candidate = re.split(
-                r"\b\d+\s*[x×*]\s*\d+|\b\d+(?:\s*[-–]\s*\d+)?\s*(?:kgs?|lbs?|mins?|secs?|seconds?|km|metres?)\b|\s+[-–—]\s+",
-                candidate, maxsplit=1, flags=re.I,
-            )[0].strip(" :-–—")
-            wanted = _name_words(candidate)
-            if not wanted:
-                continue
-            match = next((i for i, words in enumerate(remaining) if words and
-                          sum(any(_same_word(word, other) for other in words) for word in wanted)
-                          >= max(1, min(len(wanted), len(words)) * 0.8) and
-                          (len(wanted) == len(words) or min(len(wanted), len(words)) > 1)), None)
-            if match is None:
-                missing.append(candidate[:100])
-            else:
-                remaining.pop(match)
+                candidate = re.split(
+                    r"\b\d+\s*[x×*]\s*\d+|\b\d+(?:\s*[-–]\s*\d+)?\s*(?:kgs?|lbs?|mins?|secs?|seconds?|km|metres?)\b|\s+[-–—]\s+",
+                    candidate, maxsplit=1, flags=re.I,
+                )[0].strip(" :-–—")
+                wanted = _name_words(candidate)
+                if not wanted:
+                    continue
+                match = next((i for i, words in enumerate(remaining) if words and
+                              sum(any(_same_word(word, other) for other in words) for word in wanted)
+                              >= max(1, min(len(wanted), len(words)) * 0.8) and
+                              (len(wanted) == len(words) or min(len(wanted), len(words)) > 1)), None)
+                if match is None:
+                    missing.append(candidate[:100])
+                else:
+                    remaining.pop(match)
         return missing
 
     def window(self, name: str) -> str | None:
@@ -846,7 +899,7 @@ def week_heading(text: str) -> set[int]:
             return set()
         return set(range(low, high + 1)) if low <= high else set()
     # Standalone date ranges represent source sections, not calendar-week numbers.
-    if re.fullmatch(r"\d{1,2}(?:/\d{1,2})?\s*[-–—]\s*\d{1,2}(?:/\d{1,2}|\s+[A-Za-z]+)(?:\s+\d{4})?", text):
+    if re.fullmatch(r"\d{1,2}(?:/\d{1,2}|\s+[A-Za-z]{3,9})?\s*[-–—]\s*\d{1,2}(?:/\d{1,2}|\s+[A-Za-z]{3,9})?(?:\s+\d{4})?", text) and re.search(r"/\d{1,2}|\b[A-Za-z]{3,9}\b", text):
         return {-1}
     return set()
 WRITTEN_DAYS = re.compile(rf"\b({DAY_WORD})(?:\s*(?:-|\u2013|\u2014|\bto\b|\bthrough\b|\bthru\b)\s*({DAY_WORD}))?(?![a-z])", re.I)
