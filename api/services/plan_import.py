@@ -477,6 +477,7 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
                 raw._source_index = exercise_index
     checker = SourceCheck(source, read.corrections) if source and source.strip() else None
     source_messages: dict[tuple[int, int, int], list[str]] = {}
+    source_missing: dict[tuple[int, int], list[str]] = {}
 
     def check_source(original: ReadPlan) -> None:
         # Check source rows before references copy them. A corrected original
@@ -495,6 +496,7 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
                 source_messages[occurrence] = messages
                 for failed in checker.failed[mark:]:
                     failed["occurrence"] = occurrence
+            source_missing[raw_session._source_position] = checker.missing_exercises(raw_session)
 
     read = resolve_references(read, lambda where, message: flag(where, message), before_copy=check_source if checker else None)
     written_weeks = [week for week in read.weeks if week.sessions or week.rest]
@@ -563,6 +565,8 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
         where = f"{label}{title}"
         session_id = str(uuid4())
         session_where.setdefault(where, session_id)
+        for missing in source_missing.get(item._source_position, []):
+            flag(where, f"Possible missing exercise: {missing}. Compare with the source.")
         notes = _clean(item.instructions)
         if source is not None and not item.exercises and kind not in {"rest", "recovery"}:
             flag(where, "No exercises were read for this session. Compare it with the source.")
