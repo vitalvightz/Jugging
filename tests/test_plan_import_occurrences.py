@@ -550,3 +550,55 @@ def test_plank_is_not_covered_by_side_plank():
         ReadExercise(name="Side plank", sets=3, seconds=30)])])])
     result = build_draft(read, START, source)
     assert any("Possible missing exercise: Plank" in flag.message for flag in result.flags)
+
+
+def test_source_session_omitted_from_week_is_flagged():
+    source = ("Week 1\nMonday - Strength\nSquat 3x5 @ 100kg\n"
+              "Tuesday - Roadwork\nRun 30 min\nFriday - Power\nBox jumps 3x5")
+    read = ReadPlan(weeks=[ReadWeek(week_index=1, sessions=[
+        ReadSession(name="Strength", days=["Monday"], exercises=[ReadExercise(name="Squat", sets=3, reps=5, load="100kg")]),
+        ReadSession(name="Roadwork", days=["Tuesday"], exercises=[ReadExercise(name="Run", seconds=1800)]),
+    ])])
+    result = build_draft(read, START, source)
+    assert any("Possible missing session: Friday - Power" in flag.message for flag in result.flags)
+    assert len(result.plan["sessions"]) == 2
+
+
+def test_warmup_line_checks_each_exercise_without_inventing_it():
+    source = "Session A\nWarm-up 10 min: band pull-aparts 2x15, scap push-ups 2x10, skip rope 3 min"
+    def read(names):
+        return ReadPlan(weeks=[ReadWeek(sessions=[ReadSession(name="Session A", exercises=[
+            ReadExercise(name=name) for name in names])])])
+    imported = build_draft(read(["band pull-aparts", "skip rope"]), START, source)
+    assert any("Possible missing exercise: scap push-ups" in flag.message for flag in imported.flags)
+    complete = build_draft(read(["band pull-aparts", "scap push-ups", "skip rope"]), START, source)
+    assert not any("Possible missing exercise" in flag.message for flag in complete.flags)
+
+
+def test_shared_line_detects_omitted_exercise_not_rest():
+    source = "Session A\nSquat 3x5, DB rows 4x8\nDeadlift 3x5, rest 90s"
+    read = ReadPlan(weeks=[ReadWeek(sessions=[ReadSession(name="Session A", exercises=[
+        ReadExercise(name="Squat", sets=3, reps=5),
+        ReadExercise(name="Deadlift", sets=3, reps=5, rest_seconds=90)])])])
+    result = build_draft(read, START, source)
+    assert any("Possible missing exercise: DB rows" in flag.message for flag in result.flags)
+    assert not any("Possible missing exercise: rest" in flag.message for flag in result.flags)
+
+
+def test_date_range_week_sections_keep_independent_doses():
+    source = ("18–24 November\nWednesday - Strength\nSquat 3x5 @ 100kg\n"
+              "25 Nov – 1 Dec\nWednesday - Strength\nSquat 3x5 @ 120kg")
+    read = ReadPlan(start_date="2026-11-18", weeks=[
+        ReadWeek(week_index=1, sessions=[ReadSession(name="Strength", days=["Wednesday"],
+            date="2026-11-18", exercises=[ReadExercise(name="Squat", sets=3, reps=5, load="100kg")])]),
+        ReadWeek(week_index=2, sessions=[ReadSession(name="Strength", days=["Wednesday"],
+            date="2026-11-25", exercises=[ReadExercise(name="Squat", sets=3, reps=5, load="120kg")])]),
+    ])
+    result = build_draft(read, START, source)
+    assert not result.flags, [(f.where, f.message) for f in result.flags]
+    assert [s["exercises"][0]["dose"]["load_or_intensity"] for s in result.plan["sessions"]] == ["100kg", "120kg"]
+
+
+@pytest.mark.parametrize("heading", ["18–24 November", "25 Nov – 1 Dec", "18/11-24/11"])
+def test_date_range_is_a_week_boundary(heading):
+    assert week_heading(heading) == {-1}
