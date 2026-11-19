@@ -237,3 +237,19 @@ def test_ambiguous_m_on_an_unfamiliar_exercise_is_never_silently_minutes(name):
     reading = ReadPlan(weeks=[W(week_index=1, sessions=[S(name="Session", days=["Monday"], exercises=[E(name=name, seconds=1200)])])])
     result = build_draft(reading, START, f"Week 1\nMonday - Session\n{name}: 20m\n")
     assert dose_flags(result)
+
+
+def test_overview_rows_optional_days_and_labelled_sections_are_not_missing():
+    source = ("Day | Focus\nMon | Strength\nSat | Easy swim (Optional)\nSun | Full rest\n"
+              "Mon - Strength\n**Hand Gripper (10 mins)**: 3 sets x 15 reps\n**Mobility (15 mins)**: Follow the hip routine\n")
+    reading = ReadPlan(weeks=[W(sessions=[S(name="Strength", days=["Monday"], exercises=[
+        E(name="Hand Gripper", sets=3, reps=15), E(name="Hip routine", prescription="Within Mobility (15 mins)")])])])
+    result = build_draft(reading, START, source)
+    assert not [f.message for f in result.flags if "missing" in f.message.lower()]
+
+
+def test_a_real_missing_session_is_still_flagged():
+    source = "Mon - Strength\nBack squat: 3 x 5\nWed - Conditioning\nBike: 10 x 30s\n"
+    reading = ReadPlan(weeks=[W(sessions=[S(name="Strength", days=["Monday"], exercises=[E(name="Back squat", sets=3, reps=5)])])])
+    result = build_draft(reading, START, source)
+    assert any("missing session" in f.message for f in result.flags)

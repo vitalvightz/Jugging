@@ -206,7 +206,13 @@ class SourceCheck:
                     if len(same_day) == 1:
                         matched = same_day[0]
                 if matched is None:
-                    missing.append((wi, heading[:100]))
+                    # The same session can be written twice (an overview row, then in full).
+                    named_any = any(_name_words(session.name) and _name_words(session.name) <= words for session in week.sessions)
+                    same_day_any = days and len([session for session in week.sessions if days <= set(session_days(session))]) == 1
+                    # An optional or rest day written by the coach needs no session.
+                    optional = re.search(r"\b(?:optional|rest\s+day|full\s+rest|day\s+off)\b", heading, re.I)
+                    if not (named_any or same_day_any or optional):
+                        missing.append((wi, heading[:100]))
                 else:
                     remaining.pop(matched)
         return missing
@@ -237,12 +243,22 @@ class SourceCheck:
                 name_column = None
                 # A comma-separated warm-up or exercise line can name several
                 # independent movements; rest/cues are not separate exercises.
-                content = re.sub(r"^warm[ -]?up[^:]*:\s*", "", line, flags=re.I)
+                plain = re.sub(r"\*\*|__", "", line)
+                content = re.sub(r"^\s*(?:warm[ -]?up[^:]*|[^:|]{1,60}\([^)]*\d[^)]*\))\s*:\s*", "", plain, flags=re.I)
                 parts = [part.strip() for part in re.split(r"[,;]", content)]
                 entries = [part for part in parts if _has_dose(part) and re.match(
                     r"^(?:[☐•*-]\s*)?(?:[A-Za-z][1-9]\d*[.):]\s*)?[A-Za-z]",
                     part) and not re.match(r"^(?:rest|recovery|tempo|sets?|reps?|rounds?|load|rpe|note)\b", part, re.I)]
-                candidates = entries if len(entries) >= 2 else [line]
+                if len(entries) >= 2:
+                    candidates = entries
+                elif content == plain:
+                    candidates = [line]
+                elif re.match(r"\d", content):
+                    # "Hand Gripper (10 mins): 3 sets x 15": the label names the exercise.
+                    candidates = [plain[:len(plain) - len(content)]]
+                else:
+                    # A section label ("Mobility (15 mins): ...") checks only what it introduces.
+                    candidates = [content]
             for candidate in candidates:
                 match = re.match(r"^\s*(?:☐|[•*]|\d+[.)]|[A-Za-z][1-9]\d*[.):]|-)\s+(.+)$", candidate)
                 if match:
@@ -682,7 +698,8 @@ class SourceCheck:
             for heading, cell in zip(columns, cells):
                 role = heading.strip().lower()
                 dose = read_dose_line(cell)
-                if role == "code" and item.exercise_code and item.exercise_code.casefold() != cell.strip().casefold():
+                # A blank code cell continues the row above it.
+                if role == "code" and item.exercise_code and cell.strip() and item.exercise_code.casefold() != cell.strip().casefold():
                     flag("Check the dose: the exercise code doesn't match its source row.")
                     return
                 if role in {"%", "percent", "percentage"} and stage.percentage is not None:
