@@ -444,6 +444,21 @@ def _duration(seconds: int) -> str:
 DAY_NUMBER = re.compile(r"^\s*day\s*(\d{1,3})(?!\d)", re.I)
 
 
+# "30-Day Challenge", "30 day boxer challenge", "21-day programme": the stated length.
+PROGRAMME_DAYS = re.compile(r"\b(\d{1,3})\s*-?\s*days?\b(?=\s+[a-z]*\s*(?:challenge|program|programme|plan))", re.I)
+
+
+def _ranges(numbers: list[int]) -> str:
+    """[9, 15, 16, 17] -> "9, 15-17"."""
+    runs: list[list[int]] = []
+    for n in numbers:
+        if runs and n == runs[-1][1] + 1:
+            runs[-1][1] = n
+        else:
+            runs.append([n, n])
+    return ", ".join(str(a) if a == b else f"{a}-{b}" for a, b in runs)
+
+
 def _numbered_days(weeks: list[ReadWeek]) -> list[tuple[ReadSession, int]] | None:
     """Sessions of a sequential daily programme ("30-Day Challenge": Day 1 ... Day 30),
     each with its day number, when every session is numbered once, none has a written
@@ -668,11 +683,16 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
         if len(kept) < len(numbered):
             flag("Plan", f"The programme runs {last} days. Plans hold up to {7 * MAX_WEEKS}, so days "
                          f"{7 * MAX_WEEKS + 1}-{last} weren't brought in.")
+        if not kept:
+            raise HTTPException(422, f"Every day read is after day {7 * MAX_WEEKS}, the most a plan holds.")
         found = {n for _, n in kept}
-        missing = [n for n in range(1, kept[-1][1] + 1) if n not in found]
+        # A title or text that names the length ("30-Day Challenge") also catches missing final days.
+        stated_days = [int(n) for n in PROGRAMME_DAYS.findall(f"{read.name or ''}\n{source or ''}")]
+        expected = min(max([kept[-1][1], *stated_days]), 7 * MAX_WEEKS)
+        missing = [n for n in range(1, expected + 1) if n not in found]
         if missing:
-            flag("Plan", f"Read {len(found)} of {kept[-1][1]} days. Day{'s' if len(missing) > 1 else ''} "
-                         f"{', '.join(map(str, missing))} weren't found. Compare with the source.")
+            flag("Plan", f"Read {len(found)} of {expected} days. Day{'s' if len(missing) > 1 else ''} "
+                         f"{_ranges(missing)} weren't found. Compare with the source.")
         for index, (item, n) in enumerate(kept):
             sessions.append(session(item, index, "", day_one + timedelta(days=n - 1), programme_week=(n - 1) // 7 + 1))
         for item in every_week:

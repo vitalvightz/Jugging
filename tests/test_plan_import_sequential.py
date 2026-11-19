@@ -67,7 +67,7 @@ def test_incomplete_extraction_reports_the_missing_days():
     read = [n for n in range(1, 31) if n not in (9, 10, 22)]
     result = build_draft(boxer_challenge(days=read), START, "")
     assert result.sessions == 27
-    assert any("Read 27 of 30 days" in f.message and "9, 10, 22" in f.message for f in result.flags)
+    assert any("Read 27 of 30 days" in f.message and "9-10, 22" in f.message for f in result.flags)
     assert by_day(result)[11] == START + timedelta(days=10), "the days read keep their own dates"
 
 
@@ -110,3 +110,18 @@ def test_numbered_days_restarting_each_week_stay_weekly_templates():
     weeks = [ReadWeek(week_index=w, sessions=[boxer_day(n) for n in (1, 2, 3)]) for w in (1, 2)]
     result = build_draft(ReadPlan(weeks=weeks), START, "")
     assert result.plan["schedule_mode"] == "dated" and sum(len(g.session_ids) for g in result.needs_day) == 6
+
+
+def test_missing_final_days_are_reported_from_the_stated_length():
+    # The reader stopped after Day 14 of a "30-Day Boxer Challenge".
+    result = build_draft(boxer_challenge(days=range(1, 15)), START, "")
+    assert result.sessions == 14
+    assert any("Read 14 of 30 days" in f.message and "15-30" in f.message for f in result.flags)
+
+
+def test_days_all_beyond_the_plan_limit_are_refused_not_crashing():
+    import pytest
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as raised:
+        build_draft(boxer_challenge(days=range(85, 95)), START, "")
+    assert raised.value.status_code == 422
