@@ -542,3 +542,11 @@ def test_omitted_plain_exercise_is_flagged():
         ReadExercise(name="Squat", sets=3, reps=5, load="100kg")])])])
     result = build_draft(read, START, source)
     assert any("Possible missing exercise: Deadlift" in flag.message for flag in result.flags)
+
+
+def test_plank_is_not_covered_by_side_plank():
+    source = "Session A\n☐ Plank 3x30s"
+    read = ReadPlan(weeks=[ReadWeek(sessions=[ReadSession(name="Session A", exercises=[
+        ReadExercise(name="Side plank", sets=3, seconds=30)])])])
+    result = build_draft(read, START, source)
+    assert any("Possible missing exercise: Plank" in flag.message for flag in result.flags)
