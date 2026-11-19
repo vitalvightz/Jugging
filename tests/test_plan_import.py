@@ -818,7 +818,9 @@ def test_same_as_day_references_copy_the_named_day_and_keep_the_change_as_a_note
         assert d4["dose"] == d2["dose"]
         assert "As Day 2" in d4["notes"] and "Progression: increase reps slightly if easier" in d4["notes"]
     assert names["Saturday"] == [] and week["Sunday"][0]["session_type"] == "rest"
-    assert [f.message for f in draft.flags if "Plan" != f.where] == []
+    # The optional Saturday session was not read: an omission is reviewed, never discarded.
+    assert [f.message for f in draft.flags if "Plan" != f.where] == [
+        "Possible missing session: Sat | Recovery / Freestyle (Optional). Compare with the source."]
 
 
 def test_section_durations_are_kept_without_inventing_exercise_times():

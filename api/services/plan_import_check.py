@@ -196,17 +196,27 @@ class SourceCheck:
             remaining = list(week.sessions)
             for heading in (line for line in self.source_lines[lo:hi] if session_heading(line)):
                 words, days = _name_words(heading), set(_heading_days(heading))
+                named_heading = bool(re.search(r"(?:\s*[:|]\s*|\s+[-–—]\s*)\S", heading))
                 named = [i for i, session in enumerate(remaining)
                          if _name_words(session.name) and _name_words(session.name) <= words]
-                matched = next((i for i in named if days and days <= set(session_days(remaining[i]))), None)
-                if matched is None and named:
-                    matched = named[0]
-                if matched is None and days:
+                matched = next((i for i in named if not days or days <= set(session_days(remaining[i]))), None)
+                if matched is None:
+                    matched = next((i for i in named if not session_days(remaining[i])), None)
+                if matched is None and days and not named_heading:
                     same_day = [i for i, session in enumerate(remaining) if days <= set(session_days(session))]
                     if len(same_day) == 1:
                         matched = same_day[0]
                 if matched is None:
-                    missing.append((wi, heading[:100]))
+                    # The same session can be written twice (an overview row, then in full).
+                    # Identity must agree: a written day must be one of that session's days.
+                    named_any = any(_name_words(session.name) and _name_words(session.name) <= words
+                                    and (not days or days <= set(session_days(session))) for session in week.sessions)
+                    same_day_any = not named_heading and days and len([session for session in week.sessions if days <= set(session_days(session))]) == 1
+                    # A rest day written by the coach needs no session. An optional
+                    # session is still part of the programme, so its omission is flagged.
+                    rest_day = re.search(r"\b(?:rest\s+day|full\s+rest|day\s+off)\b", heading, re.I)
+                    if not (named_any or same_day_any or rest_day):
+                        missing.append((wi, heading[:100]))
                 else:
                     remaining.pop(matched)
         return missing
@@ -237,12 +247,22 @@ class SourceCheck:
                 name_column = None
                 # A comma-separated warm-up or exercise line can name several
                 # independent movements; rest/cues are not separate exercises.
-                content = re.sub(r"^warm[ -]?up[^:]*:\s*", "", line, flags=re.I)
+                plain = re.sub(r"\*\*|__", "", line)
+                content = re.sub(r"^\s*(?:warm[ -]?up[^:]*|[^:|]{1,60}\([^)]*\d[^)]*\))\s*:\s*", "", plain, flags=re.I)
                 parts = [part.strip() for part in re.split(r"[,;]", content)]
                 entries = [part for part in parts if _has_dose(part) and re.match(
                     r"^(?:[☐•*-]\s*)?(?:[A-Za-z][1-9]\d*[.):]\s*)?[A-Za-z]",
                     part) and not re.match(r"^(?:rest|recovery|tempo|sets?|reps?|rounds?|load|rpe|note)\b", part, re.I)]
-                candidates = entries if len(entries) >= 2 else [line]
+                if len(entries) >= 2:
+                    candidates = entries
+                elif content == plain:
+                    candidates = [line]
+                elif re.match(r"\d", content):
+                    # "Hand Gripper (10 mins): 3 sets x 15": the label names the exercise.
+                    candidates = [plain[:len(plain) - len(content)]]
+                else:
+                    # A section label ("Mobility (15 mins): ...") checks only what it introduces.
+                    candidates = [content]
             for candidate in candidates:
                 match = re.match(r"^\s*(?:☐|[•*]|\d+[.)]|[A-Za-z][1-9]\d*[.):]|-)\s+(.+)$", candidate)
                 if match:
@@ -596,7 +616,7 @@ class SourceCheck:
                 problems.append("keep the written time range")
         if re.search(r"\b(?:if able|if possible|optional)\b", window, re.I) and item.load and not re.search(r"\b(?:if able|if possible|optional)\b", item.load, re.I):
             problems.append("the load is optional")
-        preserved = " ".join(filter(None, [item.name, item.prescription, item.notes, item.load, item.tempo, item.equipment, item.group, *item.cues, *item.stages]))
+        preserved = " ".join(filter(None, [item.name, prescription, item.notes, item.load, item.tempo, item.equipment, item.group, *item.cues, *item.stages]))
         if re.search(r"\bor\b", window, re.I) and not re.search(r"\bor\b|/", preserved, re.I):
             problems.append("keep the written alternative")
         if item.tempo and re.sub(r"\s+", "", item.tempo.lower()) not in re.sub(r"\s+", "", window.lower()):
@@ -682,7 +702,8 @@ class SourceCheck:
             for heading, cell in zip(columns, cells):
                 role = heading.strip().lower()
                 dose = read_dose_line(cell)
-                if role == "code" and item.exercise_code and item.exercise_code.casefold() != cell.strip().casefold():
+                # A blank code cell continues the row above it.
+                if role == "code" and item.exercise_code and cell.strip() and item.exercise_code.casefold() != cell.strip().casefold():
                     flag("Check the dose: the exercise code doesn't match its source row.")
                     return
                 if role in {"%", "percent", "percentage"} and stage.percentage is not None:
@@ -745,7 +766,7 @@ def _short_minutes(text: str, *, context: str = "") -> str:
     ambiguous and are reviewed rather than using the model's reading as proof.
     """
     activity = f"{context} {text}"
-    timed = re.search(r"\b(?:stretch\w*|mobility|plank|skip\w*|jump[ -]+rope|boxing|pads?|warm[ -]?up|cool[ -]?down|breath\w*)\b", activity, re.I)
+    timed = re.search(r"\b(?:stretch\w*|mobility|plank|skip\w*|jump[ -]+rope|warm[ -]?up|cool[ -]?down|breath\w*)\b", activity, re.I)
     distance = re.search(r"\b(?:run\w*|roadwork|sprint\w*|walk\w*|swim\w*|row\w*|cycl\w*|bike|distance|metres?|meters?)\b", activity, re.I)
 
     def replace(match: re.Match) -> str:
