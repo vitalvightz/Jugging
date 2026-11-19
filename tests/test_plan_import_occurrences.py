@@ -510,17 +510,35 @@ def test_omitted_bulleted_exercise_is_flagged_without_invention():
     assert any("Possible missing exercise: Plank" in flag.message for flag in result.flags)
 
 
-def test_repeated_table_loading_rows_are_not_mistaken_for_missing_exercises():
+def test_tabbed_loading_stages_keep_blank_continuation_cells():
     from api.structured_plan_models import ExercisePrescription
 
-    for separator in ("\t", "    "):
-        source = (f"Week 5\nDay 1\nCode{separator}Exercise{separator}%{separator}Sets x Reps{separator}WT\n"
-                  f"A1{separator}Clean{separator}50%{separator}2x2{separator}120\n"
-                  f"{separator}{separator}95%{separator}3x1{separator}225")
-        stages = [ExercisePrescription(percentage=50, sets=2, reps=2, source_text="WT: 120"),
-                  ExercisePrescription(percentage=95, sets=3, reps=1, source_text="WT: 225")]
-        read = ReadPlan(weeks=[ReadWeek(week_index=5, sessions=[ReadSession(name="Day 1",
-            exercises=[ReadExercise(name="Clean", exercise_code="A1", prescribed_sets=stages)])])])
-        result = build_draft(read, START, source)
-        assert not any("missing exercise" in flag.message.lower() for flag in result.flags)
-        assert len(result.plan["sessions"][0]["exercises"][0]["dose"]["prescribed_sets"]) == 2
+    source = ("Week 5\nDay 1\nCode\tExercise\t%\tSets x Reps\tWT\n"
+              "A1\tClean\t50%\t2x2\t120\n"
+              "\t\t95%\t3x1\t225")
+    stages = [ExercisePrescription(percentage=50, sets=2, reps=2, source_text="WT: 120"),
+              ExercisePrescription(percentage=95, sets=3, reps=1, source_text="WT: 225")]
+    read = ReadPlan(weeks=[ReadWeek(week_index=5, sessions=[ReadSession(name="Day 1",
+        exercises=[ReadExercise(name="Clean", exercise_code="A1", prescribed_sets=stages)])])])
+    result = build_draft(read, START, source)
+    assert not result.flags, [(flag.where, flag.message) for flag in result.flags]
+    assert len(result.plan["sessions"][0]["exercises"][0]["dose"]["prescribed_sets"]) == 2
+
+
+def test_spaced_loading_table_verifies_explicit_row():
+    from api.structured_plan_models import ExercisePrescription
+
+    source = "Week 5\nDay 1\nExercise    %    Sets x Reps    WT\nClean    50%    2x2    120"
+    read = ReadPlan(weeks=[ReadWeek(week_index=5, sessions=[ReadSession(name="Day 1",
+        exercises=[ReadExercise(name="Clean", prescribed_sets=[
+            ExercisePrescription(percentage=50, sets=2, reps=2, source_text="WT: 120")])])])])
+    result = build_draft(read, START, source)
+    assert not result.flags, [(flag.where, flag.message) for flag in result.flags]
+
+
+def test_omitted_plain_exercise_is_flagged():
+    source = "Session A\nSquat 3x5 @ 100kg\nDeadlift 4x3 @ 120kg"
+    read = ReadPlan(weeks=[ReadWeek(sessions=[ReadSession(name="Session A", exercises=[
+        ReadExercise(name="Squat", sets=3, reps=5, load="100kg")])])])
+    result = build_draft(read, START, source)
+    assert any("Possible missing exercise: Deadlift" in flag.message for flag in result.flags)
