@@ -33,7 +33,7 @@ class SourceCheck:
             if re.match(r"^\s*(?:code\s{2,})?(?:exercise|movement|drill)\s{2,}", line, re.I):
                 aligned = True
             if "\t" in line:
-                line = re.sub(r"\t+", " | ", line)
+                line = line.replace("\t", " | ")
             elif aligned and re.search(r" {2,}", line):
                 line = re.sub(r" {2,}", " | ", line)
             else:
