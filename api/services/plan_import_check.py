@@ -302,7 +302,10 @@ class SourceCheck:
             flag("Couldn't find its line to check the numbers. Check the dose.")
             return
         source_window = window
+        # Typography must not change the meaning of a written range.
         window = _range_dashes(window)
+        # Source wording decides ambiguous m, never the model's extracted fields.
+        window = _short_minutes(window)
         # A circuit's rounds are written on its heading, not on each exercise's line.
         group = _clean(item.group)
         if group and not any(group.lower() in line.lower() for line in self.lines[slice(*(self.bounds or (0, 0)))]):
@@ -316,7 +319,7 @@ class SourceCheck:
         if expected_code and expected_code.upper() != self.code:
             problems.append("the exercise code doesn't match its source row")
         # A rep range read without its sets ("8-10" from "Push-ups 4x8-10"): the sets are on the line.
-        written_range = re.match(r"^\s*(\d+\s*[-\u2013]\s*\d+)\b", item.prescription or "")
+        written_range = re.match(r"^\s*(\d+\s*[-\u2013]\s*\d+)\b", _range_dashes(item.prescription or ""))
         if item.sets is None and written_range:
             pair = re.search(rf"(\d+)\s*[x\u00d7*]\s*{re.escape(written_range.group(1))}", window, re.I)
             if pair:
@@ -357,6 +360,7 @@ class SourceCheck:
                 return
             shown = f"{label} {value:g}{'s' if seconds else ''}"
             if seconds and not expected and read.distances:
+                # A distance misread as time must not pass the bare-number fallback.
                 problems.append(f"{shown} isn't written as a time")
                 return
             # A time written in minutes is also checked as minutes.
@@ -426,9 +430,19 @@ class SourceCheck:
                 return set(re.findall(r"[a-z]+", value.lower()))
             if not intensity_words(item.load) <= intensity_words(window):
                 problems.append("the written intensity doesn't match")
-        loose = [n for n in _numbers(" ".join(filter(None, [re.sub(WEIGHT, "", (item.load or "")), item.prescription])))]
+        prescription = item.prescription
+        if prescription:
+            prescription = _short_minutes(prescription, context=name)
+            text_dose = read_dose_line(prescription)
+            source_dose = read_dose_line(window)
+            # Time equivalence is valid only within the same role. Do not turn
+            # source minutes into bare numbers that could also validate reps.
+            for role in ("work", "rest"):
+                for value in sorted(text_dose.roles[role] - source_dose.roles[role]):
+                    problems.append(f"{'rest' if role == 'rest' else 'time'} {value:g}s isn't written as {ROLE_WORDS[role]}")
+        loose = _dose_numbers(" ".join(filter(None, [re.sub(WEIGHT, "", (item.load or "")), prescription])))
         # Text doses ("4 × 8-10", "30-40 min") only have to be written on the line, in any role.
-        on_line = {f"{float(n.replace(',', '.')):g}" for n in _numbers(window)}
+        on_line = {f"{float(n.replace(',', '.')):g}" for n in _dose_numbers(window)}
         problems += [f"{n} isn't written" for n in loose if f"{float(n.replace(',', '.')):g}" not in on_line]
         # A single reps number read out of a written range collapses what the coach wrote.
         if isinstance(item.reps, int) and read.rep_ranges:
@@ -451,7 +465,7 @@ class SourceCheck:
             elif not rest_range and (item.seconds is not None or item.work_seconds is not None) and not item.prescription:
                 problems.append("keep the written time range")
         # Text fields must agree by role and retain ranges, units and conditions.
-        text = _range_dashes(" ".join(filter(None, [item.load, item.prescription])))
+        text = _range_dashes(" ".join(filter(None, [item.load, prescription])))
         text_dose = read_dose_line(text)
         if any(value not in read.rep_ranges for value in text_dose.rep_ranges) and all(n in on_line for n in _numbers(text)):
             problems.append("the written rep range doesn't match")
@@ -606,6 +620,37 @@ DIST_UNITS = r"(?:kms?|k|miles?|mi|metres?|meters?|m|yards?|yds?)"
 DOSE_PAIR = re.compile(r"\d\s*(?:x|\u00d7|\*)\s*\d", re.I)
 AXB = re.compile(rf"(?<![\d.])(\d+)\s*(?:x|\u00d7|\*)\s*(\d+(?:\.\d+)?)(?:\s*[-\u2013]\s*(\d+(?:\.\d+)?))?\s*(?:({TIME_UNITS})\b|({DIST_UNITS})\b)?", re.I)
 TIME = re.compile(rf"(?<![\d.])(\d+(?:\.\d+)?)(?:\s*[-\u2013]\s*(\d+(?:\.\d+)?))?\s*({TIME_UNITS})\b", re.I)
+
+
+def _range_dashes(text: str) -> str:
+    return re.sub(r"(?<=\d)\s*[-\u2010-\u2015\u2212]\s*(?=\d)", "-", text)
+
+
+def _short_minutes(text: str, *, context: str = "") -> str:
+    """Resolve m only from explicit source activity or rest wording.
+
+    Running and other distance activities keep metres. Unknown activities stay
+    ambiguous and are reviewed rather than using the model's reading as proof.
+    """
+    activity = f"{context} {text}"
+    timed = re.search(r"\b(?:stretch\w*|mobility|plank|skip\w*|jump[ -]+rope|boxing|pads?|warm[ -]?up|cool[ -]?down|breath\w*)\b", activity, re.I)
+    distance = re.search(r"\b(?:run\w*|roadwork|sprint\w*|walk\w*|swim\w*|row\w*|cycl\w*|bike|distance|metres?|meters?)\b", activity, re.I)
+
+    def replace(match: re.Match) -> str:
+        before = text[max(0, match.start() - 12):match.start()]
+        after = text[match.end():match.end() + 12]
+        if re.search(r"\b(?:rest|recovery|work|duration|time)\s*[:=]?\s*$", before, re.I) or REST_AFTER.match(after) or (timed and not distance):
+            return f"{match.group(1)} min"
+        return match.group(0)
+
+    return re.sub(r"(?<![\d.])(\d+(?:\.\d+)?(?:\s*[-\u2013]\s*\d+(?:\.\d+)?)?)\s*m\b", replace, text, flags=re.I)
+
+
+def _dose_numbers(text: str) -> list[str]:
+    """Non-time numbers only; explicit time quantities are checked by role."""
+    return _numbers(TIME.sub(" ", _range_dashes(text)))
+
+
 DISTANCE = re.compile(rf"(?<![\d.])(\d+(?:\.\d+)?)\s*({DIST_UNITS})\b", re.I)
 WEIGHT = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*(kgs?|lbs?|pounds?|%)", re.I)
 RPE_AT = re.compile(r"\brpe\s*:?\s*(\d+(?:\.\d+)?)(?:\s*[-\u2013]\s*(\d+(?:\.\d+)?))?", re.I)
@@ -613,8 +658,8 @@ RPE_AT = re.compile(r"\brpe\s*:?\s*(\d+(?:\.\d+)?)(?:\s*[-\u2013]\s*(\d+(?:\.\d+
 # "each way", "per direction" (neck holds) and a bare "2x30s each" (side plank) may be read either way.
 EACH_WAY = re.compile(r"\b(?:each|per|every)\s+(?:way|direction)\b|/\s*direction\b|\d\w*\s+each\b(?!\s+[a-z])", re.I)
 PER_SIDE = re.compile(r"\b(?:each|per|every)\s+(?:side|leg|arm|hand|foot)\b|\d\s*(?:(?:reps?|secs?|seconds?|s|m|meters?|metres?|mins?|minutes?|yds?|yards?)\b[\w .]{0,20}?)?/\s*(?:side|leg|arm|hand|foot)\b|\bboth\s+(?:sides|legs|arms)\b|\balternating\b|\bE/S\b|\b\d+\s*(?:e|ea)\b", re.I)
-REST_AFTER = re.compile(r"^\W{0,3}(?:rest|off|easy|recover\w*|walk\w*|break)\b", re.I)
-REST_BEFORE = re.compile(r"\brest\w*\W{0,3}(?:of\W{0,2})?$", re.I)
+REST_AFTER = re.compile(r"^[ \t()\-\u2013\u2014]{0,3}(?:rest|off|easy|recover\w*|walk\w*|break)\b", re.I)
+REST_BEFORE = re.compile(r"\b(?:rest|recovery)\W{0,3}(?:of\W{0,2})?$", re.I)
 
 
 COUNTED = re.compile(r"\d+\s*(?:sets?|reps?|rounds?)\b", re.I)
@@ -702,10 +747,6 @@ def read_dose_line(text: str, *, reps_first: bool = False) -> DoseLine:
             roles["rpe"].add(float(value))
     bare = {f"{float(n):g}" for n in re.findall(r"(?<![\d.])\d+(?:\.\d+)?", text)}
     return DoseLine(roles, distances, weights, bare, ranges)
-
-
-def _range_dashes(text: str) -> str:
-    return re.sub(r"(?<=\d)\s*[-‐-―−]\s*(?=\d)", "-", text)
 
 
 DAY_WORD = r"(?:mon|tues?|wed(?:nes)?|thu(?:rs?)?|fri|sat(?:ur)?|sun)(?:day)?s?\.?"

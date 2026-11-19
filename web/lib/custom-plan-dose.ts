@@ -3,6 +3,7 @@ import { personalWeightRecommendation } from "./weight-recommendation";
 import { formatExercisePrescription } from "./structured-plan";
 import { parseLoad } from "./load-entry";
 import { withPastDose } from "./load-entry";
+import { sessionActivity } from "./session-activity";
 export const blankDose = (mode: CustomDose["mode"] = "reps"): CustomDose => ({
   mode,
   sets: null,
@@ -59,13 +60,14 @@ export function doseSummary(d: CustomDose, name?: string | null) {
 
 /** Warm-ups, cooldowns, stretching and mobility are done, not dosed: they never need a prescription. */
 const DOSE_OPTIONAL = /\b(warm[\s-]?(?:up|down)s?|cool[\s-]?downs?|stretch(?:es|ing)?|mobility|flexibility|foam[\s-]?roll(?:ing|er)?|breath(?:ing|work)|yoga)\b/i;
-export const doseOptional = (name: string | null | undefined) => DOSE_OPTIONAL.test(name ?? "");
+export const doseOptional = (name: string | null | undefined, blockType?: string | null) => DOSE_OPTIONAL.test(name ?? "") || Boolean(sessionActivity(name, blockType));
 
-type Dosed = { name?: string | null; snapshot?: { name?: string | null } | null; dose?: CustomDose | null };
+type Dosed = { name?: string | null; block_type?: string | null; snapshot?: { name?: string | null } | null; dose?: CustomDose | null };
 /** The exercise still needs its dose finished. Warm-ups, cooldowns, stretching and
  * mobility need none while nothing is written; a started dose ("3 sets") is checked like any other. */
 export function exerciseIncomplete(e: Dosed): boolean {
-  if (doseOptional(e.name ?? e.snapshot?.name) && (!e.dose || !filled(e.dose))) return false;
+  if (sessionActivity(e.name ?? e.snapshot?.name, e.block_type)) return false;
+  if (doseOptional(e.name ?? e.snapshot?.name, e.block_type) && (!e.dose || !filled(e.dose))) return false;
   return !e.dose || doseIncomplete(e.dose);
 }
 
