@@ -65,6 +65,7 @@ STRUCTURE
 - session_type, from what the session mostly is: strength_power (lifting, plyos), conditioning (runs, intervals, circuits, roadwork), skill (pads, bag, drilling, technique, light/technical sparring), sparring (hard or full sparring), recovery (mobility, stretching, easy aerobic), rest (rest days written in the programme). mixed only when no one kind leads ("Boxing + Conditioning" with sparring and bag rounds is skill or sparring, not mixed).
 - instructions: the coach's session-level instructions or focus written for that session as a whole (e.g. "Focus: head movement, stay off the ropes"), verbatim; otherwise null.
 - date: the calendar date written for the session. As YYYY-MM-DD when the programme gives the year; when no year is written, the date exactly as written ("Wed, Nov 18"), never with a guessed year. null when no date is written.
+- A numbered daily programme ("30-Day Challenge", Day 1 to Day 30): every numbered day is its own session named "Day N ...", all in ONE week object with repeat 1, in order. Never merge, summarise or skip days, and never turn day numbers into weekdays.
 - A table or list that maps day labels to weekdays ("Mon (Day 1)", "Tue (Day 2)"): give each "Day N" session those weekdays in days. Rows in such a table for days with no session written out below ("Sat: Recovery / Freestyle (Optional)", "Sun: Full Rest") go in every_week.
 
 EXERCISES, in written order (warm-up and cool-down lines written as exercises stay as exercises)

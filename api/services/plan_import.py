@@ -440,10 +440,33 @@ def _duration(seconds: int) -> str:
     return f"{seconds // 60} min" if seconds % 60 == 0 else f"{seconds}s"
 
 
+# "Day 12", "DAY 3 - Pads", "Day 30:" -- a programme's own day number, not a weekday.
+DAY_NUMBER = re.compile(r"^\s*day\s*(\d{1,3})(?!\d)", re.I)
+
+
+def _numbered_days(weeks: list[ReadWeek]) -> list[tuple[ReadSession, int]] | None:
+    """Sessions of a sequential daily programme ("30-Day Challenge": Day 1 ... Day 30),
+    each with its day number, when every session is numbered once, none has a written
+    weekday or date, no week repeats, and the numbering runs past one week. Day 1-5
+    with no weekdays stays a weekly template whose days the person picks."""
+    items = [s for w in weeks for s in w.sessions]
+    if not items or any(max(1, int(w.repeat or 1)) > 1 for w in weeks):
+        return None
+    numbered = []
+    for item in items:
+        match = DAY_NUMBER.match(item.name or "")
+        if not match or session_days(item) or item.date or int(match[1]) < 1:
+            return None
+        numbered.append((item, int(match[1])))
+    numbers = [n for _, n in numbered]
+    return numbered if len(set(numbers)) == len(numbers) and max(numbers) > 7 else None
+
+
 def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher: LibraryMatcher | None = None) -> PlanImportResult:
     """The Custom Build draft for what was read. ``source`` is the programme text,
     used to double-check names and numbers: "" for screenshots (nothing to check
     against, which is flagged), None to skip the checks."""
+    day_one = start
     start = start - timedelta(days=start.weekday())
     flags: list[ImportFlag] = []
     flagged: set[tuple] = set()
@@ -631,7 +654,33 @@ def build_draft(read: ReadPlan, start: date, source: str | None = None, matcher:
 
     sessions: list[dict] = []
     session_where: dict[str, str] = {}
-    if not dated:
+    numbered = _numbered_days(written_weeks)
+    if numbered:
+        # A sequential daily programme: Day N is the (N-1)th day after Day 1, so
+        # Day 8 is in the next calendar week, never back on Day 1's weekday.
+        try:
+            day_one = date.fromisoformat(read.start_date) if read.start_date else day_one
+        except ValueError:
+            pass
+        numbered.sort(key=lambda pair: pair[1])
+        last = numbered[-1][1]
+        kept = [(item, n) for item, n in numbered if n <= 7 * MAX_WEEKS]
+        if len(kept) < len(numbered):
+            flag("Plan", f"The programme runs {last} days. Plans hold up to {7 * MAX_WEEKS}, so days "
+                         f"{7 * MAX_WEEKS + 1}-{last} weren't brought in.")
+        found = {n for _, n in kept}
+        missing = [n for n in range(1, kept[-1][1] + 1) if n not in found]
+        if missing:
+            flag("Plan", f"Read {len(found)} of {kept[-1][1]} days. Day{'s' if len(missing) > 1 else ''} "
+                         f"{', '.join(map(str, missing))} weren't found. Compare with the source.")
+        for index, (item, n) in enumerate(kept):
+            sessions.append(session(item, index, "", day_one + timedelta(days=n - 1), programme_week=(n - 1) // 7 + 1))
+        for item in every_week:
+            flag("Every week", f"\u201c{_clean(item.name, 80) or 'A session'}\u201d is written for weekdays, but this programme runs by numbered days, so it wasn't added.")
+        expanded = [ReadWeek()] * ((kept[-1][1] - 1) // 7 + 1)
+        body = {"name": name, "schedule_mode": "dated", "start_date": day_one.isoformat(),
+                "end_date": (day_one + timedelta(days=kept[-1][1] - 1)).isoformat(), "sessions": sessions}
+    elif not dated:
         # One week, repeating: the builder's weekly plan. A session without a
         # written day stays unplaced until the person picks its day.
         items = slots(expanded[0], "")
