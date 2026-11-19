@@ -196,7 +196,7 @@ class SourceCheck:
             remaining = list(week.sessions)
             for heading in (line for line in self.source_lines[lo:hi] if session_heading(line)):
                 words, days = _name_words(heading), set(_heading_days(heading))
-                named_heading = bool(re.search(r"\s+[-–—|:]\s*\S", heading))
+                named_heading = bool(re.search(r"(?:\s*[:|]\s*|\s+[-–—]\s*)\S", heading))
                 named = [i for i, session in enumerate(remaining)
                          if _name_words(session.name) and _name_words(session.name) <= words]
                 matched = next((i for i in named if not days or days <= set(session_days(remaining[i]))), None)
