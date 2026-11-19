@@ -207,11 +207,14 @@ class SourceCheck:
                         matched = same_day[0]
                 if matched is None:
                     # The same session can be written twice (an overview row, then in full).
-                    named_any = any(_name_words(session.name) and _name_words(session.name) <= words for session in week.sessions)
+                    # Identity must agree: a written day must be one of that session's days.
+                    named_any = any(_name_words(session.name) and _name_words(session.name) <= words
+                                    and (not days or days <= set(session_days(session))) for session in week.sessions)
                     same_day_any = days and len([session for session in week.sessions if days <= set(session_days(session))]) == 1
-                    # An optional or rest day written by the coach needs no session.
-                    optional = re.search(r"\b(?:optional|rest\s+day|full\s+rest|day\s+off)\b", heading, re.I)
-                    if not (named_any or same_day_any or optional):
+                    # A rest day written by the coach needs no session. An optional
+                    # session is still part of the programme, so its omission is flagged.
+                    rest_day = re.search(r"\b(?:rest\s+day|full\s+rest|day\s+off)\b", heading, re.I)
+                    if not (named_any or same_day_any or rest_day):
                         missing.append((wi, heading[:100]))
                 else:
                     remaining.pop(matched)

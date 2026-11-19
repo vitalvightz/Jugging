@@ -218,7 +218,7 @@ def test_borrowed_or_invented_values_are_flagged_on_that_exercise(sport, bad, se
 def test_the_same_notation_reads_by_its_written_unit_not_the_sport(source, name, item):
     reading = ReadPlan(weeks=[W(week_index=1, sessions=[S(name="Session", days=["Monday"], exercises=[E(name=name, **item)])])])
     result = build_draft(reading, START, f"Week 1\nMonday - Session\n{source}\n")
-    assert dose_flags(result) == [], [f.message for f in result.flags]
+    assert result.flags == [], [f.message for f in result.flags]
 
 
 @pytest.mark.parametrize("source,name,item", [
@@ -239,13 +239,29 @@ def test_ambiguous_m_on_an_unfamiliar_exercise_is_never_silently_minutes(name):
     assert dose_flags(result)
 
 
-def test_overview_rows_optional_days_and_labelled_sections_are_not_missing():
-    source = ("Day | Focus\nMon | Strength\nSat | Easy swim (Optional)\nSun | Full rest\n"
+def test_overview_rows_rest_days_and_labelled_sections_are_not_missing():
+    source = ("Day | Focus\nMon | Strength\nSun | Full rest\n"
               "Mon - Strength\n**Hand Gripper (10 mins)**: 3 sets x 15 reps\n**Mobility (15 mins)**: Follow the hip routine\n")
     reading = ReadPlan(weeks=[W(sessions=[S(name="Strength", days=["Monday"], exercises=[
         E(name="Hand Gripper", sets=3, reps=15), E(name="Hip routine", prescription="Within Mobility (15 mins)")])])])
     result = build_draft(reading, START, source)
     assert not [f.message for f in result.flags if "missing" in f.message.lower()]
+
+
+def test_an_omitted_optional_session_is_still_flagged():
+    source = "Mon - Strength\nBack squat: 3 x 5\nSat - Easy swim (Optional)\nSwim: 20 min\n"
+    reading = ReadPlan(weeks=[W(sessions=[S(name="Strength", days=["Monday"], exercises=[E(name="Back squat", sets=3, reps=5)])])])
+    result = build_draft(reading, START, source)
+    assert any("missing session" in f.message and "Easy swim" in f.message for f in result.flags)
+
+
+def test_the_same_session_name_on_another_day_is_not_a_duplicate():
+    source = "Week 1\nMonday - Strength\nSquat: 3 x 5\n\nFriday - Strength\nDeadlift: 4 x 3\n"
+    reading = ReadPlan(weeks=[W(week_index=1, sessions=[S(name="Strength", days=["Monday"], exercises=[
+        E(name="Squat", sets=3, reps=5)])])])
+    result = build_draft(reading, START, source)
+    assert any("missing session" in f.message and "Friday" in f.message for f in result.flags), \
+        [f.message for f in result.flags]
 
 
 def test_a_real_missing_session_is_still_flagged():
