@@ -482,3 +482,45 @@ def test_all_range_types_keep_both_endpoints(line, exercise):
     read = ReadPlan(weeks=[ReadWeek(sessions=[ReadSession(name="Session A", exercises=[exercise])])])
     result = build_draft(read, START, f"Session A\n{line}")
     assert any("range" in f.message for f in result.flags)
+
+
+def test_missing_prescription_is_reviewed_and_targeted():
+    read = ReadPlan(weeks=[ReadWeek(sessions=[ReadSession(name="Session A", exercises=[
+        ReadExercise(name="Deadlift")])])])
+    result = build_draft(read, START, "Session A\nDeadlift 5x3 @ 100-110kg")
+    assert any(flag.message.startswith("Check the dose") for flag in result.flags)
+    assert len(result._review) == 1
+    assert result._review[0]["occurrence"] == (0, 0, 0)
+
+
+def test_unprescribed_activity_does_not_gain_invented_rounds():
+    read = ReadPlan(weeks=[ReadWeek(sessions=[ReadSession(name="Session A", exercises=[
+        ReadExercise(name="Sparring as scheduled")])])])
+    result = build_draft(read, START, "Session A\n☐ Sparring as scheduled")
+    assert not any(flag.message.startswith("Check the dose") for flag in result.flags)
+    assert not result._review
+
+
+def test_omitted_bulleted_exercise_is_flagged_without_invention():
+    source = "Week 1\nMonday - Strength\n☐ Squat 3x5 @ 100kg\n☐ Plank 3x30s"
+    read = ReadPlan(weeks=[ReadWeek(week_index=1, sessions=[ReadSession(name="Strength",
+        days=["Monday"], exercises=[ReadExercise(name="Squat", sets=3, reps=5, load="100kg")])])])
+    result = build_draft(read, START, source)
+    assert len(result.plan["sessions"][0]["exercises"]) == 1
+    assert any("Possible missing exercise: Plank" in flag.message for flag in result.flags)
+
+
+def test_repeated_table_loading_rows_are_not_mistaken_for_missing_exercises():
+    from api.structured_plan_models import ExercisePrescription
+
+    for separator in ("\t", "    "):
+        source = (f"Week 5\nDay 1\nCode{separator}Exercise{separator}%{separator}Sets x Reps{separator}WT\n"
+                  f"A1{separator}Clean{separator}50%{separator}2x2{separator}120\n"
+                  f"{separator}{separator}95%{separator}3x1{separator}225")
+        stages = [ExercisePrescription(percentage=50, sets=2, reps=2, source_text="WT: 120"),
+                  ExercisePrescription(percentage=95, sets=3, reps=1, source_text="WT: 225")]
+        read = ReadPlan(weeks=[ReadWeek(week_index=5, sessions=[ReadSession(name="Day 1",
+            exercises=[ReadExercise(name="Clean", exercise_code="A1", prescribed_sets=stages)])])])
+        result = build_draft(read, START, source)
+        assert not any("missing exercise" in flag.message.lower() for flag in result.flags)
+        assert len(result.plan["sessions"][0]["exercises"][0]["dose"]["prescribed_sets"]) == 2
