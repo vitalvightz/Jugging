@@ -196,12 +196,13 @@ class SourceCheck:
             remaining = list(week.sessions)
             for heading in (line for line in self.source_lines[lo:hi] if session_heading(line)):
                 words, days = _name_words(heading), set(_heading_days(heading))
+                named_heading = bool(re.search(r"\s+[-–—|:]\s*\S", heading))
                 named = [i for i, session in enumerate(remaining)
                          if _name_words(session.name) and _name_words(session.name) <= words]
-                matched = next((i for i in named if days and days <= set(session_days(remaining[i]))), None)
-                if matched is None and named:
-                    matched = named[0]
-                if matched is None and days:
+                matched = next((i for i in named if not days or days <= set(session_days(remaining[i]))), None)
+                if matched is None:
+                    matched = next((i for i in named if not session_days(remaining[i])), None)
+                if matched is None and days and not named_heading:
                     same_day = [i for i, session in enumerate(remaining) if days <= set(session_days(session))]
                     if len(same_day) == 1:
                         matched = same_day[0]
@@ -210,7 +211,7 @@ class SourceCheck:
                     # Identity must agree: a written day must be one of that session's days.
                     named_any = any(_name_words(session.name) and _name_words(session.name) <= words
                                     and (not days or days <= set(session_days(session))) for session in week.sessions)
-                    same_day_any = days and len([session for session in week.sessions if days <= set(session_days(session))]) == 1
+                    same_day_any = not named_heading and days and len([session for session in week.sessions if days <= set(session_days(session))]) == 1
                     # A rest day written by the coach needs no session. An optional
                     # session is still part of the programme, so its omission is flagged.
                     rest_day = re.search(r"\b(?:rest\s+day|full\s+rest|day\s+off)\b", heading, re.I)
