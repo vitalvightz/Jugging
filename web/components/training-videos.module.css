@@ -412,8 +412,7 @@
   .docRemove { min-width: 32px; }
 }
 
-/* Headed: the files are a section of the record, with Attach beside the title
-   so it's the first thing seen, not hidden under exercises. */
+/* Keep Attach beside the section title. */
 .videos[data-headed] { margin-top: 0; }
 
 .head {
@@ -426,6 +425,8 @@
 .videos[data-headed] { container-type: inline-size; }
 .attachShort { display: none; }
 @container (max-width: 300px) {
+  .head { gap: 8px; }
+  .head .headTitle { font-size: 14px; }
   .head .attachFull { display: none; }
   .head .attachShort { display: inline; }
 }

@@ -477,7 +477,7 @@ function SparringRows({ history, sessions, token, onSaved, hasMore, athleteId }:
               <FocusCueLine cue={row.focus_cue} />
               {token ? <CoachFeedback token={token} athleteId={athleteId} source="sparring" targetId={row.id} /> : null}
               {/* Reports saved with a session take videos in its details; standalone ones here. */}
-              {token && !row.external_session_id ? <TrainingVideos token={token} label="Sparring"
+              {token && !row.external_session_id ? <TrainingVideos token={token} label="Sparring" heading="Sparring attachments" emptyText=""
                 target={{ source: "sparring", target_id: row.id }} /> : null}
               {row.external_session_id && token ? (
                 <div className="history-session-actions">

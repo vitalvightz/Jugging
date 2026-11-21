@@ -10,9 +10,9 @@ import styles from "./fighter-media.module.css";
 
 /**
  * A fighter's shared media on the coach's fighter page: their progress photos
- * and the latest sessions or sparring reports with files, where the coach can
- * reply with a voice note or a PDF. Nothing loads unless the fighter shares
- * media with this coach; every file is checked again when it is opened.
+ * and the latest sessions or sparring reports with files. Coaches add session
+ * files from Training history and can reply to sparring reports here. Files
+ * are available only when the fighter shares media with the coach.
  */
 export function FighterMediaPanel({ token, fighter }: { token: string; fighter: Fighter }) {
   const [media, setMedia] = useState<FighterMedia | null>(null);
@@ -60,7 +60,7 @@ export function FighterMediaPanel({ token, fighter }: { token: string; fighter: 
       {media.recent.length ? media.recent.map(item => {
         const name = recordName(item.source, item.target_id, item.exercise_ref ?? "", item.last_at);
         return <TrainingVideos key={`${item.source}:${item.target_id}:${item.exercise_ref}`} token={token} viewer="coach"
-          athleteId={fighter.id} heading={name} label={name}
+          athleteId={fighter.id} heading={name} label={name} allowAdding={item.source === "sparring"}
           target={{ source: item.source, target_id: item.target_id, exercise_ref: item.exercise_ref ?? "" }} />;
       }) : <div className={styles.placeholder}>
         <h3>Session files</h3>

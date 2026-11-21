@@ -64,6 +64,7 @@ async function setup(page: Page, baseURL: string, { exercises = false } = {}) {
   await page.route(`${storage}/storage/v1/object/sign/**`, route => route.fulfill({
     contentType: "application/pdf", headers: { "Content-Disposition": 'attachment; filename="Week 1 plan.pdf"' }, body: twoPagePdf(),
   }));
+  await page.route(`${storage}/rest/v1/coach_feedback?**`, route => route.fulfill({ json: [] }));
   await page.route("**/api/**", async route => {
     const request = route.request();
     const url = new URL(request.url());
@@ -216,23 +217,23 @@ test("files that aren't PDFs, or are too large, are refused before upload", asyn
 });
 
 for (const width of [320, 1280]) {
-  test(`Attach sits at the top of a session that has exercises at ${width}px`, async ({ page, baseURL }, info) => {
+  test(`Attachments follow the results and show their scope at ${width}px`, async ({ page, baseURL }, info) => {
     await page.setViewportSize({ width, height: 900 });
     await setup(page, baseURL!, { exercises: true });
     await page.goto("/history");
     await page.getByRole("button", { name: /View Boxing details/ }).click();
     const dialog = page.getByRole("dialog", { name: "Boxing" });
-    const heading = dialog.getByRole("heading", { name: "Attachments" });
+    const heading = dialog.getByRole("heading", { name: "Session attachments", exact: true });
     const exercises = dialog.getByRole("heading", { name: "Exercises" });
     await expect(heading).toBeVisible();
     await expect(dialog.getByText("Trap bar deadlift")).toBeVisible();
-    // Above the exercises, with Attach on the same line as its title.
-    expect((await heading.boundingBox())!.y).toBeLessThan((await exercises.boundingBox())!.y);
+    // Below the exercises, with Attach aligned to its title.
+    expect((await heading.boundingBox())!.y).toBeGreaterThan((await exercises.boundingBox())!.y);
     const attach = dialog.getByRole("button", { name: "Attach", exact: true }).first();
     // Measured together, so the sheet's slide-in can't skew the comparison.
     const offset = await dialog.evaluate(element => {
       const center = (node: Element | null) => { const box = node!.getBoundingClientRect(); return box.top + box.height / 2; };
-      const title = [...element.querySelectorAll("h3")].find(node => node.textContent === "Attachments")!;
+      const title = [...element.querySelectorAll("h3")].find(node => node.textContent === "Session attachments")!;
       // The title block (title, and the count under it once there are files) lines up with Attach.
       return Math.abs(center(title.parentElement) - center(title.parentElement!.parentElement!.querySelector("button")));
     });
@@ -240,6 +241,10 @@ for (const width of [320, 1280]) {
     await attach.click();
     await expect(dialog.getByRole("menuitem")).toHaveText(["Photo", "Voice note", "PDF"]);
     expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
-    await page.screenshot({ path: info.outputPath(`${width}-4-top-attach.png`) });
+    await attach.click();
+    await dialog.getByRole("button", { name: /Trap bar deadlift/ }).click();
+    await expect(dialog.getByRole("heading", { name: "Exercise attachments" })).toBeVisible();
+    expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await page.screenshot({ path: info.outputPath(`${width}-4-attachment-spacing.png`) });
   });
 }

@@ -1594,7 +1594,8 @@ for (const width of [320, 390, 1280]) {
     const recent = media.getByRole("region", { name: "Recent session files" });
     await expect(recent.getByRole("heading", { name: /Sparring · / })).toBeVisible();
     await expect(recent.getByText("Fight week meal plan.pdf")).toBeVisible();
-    // The coach replies from here: voice notes and PDFs only.
+    // Sessions are browse-only here. Sparring reports retain their reply control.
+    await expect(recent.getByRole("button", { name: "Attach", exact: true })).toHaveCount(1);
     await recent.getByRole("button", { name: "Attach", exact: true }).first().click();
     await expect(recent.getByRole("menuitem")).toHaveText(["Voice note", "PDF"]);
     await page.keyboard.press("Escape");
