@@ -33,7 +33,7 @@ function DurationField({
     </select>
   </>;
   return (
-    <label>
+    <label className={styles.durationField}>
       <span>{label}</span>
       <div className={styles.row}>
         <input

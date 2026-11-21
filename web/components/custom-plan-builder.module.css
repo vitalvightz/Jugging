@@ -629,3 +629,23 @@
   .dose[data-mode="reps"] > .doseLoad { grid-column: auto; }
   .dose[data-mode="reps"] > .advanced { grid-column: 1 / -1; }
 }
+
+/* Time and unit pairs need more room than a single numeric field. */
+.dose > .durationField { grid-column: span 2; }
+@container (min-width: 720px) {
+  .dose:is([data-mode="duration"], [data-mode="intervals"], [data-mode="distance"]) {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    align-items: end;
+  }
+  .dose:is([data-mode="duration"], [data-mode="intervals"], [data-mode="distance"]) > .doseFormat,
+  .dose:is([data-mode="duration"], [data-mode="intervals"], [data-mode="distance"]) > .doseLoad { grid-column: span 2; }
+  .dose[data-mode="text"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dose[data-mode="text"] > .doseFormat,
+  .dose[data-mode="text"] > .doseLoad { grid-column: auto; }
+}
+@container (max-width: 719px) {
+  .dose[data-mode="intervals"] > label:not(.doseFormat):not(.durationField) { order: 1; }
+  .dose[data-mode="intervals"] > .durationField { order: 2; }
+  .dose[data-mode="intervals"] > .doseLoad { order: 3; }
+  .dose[data-mode="intervals"] > .advanced { order: 4; }
+}

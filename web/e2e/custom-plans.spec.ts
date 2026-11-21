@@ -100,6 +100,20 @@ for (const width of [320, 390, 1280, 1600]) {
       await quickDose.evaluate(node => node.scrollIntoView({ block: "center" }));
       await quickDose.screenshot({ path: `${process.env.CUSTOM_QA_DIR}/custom-quick-dose-${width}.png` });
     }
+    for (const mode of ["duration", "intervals", "distance", "text", "stages"]) {
+      await quickDose.getByLabel("Dose format").selectOption(mode);
+      if (mode === "stages") await quickDose.getByRole("button", { name: "Add prescribed set", exact: true }).click();
+      expect(await quickDose.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+      if (process.env.CUSTOM_QA_DIR) {
+        await quickDose.evaluate(node => node.scrollIntoView({ block: "center" }));
+        await quickDose.screenshot({ path: `${process.env.CUSTOM_QA_DIR}/custom-${mode}-${width}.png` });
+      }
+    }
+    await quickDose.getByLabel("Dose format").selectOption("reps");
+    await quickDose.getByLabel("Sets", { exact: true }).fill("4");
+    await quickDose.getByLabel("Reps", { exact: true }).fill("8");
+    await quickDose.getByLabel("Rest (sec)", { exact: true }).fill("120");
+    await quickDose.getByLabel("Weight", { exact: true }).fill("80");
     await quickDose.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Add exercise to Strength", exact: true }).click();
     await page.getByRole("button", { name: "+ Create my exercise", exact: true }).click();
