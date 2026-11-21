@@ -81,9 +81,9 @@ for (const width of [320, 390, 1280, 1600]) {
     await expect(quickDose.getByLabel("Sets", { exact: true })).toHaveValue("4");
     const setsBounds = await quickDose.getByLabel("Sets", { exact: true }).boundingBox();
     const quickBounds = await quickDose.boundingBox();
-    expect(setsBounds!.width).toBeLessThanOrEqual(160);
+
     expect(setsBounds!.height).toBeGreaterThanOrEqual(44);
-    expect(quickBounds!.width).toBeLessThanOrEqual(536);
+    if (width >= 1280) expect(quickBounds!.width).toBeGreaterThan(720);
     for (const label of ["Reps", "Rest (sec)"]) {
       const bounds = await quickDose.getByLabel(label, { exact: true }).boundingBox();
       expect(Math.abs(bounds!.y - setsBounds!.y)).toBeLessThanOrEqual(1);

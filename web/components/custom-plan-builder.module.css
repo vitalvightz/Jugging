@@ -114,7 +114,7 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 112px), 1fr));
   gap: 10px 12px;
   width: 100%;
-  max-width: 504px;
+
   min-width: 0;
   box-sizing: border-box;
   align-items: start;
@@ -143,10 +143,10 @@
 }
 .dose label > .row > select { width: auto; flex: 0 0 auto; }
 .dose > .wide { max-width: 100%; }
-.dose > label:not(.wide) { max-width: 160px; }
+
 .dose[data-mode="reps"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .dose[data-mode="reps"] > label:not(.wide) > input { padding-inline: 6px; }
-.dose > label.wide:has(> select) { max-width: 320px; }
+
 .dose > fieldset { box-sizing: border-box; min-width: 0; margin: 0; padding: 10px; }
 .dose > div:empty { display: none; }
 .dose label.toggle {
@@ -521,7 +521,7 @@
 }
 .quickControls { display: flex; gap: 8px; flex-wrap: wrap; padding: 6px 0; }
 .quickControls button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--border-default); border-radius: 7px; background: var(--bg-input); color: var(--text-secondary); font-size: 11px; }
-.quickDose { width: 100%; max-width: 536px; box-sizing: border-box; display: grid; justify-items: start; gap: 10px; padding: 14px; border: 1px solid var(--border-default); border-radius: 10px; background: var(--bg-panel); }
+.quickDose { width: 100%; container-type: inline-size; box-sizing: border-box; display: grid; justify-items: start; gap: 10px; padding: 14px; border: 1px solid var(--border-default); border-radius: 10px; background: var(--bg-panel); }
 .quickDose > :global(.ghost-button) { width: auto; min-height: 44px; padding: 8px 12px; }
 @media (min-width: 1600px) {
   .calendarEditorLayout { grid-template-columns: minmax(0, 2fr) minmax(340px, 1fr); }
@@ -607,4 +607,25 @@
   outline-offset: 4px;
   border-radius: 12px;
   transition: outline-color 0.4s ease;
+}
+
+/* Use available horizontal space before adding another row of dose controls. */
+.exercisePrescription { container-type: inline-size; }
+
+.dose[data-mode="reps"] > .toggle { grid-column: auto; align-self: end; }
+@container (min-width: 720px) {
+  .dose[data-mode="reps"] {
+    grid-template-columns: minmax(180px, 1.5fr) repeat(3, minmax(72px, .55fr)) minmax(200px, 1.5fr) auto;
+    align-items: end;
+  }
+  .dose[data-mode="reps"] > .doseFormat,
+  .dose[data-mode="reps"] > .doseLoad { grid-column: auto; }
+}
+.dose[data-mode="reps"] > .doseLoad { grid-column: 1 / -1; }
+.dose[data-mode="reps"] > .toggle { font-size: 12px; gap: 6px; }
+.dose[data-mode="reps"] > .advanced { grid-column: span 2; }
+.dose[data-mode="reps"] > .advanced summary { padding-inline: 8px; gap: 6px; }
+@container (min-width: 720px) {
+  .dose[data-mode="reps"] > .doseLoad { grid-column: auto; }
+  .dose[data-mode="reps"] > .advanced { grid-column: 1 / -1; }
 }
