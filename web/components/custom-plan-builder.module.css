@@ -111,8 +111,60 @@
 }
 .dose {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 112px), 1fr));
+  gap: 10px 12px;
+  width: 100%;
+  max-width: 504px;
+  min-width: 0;
+  box-sizing: border-box;
+  align-items: start;
+}
+/* Dose fields also appear inline in the plan, outside an editing sheet. */
+.dose label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.dose label > :is(input:not([type="checkbox"]), select, textarea),
+.dose label > .row > :is(input, select) {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-btn);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 16px;
+}
+.dose label > .row > select { width: auto; flex: 0 0 auto; }
+.dose > .wide { max-width: 100%; }
+.dose > label:not(.wide) { max-width: 160px; }
+.dose[data-mode="reps"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.dose[data-mode="reps"] > label:not(.wide) > input { padding-inline: 6px; }
+.dose > label.wide:has(> select) { max-width: 320px; }
+.dose > fieldset { box-sizing: border-box; min-width: 0; margin: 0; padding: 10px; }
+.dose > div:empty { display: none; }
+.dose label.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.dose label.toggle input[type="checkbox"] {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--brand-red);
 }
 .wide {
   grid-column: 1 / -1;
@@ -469,7 +521,8 @@
 }
 .quickControls { display: flex; gap: 8px; flex-wrap: wrap; padding: 6px 0; }
 .quickControls button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--border-default); border-radius: 7px; background: var(--bg-input); color: var(--text-secondary); font-size: 11px; }
-.quickDose { padding: 14px; border: 1px solid var(--border-default); border-radius: 10px; background: var(--bg-panel); }
+.quickDose { width: 100%; max-width: 536px; box-sizing: border-box; display: grid; justify-items: start; gap: 10px; padding: 14px; border: 1px solid var(--border-default); border-radius: 10px; background: var(--bg-panel); }
+.quickDose > :global(.ghost-button) { width: auto; min-height: 44px; padding: 8px 12px; }
 @media (min-width: 1600px) {
   .calendarEditorLayout { grid-template-columns: minmax(0, 2fr) minmax(340px, 1fr); }
   .calendarEditorLayout > .sessionPanel { position: sticky; top: 24px; }
