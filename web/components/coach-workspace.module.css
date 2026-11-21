@@ -774,3 +774,62 @@
   cursor: pointer;
 }
 .inlineAction:hover { color: var(--text-primary); }
+
+/* Keep coach plan surfaces readable in light mode at every breakpoint. */
+:global(html[data-theme="light"]) .coachPlanCard,
+:global(html[data-theme="light"]) .planPreviewDay,
+:global(html[data-theme="light"]) .plansSelectorRow .fighterSelector {
+  background: var(--bg-panel);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+:global(html[data-theme="light"]) .plansSelectorRow .fighterSelector select,
+:global(html[data-theme="light"]) .completionStats > div,
+:global(html[data-theme="light"]) .planWeekSummary,
+:global(html[data-theme="light"]) .planFilters button:not([aria-pressed="true"]),
+:global(html[data-theme="light"]) .plansPageHeader .planRefresh,
+:global(html[data-theme="light"]) .planCardActions > :not(.planPrimaryAction) {
+  background: var(--bg-input);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+:global(html[data-theme="light"]) .planCardActions > :not(.planPrimaryAction):hover {
+  background: var(--bg-surface);
+}
+:global(html[data-theme="light"]) .planStatus,
+:global(html[data-theme="light"]) .planPreviewCount {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+:global(html[data-theme="light"]) .planStatus[data-assignment-status="active"],
+:global(html[data-theme="light"]) .completionPercentage,
+:global(html[data-theme="light"]) .planWeekSummary[data-complete="true"] {
+  background: #e4f3e9;
+  color: #17643d;
+  border-color: #9ac8ac;
+}
+:global(html[data-theme="light"]) .planStatus[data-assignment-status="pending"] {
+  background: #fff1d6;
+  color: #795000;
+}
+:global(html[data-theme="light"]) .completionStats dt,
+:global(html[data-theme="light"]) .completionHeading > strong > span,
+:global(html[data-theme="light"]) .planWeekSummary .planLatest {
+  color: var(--text-secondary);
+}
+:global(html[data-theme="light"]) .planProgress,
+:global(html[data-theme="light"]) .planSchedule,
+:global(html[data-theme="light"]) .completionMeter,
+:global(html[data-theme="light"]) .planPreviewHead,
+:global(html[data-theme="light"]) .planPreviewList > li,
+:global(html[data-theme="light"]) .planEmpty {
+  border-color: var(--border-default);
+}
+:global(html[data-theme="light"]) .planCalendarIcon,
+:global(html[data-theme="light"]) .newPlanAction {
+  background: #fbe9ed;
+  border-color: #dba7b1;
+  color: #a11029;
+}
+:global(html[data-theme="light"]) .newPlanAction:hover { background: #f5d8e0; }
+:global(html[data-theme="light"]) .positive { color: #17643d; }
