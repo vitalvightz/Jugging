@@ -33,7 +33,7 @@ function DurationField({
     </select>
   </>;
   return (
-    <label>
+    <label className={styles.durationField}>
       <span>{label}</span>
       <div className={styles.row}>
         <input
@@ -106,7 +106,7 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
   essential?: boolean;
 }) {
   const context = useWeightContext();
-  const formatSelector = <label className={styles.wide}>
+  const formatSelector = <label className={`${styles.wide} ${styles.doseFormat}`}>
     <span>Format</span>
     <select
       aria-label="Dose format"
@@ -252,7 +252,7 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
       <LoadField
         // A new format starts the field over on its own default.
         key={dose.mode}
-        className={styles.wide}
+        className={`${styles.wide} ${styles.doseLoad}`}
         value={dose.load_or_intensity}
         weighed={weighedFormat(dose.mode, movement, past)}
         last={pastLoad(past)}
