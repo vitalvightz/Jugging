@@ -1591,7 +1591,7 @@ html[data-theme="light"] .cta:disabled {
   border-radius: 12px;
   border: 1px solid rgba(255, 141, 161, 0.28);
   background: var(--danger-soft);
-  color: #ffd5dc;
+  color: var(--danger-ink);
   font-size: 13px;
   line-height: 1.35;
   font-weight: 600;
@@ -11191,6 +11191,9 @@ html[data-theme="light"] .today-injury-other-warning {
 
   .quick-build-action-feedback {
     order: 2;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    align-content: start;
     width: 100%;
     max-width: none;
   }

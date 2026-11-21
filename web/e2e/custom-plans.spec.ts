@@ -11,7 +11,7 @@ for (const width of [320, 390, 1280, 1600]) {
     const { mutations } = await setup(page, baseURL!);
     await page.goto("/create");
     await page.getByRole("link", { name: /^Build Your Own/ }).click();
-    await page.getByRole("button", { name: "Week", exact: true }).click();
+    await page.getByRole("group", { name: "Plan view", exact: true }).getByRole("button", { name: "Week", exact: true }).click();
     await page.getByLabel("Plan name", { exact: true }).fill(`Weekly strength ${width}`);
     await page.getByRole("button", { name: /^Monday,/ }).click();
     await page.getByRole("button", { name: "Add session on Monday", exact: true }).click();
@@ -76,6 +76,31 @@ for (const width of [320, 390, 1280, 1600]) {
     }
     if (process.env.CUSTOM_QA_DIR) await page.screenshot({ path: `${process.env.CUSTOM_QA_DIR}/custom-dose-${width}.png` });
     await page.getByRole("button", { name: "Done", exact: true }).click();
+    await page.getByRole("button", { name: `Quick dose for ${entries[0].name}`, exact: true }).click();
+    const quickDose = page.getByRole("group", { name: `Quick dose for ${entries[0].name}`, exact: true });
+    await expect(quickDose.getByLabel("Sets", { exact: true })).toHaveValue("4");
+    const setsBounds = await quickDose.getByLabel("Sets", { exact: true }).boundingBox();
+    const quickBounds = await quickDose.boundingBox();
+    expect(setsBounds!.width).toBeLessThanOrEqual(160);
+    expect(setsBounds!.height).toBeGreaterThanOrEqual(44);
+    expect(quickBounds!.width).toBeLessThanOrEqual(536);
+    for (const label of ["Reps", "Rest (sec)"]) {
+      const bounds = await quickDose.getByLabel(label, { exact: true }).boundingBox();
+      expect(Math.abs(bounds!.y - setsBounds!.y)).toBeLessThanOrEqual(1);
+    }
+    const perSide = quickDose.getByRole("checkbox", { name: "Per side", exact: true });
+    const checkboxBounds = await perSide.boundingBox();
+    expect(checkboxBounds!.width).toBe(20);
+    expect(checkboxBounds!.height).toBe(20);
+    await perSide.check();
+    await expect(perSide).toBeChecked();
+    await perSide.uncheck();
+    expect(await quickDose.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    if (process.env.CUSTOM_QA_DIR) {
+      await quickDose.evaluate(node => node.scrollIntoView({ block: "center" }));
+      await quickDose.screenshot({ path: `${process.env.CUSTOM_QA_DIR}/custom-quick-dose-${width}.png` });
+    }
+    await quickDose.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("button", { name: "Add exercise to Strength", exact: true }).click();
     await page.getByRole("button", { name: "+ Create my exercise", exact: true }).click();
     await page.getByLabel("Exercise name", { exact: true }).fill("My bag rounds");

@@ -190,7 +190,7 @@ export function CustomDoseEditor({ dose, onChange, movement, past, essential = f
     </>;
   }
   return (
-    <div className={styles.dose}>
+    <div className={styles.dose} data-mode={dose.mode}>
       <div style={{ gridColumn: "1 / -1" }}>{weightPreview}</div>
       {formatSelector}
       {dose.mode === "reps" ? (
