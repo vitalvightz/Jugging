@@ -408,13 +408,6 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
         {!details && !error ? <SessionRecordSkeleton /> : null}
         {error ? <div role="alert"><p>Unable to load session details. Try again.</p><button type="button" className="secondary-button" onClick={() => { setError(false); setAttempt(value => value + 1); }}>Retry</button></div> : null}
         {details?.athlete_id && record ? <CoachFeedback token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} editable={viewer === "coach" && details.coach_feedback_allowed} /> : null}
-        {/* Files on the session itself, first thing in the record, whether or not it has
-            exercises. A sparring session's files belong to its report. */}
-        {details?.athlete_id && record && (row.source === "external" || row.source === "unlxck") ? <section className={styles.section}>
-          <TrainingVideos key={`files:${row.id}`} token={token} viewer={viewer ?? "athlete"} athleteId={details.athlete_id}
-            heading="Attachments" label={details.sparring?.id ? "Sparring" : title || "this session"}
-            target={details.sparring?.id ? { source: "sparring", target_id: details.sparring.id } : { source: row.source, target_id: row.id }} />
-        </section> : null}
         {details && record && run ? <div className={styles.recordContent}>
           <RunRecord run={run} history={details.runs ?? null} onEditRun={onEditRun ? () => onEditRun(run) : undefined} viewer={viewer} />
           {details.blocks.length || onEditExercises ? <section className={styles.section}>
@@ -424,7 +417,8 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
             <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} numbered={false} compact viewer={viewer} byCoach={facts.logged_by_coach}
               feedback={details.athlete_id && block.feedback_ref ? <>
                 <CoachFeedback key={`${row.id}:${block.feedback_ref}`} token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} exerciseRef={block.feedback_ref} editable={viewer === "coach" && details.coach_feedback_allowed} />
-                <TrainingVideos key={`videos:${row.id}:${block.feedback_ref}`} token={token} viewer={viewer ?? "athlete"} athleteId={details.athlete_id} label={block.name}
+                <TrainingVideos key={`videos:${row.id}:${block.feedback_ref}`} token={token} viewer={viewer ?? "athlete"} athleteId={details.athlete_id}
+                  label={block.name} heading="Exercise attachments" emptyText=""
                   target={{ source: row.source, target_id: row.id, exercise_ref: block.feedback_ref }} />
               </> : undefined}
               open={expanded.has(index)} onToggle={() => setOpen(new Set(expanded.has(index) ? [...expanded].filter(item => item !== index) : [...expanded, index]))} />)}</ol>
@@ -442,7 +436,8 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
             {details.blocks.length ? <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} numbered={false} compact viewer={viewer} byCoach={facts.logged_by_coach}
               feedback={details.athlete_id && block.feedback_ref ? <>
                 <CoachFeedback key={`${row.id}:${block.feedback_ref}`} token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} exerciseRef={block.feedback_ref} editable={viewer === "coach" && details.coach_feedback_allowed} />
-                <TrainingVideos key={`videos:${row.id}:${block.feedback_ref}`} token={token} viewer={viewer ?? "athlete"} athleteId={details.athlete_id} label={block.name}
+                <TrainingVideos key={`videos:${row.id}:${block.feedback_ref}`} token={token} viewer={viewer ?? "athlete"} athleteId={details.athlete_id}
+                  label={block.name} heading="Exercise attachments" emptyText=""
                   target={{ source: row.source, target_id: row.id, exercise_ref: block.feedback_ref }} />
               </> : undefined}
               open={expanded.has(index)} onToggle={() => setOpen(new Set(expanded.has(index) ? [...expanded].filter(item => item !== index) : [...expanded, index]))} />)}</ol>
@@ -457,6 +452,11 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
           {record.notes || record.modification_reason || record.takeaway ? <section className={styles.section}><h3>Session Notes</h3>
             {record.modification_reason ? <p className={styles.note}>Modification: {record.modification_reason}</p> : null}
             {sessionNotes(record).map(note => <p key={note} className={styles.note}>{note}</p>)}</section> : null}
+        </div> : null}
+        {details?.athlete_id && record && (row.source === "external" || row.source === "unlxck") ? <div className={styles.sessionAttachments}>
+          <TrainingVideos key={`files:${row.id}`} token={token} viewer={viewer ?? "athlete"} athleteId={details.athlete_id}
+            heading={details.sparring?.id ? "Sparring attachments" : "Session attachments"} label={details.sparring?.id ? "Sparring" : title || "this session"}
+            target={details.sparring?.id ? { source: "sparring", target_id: details.sparring.id } : { source: row.source, target_id: row.id }} />
         </div> : null}
       </AutoHeight>
     </div>

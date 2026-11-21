@@ -149,7 +149,7 @@ type Recording = { stage: "recording"; seconds: number } | { stage: "preview"; w
  * removes anything; a coach sees them only while the athlete shares media
  * (enforced by the API), and can leave voice feedback and share PDFs.
  */
-export function TrainingVideos({ token, target, viewer = "athlete", athleteId, label, heading, only, limit = MAX_FILES, emptyText }: {
+export function TrainingVideos({ token, target, viewer = "athlete", athleteId, label, heading, only, limit = MAX_FILES, emptyText, allowAdding = true }: {
   token: string; target: AttachmentTarget; viewer?: "athlete" | "coach"; athleteId?: string;
   /** What the files are for, used in accessible names ("Back squat"). */
   label: string;
@@ -161,6 +161,8 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
   limit?: number;
   /** The headed empty state, when the default sentence doesn't fit. */
   emptyText?: string;
+  /** The overview can show files without a second upload control. */
+  allowAdding?: boolean;
 }) {
   const [rows, setRows] = useState<TrainingAttachment[]>([]);
   const [kinds, setKinds] = useState<Kinds>(NONE);
@@ -194,10 +196,11 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
   }, [token, athlete, athleteId, source, targetId, exerciseRef]);
 
   useEffect(() => {
+    if (!allowAdding) return;
     let active = true;
     void availableKinds(token, athlete).then(value => { if (active) setKinds(value); });
     return () => { active = false; };
-  }, [token, athlete]);
+  }, [token, athlete, allowAdding]);
 
   // Leaving the record mid-recording releases the microphone and the preview.
   useEffect(() => () => { recorder.current?.cancel(); recorder.current = null; }, []);
@@ -206,7 +209,7 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
   const busy = stage !== null;
   const full = rows.length >= limit;
   // Coaches leave voice notes and share PDFs, only on a fighter whose files they can see.
-  const offered = (["photo", "voice", "pdf", "video"] as Kind[]).filter(kind => kinds[kind]
+  const offered = (["photo", "voice", "pdf", "video"] as Kind[]).filter(kind => allowAdding && kinds[kind]
     && (!only || only.includes(kind)) && (athlete || ((kind === "voice" || kind === "pdf") && !!athleteId)));
   const attachable = !full && offered.length > 0;
 
@@ -546,14 +549,14 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
       {attachable && !recording && dropKinds.length ? <span className={styles.dropHint}>or drop one here</span> : null}
       {rows.length ? <span className={styles.count}>{rows.length} of {limit}</span> : null}
     </div> : null}
-    {heading && !rows.length && attachable && !busy && !recording ? <p className={styles.empty}>
+    {heading && emptyText !== "" && !rows.length && attachable && !busy && !recording ? <p className={styles.empty}>
       {emptyText ?? (athlete ? `Add ${describeKinds(offered)} to this ${label === "Sparring" ? "report" : "session"}.`
         : `Share ${describeKinds(offered)} with your fighter.`)}</p> : null}
-    {kinds.photo && athlete ? <input ref={photoInput} type="file" accept="image/jpeg,image/png,image/heic,image/heif,image/webp" hidden
+    {allowAdding && kinds.photo && athlete ? <input ref={photoInput} type="file" accept="image/jpeg,image/png,image/heic,image/heif,image/webp" hidden
       aria-label={`Attach a photo to ${label}`} onChange={event => void attachPhoto(event.target.files?.[0])} /> : null}
-    {kinds.pdf && (athlete || athleteId) ? <input ref={pdfInput} type="file" accept="application/pdf,.pdf" hidden
+    {allowAdding && kinds.pdf && (athlete || athleteId) ? <input ref={pdfInput} type="file" accept="application/pdf,.pdf" hidden
       aria-label={`Attach a PDF to ${label}`} onChange={event => void attachPdf(event.target.files?.[0])} /> : null}
-    {kinds.video && athlete ? <input ref={videoInput} type="file" accept="video/mp4,video/quicktime,video/webm" hidden
+    {allowAdding && kinds.video && athlete ? <input ref={videoInput} type="file" accept="video/mp4,video/quicktime,video/webm" hidden
       aria-label={`Attach a video to ${label}`} onChange={event => void attachVideo(event.target.files?.[0])} /> : null}
     {problem ? <p className={styles.problem} role="alert">{problem}</p> : null}
     {dragging ? <div className={styles.dropOverlay} aria-hidden="true">Drop to attach</div> : null}

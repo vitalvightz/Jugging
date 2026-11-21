@@ -180,3 +180,9 @@
 .journal .bar { display: none; }
 .journal .note { margin: 8px 0; }
 @media (max-width: 600px) { .journal { width: 100%; } }
+
+.sessionAttachments:not(:empty) {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
