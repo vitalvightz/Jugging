@@ -10,7 +10,6 @@ const OFFLINE_URL = "/offline.html";
 const APP_ICON_192 = "/icons/icon-192x192.png";
 const PRECACHE_URLS = [
   OFFLINE_URL,
-  "/brand/unlxck-one-angle-48.png",
   APP_ICON_192,
   "/icons/icon-512x512.png",
   "/icons/apple-touch-icon.png",
