@@ -47,6 +47,7 @@ export function XpAwardFeedback() {
 function LevelUpFeedback({ feedback, onDone }: { feedback: LevelUpEvent; onDone: () => void }) {
   const toastsIdle = useToastIdle();
   const [phase, setPhase] = useState<"waiting" | "shown" | "leaving">("waiting");
+  const [hasFocus, setHasFocus] = useState(false);
   const reveal = useCallback(() => setPhase((current) => (current === "waiting" ? "shown" : current)), []);
   const close = useCallback(() => setPhase("leaving"), []);
 
@@ -62,7 +63,7 @@ function LevelUpFeedback({ feedback, onDone }: { feedback: LevelUpEvent; onDone:
   }, [phase, reveal, toastsIdle]);
 
   useEffect(() => {
-    if (phase === "shown") {
+    if (phase === "shown" && !hasFocus) {
       const timer = window.setTimeout(close, LEVEL_UP_VISIBLE_MS);
       return () => window.clearTimeout(timer);
     }
@@ -70,34 +71,50 @@ function LevelUpFeedback({ feedback, onDone }: { feedback: LevelUpEvent; onDone:
       const timer = window.setTimeout(onDone, LEVEL_UP_EXIT_MS);
       return () => window.clearTimeout(timer);
     }
-  }, [close, onDone, phase]);
-
-  if (phase === "waiting") return null;
+  }, [close, hasFocus, onDone, phase]);
 
   return (
-    <section
-      className={`xp-level-up-feedback${phase === "leaving" ? " is-leaving" : ""}`}
-      role="dialog"
-      aria-modal="false"
-      aria-labelledby="xp-level-up-title"
-      aria-describedby="xp-level-up-message"
-    >
-      <button
-        type="button"
-        className="xp-level-up-dismiss"
-        onClick={close}
-        aria-label="Dismiss level-up message"
-      >
-        ×
-      </button>
-      <p className="xp-level-up-kicker">LEVEL UP</p>
-      <h2 id="xp-level-up-title">
-        LEVEL {feedback.level} UNLOCKED: {feedback.title.toUpperCase()}
-      </h2>
-      <p id="xp-level-up-message">{feedback.message}</p>
-      <Link href="/progress" onClick={onDone}>
-        View progress
-      </Link>
-    </section>
+    <>
+      <p className="sr-only" role="status">
+        {phase === "shown" ? `Level ${feedback.level} unlocked. ${feedback.title}.` : ""}
+      </p>
+      {phase !== "waiting" ? (
+        <section
+          className={`xp-level-up-feedback${phase === "leaving" ? " is-leaving" : ""}`}
+          role="dialog"
+          aria-modal="false"
+          aria-labelledby="xp-level-up-title"
+          onFocus={() => setHasFocus(true)}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setHasFocus(false);
+          }}
+        >
+          <Link
+            className="xp-level-up-action"
+            href="/progress"
+            aria-label={`View progress for level ${feedback.level}, ${feedback.title}`}
+            onClick={onDone}
+          >
+            <div className="xp-level-up-medal" aria-hidden="true">{feedback.level}</div>
+            <div>
+              <p className="xp-level-up-kicker">Level up</p>
+              <h2 id="xp-level-up-title">
+                <span className="sr-only">Level {feedback.level} unlocked. </span>
+                {feedback.title}
+              </h2>
+            </div>
+            <span className="xp-level-up-arrow" aria-hidden="true">→</span>
+          </Link>
+          <button
+            type="button"
+            className="xp-level-up-dismiss"
+            onClick={close}
+            aria-label="Dismiss level-up message"
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        </section>
+      ) : null}
+    </>
   );
 }

@@ -171,11 +171,11 @@ test("restored Overview card CSS disables progress motion when requested", () =>
   assert.doesNotMatch(css, /xp-progress-open/);
 });
 
-test("XP notifications use colons rather than em dashes", () => {
+test("routine XP notifications use a colon and level-ups announce the unlocked rank", () => {
   const feedback = readFileSync(new URL("./xp-award-feedback.tsx", import.meta.url), "utf8");
 
   assert.match(feedback, /XP: \$\{feedback\.label\}/);
-  assert.match(feedback, /LEVEL \{feedback\.level\} UNLOCKED: \{feedback\.title\.toUpperCase\(\)\}/);
+  assert.match(feedback, /role="status"[\s\S]*?Level \$\{feedback\.level\} unlocked\. \$\{feedback\.title\}/);
   assert.doesNotMatch(feedback, /—/);
 });
 
