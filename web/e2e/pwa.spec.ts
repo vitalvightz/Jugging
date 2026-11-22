@@ -5,6 +5,7 @@ import { isolateFromNetwork } from "./support";
 const BASE_URL = "http://127.0.0.1:3100";
 const PRECACHED_STATIC_PATHS = new Set([
   "/offline.html",
+  "/brand/unlxck-mark.webp",
   "/icons/icon-192x192.png",
   "/icons/icon-512x512.png",
   "/icons/apple-touch-icon.png",

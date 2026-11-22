@@ -403,7 +403,7 @@ export function AppNav() {
           <Link href="/" className="brand-topbar-mark" aria-label="UNLXCK">
             <img
               className="brand-topbar-logo"
-              src="/icons/icon-192x192.png"
+              src="/brand/unlxck-mark.webp"
               alt=""
               width={48}
               height={48}
@@ -481,7 +481,7 @@ export function AppNav() {
             <div className="sidebar-brand-header">
               <img
                 className="sidebar-brand-logo"
-                src="/icons/icon-192x192.png"
+                src="/brand/unlxck-mark.webp"
                 alt="UNLXCK"
                 width={48}
                 height={48}
