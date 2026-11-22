@@ -110,7 +110,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       suppressHydrationWarning
     >
       <head>
-        {showStartupSplash ? <link rel="preload" as="image" href="/icons/icon-512x512.png" /> : null}
+        {showStartupSplash ? <link rel="preload" as="image" href="/brand/unlxck-mark.webp" /> : null}
         <script nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

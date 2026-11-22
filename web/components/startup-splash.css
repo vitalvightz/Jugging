@@ -21,7 +21,8 @@
   width: 96px;
   aspect-ratio: 1;
   overflow: hidden;
-  background: url("/icons/icon-512x512.png") center / contain no-repeat;
+  background: url("/brand/unlxck-mark.webp") center / contain no-repeat;
+  mask: url("/brand/unlxck-mark.webp") center / contain no-repeat;
 }
 
 .startup-splash-mark::after {

@@ -105,7 +105,7 @@ export function ConnectionStatusBanner() {
   return (
     <div className={`connection-lost-banner${restored ? " connection-restored" : ""}`} role="status" aria-live="polite" aria-atomic="true">
       <div className="connection-card-header">
-        <Image src="/icons/icon-192x192.png" alt="" unoptimized width={24} height={24} />
+        <Image src="/brand/unlxck-mark.webp" alt="" unoptimized width={24} height={24} />
         <span className="connection-card-label"><span className="connection-lost-dot" aria-hidden="true" />CONNECTION</span>
       </div>
       <p className="connection-card-title">{title}</p>
