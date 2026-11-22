@@ -1,0 +1,71 @@
+.startup-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  background: #000;
+  pointer-events: none;
+  animation: startup-splash-timeout 280ms ease-out 8s both;
+}
+
+.startup-splash[data-ready="true"] {
+  animation: startup-splash-out 280ms ease-out both;
+}
+
+.startup-splash-mark {
+  position: relative;
+  width: 96px;
+  aspect-ratio: 1;
+  mask: url("/brand/unlxck-one-angle-120.png") center / contain no-repeat;
+  background: #adaeb4;
+}
+
+.startup-splash-mark::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(112deg,
+    transparent 37%,
+    #a44550 44%,
+    #d3d4db 48%,
+    #fff 51%,
+    #c4c5cd 54%,
+    transparent 61%);
+  animation: startup-splash-sweep 820ms cubic-bezier(0.4, 0, 0.25, 1) both;
+}
+
+@keyframes startup-splash-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+.startup-splash[data-ready="true"] .startup-splash-mark::after {
+  animation-play-state: paused;
+}
+
+@keyframes startup-splash-timeout {
+  from { opacity: 1; visibility: visible; }
+  to { opacity: 0; visibility: hidden; }
+}
+
+@keyframes startup-splash-out {
+  from { opacity: 1; visibility: visible; }
+  to { opacity: 0; visibility: hidden; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .startup-splash,
+  .startup-splash[data-ready="true"] {
+    animation-duration: 0s;
+  }
+
+  .startup-splash-mark {
+    background: #fff;
+  }
+
+  .startup-splash-mark::after {
+    content: none;
+    animation: none;
+  }
+}

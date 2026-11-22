@@ -9,7 +9,7 @@ import { useAppSession } from "@/components/auth-provider";
 
 function LoadingCard({ label }: { label: string }) {
   return (
-    <section className="panel loading-card">
+    <section className="panel loading-card" data-startup-pending>
       <p className="kicker">Unlxcking…</p>
       <h1>{label}</h1>
       <p className="muted">Checking your session and restoring your workspace.</p>
