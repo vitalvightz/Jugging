@@ -25,7 +25,7 @@ import {
   getSignupCodeResendErrorMessage,
 } from "@/lib/auth-feedback";
 import { clearAuthLinkParams, readAuthLinkStatus } from "@/lib/auth-link";
-import { getAuthenticatedLandingHref, getSafePlanReturnHref } from "@/lib/auth-routing";
+import { getAuthenticatedLandingHref } from "@/lib/auth-routing";
 import {
   TERMS_CONSENT_LEAD,
   TERMS_LINK_LABEL,
@@ -59,23 +59,28 @@ const SIGNUP_CODE_MAX_LENGTH = 10;
 export function AuthForm({
   mode,
   footerSlot,
+  returnHref,
 }: {
   mode: "signup" | "login";
   footerSlot?: ReactNode;
+  returnHref?: string | null;
 }) {
   const t = useTranslations("Auth");
   const router = useRouter();
   const fadeNavigate = useFadeNavigate();
   const { isReady, session, me, replaceMe } = useAppSession();
-  const nextPlan = () => getSafePlanReturnHref(new URLSearchParams(window.location.search).get("next"));
+  const returnQuery = returnHref ? `next=${encodeURIComponent(returnHref)}` : "";
   const destination = (account: Parameters<typeof getAuthenticatedLandingHref>[0]) => {
-    const path = getAuthenticatedLandingHref(account, nextPlan());
+    const path = getAuthenticatedLandingHref(account, returnHref);
     const choice = mode === "signup" ? accountType : new URLSearchParams(window.location.search).get("account_type");
-    return path === "/consent" && (choice === "coach" || choice === "athlete") ? `${path}?account_type=${choice}` : path;
+    if (path.split("?")[0] !== "/consent" || (choice !== "coach" && choice !== "athlete")) return path;
+    const params = new URLSearchParams(path.split("?")[1]);
+    params.set("account_type", choice);
+    return `/consent?${params}`;
   };
   const authRedirectPath = () => {
     const params = new URLSearchParams();
-    if (nextPlan()) params.set("next", nextPlan()!);
+    if (returnHref) params.set("next", returnHref);
     if (mode === "signup") params.set("account_type", accountType);
     return `/login${params.size ? `?${params}` : ""}`;
   };
@@ -334,7 +339,7 @@ export function AuthForm({
       try {
         if (!(await hasSignupAdmission(data.session?.user.id ?? data.user?.id))) {
           await client.auth.signOut();
-          router.replace("/signup?invite=required");
+          router.replace(`/signup?invite=required${returnQuery ? `&${returnQuery}` : ""}`);
           return;
         }
       } catch {
@@ -741,7 +746,7 @@ export function AuthForm({
         )}
 
         {!verificationEmail ? (
-          <Link href={mode === "signup" ? "/login" : "/signup"} className={`auth-text-link ${styles.accountLink}`}>
+          <Link href={`${mode === "signup" ? "/login" : "/signup"}${returnQuery ? `?${returnQuery}` : ""}`} className={`auth-text-link ${styles.accountLink}`}>
             {mode === "signup" ? t("alreadyAccount") : t("joinBeta")}
           </Link>
         ) : null}

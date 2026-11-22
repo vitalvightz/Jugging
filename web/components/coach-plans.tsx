@@ -53,20 +53,36 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
   const [scheduleOpen, setScheduleOpen] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [plansError, setPlansError] = useState(false);
+  const [scheduleError, setScheduleError] = useState(false);
   const [pending, setPending] = useState(false);
   const [attempt, setAttempt] = useState(0);
   // A plan read from a coach's PDF or Word file, opened in the builder unsaved.
   const [imported, setImported] = useState<ImportedPlan | null>(null);
   useEffect(() => {
     const controller = new AbortController();
-    listCoachPlans(token, fighter.id, controller.signal).then(rows => { if (!controller.signal.aborted) { setPlans(rows); setError(""); } })
-      .catch(() => { if (!controller.signal.aborted) setError("Plans unavailable."); });
+    listCoachPlans(token, fighter.id, controller.signal).then(rows => {
+      if (controller.signal.aborted) return;
+      setPlans(rows);
+      setPlansError(false);
+    }).catch(() => {
+      if (controller.signal.aborted) return;
+      setPlans(undefined);
+      setPlansError(true);
+    });
     return () => controller.abort();
   }, [token, fighter, attempt, refresh]);
   useEffect(() => {
     let active = true;
-    getFighterPlan(token, fighter.id, true).then(rows => { if (active) setSchedule(rows); })
-      .catch(() => { if (active) { setSchedule(undefined); setError("Progress unavailable."); } });
+    getFighterPlan(token, fighter.id, true).then(rows => {
+      if (!active) return;
+      setSchedule(rows);
+      setScheduleError(false);
+    }).catch(() => {
+      if (!active) return;
+      setSchedule(undefined);
+      setScheduleError(true);
+    });
     return () => { active = false; };
   }, [token, fighter, attempt, refresh]);
   if (editing === "import") return <PlanImport accessToken={token} timezone={fighter.timezone} forFighter={fighter.name}
@@ -79,12 +95,16 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
   const ordered = plans?.toSorted((a, b) => Number(b.assignment_status === "active") - Number(a.assignment_status === "active"));
   const past = (row: CoachPlan) => ["declined", "superseded"].includes(row.assignment_status);
   const visible = ordered?.filter(row => filter === "all" || (filter === "past" ? past(row) : row.assignment_status === filter));
+  const message = plansError ? "Plans unavailable." : scheduleError ? "Progress unavailable." : error;
   return <>
     {!plans?.length ? null : <div className={`${styles.planFilters} ${plans.length > 1 ? styles.multiplePlanFilters : ""}`} role="group" aria-label="Filter plans">
       {([['all', 'All Plans'], ['active', 'Active'], ['draft', 'Drafts'], ['past', 'Past']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}{value === 'all' ? '' : ` (${plans.filter(row => value === 'past' ? past(row) : row.assignment_status === value).length})`}</button>)}
     </div>}
-    {error ? <p className={styles.error} role="alert">{error} <button type="button" onClick={() => setAttempt(n => n + 1)}>Retry</button></p> : null}
-    {!plans && !error ? <p role="status">Loading plans…</p> : null}
+    {message ? <p className={styles.error} role="alert">{message} <button type="button" onClick={() => {
+      setError("");
+      setAttempt(n => n + 1);
+    }}>Retry</button></p> : null}
+    {!plans && !plansError ? <p role="status">Loading plans…</p> : null}
     {plans?.length === 0 ? <div className={styles.planEmpty}><h2>No plans yet</h2><p>Create a draft for {fighter.name}, then send it for their review.</p></div> : null}
     {Boolean(plans?.length) && !visible?.length ? <p className={styles.empty}>No plans in this view.</p> : null}
     {visible?.some(plan => plan.assignment_status !== "draft") ? <DiscoveryHint id="coach-plan-revise" text="Want to change it? Tap Revise." /> : null}
@@ -95,7 +115,7 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
         <div><p className={styles.planEyebrow}>{plan.assignment_status === "active" ? "Current plan" : plan.assignment_status === "draft" ? "Draft plan" : "Assigned plan"}</p><h2>{plan.name}</h2>{plan.assigned_at ? <p className={styles.planAssignedDate}>Assigned {formatAppDate(plan.assigned_at).split(" ").slice(1).join(" ")}</p> : null}</div>
         <span className={styles.planStatus} data-assignment-status={plan.assignment_status}>{humanize(plan.assignment_status)}</span>
       </header>
-      {plan.assignment_status === "active" ? <AssignedProgress plan={plan} fighter={fighter} schedule={schedule} /> : null}
+      {plan.assignment_status === "active" && !scheduleError ? <AssignedProgress plan={plan} fighter={fighter} schedule={schedule} /> : null}
       <div className={styles.planCardActions}>
         <button type="button" aria-label="Preview Plan" aria-expanded={preview === plan.id} onClick={() => setPreview(preview === plan.id ? null : plan.id)}><PlanIcon name="eye" /><span className={styles.mobilePlanText}>Preview</span><span className={styles.desktopPlanText}>Preview Plan</span></button>
         {plan.published_plan_id ? <Link href={`/coach/fighters/${fighter.id}#training-history`}><PlanIcon name="chart-bar" /><span className={styles.mobilePlanText}>Progress</span><span className={styles.desktopPlanText}>View Fighter Progress</span></Link> : null}
@@ -111,7 +131,7 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
           }} aria-label="Assign to fighter"><span className={styles.mobilePlanText}>Assign</span><span className={styles.desktopPlanText}>Assign to fighter</span></button>
         </> : null}
       </div>
-      {scheduleOpen === plan.id ? <AssignedSchedule plan={plan} schedule={schedule} today={fighter.today} fightDate={fighter.fight_date} /> : null}
+      {scheduleOpen === plan.id && !scheduleError ? <AssignedSchedule plan={plan} schedule={schedule} today={fighter.today} fightDate={fighter.fight_date} /> : null}
       {preview === plan.id ? <AssignedPlanPreview plan={plan} /> : null}
       {plan.assignment_status === "draft" && plan.incomplete ? <p className={styles.planActionNote}>Finish schedule and doses to assign.</p> : null}
       {others.length || plan.assignment_status !== "active" ? <div className={styles.planLinks}>

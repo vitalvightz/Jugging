@@ -271,7 +271,8 @@ async function fixture(
       return route.fulfill({ status: 201, json: row });
     }
     if (path.endsWith("/plans")) return route.fulfill({ json: [] });
-    if (path.endsWith("/training/plan")) return route.fulfill({ json: [] });
+    if (path.endsWith("/training/plan") || path.endsWith("/training/attachments")) return route.fulfill({ json: [] });
+    if (path.endsWith("/media")) return route.fulfill({ json: { share_media: false, progress_count: 0, recent: [] } });
     if (path.endsWith("/exercises"))
       return route.fulfill({ json: { entries: [] } });
     return route.fulfill({
@@ -377,7 +378,11 @@ for (const width of [1440, 390, 320]) {
     await expect(fightWeight).toContainText("Days to fight");
     await expect(fightWeight.getByRole("slider")).toBeVisible();
 
-    // Training history opens the athlete's recorded session.
+    // A malformed attachment response should still leave the training record readable.
+    if (width === 390) {
+      await page.route("**/api/coach/fighters/*/training/attachments?**", route =>
+        route.fulfill({ json: { detail: "Unexpected response" } }));
+    }
     const trainingHistory = page
       .locator("section")
       .filter({ has: page.getByRole("heading", { name: "Training history" }) });
@@ -622,7 +627,8 @@ test("a connection accepted before weight sharing asks before sharing weight", a
       "Connected · Sharing training, weight, recovery and injuries",
     ),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Share / })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Share weight and injuries", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Share photos & voice notes", exact: true })).toBeVisible();
   expect(state.actions).toEqual([
     expect.objectContaining({
       p_action: "consent",
@@ -1241,7 +1247,7 @@ for (const width of [390, 1440]) {
     });
     await page.goto('/coach/plans');
     await page.getByRole('button', { name: 'Create New Plan', exact: true }).click();
-    await page.getByRole("button", { name: "Week", exact: true }).click();
+    await page.getByRole("group", { name: "Plan view" }).getByRole("button", { name: "Week", exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'Fighter', exact: true })).toBeDisabled();
     await page.getByLabel('Plan name', { exact: true }).fill('Coach technical week');
     await page.getByRole('button', { name: /^Monday,/ }).click();
@@ -1308,6 +1314,20 @@ for (const width of [390, 1440]) {
     await page.mouse.move(0, 0);
     await page.screenshot({ path: `test-results/coach-plan-dashboard-${width}.png`, fullPage: true });
     await dashboard.screenshot({ path: `test-results/coach-plan-dashboard-card-${width}.png` });
+
+    let scheduleAvailable = false;
+    await page.route('**/api/coach/fighters/*/training/plan**', route => scheduleAvailable
+      ? route.fallback()
+      : route.fulfill({ status: 503, json: { detail: "Training schedule unavailable. Please retry." } }));
+    await page.getByRole('button', { name: 'Refresh plans' }).click();
+    const alert = dashboard.getByRole('alert');
+    await expect(alert).toContainText('Progress unavailable.');
+    await expect(dashboard.getByRole('progressbar')).toHaveCount(0);
+    await expect(dashboard.getByText('Loading progress…')).toHaveCount(0);
+    scheduleAvailable = true;
+    await alert.getByRole('button', { name: 'Retry' }).click();
+    await expect(dashboard.getByRole('progressbar')).toHaveAttribute('value', '100');
+    await expect(alert).toHaveCount(0);
   });
 }
 

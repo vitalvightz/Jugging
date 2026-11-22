@@ -31,7 +31,9 @@ import { useFadeNavigate } from "@/components/fade-through";
  */
 function ComplianceAcceptance() {
   const router = useRouter();
-  const choice = useSearchParams().get("account_type");
+  const params = useSearchParams();
+  const choice = params.get("account_type");
+  const returnHref = params.get("next");
   const fadeNavigate = useFadeNavigate();
   const { me, session, replaceMe, signOut } = useAppSession();
   const headingId = useId();
@@ -65,9 +67,9 @@ function ComplianceAcceptance() {
   // protecting against stale links, bookmarks and a double submit.
   useEffect(() => {
     if (role === "athlete" && !isPending) {
-      router.replace(getAuthenticatedLandingHref(me));
+      router.replace(getAuthenticatedLandingHref(me, returnHref));
     }
-  }, [isPending, me, role, router]);
+  }, [isPending, me, returnHref, role, router]);
 
   async function submit() {
     if (isSubmitting) {
@@ -94,7 +96,7 @@ function ComplianceAcceptance() {
         ...(needsHealthConsent && healthDataConsent ? { health_data_consent: true } : {}),
       });
       replaceMe(nextMe);
-      fadeNavigate(() => router.replace(getAuthenticatedLandingHref(nextMe)));
+      fadeNavigate(() => router.replace(getAuthenticatedLandingHref(nextMe, returnHref)));
     } catch (submitError) {
       setError(
         submitError instanceof Error

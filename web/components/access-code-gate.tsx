@@ -31,8 +31,9 @@ export function SignupAccess({
   unlocked,
   codeShape,
   inviteRequired = false,
+  loginHref,
   children,
-}: Readonly<{ unlocked: boolean; codeShape: CodeShape; inviteRequired?: boolean; children: ReactNode }>) {
+}: Readonly<{ unlocked: boolean; codeShape: CodeShape; inviteRequired?: boolean; loginHref: string; children: ReactNode }>) {
   const reduceMotion = usePrefersReducedMotion();
   // Adjust state while rendering when access flips on (React's pattern for
   // reacting to a prop change), so the gate never flashes the form early.
@@ -50,14 +51,15 @@ export function SignupAccess({
   }, [celebrating, reduceMotion]);
 
   if (unlocked && !celebrating) return <>{children}</>;
-  return <AccessCodeGate codeShape={codeShape} granted={unlocked} inviteRequired={inviteRequired} />;
+  return <AccessCodeGate codeShape={codeShape} granted={unlocked} inviteRequired={inviteRequired} loginHref={loginHref} />;
 }
 
 function AccessCodeGate({
   codeShape,
   granted,
   inviteRequired,
-}: Readonly<{ codeShape: CodeShape; granted: boolean; inviteRequired: boolean }>) {
+  loginHref,
+}: Readonly<{ codeShape: CodeShape; granted: boolean; inviteRequired: boolean; loginHref: string }>) {
   const t = useTranslations("AccessGate");
   const authT = useTranslations("Auth");
   const [state, formAction, isPending] = useActionState<AccessCodeState, FormData>(submitAccessCode, {
@@ -215,7 +217,7 @@ function AccessCodeGate({
               </a>
             </div>
 
-            <Link href="/login" className={`auth-text-link ${authStyles.accountLink}`}>
+            <Link href={loginHref} className={`auth-text-link ${authStyles.accountLink}`}>
               {authT("alreadyAccount")}
             </Link>
           </>

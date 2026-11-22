@@ -63,6 +63,7 @@ for filename in (
     '20261116145410_coach_plan_assignments.sql',
     '20261116171039_dated_custom_plans.sql',
     '20261116190000_coach_plan_retract.sql',
+    '20261117095347_coach_fighters_single_time_zone_scan.sql',
     '20261118013000_training_attachments.sql',
     '20261118025648_photo_voice_attachments.sql',
     '20261118043914_attachment_processing_fencing.sql',

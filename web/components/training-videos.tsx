@@ -189,7 +189,7 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
     const controller = new AbortController();
     const request = athlete ? listTrainingAttachments(token, key, controller.signal)
       : athleteId ? listFighterTrainingAttachments(token, athleteId, key, controller.signal) : Promise.resolve([]);
-    request.then(list => { if (!controller.signal.aborted) setRows(list); })
+    request.then(list => { if (!controller.signal.aborted) setRows(Array.isArray(list) ? list : []); })
       .catch(() => { if (!controller.signal.aborted) setRows([]); });
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps

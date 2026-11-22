@@ -254,4 +254,73 @@ test("Google coach signup preserves the choice through confirmation", async ({pa
   await page.getByRole("button",{name:"CONTINUE",exact:true}).click();
   await expect(page).toHaveURL(/\/coach$/);
   expect(requests[0]).toMatchObject({account_type:"coach",accept_terms:true});
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(page).toHaveURL(`${baseURL}/`);
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Continue with Google", exact: true }).click();
+  await expect(page).toHaveURL(`${baseURL}/coach`);
+  expect(requests).toHaveLength(1);
+});
+
+for (const width of [390, 1440]) {
+  test(`coach invitation returns after password sign-in and reload at ${width}px`, async ({ page, baseURL }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await oauth(page, baseURL!, true);
+    await page.route(`${SUPABASE}/auth/v1/token**`, route => json(route, {
+      access_token: "invite-test-token", refresh_token: "invite-refresh",
+      expires_in: 3600, token_type: "bearer", user,
+    }));
+    let connected = false;
+    const invitation = { id: ID, coach_name: "Pilot Coach", invited_email: user.email };
+    await page.route(`${SUPABASE}/rest/v1/rpc/coach_connections_list`, route =>
+      json(route, [{ ...invitation, status: connected ? "accepted" : "pending" }]));
+    await page.route(`${SUPABASE}/rest/v1/rpc/coach_connection_command`, route => {
+      expect(route.request().postDataJSON()).toMatchObject({ p_action: "accept", p_id: ID });
+      connected = true;
+      return width === 390 ? route.abort("failed") : json(route, {});
+    });
+    await page.goto("/settings/coach-access");
+    await expect(page).toHaveURL(`${baseURL}/login?next=%2Fsettings%2Fcoach-access`);
+    async function logIn() {
+      await page.getByRole("button", { name: "Continue with email", exact: true }).click();
+      await page.getByLabel("Email", { exact: true }).fill(user.email);
+      await page.getByLabel("Password", { exact: true }).fill("Southpaw-Jab-Cross-2026");
+      await page.getByRole("button", { name: "Log in", exact: true }).click();
+      await expect(page).toHaveURL(`${baseURL}/settings/coach-access`);
+    }
+    await logIn();
+    await expect(page.getByText("Pilot Coach", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Accept", exact: true }).click();
+    await expect(page.getByText(/^Connected/)).toBeVisible();
+    await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByText(/^Connected/)).toBeVisible();
+    if (width === 1440) {
+      await page.getByRole("button", { name: "Sign out", exact: true }).click();
+      await expect(page).toHaveURL(`${baseURL}/`);
+      await page.goto("/settings/coach-access");
+      await expect(page).toHaveURL(`${baseURL}/login?next=%2Fsettings%2Fcoach-access`);
+      await logIn();
+      await expect(page.getByText(/^Connected/)).toBeVisible();
+    }
+  });
+}
+
+test("coach invitation survives signup and the compliance step", async ({ page, baseURL }) => {
+  const { requests } = await oauth(page, baseURL!);
+  await grantSignupAccess(page, baseURL!);
+  await page.route(`${SUPABASE}/rest/v1/rpc/coach_connections_list`, route => json(route, []));
+  await page.goto("/settings/coach-access");
+  const signup = page.locator('a[href="/signup?next=%2Fsettings%2Fcoach-access"]');
+  await signup.click();
+  await expect(page).toHaveURL(`${baseURL}/signup?next=%2Fsettings%2Fcoach-access`);
+  await expect(page.getByRole("radio", { name: "Athlete", exact: true })).toBeChecked();
+  await page.getByRole("button", { name: "Continue with Google", exact: true }).click();
+  await expect(page).toHaveURL(/\/consent\?next=%2Fsettings%2Fcoach-access&account_type=athlete$/);
+  await page.reload();
+  await page.getByLabel("Date of birth", { exact: true }).fill("1996-05-04");
+  await page.locator("#complianceTerms").check();
+  await page.getByRole("button", { name: "CONTINUE", exact: true }).click();
+  await expect(page).toHaveURL(`${baseURL}/settings/coach-access`);
+  expect(requests).toEqual([{ account_type: "athlete", date_of_birth: "1996-05-04", accept_terms: true }]);
 });

@@ -36,8 +36,9 @@ export function getAthleteWorkspaceHref(me: MeResponse | null): string {
   return FIRST_PLAN_HREF;
 }
 
-/** Only internal plan links may survive a sign-in redirect. */
-export function getSafePlanReturnHref(href: string | null): string | null {
+/** Only known internal deep links may survive a sign-in redirect. */
+export function getSafeAuthReturnHref(href: string | null): string | null {
+  if (href === "/settings/coach-access") return href;
   return href && /^\/plans\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(href) ? href : null;
 }
 
@@ -60,10 +61,12 @@ export function getAuthenticatedLandingHref(me: MeResponse | null, next?: string
   // accounts that predate the consent fields — a signup through the current
   // form already satisfies this.
   if (requiresComplianceAcceptance(me)) {
-    return "/consent";
+    const query = new URLSearchParams();
+    if (next === "/settings/coach-access") query.set("next", next);
+    return query.size ? `/consent?${query}` : "/consent";
   }
 
   // The private trial briefing is no longer a gate between signup and the first
   // plan. It stays readable in Settings and at /private-trial.
-  return getSafePlanReturnHref(next ?? null) ?? getAthleteWorkspaceHref(me);
+  return getSafeAuthReturnHref(next ?? null) ?? getAthleteWorkspaceHref(me);
 }
