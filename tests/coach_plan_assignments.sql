@@ -3,11 +3,22 @@ insert into auth.users(id,email,email_confirmed_at) values
  ('00000000-0000-4000-8000-000000000071','plans-coach@test.invalid',now()),
  ('00000000-0000-4000-8000-000000000072','plans-fighter@test.invalid',now()),
  ('00000000-0000-4000-8000-000000000073','plans-other@test.invalid',now());
-insert into public.profiles(id,email,role,full_name,health_data_consent)
- select id,email,case when email like 'plans-coach%' then 'coach'::public.app_role else 'athlete'::public.app_role end,'Plan author',true
- from auth.users where email like 'plans-%';
-insert into public.coach_connections(coach_id,athlete_id,invited_email,status,accepted_at)
- values('00000000-0000-4000-8000-000000000071','00000000-0000-4000-8000-000000000072','plans-fighter@test.invalid','accepted',now());
+insert into public.profiles(id,email,full_name,health_data_consent)
+ select id,email,'Plan author',true from auth.users where email like 'plans-%';
+set local role service_role;
+select public.select_signup_account_type('00000000-0000-4000-8000-000000000071','coach');
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000071',true);
+select public.coach_connection_command('invite',p_email=>'plans-fighter@test.invalid') as plan_invitation \gset
+select pg_temp.assert_ok(public.coach_connection_command('invite',p_email=>'plans-fighter@test.invalid')=:'plan_invitation'::uuid,'invite retry returns the same connection');
+select pg_temp.assert_ok(public.coach_fighters()='[]'::jsonb,'pending fighter does not appear in the roster');
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000072',true);
+select pg_temp.assert_ok(public.coach_connections_list()#>>'{0,id}'=:'plan_invitation','verified fighter sees the pending invitation');
+select public.coach_connection_command('accept',:'plan_invitation',p_weight=>true,p_recovery=>true);
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000071',true);
+select pg_temp.assert_ok(public.coach_fighters()#>>'{0,id}'='00000000-0000-4000-8000-000000000072','newly enrolled coach sees the fighter after acceptance');
+reset role;
 set local role service_role;
 select public.coach_plan_command('00000000-0000-4000-8000-000000000071','00000000-0000-4000-8000-000000000072','10000000-0000-4000-8000-000000000071','create','{"name":"Coach week","sessions":[],"incomplete":false}');
 select public.coach_plan_command('00000000-0000-4000-8000-000000000071','00000000-0000-4000-8000-000000000072','10000000-0000-4000-8000-000000000071','assign');

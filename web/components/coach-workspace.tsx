@@ -128,6 +128,7 @@ function useLive<T>(fetcher: () => Promise<T>) {
       if (request !== latest.current) return;
       setData(next);
       setError("");
+      return next;
     } catch (e) {
       if (request !== latest.current) return;
       setData(null);
@@ -212,6 +213,9 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
       if (action === "invite") setEmail("");
       await reload();
     } catch (e) {
+      // A lost response may follow a committed acceptance. Read the saved state before asking for a retry.
+      const current = action === "accept" ? await reload() : undefined;
+      if (current?.some(row => row.id === id && row.status === "accepted")) return;
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
       setBusy(false);

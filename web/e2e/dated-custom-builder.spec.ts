@@ -94,7 +94,7 @@ for (const role of ['athlete', 'coach']) for (const width of [390, 1440]) {
     await page.getByRole('button', { name: /^Quick dose for/ }).click();
     const dose = page.getByRole('group', { name: /^Quick dose for/ });
     await dose.getByLabel('Rounds', { exact: true }).fill('5');
-    await page.getByRole('button', { name: 'Done editing dose', exact: true }).click();
+    await dose.getByRole('button', { name: 'Done', exact: true }).click();
     await page.getByRole('button', { name: 'Month', exact: true }).click();
     await expect(calendar.locator('[data-fight-day="true"]')).toBeVisible();
     await expect(page.getByRole('button', { name: /^Open Technical day A on/ })).toHaveCount(2);
@@ -130,7 +130,7 @@ for (const role of ['athlete', 'coach']) for (const width of [390, 1440]) {
       await expect(page.getByText(/Draft saved/)).toBeVisible();
       expect(coachSaved.size).toBe(2);
       page.once('dialog', dialog => dialog.accept());
-      await page.getByRole("button", { name: "Week", exact: true }).click();
+      await page.getByRole("group", { name: "Plan view" }).getByRole("button", { name: "Week", exact: true }).click();
       await expect(page.getByText('Fight day · Mon 23 Nov 2026')).toBeVisible();
       await page.getByRole('button', { name: 'Save draft', exact: true }).click();
       await expect.poll(() => coachSaved.size).toBe(3);
