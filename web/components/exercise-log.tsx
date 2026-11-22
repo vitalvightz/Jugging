@@ -200,15 +200,18 @@ export function ExerciseLogBadge({ block }: { block: StructuredBlock }) {
     return null;
   }
   const summary = logSummary(state.fields, state.log);
+  const needsWeight = asksForFirstLoad(block, state.log, state.logging.recentLoads);
+  const weightHint = state.logging.hideWeightGuidance
+    ? " · Weight missing"
+    : " · Weight missing — open to add or skip";
   // The tick already says "done"; a line is only worth it when there is more.
-  if (state.log.status === "as_prescribed" && summary === EXERCISE_LOG_STATUS_LABELS.as_prescribed
-    && !asksForFirstLoad(block, state.log, state.logging.recentLoads)) {
+  if (state.log.status === "as_prescribed" && summary === EXERCISE_LOG_STATUS_LABELS.as_prescribed && !needsWeight) {
     return null;
   }
   return (
     <span className="ex-row-log" data-status={state.log.status}>
       {summary}
-      {asksForFirstLoad(block, state.log, state.logging.recentLoads) ? " · Weight missing — open to add or skip" : ""}
+      {needsWeight ? weightHint : ""}
     </span>
   );
 }

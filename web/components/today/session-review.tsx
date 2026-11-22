@@ -2,7 +2,7 @@
 
 import "./session-review.css";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { lockOverlayScroll } from "@/lib/overlay-scroll-lock";
 
@@ -68,6 +68,9 @@ export function SessionReview({
   const [reviewHint, dismissReviewHint] = useSeenOnce("discovery-session-review-seen");
   const fieldId = useId();
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const rehabRef = useRef<HTMLDivElement | null>(null);
+  const painRef = useRef<HTMLDivElement | null>(null);
+  const reasonRef = useRef<HTMLTextAreaElement | null>(null);
   // Starts at the planned effort: a session that went to plan is a tap to confirm.
   const [plannedRpe] = useState(() => plannedSessionRpe(sessions));
   const [sessionRpe, setSessionRpe] = useState<number | null>(plannedRpe);
@@ -91,12 +94,40 @@ export function SessionReview({
   const blockedReason = outcome.status === "done" ? doneBlockedReason : undefined;
 
   useEffect(() => {
+    const dialog = dialogRef.current;
+    const previousFocus = document.activeElement;
     const releaseScroll = lockOverlayScroll();
-    dialogRef.current?.focus({ preventScroll: true });
+    dialog?.focus({ preventScroll: true });
     return () => {
       releaseScroll();
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected &&
+          (dialog?.contains(document.activeElement) || document.activeElement === document.body)) {
+        previousFocus.focus({ preventScroll: true });
+      }
     };
   }, []);
+
+  function handleReviewKeys(event: KeyboardEvent<HTMLDivElement>) {
+    const dialog = event.currentTarget;
+    if (event.defaultPrevented || !dialog.contains(event.target as Node)) return;
+    if (event.key === "Escape" && !busy) {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const controls = Array.from(dialog.querySelectorAll<HTMLElement>(
+      'button, input, textarea, select, summary, a[href], [tabindex="0"]',
+    )).filter((control) => control.tabIndex >= 0 && !control.matches(":disabled") &&
+      !control.closest("[inert]") && control.getClientRects().length > 0);
+    const first = controls[0];
+    const last = controls.at(-1);
+    if (document.activeElement === dialog || !first ||
+        document.activeElement === (event.shiftKey ? first : last)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first)?.focus();
+    }
+  }
 
   async function tickRest() {
     if (!logging?.saveMany || unloggedCount === 0 || writeInFlight.current || isSubmitting) return;
@@ -124,14 +155,22 @@ export function SessionReview({
     setError(null);
     if (blockedReason) {
       setError(blockedReason);
+      rehabRef.current?.querySelector<HTMLElement>("button:not(:disabled), input:not(:disabled)")?.focus();
       return;
     }
-    if (needsReviewFields && (sessionRpe === null || (canCollectPain && painAfter === null))) {
-      setError(canCollectPain ? "Add session effort and pain-after before saving." : "Add session effort before saving.");
+    if (needsReviewFields && sessionRpe === null) {
+      setError("Add session effort before saving.");
+      document.getElementById(`${fieldId}-session-rpe`)?.focus();
+      return;
+    }
+    if (needsReviewFields && canCollectPain && painAfter === null) {
+      setError("Add pain after before saving.");
+      painRef.current?.querySelector<HTMLElement>('[role="radiogroup"]')?.focus();
       return;
     }
     if (outcome.status !== "done" && !reason.trim()) {
-      setError("Say briefly what changed.");
+      setError(outcome.status === "skipped" ? "Say briefly why you skipped the session." : "Say briefly what changed.");
+      reasonRef.current?.focus();
       return;
     }
     writeInFlight.current = true;
@@ -170,103 +209,122 @@ export function SessionReview({
         ref={dialogRef}
         className="today-review-sheet"
         tabIndex={-1}
-        onKeyDown={(event) => {
-          if (event.key === "Escape" && !busy) onClose();
-        }}
+        onKeyDown={handleReviewKeys}
       >
-        <header className="today-review-head">
-          <div>
-            <p className="kicker">Session review</p>
-            <h2 id={`${fieldId}-title`}>{title}</h2>
-            <p className="today-review-count" aria-live="polite">
-              {outcome.total === 0
-                ? "Nothing to tick. Add how it felt and save."
-                : `${outcome.logged} of ${outcome.total} exercises logged`}
-            </p>
-          </div>
-          <button
-            type="button"
-            className="today-review-close"
-            onClick={onClose}
-            disabled={busy}
-            aria-label="Back to Today"
-          >
-            ×
-          </button>
-        </header>
+        <div className="today-review-content">
+          <header className="today-review-head">
+            <div>
+              <p className="kicker">Session review</p>
+              <h2 id={`${fieldId}-title`}>{title}</h2>
+              <p className="today-review-count" aria-live="polite">
+                {outcome.total === 0
+                  ? "Nothing to tick. Add how it felt and save."
+                  : `${outcome.logged} of ${outcome.total} exercises logged`}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="today-review-close"
+              onClick={onClose}
+              disabled={busy}
+              aria-label="Back to Today"
+            >
+              ×
+            </button>
+          </header>
 
-        {reviewHint && logging && outcome.total > 0 ? (
-          <OnceHint className="today-review-discovery" onDismiss={dismissReviewHint}
-            label={canRateLifts
-              ? "Tap an exercise to edit or rate it. Your results guide next time."
-              : "Tap an exercise to check or change your results."} />
-        ) : <p className="today-review-hint">{hint}</p>}
-        {extraAction || (unloggedCount > 0 && logging?.saveMany) ? (
-          <div className="today-review-chips">
-            {extraAction}
-            {unloggedCount > 0 && logging?.saveMany ? (
-              <button
-                type="button"
-                className="today-review-chip"
-                onClick={() => void tickRest()}
-                disabled={busy}
-              >
-                {tickingRest ? "Ticking…" : `Tick the other ${unloggedCount} as done`}
-              </button>
-            ) : null}
-          </div>
-        ) : null}
-
-        <div className="today-review-blocks">{blocks}</div>
-
-        <div className="today-review-footer today-completion-form">
-          {rehabChoice}
-          {needsReviewFields ? (
-            <div className="today-completion-fields">
-              <div className="field">
-                <span>How hard was the whole session?</span>
-                {plannedRpe !== null ? (
-                  <p className="today-review-planned">
-                    Set to the effort your plan asked for. Move it if it felt different.
-                  </p>
-                ) : null}
-                <EffortSlider
-                  id={`${fieldId}-session-rpe`}
-                  ariaLabel="Session effort"
-                  value={sessionRpe}
-                  onChange={setSessionRpe}
-                />
-              </div>
-              {canCollectPain ? (
-                <div className="field">
-                  <span>Pain after</span>
-                  <FaceScale value={painAfter} onChange={setPainAfter} />
-                </div>
+          {reviewHint && logging && outcome.total > 0 ? (
+            <OnceHint className="today-review-discovery" onDismiss={dismissReviewHint}
+              label={canRateLifts
+                ? "Tap an exercise to edit or rate it. Your results guide next time."
+                : "Tap an exercise to check or change your results."} />
+          ) : <p className="today-review-hint">{hint}</p>}
+          {extraAction || (unloggedCount > 0 && logging?.saveMany) ? (
+            <div className="today-review-chips">
+              {extraAction}
+              {unloggedCount > 0 && logging?.saveMany ? (
+                <button
+                  type="button"
+                  className="today-review-chip"
+                  onClick={() => void tickRest()}
+                  disabled={busy}
+                >
+                  {tickingRest ? "Marking…" : "Mark remaining exercises done"}
+                </button>
               ) : null}
             </div>
           ) : null}
-          {outcome.status !== "done" ? (
-            <label className="field" htmlFor={`${fieldId}-reason`}>
-              <span>{outcome.status === "skipped" ? "Why it was skipped" : "What changed"}</span>
-              <textarea
-                id={`${fieldId}-reason`}
-                value={reason}
-                maxLength={2000}
-                rows={2}
-                onChange={(event) => setReasonEdit(event.target.value)}
-              />
-            </label>
-          ) : null}
-          <label className="field" htmlFor={`${fieldId}-notes`}>
-            <span>Session Notes (optional)</span>
-            <textarea
-              id={`${fieldId}-notes`}
-              value={notes}
-              maxLength={2000}
-              rows={2}
-              onChange={(event) => setNotes(event.target.value)}
-            />
-          </label>
+
+          <div className="today-review-blocks">{blocks}</div>
+
+          <div className="today-review-fields today-completion-form">
+            {rehabChoice ? <div ref={rehabRef}>{rehabChoice}</div> : null}
+            {needsReviewFields ? (
+              <div className="today-completion-fields">
+                <div className="field">
+                  <span>How hard was the whole session?</span>
+                  {plannedRpe !== null ? (
+                    <p className="today-review-planned">
+                      Set to the effort your plan asked for. Move it if it felt different.
+                    </p>
+                  ) : null}
+                  <EffortSlider
+                    id={`${fieldId}-session-rpe`}
+                    ariaLabel="Session effort"
+                    value={sessionRpe}
+                    onChange={(value) => {
+                      setSessionRpe(value);
+                      setError(null);
+                    }}
+                  />
+                </div>
+                {canCollectPain ? (
+                  <div className="field" ref={painRef}>
+                    <span>Pain after</span>
+                    <FaceScale value={painAfter} onChange={(value) => {
+                      setPainAfter(value);
+                      setError(null);
+                    }} />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {outcome.status !== "done" ? (
+              <label className="field" htmlFor={`${fieldId}-reason`}>
+                <span>{outcome.status === "skipped" ? "Why it was skipped" : "What changed"}</span>
+                <textarea
+                  id={`${fieldId}-reason`}
+                  ref={reasonRef}
+                  value={reason}
+                  maxLength={2000}
+                  rows={2}
+                  onChange={(event) => {
+                    setReasonEdit(event.target.value);
+                    setError(null);
+                  }}
+                />
+              </label>
+            ) : null}
+            <details className="today-review-notes">
+              <summary>Add notes</summary>
+              <label className="field" htmlFor={`${fieldId}-notes`}>
+                <span className="sr-only">Session Notes (optional)</span>
+                <textarea
+                  id={`${fieldId}-notes`}
+                  value={notes}
+                  maxLength={2000}
+                  rows={2}
+                  onChange={(event) => setNotes(event.target.value)}
+                />
+              </label>
+            </details>
+          </div>
+        </div>
+
+        <footer className="today-review-save">
+          <p className="today-review-outcome" aria-live="polite">
+            Save as <strong>{outcome.status === "done" ? "completed" : outcome.status}</strong>
+          </p>
           {unloggedCount > 0 ? (
             <p className="today-review-unlogged">
               {unloggedCount === 1
@@ -287,7 +345,7 @@ export function SessionReview({
           >
             {isSubmitting || saving ? "Saving..." : outcome.status === "skipped" ? "Save as skipped" : "Save session"}
           </button>
-        </div>
+        </footer>
       </div>
     </div>
   );
