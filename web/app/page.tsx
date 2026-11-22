@@ -150,7 +150,6 @@ function WorkspaceOverviewSkeleton({ showCountdown = false }: { showCountdown?: 
       <section
         className="hero-panel overview-command-shell overview-command-primary athlete-motion-slot athlete-motion-header"
         aria-busy="true"
-        data-startup-pending
       >
         <div className="overview-primary-grid">
           <div className="status-card overview-command-card overview-decision-lead">
@@ -525,7 +524,7 @@ export default function HomePage() {
 
   if (!isReady) {
     return (
-      <section className="panel loading-card" data-startup-pending>
+      <section className="panel loading-card">
         <p className="kicker">Unlxcking…</p>
         <h1>Loading your athlete workspace</h1>
         <p className="muted">Checking saved intake and plan history.</p>
@@ -539,7 +538,7 @@ export default function HomePage() {
 
   if (session && isMeHydrated && !me) {
     return (
-      <section className="panel loading-card" data-startup-pending>
+      <section className="panel loading-card">
         <p className="kicker">Home</p>
         <h1>Redirecting to login</h1>
         <p className="muted">Session expired. Sign in again.</p>
@@ -548,7 +547,7 @@ export default function HomePage() {
   }
 
   if (session && me) {
-    if (needsStartingPath(me)) return <p role="status" data-startup-pending>Opening your starting options…</p>;
+    if (needsStartingPath(me)) return <p role="status">Opening your starting options…</p>;
     if (me.profile.starting_path === "tracking_first") {
       if (!commandState && !commandError) return <WorkspaceOverviewSkeleton />;
       if (!commandState && commandError) return <section className="panel"><h1>Today is temporarily unavailable</h1><p role="alert">Couldn’t load your training workspace.</p><button type="button" className="secondary-button" onClick={() => void loadCommandState()}>Retry Today</button></section>;
