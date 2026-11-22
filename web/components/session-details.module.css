@@ -53,6 +53,7 @@
 .bar { width: 56px; height: 4px; border-radius: 4px; background: var(--border-default); overflow: hidden; }
 .bar > span { display: block; height: 100%; border-radius: inherit; background: var(--text-secondary); }
 .bar[data-full="true"] > span { background: var(--success-ink); }
+:global(html[data-theme="light"]) .bar:not([data-full="true"]) > span { background: var(--progress-gold); }
 .compareRows { display: grid; gap: 6px; margin: 0; font-size: 14px; }
 .compareRows > div { display: flex; justify-content: space-between; gap: 4px 12px; flex-wrap: wrap; }
 .compareRows dt { color: var(--text-muted); }
