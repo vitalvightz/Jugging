@@ -72,6 +72,7 @@ import {
   sortTrainingHistory,
   type TrainingHistorySession,
 } from "@/lib/training-history";
+import { planRelevance, useCoachMode, type CoachMode } from "@/lib/coach-mode";
 import styles from "./coach-workspace.module.css";
 import summary from "./training-summary.module.css";
 import weightStyles from "./weight-tracker.module.css";
@@ -87,10 +88,11 @@ export function CoachWorkspace({
 }) {
   const { session, me, isMeHydrated } = useAppSession();
   const coach = me?.profile.role === "coach" || me?.profile.role === "admin";
+  const { coachMode, ready: coachModeReady } = useCoachMode(isMeHydrated && coach && session ? session.user_id : null);
   return (
     <RequireAuth>
       <div className={`${styles.workspace} ${view === "plans" ? styles.plansWorkspace : ""}`}>
-        {!isMeHydrated || !session || !me ? (
+        {!isMeHydrated || !session || !me || (coach && !coachModeReady) ? (
           <Loading />
         ) : connectionsOnly || !coach ? (
           <CoachAccess
@@ -104,6 +106,7 @@ export function CoachWorkspace({
             token={session.access_token}
             fighterId={fighterId}
             view={view}
+            coachMode={coachMode}
           />
         )}
       </div>
@@ -373,7 +376,7 @@ function PendingInvite({ connection, busy, onCancel }: { connection: Connection;
   );
 }
 
-function Fighters({ token, fighterId, view }: { token: string; fighterId?: string; view: string }) {
+function Fighters({ token, fighterId, view, coachMode }: { token: string; fighterId?: string; view: string; coachMode: CoachMode }) {
   const fetcher = useCallback(
     () =>
       coachRpc<Fighter[]>(token, "coach_fighters", {
@@ -397,6 +400,7 @@ function Fighters({ token, fighterId, view }: { token: string; fighterId?: strin
         )}
         {view !== "plans" && loggingFighters.length ? (
           <LogTraining
+            coachMode={coachMode}
             accessToken={token}
             autoOpen={view === "log"}
             variant="primary"
@@ -413,16 +417,17 @@ function Fighters({ token, fighterId, view }: { token: string; fighterId?: strin
           />
         ) : null}
       </div>}
-      {view === "plans" && fighters ? <CoachPlans key={token} token={token} fighters={fighters} /> : view === "log" && fighters && !loggingFighters.length ? <p className={styles.empty}>No fighters have authorised session logging.</p> : view === "log" && fighters ? <DiscoveryHint id="coach-log-consent" text="You can only log for fighters who said yes." /> : null}
+      {view === "plans" && fighters ? <CoachPlans key={token} token={token} fighters={fighters} coachMode={coachMode} /> : view === "log" && fighters && !loggingFighters.length ? <p className={styles.empty}>No fighters have authorised session logging.</p> : view === "log" && fighters ? <DiscoveryHint id="coach-log-consent" text="You can only log for fighters who said yes." /> : null}
       {fighterId ? <h1 className={styles.srOnly}>Fighter overview</h1> : null}
       <LoadState error={error} loading={!fighters} retry={reload} />
       {!fighters ? null : !fighterId ? (
-        view === "plans" || view === "log" ? null : <CoachDashboard token={token} fighters={fighters} rosterOnly={view === "fighters"} />
+        view === "plans" || view === "log" ? null : <CoachDashboard token={token} fighters={fighters} rosterOnly={view === "fighters"} coachMode={coachMode} />
       ) : fighters[0] ? (
         <FighterOverview
           fighter={fighters[0]}
           token={token}
           historyKey={logged}
+          coachMode={coachMode}
         />
       ) : (
         <section className={styles.panel}>
@@ -434,7 +439,7 @@ function Fighters({ token, fighterId, view }: { token: string; fighterId?: strin
   );
 }
 
-function CoachDashboard({ token, fighters, rosterOnly = false }: { token: string; fighters: Fighter[]; rosterOnly?: boolean }) {
+function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { token: string; fighters: Fighter[]; rosterOnly?: boolean; coachMode: CoachMode }) {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [weights, setWeights] = useState<Record<string, { token: string; connectionId: string; weight: CoachFighterWeight | null; failed: boolean }>>({});
@@ -477,6 +482,11 @@ function CoachDashboard({ token, fighters, rosterOnly = false }: { token: string
         row.fighter.fight_date! <= dayOffset(row.fighter.today, 30),
     )
     .sort((a, b) => a.fighter.fight_date!.localeCompare(b.fighter.fight_date!));
+  const recognised = fighters.some(f => f.schedule.some(s => planRelevance(s.type) !== "shared"));
+  const scheduled = fighters.reduce((count, fighter) => {
+    const start = weekStart(fighter.today), end = dayOffset(start, 6);
+    return count + fighter.schedule.filter(s => s.day >= start && s.day <= end && planRelevance(s.type) === coachMode).length;
+  }, 0);
   const visible = rows.filter(({ fighter }) =>
     `${fighter.name} ${fighter.sport ?? ""}`
       .toLowerCase()
@@ -508,6 +518,7 @@ function CoachDashboard({ token, fighters, rosterOnly = false }: { token: string
             </strong>
           </article>
         ))}
+        {recognised ? <article className={styles.metric}><span>{coachMode === "technical" ? "Technical" : "S&C"} scheduled this week</span><strong>{scheduled}</strong></article> : null}
       </section>
       {attention.length ? (
         <section className={styles.panel} aria-label="Needs attention">
@@ -692,10 +703,12 @@ function FighterOverview({
   fighter: f,
   token,
   historyKey,
+  coachMode,
 }: {
   fighter: Fighter;
   token: string;
   historyKey: number;
+  coachMode: CoachMode;
 }) {
   const summary = fighterSummary(f);
   const [weightResult, setWeightResult] = useState<{ key: string; weight: CoachFighterWeight | null; failed: boolean } | null>(null);
