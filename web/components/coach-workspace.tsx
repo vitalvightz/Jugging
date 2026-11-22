@@ -4,7 +4,6 @@ import { DiscoveryHint } from "@/components/once-hint";
 import Link from "next/link";
 import Image from "next/image";
 import {
-  Fragment,
   useCallback,
   useEffect,
   useRef,
@@ -16,7 +15,7 @@ import { createPortal } from "react-dom";
 import { RequireAuth } from "@/components/auth-guard";
 import { ManualExerciseLogger } from "@/components/manual-exercise-logger";
 import { CoachPlans } from "./coach-plans";
-import { CoachFeedback } from "./coach-feedback";
+import { CoachFeedback, LatestCoachFeedback } from "./coach-feedback";
 import { FighterMediaPanel } from "./fighter-media";
 import { LogTraining } from "@/components/log-training";
 import { useAppSession } from "@/components/auth-provider";
@@ -444,6 +443,61 @@ function Fighters({ token, fighterId, view, coachMode }: { token: string; fighte
   );
 }
 
+function physicalWeek(fighter: Fighter, start = weekStart(fighter.today)) {
+  const end = dayOffset(start, 6);
+  const scheduled = fighter.schedule.filter(row => row.day >= start && row.day <= end && planRelevance(row.type) === "sc");
+  const done = scheduled.filter(row => fighter.sessions.some(log =>
+    log.session_id === row.id && log.plan_id === fighter.plan_id && log.day === row.day && completed(log)));
+  return { done: done.length, scheduled: scheduled.length };
+}
+
+function physicalSummary(week: ReturnType<typeof physicalWeek>) {
+  return week.scheduled ? `${week.done} of ${week.scheduled} scheduled sessions completed` : "No S&C sessions scheduled this week.";
+}
+
+function latestReport(fighter: Fighter, start = "") {
+  return fighter.sparring_reports?.filter(row => row.day >= start && row.day <= fighter.today)
+    .sort((a, b) => b.day.localeCompare(a.day))[0];
+}
+
+function reportSummary(report: NonNullable<Fighter["sparring_reports"]>[number]) {
+  return `${formatAppDate(report.day)} · ${report.rounds} rounds · ${humanize(report.intensity)}`;
+}
+
+function RosterHighlight({ fighters, coachMode, token }: { fighters: Fighter[]; coachMode: CoachMode; token: string }) {
+  if (coachMode === "technical") {
+    const latest = fighters.flatMap(fighter => {
+      const report = latestReport(fighter, weekStart(fighter.today));
+      return report ? [{ fighter, report }] : [];
+    }).sort((a, b) => b.report.day.localeCompare(a.report.day))[0];
+    return <section className={styles.panel}><h2>Latest sparring this week</h2>
+      {latest ? <p><Link href={`/coach/fighters/${latest.fighter.id}`}>{latest.fighter.name || "Fighter"}</Link> · {reportSummary(latest.report)}</p> : <p>No sparring report available this week.</p>}
+    </section>;
+  }
+  return <RosterPhysicalWeek fighters={fighters} token={token} />;
+}
+
+function RosterPhysicalWeek({ fighters, token }: { fighters: Fighter[]; token: string }) {
+  const [result, setResult] = useState<{ roster: Fighter[]; summary: string }>();
+  useEffect(() => {
+    let active = true;
+    // Only the fighter-scoped form of this read-only RPC includes the schedule.
+    // Use the same snapshot and completion rules as the fighter profile.
+    Promise.all(fighters.filter(f => f.plan_id).map(async fighter => {
+      const [detail] = await coachRpc<Fighter[]>(token, "coach_fighters", { p_athlete_id: fighter.id });
+      if (detail?.id !== fighter.id) throw Error("Fighter unavailable");
+      return physicalWeek(detail);
+    })).then(weeks => {
+      const total = weeks.reduce((sum, week) => ({ done: sum.done + week.done, scheduled: sum.scheduled + week.scheduled }), { done: 0, scheduled: 0 });
+      if (active) setResult({ roster: fighters, summary: physicalSummary(total) });
+    }).catch(() => {
+      if (active) setResult({ roster: fighters, summary: "Roster schedule unavailable" });
+    });
+    return () => { active = false; };
+  }, [fighters, token]);
+  return <section className={styles.panel}><h2>Roster S&amp;C this week</h2><p>{result?.roster === fighters ? result.summary : "Loading roster schedule…"}</p><small>Based on each fighter’s local training week.</small></section>;
+}
+
 function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { token: string; fighters: Fighter[]; rosterOnly?: boolean; coachMode: CoachMode }) {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -487,11 +541,6 @@ function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { to
         row.fighter.fight_date! <= dayOffset(row.fighter.today, 30),
     )
     .sort((a, b) => a.fighter.fight_date!.localeCompare(b.fighter.fight_date!));
-  const recognised = fighters.some(f => f.schedule.some(s => planRelevance(s.type) !== "shared"));
-  const scheduled = fighters.reduce((count, fighter) => {
-    const start = weekStart(fighter.today), end = dayOffset(start, 6);
-    return count + fighter.schedule.filter(s => s.day >= start && s.day <= end && planRelevance(s.type) === coachMode).length;
-  }, 0);
   const visible = rows.filter(({ fighter }) =>
     `${fighter.name} ${fighter.sport ?? ""}`
       .toLowerCase()
@@ -523,7 +572,6 @@ function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { to
             </strong>
           </article>
         ))}
-        {recognised ? <article className={styles.metric}><span>{coachMode === "technical" ? "Technical" : "S&C"} scheduled this week</span><strong>{scheduled}</strong></article> : null}
       </section>
       {attention.length ? (
         <section className={styles.panel} aria-label="Needs attention">
@@ -540,6 +588,7 @@ function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { to
           </ul>
         </section>
       ) : null}
+      <RosterHighlight token={token} fighters={fighters} coachMode={coachMode} />
       {upcoming.length ? (
         <section className={styles.panel}>
           <h2>Upcoming fights</h2>
@@ -736,21 +785,7 @@ function FighterOverview({
   const end = dayOffset(week, 6);
   const weekly = f.sessions.filter((s) => s.day >= week && s.day <= end);
   const done = weekly.filter(completed);
-  const strength = f.schedule.filter(
-    (s) =>
-      s.day >= week &&
-      s.day <= end &&
-      ["strength_power", "conditioning"].includes(s.type),
-  );
-  const strengthDone = strength.filter((s) =>
-    f.sessions.some(
-      (c) =>
-        c.session_id === s.id &&
-        c.plan_id === f.plan_id &&
-        c.day === s.day &&
-        completed(c),
-    ),
-  ).length;
+  const physical = physicalWeek(f, week);
   const reports =
     f.sparring_reports?.filter((s) => s.day >= week && s.day <= end) ?? [];
   const rpe = done.flatMap((s) =>
@@ -782,145 +817,11 @@ function FighterOverview({
   const warnings = coachCheckInValues(recoveryRecent ? latest?.readings ?? [] : []).filter(value => value.tone === "caution" || value.tone === "concern");
   const injuries = f.share_injuries ? f.injuries ?? [] : [];
   const injuryTone = injuries.some(injury => injury.severity === "severe") ? "concern" : injuries.some(injury => ["mild", "moderate"].includes(injury.severity)) ? "caution" : "unknown";
+  const [feedbackRevision, setFeedbackRevision] = useState(0);
+  const onFeedbackSaved = () => setFeedbackRevision(value => value + 1);
+  const recentReport = latestReport(f);
+  const readiness = f.share_recovery ? (f.recovery ?? []).filter(r => r.day <= f.today && r.readiness != null).sort((a, b) => b.day.localeCompare(a.day))[0] : undefined;
   const unknown = f.share_recovery ? "Not recorded" : "Not shared";
-  const coachSections = {
-    performance: <>
-      <FoldableSection title="Weekly performance"><section aria-label="Weekly performance">
-        <DiscoveryHint id="coach-week-arrows" text="Use the arrows to see other weeks." />
-        <div className={styles.sectionHeading}>
-          <h2>Weekly performance</h2>
-          <div className={styles.weekControls}>
-            <button
-              type="button"
-              className={styles.pill}
-              aria-label="Previous week"
-              disabled={week <= weekStart(dayOffset(f.today, -49))}
-              onClick={() => { setWeek(dayOffset(week, -7)); setAllSparring(false); }}
-            >
-              Previous
-            </button>
-            <span>
-              {week === weekStart(f.today) ? "This week" : formatAppDate(week)}
-            </span>
-            <button
-              type="button"
-              className={styles.pill}
-              aria-label="Next week"
-              disabled={week >= weekStart(f.today)}
-              onClick={() => { setWeek(dayOffset(week, 7)); setAllSparring(false); }}
-            >
-              Next
-            </button>
-          </div>
-        </div>
-        <div className={styles.metrics}>
-          {[
-            ["Sessions", done.length],
-            [
-              "Average RPE",
-              rpe.length
-                ? (rpe.reduce((a, b) => a + b, 0) / rpe.length).toFixed(1)
-                : "—",
-            ],
-            [
-              "S&C completed",
-              strength.length ? `${strengthDone}/${strength.length}` : "—",
-            ],
-            ["Minutes", minutes || "—"],
-          ].map(([label, value]) => (
-            <article className={styles.metric} key={label}>
-              <span>{label}</span>
-              <strong>{value}</strong>
-            </article>
-          ))}
-        </div>
-      </section>
-      </FoldableSection>
-    </>,
-    sparring: <>
-      <FoldableSection id="sparring" title="Sparring">{reports.length ? (
-        <section className={styles.panel}>
-          <div className={styles.sectionHeading}>
-            <h2>Sparring</h2>
-            <span className={styles.muted}>
-              {reports.length} {reports.length === 1 ? "report" : "reports"}
-            </span>
-          </div>
-          <p className={styles.muted}>Recent sparring activity</p>
-          <div className={styles.sparringStats}>
-            <div><strong>{reports.reduce((sum, report) => sum + report.rounds, 0)}</strong><small>Rounds</small></div>
-            <div><strong>{reports.length}</strong><small>Reports</small></div>
-            <div><strong>{reports.filter(report => report.intensity === "hard").length}</strong><small>Hard</small></div>
-          </div>
-          <ul className={styles.sparringReports}>
-            {[...reports].sort((a, b) => b.day.localeCompare(a.day)).slice(0, allSparring ? undefined : 3).map((s) => (
-              <li key={s.id}>
-                <div className={styles.sectionHeading}><strong>{formatAppDate(s.day)}</strong>
-                  <span className={styles.intensity} data-intensity={s.intensity}>{s.intensity === "medium" ? "Moderate" : humanize(s.intensity)}</span></div>
-                <p>{s.rounds} rounds{f.share_injuries && s.head_contact != null ? ` · ${s.head_contact === "none" ? "No head contact" : `${humanize(s.head_contact)} head contact`}` : ""}</p>
-                {f.share_injuries && s.rocked ? <p className={styles.rocked} role="note">⚠ Athlete reported being rocked</p> : null}
-                <CoachFeedback key={`${sharingKey}:${s.id}`} token={token} athleteId={f.id} source="sparring" targetId={s.id} editable={f.can_leave_feedback === true} />
-              </li>
-            ))}
-          </ul>
-          {reports.length > 3 ? <button type="button" className="ghost-button" aria-expanded={allSparring} onClick={() => setAllSparring(!allSparring)}>{allSparring ? "Show recent reports" : "View all reports"}</button> : null}
-        </section>
-      ) : (
-        <section className={styles.panel}>
-          <h2>Sparring</h2>
-          <p className={styles.empty}>No sparring reports this week</p>
-        </section>
-      )}
-      </FoldableSection>
-    </>,
-    weight: <>
-      {/* A new key when sharing changes drops everything these loaded
-          (weigh-ins, session rows, cached session records, an open record
-          sheet) and reloads it under the new permissions. */}
-      <FoldableSection id="fight-weight" title="Fight weight"><FightWeight key={`weight:${sharingKey}`} fighter={f} weight={weight} failed={Boolean(weightFailed)} /></FoldableSection>
-    </>,
-    media: <>
-      <FoldableSection id="media" title="Photos and voice notes"><FighterMediaPanel token={token} fighter={f} /></FoldableSection>
-    </>,
-    history: <>
-      <FoldableSection id="training-history" title="Training history"><TrainingHistory
-        key={`history:${sharingKey}:${historyKey}:${f.plan_id}:${f.today}`}
-        token={token}
-        athleteId={f.id}
-        today={f.today}
-        fightDate={f.fight_date}
-        sport={f.sport}
-      /></FoldableSection>
-    </>,
-    recovery: <>
-      <FoldableSection id="recovery" title="Recovery"><section className={styles.panel}>
-        <div className={styles.sectionHeading}><h2>Recovery</h2>{latest ? <small className={styles.muted}>Latest check-in · {formatAppDate(latest.day)}</small> : null}</div>
-        {injuries.length ? <div className={styles.recoveryPriority}>
-          <h3>Open injuries · {injuries.length}</h3>
-          <ul className={styles.activity}>{injuries.map(injury => <li key={injury.id}>
-            <strong>{humanize(injury.body_area)}</strong>
-            <span data-recovery-tone={coachRecoveryTone("injury", injury.severity)}>{humanize(injury.severity)} · {humanize(injury.status)}</span>
-          </li>)}</ul>
-        </div> : !f.share_injuries ? <p className={styles.muted}>Injuries: Not shared</p> : null}
-        {f.share_recovery && warnings.length ? <div className={styles.recoveryPriority}>
-          <strong>Recovery concerns</strong>
-          {warnings.map(value => <p key={value.label} data-recovery-tone={value.tone}>{value.label}</p>)}
-        </div> : f.share_recovery && sleepTone === "good" && bodyTone === "good" ? <p data-recovery-tone="good">Recovery check-in: No new concerns</p> : null}
-        <div className={`${styles.tiles} ${styles.recoveryTiles}`}>
-          <div><span>Sleep</span><strong data-recovery-tone={sleepTone}>{latest && !recoveryRecent ? "Unknown · Older check-in" : latestSleep?.sleep ? humanize(latestSleep.sleep) : latestSleep?.sleep_quality != null ? `${latestSleep.sleep_quality}/5` : unknown}</strong></div>
-          <div><span>Readiness</span><strong data-recovery-tone={bodyTone}>{latest && !recoveryRecent ? "Unknown · Older check-in" : latestBody?.body ? humanize(latestBody.body) : latestBody?.readiness != null ? `${latestBody.readiness}/5` : unknown}</strong></div>
-        </div>
-        {f.share_recovery ? <>
-          <h3>Recent check-ins</h3>
-          {checkIns.length ? <CheckIns rows={allCheckIns ? checkIns : checkIns.slice(0, 3)} /> : <p className={styles.empty}>No check-ins recorded.</p>}
-          {checkIns.length > 3 ? <button type="button" className="ghost-button" aria-expanded={allCheckIns} onClick={() => setAllCheckIns(!allCheckIns)}>{allCheckIns ? "Show recent check-ins" : "View all check-ins"}</button> : null}
-        </> : <p className={styles.muted}>Recovery check-ins: Not shared</p>}
-      </section></FoldableSection>
-    </>,
-  };
-  const sectionOrder = coachMode === "technical"
-    ? (["sparring", "media", "history", "performance", "recovery", "weight"] as const)
-    : (["performance", "recovery", "weight", "sparring", "history", "media"] as const);
   return (
     <>
       <section className={styles.panel}>
@@ -989,7 +890,140 @@ function FighterOverview({
         </li>)}</ul>
         {concerns.length > 3 ? <button type="button" className="ghost-button" aria-expanded={allConcerns} onClick={() => setAllConcerns(!allConcerns)}>{allConcerns ? "Show fewer" : "View all"}</button> : null}
       </section> : null}
-      {sectionOrder.map(name => <Fragment key={name}>{coachSections[name]}</Fragment>)}
+      <section className={styles.panel} aria-label="Coaching highlight">
+        {coachMode === "technical" ? <>
+          <h2>Latest sparring report</h2>
+          <p>{recentReport ? reportSummary(recentReport) : "No sparring report available"}</p>
+          <h2>Latest coach feedback</h2>
+          {f.can_leave_feedback === false ? <p>No feedback available to you</p> :
+            <LatestCoachFeedback key={`${f.connection_id}:${feedbackRevision}`} token={token} athleteId={f.id} />}
+        </> : <>
+          <h2>This fighter’s S&amp;C this week</h2>
+          <p>{physicalSummary(physicalWeek(f))}</p>
+          {f.share_recovery && <p>{readiness ? `Readiness · ${readiness.readiness}/5 · ${formatAppDate(readiness.day)}${readiness.day < dayOffset(f.today, -6) ? " · Older check-in" : ""}` : "No readiness recorded"}</p>}
+        </>}
+      </section>
+      <FoldableSection title="Weekly performance"><section aria-label="Weekly performance">
+        <DiscoveryHint id="coach-week-arrows" text="Use the arrows to see other weeks." />
+        <div className={styles.sectionHeading}>
+          <h2>Weekly performance</h2>
+          <div className={styles.weekControls}>
+            <button
+              type="button"
+              className={styles.pill}
+              aria-label="Previous week"
+              disabled={week <= weekStart(dayOffset(f.today, -49))}
+              onClick={() => { setWeek(dayOffset(week, -7)); setAllSparring(false); }}
+            >
+              Previous
+            </button>
+            <span>
+              {week === weekStart(f.today) ? "This week" : formatAppDate(week)}
+            </span>
+            <button
+              type="button"
+              className={styles.pill}
+              aria-label="Next week"
+              disabled={week >= weekStart(f.today)}
+              onClick={() => { setWeek(dayOffset(week, 7)); setAllSparring(false); }}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+        <div className={styles.metrics}>
+          {[
+            ["Sessions", done.length],
+            [
+              "Average RPE",
+              rpe.length
+                ? (rpe.reduce((a, b) => a + b, 0) / rpe.length).toFixed(1)
+                : "—",
+            ],
+            [
+              "S&C completed",
+              physical.scheduled ? `${physical.done}/${physical.scheduled}` : "—",
+            ],
+            ["Minutes", minutes || "—"],
+          ].map(([label, value]) => (
+            <article className={styles.metric} key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </article>
+          ))}
+        </div>
+      </section>
+      </FoldableSection>
+      <FoldableSection id="sparring" title="Sparring">{reports.length ? (
+        <section className={styles.panel}>
+          <div className={styles.sectionHeading}>
+            <h2>Sparring</h2>
+            <span className={styles.muted}>
+              {reports.length} {reports.length === 1 ? "report" : "reports"}
+            </span>
+          </div>
+          <p className={styles.muted}>Recent sparring activity</p>
+          <div className={styles.sparringStats}>
+            <div><strong>{reports.reduce((sum, report) => sum + report.rounds, 0)}</strong><small>Rounds</small></div>
+            <div><strong>{reports.length}</strong><small>Reports</small></div>
+            <div><strong>{reports.filter(report => report.intensity === "hard").length}</strong><small>Hard</small></div>
+          </div>
+          <ul className={styles.sparringReports}>
+            {[...reports].sort((a, b) => b.day.localeCompare(a.day)).slice(0, allSparring ? undefined : 3).map((s) => (
+              <li key={s.id}>
+                <div className={styles.sectionHeading}><strong>{formatAppDate(s.day)}</strong>
+                  <span className={styles.intensity} data-intensity={s.intensity}>{s.intensity === "medium" ? "Moderate" : humanize(s.intensity)}</span></div>
+                <p>{s.rounds} rounds{f.share_injuries && s.head_contact != null ? ` · ${s.head_contact === "none" ? "No head contact" : `${humanize(s.head_contact)} head contact`}` : ""}</p>
+                {f.share_injuries && s.rocked ? <p className={styles.rocked} role="note">⚠ Athlete reported being rocked</p> : null}
+                <CoachFeedback onSaved={onFeedbackSaved} key={`${sharingKey}:${s.id}`} token={token} athleteId={f.id} source="sparring" targetId={s.id} editable={f.can_leave_feedback === true} />
+              </li>
+            ))}
+          </ul>
+          {reports.length > 3 ? <button type="button" className="ghost-button" aria-expanded={allSparring} onClick={() => setAllSparring(!allSparring)}>{allSparring ? "Show recent reports" : "View all reports"}</button> : null}
+        </section>
+      ) : (
+        <section className={styles.panel}>
+          <h2>Sparring</h2>
+          <p className={styles.empty}>No sparring reports this week</p>
+        </section>
+      )}
+      </FoldableSection>
+      {/* A new key when sharing changes drops everything these loaded
+          (weigh-ins, session rows, cached session records, an open record
+          sheet) and reloads it under the new permissions. */}
+      <FoldableSection id="fight-weight" title="Fight weight"><FightWeight key={`weight:${sharingKey}`} fighter={f} weight={weight} failed={Boolean(weightFailed)} /></FoldableSection>
+      <FoldableSection id="media" title="Photos and voice notes"><FighterMediaPanel token={token} fighter={f} /></FoldableSection>
+      <FoldableSection id="training-history" title="Training history"><TrainingHistory onFeedbackSaved={onFeedbackSaved}
+        key={`history:${sharingKey}:${historyKey}:${f.plan_id}:${f.today}`}
+        token={token}
+        athleteId={f.id}
+        today={f.today}
+        fightDate={f.fight_date}
+        sport={f.sport}
+      /></FoldableSection>
+      <FoldableSection id="recovery" title="Recovery"><section className={styles.panel}>
+        <div className={styles.sectionHeading}><h2>Recovery</h2>{latest ? <small className={styles.muted}>Latest check-in · {formatAppDate(latest.day)}</small> : null}</div>
+        {injuries.length ? <div className={styles.recoveryPriority}>
+          <h3>Open injuries · {injuries.length}</h3>
+          <ul className={styles.activity}>{injuries.map(injury => <li key={injury.id}>
+            <strong>{humanize(injury.body_area)}</strong>
+            <span data-recovery-tone={coachRecoveryTone("injury", injury.severity)}>{humanize(injury.severity)} · {humanize(injury.status)}</span>
+          </li>)}</ul>
+        </div> : !f.share_injuries ? <p className={styles.muted}>Injuries: Not shared</p> : null}
+        {f.share_recovery && warnings.length ? <div className={styles.recoveryPriority}>
+          <strong>Recovery concerns</strong>
+          {warnings.map(value => <p key={value.label} data-recovery-tone={value.tone}>{value.label}</p>)}
+        </div> : f.share_recovery && sleepTone === "good" && bodyTone === "good" ? <p data-recovery-tone="good">Recovery check-in: No new concerns</p> : null}
+        <div className={`${styles.tiles} ${styles.recoveryTiles}`}>
+          <div><span>Sleep</span><strong data-recovery-tone={sleepTone}>{latest && !recoveryRecent ? "Unknown · Older check-in" : latestSleep?.sleep ? humanize(latestSleep.sleep) : latestSleep?.sleep_quality != null ? `${latestSleep.sleep_quality}/5` : unknown}</strong></div>
+          <div><span>Readiness</span><strong data-recovery-tone={bodyTone}>{latest && !recoveryRecent ? "Unknown · Older check-in" : latestBody?.body ? humanize(latestBody.body) : latestBody?.readiness != null ? `${latestBody.readiness}/5` : unknown}</strong></div>
+        </div>
+        {f.share_recovery ? <>
+          <h3>Recent check-ins</h3>
+          {checkIns.length ? <CheckIns rows={allCheckIns ? checkIns : checkIns.slice(0, 3)} /> : <p className={styles.empty}>No check-ins recorded.</p>}
+          {checkIns.length > 3 ? <button type="button" className="ghost-button" aria-expanded={allCheckIns} onClick={() => setAllCheckIns(!allCheckIns)}>{allCheckIns ? "Show recent check-ins" : "View all check-ins"}</button> : null}
+        </> : <p className={styles.muted}>Recovery check-ins: Not shared</p>}
+      </section></FoldableSection>
     </>
   );
 }
@@ -1017,12 +1051,14 @@ const HISTORY_STEP = 10;
 // The athlete's own History, read-only: the same rows and the same session
 // record, read through the coach endpoints that check the connection.
 function TrainingHistory({
+  onFeedbackSaved,
   token,
   athleteId,
   today,
   fightDate,
   sport,
 }: {
+  onFeedbackSaved?: () => void;
   fightDate: string | null;
   sport: string | null;
   today: string;
@@ -1224,7 +1260,7 @@ function TrainingHistory({
       {/* Outside the workspace so its styles never reach the record sheet. */}
       {selected
         ? createPortal(
-            <SessionDetails
+            <SessionDetails onFeedbackSaved={onFeedbackSaved}
               key={`${selected.source}:${selected.id}`}
               row={selected}
               token={token}

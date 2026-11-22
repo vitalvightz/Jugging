@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { libraryRelevance, planRelevance, prioritiseForMode, trainingRelevance, validCoachMode } from "./coach-mode";
+import { planRelevance, prioritiseForMode, trainingRelevance, useCoachMode, validCoachMode } from "./coach-mode";
+import { window } from "../components/test-dom";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
 import type { TrainingPick } from "./training-disciplines";
 
 test("coach modes default safely", () => {
@@ -13,13 +16,6 @@ test("plan type classification keeps mixed, recovery and legacy shared", () => {
   for (const type of ["skill", "sparring"]) assert.equal(planRelevance(type), "technical");
   for (const type of ["strength_power", "conditioning"]) assert.equal(planRelevance(type), "sc");
   for (const type of ["mixed", "recovery", "rest", "", "unknown", null]) assert.equal(planRelevance(type), "shared");
-});
-
-test("library classification is metadata only", () => {
-  assert.equal(libraryRelevance("technical_coordination"), "technical");
-  assert.equal(libraryRelevance("strength_power"), "sc");
-  assert.equal(libraryRelevance("conditioning"), "sc");
-  assert.equal(libraryRelevance("tactical_educational"), "shared");
 });
 
 test("logged work respects structured discipline classifications", () => {
@@ -38,6 +34,31 @@ test("logged work respects structured discipline classifications", () => {
 
 test("relevance order is stable and never drops opposite-mode items", () => {
   const rows = ["strength_power", "skill", "mixed", "sparring", "conditioning", "rest"];
-  assert.deepEqual(prioritiseForMode(rows, "technical", planRelevance), ["skill", "sparring", "mixed", "rest", "strength_power", "conditioning"]);
-  assert.deepEqual(prioritiseForMode(rows, "sc", planRelevance), ["strength_power", "conditioning", "mixed", "rest", "skill", "sparring"]);
+  assert.deepEqual(prioritiseForMode(rows, "technical", planRelevance), ["skill", "sparring", "strength_power", "mixed", "conditioning", "rest"]);
+  assert.deepEqual(prioritiseForMode(rows, "sc", planRelevance), ["strength_power", "conditioning", "skill", "mixed", "sparring", "rest"]);
+});
+
+test("mode is isolated on account change, sign-out and invalid stored values", async () => {
+  const host = window.document.createElement("div");
+  const root = createRoot(host);
+  function Probe({ account }: { account: string | null }) {
+    const { ready, coachMode, setMode } = useCoachMode(account);
+    return createElement("button", { onClick: () => setMode("technical") }, ready ? coachMode : "pending");
+  }
+  const render = async (account: string | null) => {
+    await act(async () => root.render(createElement(Probe, { account })));
+    return host.textContent;
+  };
+  try {
+    assert.equal(await render("a"), "sc");
+    await act(async () => host.querySelector("button")!.click());
+    assert.equal(host.textContent, "technical");
+    assert.equal(await render(null), "pending");
+    window.localStorage.setItem("unlxck:coach-mode:b", "invalid");
+    assert.equal(await render("b"), "sc");
+    assert.equal(await render("a"), "technical");
+  } finally {
+    act(() => root.unmount());
+    window.localStorage.clear();
+  }
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { activityFor, sessionTypes, type TrainingPick } from "./training-disciplines";
 
 export type CoachMode = "technical" | "sc";
@@ -15,6 +15,7 @@ export function validCoachMode(value: unknown): CoachMode {
 }
 
 function readMode(userId: string): CoachMode {
+  if (memory.has(userId)) return memory.get(userId)!;
   try {
     return validCoachMode(window.localStorage.getItem(key(userId)));
   } catch {
@@ -23,21 +24,23 @@ function readMode(userId: string): CoachMode {
 }
 
 function writeMode(userId: string, value: CoachMode) {
-  memory.set(userId, value);
-  try { window.localStorage.setItem(key(userId), value); } catch { /* In-memory fallback. */ }
+  try {
+    window.localStorage.setItem(key(userId), value);
+    memory.delete(userId);
+  } catch { memory.set(userId, value); }
   window.dispatchEvent(new Event(EVENT));
 }
 
 /** One account-scoped preference; storage events keep other tabs in sync. */
 export function useCoachMode(userId: string | null | undefined) {
-  const [snapshot, setSnapshot] = useState<{ userId: string; mode: CoachMode } | null>(null);
-  useEffect(() => {
-    if (!userId) { setSnapshot(null); return; }
-    const sync = () => setSnapshot({ userId, mode: readMode(userId) });
+  const subscribe = useCallback((sync: () => void) => {
+    if (!userId) return () => {};
     const onStorage = (event: StorageEvent) => {
-      if (event.key === key(userId) || event.key === null) sync();
+      if (event.key === key(userId) || event.key === null) {
+        memory.delete(userId);
+        sync();
+      }
     };
-    sync();
     window.addEventListener(EVENT, sync);
     window.addEventListener("storage", onStorage);
     return () => {
@@ -45,12 +48,13 @@ export function useCoachMode(userId: string | null | undefined) {
       window.removeEventListener("storage", onStorage);
     };
   }, [userId]);
+  const mode = useSyncExternalStore(subscribe, () => userId ? readMode(userId) : null, () => null);
   const setMode = useCallback((value: CoachMode) => {
     if (userId) writeMode(userId, validCoachMode(value));
   }, [userId]);
   return {
-    coachMode: snapshot?.userId === userId ? snapshot.mode : DEFAULT_COACH_MODE,
-    ready: Boolean(userId && snapshot?.userId === userId),
+    coachMode: mode ?? DEFAULT_COACH_MODE,
+    ready: mode !== null,
     setMode,
   };
 }
@@ -59,12 +63,6 @@ export function useCoachMode(userId: string | null | undefined) {
 export function planRelevance(type: string | null | undefined): CoachRelevance {
   if (type === "skill" || type === "sparring") return "technical";
   if (type === "strength_power" || type === "conditioning") return "sc";
-  return "shared";
-}
-
-export function libraryRelevance(contentType: string | null | undefined): CoachRelevance {
-  if (contentType === "technical_coordination") return "technical";
-  if (contentType === "strength_power" || contentType === "conditioning") return "sc";
   return "shared";
 }
 
@@ -80,8 +78,9 @@ export function trainingRelevance(pick: TrainingPick): CoachRelevance {
   return "shared";
 }
 
-/** Stable sort: preferred, shared, then the other mode. No records are removed. */
-export function prioritiseForMode<T>(items: readonly T[], mode: CoachMode, relevance: (item: T) => CoachRelevance): T[] {
-  const rank = (item: T) => relevance(item) === mode ? 0 : relevance(item) === "shared" ? 1 : 2;
+/** Stable sort: preferred choices first; preserve the remaining choices' original order. No records are removed. */
+export function prioritiseForMode<T>(items: readonly T[], mode: CoachMode | undefined, relevance: (item: T) => CoachRelevance): readonly T[] {
+  if (!mode) return items;
+  const rank = (item: T) => relevance(item) === mode ? 0 : 1;
   return [...items].sort((a, b) => rank(a) - rank(b));
 }

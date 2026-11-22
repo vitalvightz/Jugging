@@ -158,6 +158,7 @@ export function TrainingBlock({ block, index, heading, recordId, open, onToggle,
   feedback?: ReactNode;
   block: SessionDetailBlock; index: number; heading?: string; recordId?: string; open: boolean; onToggle: () => void; numbered?: boolean; compact?: boolean;
   viewer?: Viewer;
+  onFeedbackSaved?: () => void;
   /** The session was entered by a coach, so its exercises were not "added by you". */
   byCoach?: boolean;
 }) {
@@ -208,6 +209,7 @@ function RunRecord({ run, history, onEditRun, viewer }: {
   history: readonly SessionDetailRun[] | null;
   onEditRun?: () => void;
   viewer?: Viewer;
+  onFeedbackSaved?: () => void;
 }) {
   // Bests and comparisons come only from the complete list the server sends,
   // never from a partly loaded History page.
@@ -323,9 +325,10 @@ function RunRecord({ run, history, onEditRun, viewer }: {
   </div>;
 }
 
-export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = true, onEditExercises, onEditRun, actions, viewer, load = getSessionDetails }: {
+export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = true, onEditExercises, onEditRun, actions, viewer, onFeedbackSaved, load = getSessionDetails }: {
   row: TrainingHistorySession; token: string; cache: SessionDetailsCache; onDismiss: () => void;
   viewer?: Viewer;
+  onFeedbackSaved?: () => void;
   /** Reads the record; a coach passes the read scoped to their connected fighter. */
   load?: typeof getSessionDetails;
   /** A suspended parent sheet owns focus restoration during a modal handoff. */
@@ -407,7 +410,7 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
       <AutoHeight swapKey={details ? "loaded" : error ? "error" : "loading"} swapMotion="fade">
         {!details && !error ? <SessionRecordSkeleton /> : null}
         {error ? <div role="alert"><p>Unable to load session details. Try again.</p><button type="button" className="secondary-button" onClick={() => { setError(false); setAttempt(value => value + 1); }}>Retry</button></div> : null}
-        {details?.athlete_id && record ? <CoachFeedback token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} editable={viewer === "coach" && details.coach_feedback_allowed} /> : null}
+        {details?.athlete_id && record ? <CoachFeedback onSaved={onFeedbackSaved} token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} editable={viewer === "coach" && details.coach_feedback_allowed} /> : null}
         {details && record && run ? <div className={styles.recordContent}>
           <RunRecord run={run} history={details.runs ?? null} onEditRun={onEditRun ? () => onEditRun(run) : undefined} viewer={viewer} />
           {details.blocks.length || onEditExercises ? <section className={styles.section}>
@@ -416,7 +419,7 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
                 onClick={() => onEditExercises(run)}>{details.blocks.length ? "Edit exercises" : "Add exercises"}</button> : null}</div>
             <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} numbered={false} compact viewer={viewer} byCoach={facts.logged_by_coach}
               feedback={details.athlete_id && block.feedback_ref ? <>
-                <CoachFeedback key={`${row.id}:${block.feedback_ref}`} token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} exerciseRef={block.feedback_ref} editable={viewer === "coach" && details.coach_feedback_allowed} />
+                <CoachFeedback onSaved={onFeedbackSaved} key={`${row.id}:${block.feedback_ref}`} token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} exerciseRef={block.feedback_ref} editable={viewer === "coach" && details.coach_feedback_allowed} />
                 <TrainingVideos key={`videos:${row.id}:${block.feedback_ref}`} token={token} viewer={viewer ?? "athlete"} athleteId={details.athlete_id}
                   label={block.name} heading="Exercise attachments" emptyText=""
                   target={{ source: row.source, target_id: row.id, exercise_ref: block.feedback_ref }} />
@@ -435,7 +438,7 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
             {details.prescription_source === "exercise_logs" ? <p className={styles.quiet}>Saved exercise logs only. Full prescription and block order unavailable.</p> : null}
             {details.blocks.length ? <ol className={styles.blocks}>{details.blocks.map((block, index) => <TrainingBlock key={index} block={block} index={index} numbered={false} compact viewer={viewer} byCoach={facts.logged_by_coach}
               feedback={details.athlete_id && block.feedback_ref ? <>
-                <CoachFeedback key={`${row.id}:${block.feedback_ref}`} token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} exerciseRef={block.feedback_ref} editable={viewer === "coach" && details.coach_feedback_allowed} />
+                <CoachFeedback onSaved={onFeedbackSaved} key={`${row.id}:${block.feedback_ref}`} token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} exerciseRef={block.feedback_ref} editable={viewer === "coach" && details.coach_feedback_allowed} />
                 <TrainingVideos key={`videos:${row.id}:${block.feedback_ref}`} token={token} viewer={viewer ?? "athlete"} athleteId={details.athlete_id}
                   label={block.name} heading="Exercise attachments" emptyText=""
                   target={{ source: row.source, target_id: row.id, exercise_ref: block.feedback_ref }} />
@@ -446,7 +449,7 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
           {details.sparring ? <section className={styles.section}><h3>Sparring report</h3><p>{details.sparring.rounds_completed} rounds{details.sparring.round_seconds != null ? ` · ${details.sparring.round_seconds} sec` : ""} · {details.sparring.intensity}</p>
             {details.sparring.head_contact ? <p>Head contact: {details.sparring.head_contact}</p> : null}
             {details.sparring.rocked != null ? <p>Rocked: {details.sparring.rocked ? "Yes" : "No"}</p> : null}
-            {details.sparring.id && details.athlete_id ? <CoachFeedback token={token} athleteId={details.athlete_id} source="sparring" targetId={details.sparring.id} editable={viewer === "coach" && details.coach_feedback_allowed} /> : null}
+            {details.sparring.id && details.athlete_id ? <CoachFeedback onSaved={onFeedbackSaved} token={token} athleteId={details.athlete_id} source="sparring" targetId={details.sparring.id} editable={viewer === "coach" && details.coach_feedback_allowed} /> : null}
             {details.sparring.notes ? <p className={styles.note}>{details.sparring.notes}</p> : null}</section> : null}
           {details.message ? <p className={styles.quiet}>{details.message}</p> : null}
           {record.notes || record.modification_reason || record.takeaway ? <section className={styles.section}><h3>Session Notes</h3>
