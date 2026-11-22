@@ -100,7 +100,11 @@ def send(client, row):
 
 def test_draft_assign_preview_activate_history_and_supersede(plans):
     client, store, _ = plans
-    draft, payload = create(client)
+    day = resolve_training_day(None)
+    prescription = body()
+    prescription.update(schedule_mode='dated', start_date=day, end_date=day)
+    prescription['sessions'] = [{**prescription['sessions'][0], 'scheduled_date': day}]
+    draft, payload = create(client, prescription)
     assert draft['assignment_status'] == 'draft'
     assert client.get(ASSIGNMENTS, headers=AS_FIGHTER).json() == []
     payload['name'] = 'Fight preparation'
@@ -137,10 +141,29 @@ def test_draft_assign_preview_activate_history_and_supersede(plans):
     schedule = client.get(f'{BASE}/training/plan?include_past=true', headers=AS_COACH).json()
     assert schedule and all(item['plan_id'] == plan_id for item in schedule)
     session = schedule[0]
-    store.upsert_session_completion(FIGHTER, {'plan_id': plan_id, 'session_id': session['id'],
-        'training_day': resolve_training_day(None), 'status': 'modified', 'session_rpe': 6})
+    assert session['day'] == day
+    checkin = client.post('/api/today/checkin', headers=AS_FIGHTER, json={
+        'plan_id': plan_id, 'sleep': 'good', 'body': 'normal', 'pain': 'none', 'phase': 'GPP',
+    })
+    assert checkin.status_code == 201, checkin.text
+    completion = {'plan_id': plan_id, 'session_id': session['id']}
+    started = client.post('/api/today/session-completion', headers=AS_FIGHTER, json={**completion, 'status': 'started'})
+    assert started.status_code == 201, started.text
+    logged = client.post('/api/today/exercise-log', headers=AS_FIGHTER, json={
+        'plan_id': plan_id, 'block_id': session['blocks'][0]['feedback_ref'], 'status': 'as_prescribed',
+    })
+    assert logged.status_code == 201, logged.text
+    for _ in range(2):  # Repeat the save as if the first response was lost.
+        completed = client.post('/api/today/session-completion', headers=AS_FIGHTER,
+                                json={**completion, 'status': 'done', 'session_rpe': 6})
+        assert completed.status_code == 201, completed.text
     history = client.get(f'{BASE}/training/history', headers=AS_COACH)
-    assert history.status_code == 200 and any(s['plan_id'] == plan_id and s['status'] == 'modified' for s in history.json()['sessions'])
+    assert history.status_code == 200, history.text
+    records = [s for s in history.json()['sessions'] if s['plan_id'] == plan_id]
+    assert len(records) == 1 and records[0]['status'] == 'done' and records[0]['session_rpe'] == 6
+    details = client.get(f"{BASE}/training/history/unlxck/{records[0]['id']}", headers=AS_COACH)
+    assert details.status_code == 200, details.text
+    assert details.json()['blocks'][0]['status'] == 'as_prescribed'
     other, _ = create(client)
     send(client, other)
     assert client.post(f"{ASSIGNMENTS}/{other['id']}/activate", headers=AS_FIGHTER, json={'overlap_action': 'pause'}).status_code == 200

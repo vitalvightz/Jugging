@@ -471,12 +471,11 @@ def build_coach_router(*, require_profile, get_store) -> APIRouter:
         # Every other outcome keeps the full resolution, auto-activation included.
         runtime = resolve_active_plan(_RuntimePlanReads(store), athlete.athlete_id,
                                       current_training_day=today, auto_activate=False)
-        if runtime.source == "explicit":
-            plan = runtime.plan
-        elif runtime.source == "read_failure":
-            plan = None  # authority reads fail closed, as before
-        else:
-            plan = resolve_active_plan(store, athlete.athlete_id, current_training_day=today).plan
+        if runtime.source not in {"explicit", "read_failure"}:
+            runtime = resolve_active_plan(store, athlete.athlete_id, current_training_day=today)
+        if runtime.source == "read_failure":
+            raise HTTPException(503, "Training schedule unavailable. Please retry.")
+        plan = runtime.plan
         if not plan:
             return []
         structured = plan.get("structured_plan")

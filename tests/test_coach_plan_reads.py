@@ -137,3 +137,21 @@ def test_a_list_without_answered_plans_reads_no_pointer():
     store = _PointerStore("plan-a")
     assert [v["assignment_status"] for v in assignment_views(store, [{"id": "d", "fighter_id": FIGHTER}])] == ["draft"]
     assert store.reads == 0
+
+@pytest.mark.parametrize("failed_read", ["get_active_plan_id", "get_plan_runtime_for_athlete", "list_user_plans"])
+def test_coach_calendar_distinguishes_a_failed_read_from_no_sessions(camp, monkeypatch, failed_read):  # noqa: F811
+    client, store, _ = camp
+    if failed_read == "get_plan_runtime_for_athlete":
+        _seed(store, "dated", True, fight_date="2099-12-01")
+
+    def unavailable(*args, **kwargs):
+        raise RuntimeError("temporary database failure")
+
+    with monkeypatch.context() as patch:
+        if failed_read == "list_user_plans":
+            # Real stores support compare-and-set fallback; the default fake does not.
+            patch.setattr(store, "try_set_active_plan_id", lambda *args: False, raising=False)
+        patch.setattr(store, failed_read, unavailable)
+        assert client.get(BASE + "/training/plan", headers=AS_COACH).status_code == 503
+
+    assert client.get(BASE + "/training/plan", headers=AS_COACH).status_code == 200

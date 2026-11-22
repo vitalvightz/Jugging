@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
-import { getSafePlanReturnHref } from "@/lib/auth-routing";
+import { getSafeAuthReturnHref } from "@/lib/auth-routing";
 
 import { useAppSession } from "@/components/auth-provider";
 
@@ -31,7 +31,7 @@ export function RequireAuth({
       return;
     }
     if (!session) {
-      const next = getSafePlanReturnHref(pathname);
+      const next = getSafeAuthReturnHref(pathname);
       router.replace(next ? `/login?next=${encodeURIComponent(next)}` : "/login");
       return;
     }
@@ -39,7 +39,7 @@ export function RequireAuth({
       return;
     }
     if (isMeHydrated && !me) {
-      const next = getSafePlanReturnHref(pathname);
+      const next = getSafeAuthReturnHref(pathname);
       router.replace(next ? `/login?next=${encodeURIComponent(next)}` : "/login");
       return;
     }
