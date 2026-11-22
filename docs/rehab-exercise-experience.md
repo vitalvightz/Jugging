@@ -71,19 +71,3 @@ npx playwright test e2e/rehab-experience.spec.ts --workers=1
 
 Set `REHAB_QA_DIR` to a local directory to retain browser screenshots.
 Browser plugin unavailable; verification uses the repository's Playwright setup.
-
-## Mobile evidence
-
-The comparable overview pairs render the actual baseline/new components with
-the same synthetic Today API scenarios at 375 px. “Before” uses source from
-Main `197d0780`; the views place injury status above an expanded exercise for
-comparison. Additional captures come from interactions on the real Today page.
-
-| Scenario | Before | After |
-| --- | --- | --- |
-| Chest RESTORE / unpublished LOAD | [Before](../output/playwright/rehab-experience/before-chest-overview-375.png) | [After](../output/playwright/rehab-experience/after-chest-overview-375.png) |
-| Published Achilles LOAD | [Before](../output/playwright/rehab-experience/before-achilles-overview-375.png) | [After](../output/playwright/rehab-experience/after-achilles-overview-375.png) |
-
-Today captures: [chest instructions](../output/playwright/rehab-experience/after-chest-exercise-375.png),
-[unpublished stage details](../output/playwright/rehab-experience/after-chest-progression-375.png),
-[Achilles prescription and demo facade](../output/playwright/rehab-experience/after-achilles-prescription-375.png).

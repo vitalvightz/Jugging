@@ -51,11 +51,6 @@ npx playwright test e2e/rehab-experience.spec.ts --workers=2
 Use the documented CI-safe public variables for the build. Set `REHAB_QA_DIR`
 to an external absolute directory for screenshots.
 
-Mobile evidence: [LOAD entry](../output/playwright/rehab-progression/permission-entry-375.png),
-[setback hold](../output/playwright/rehab-progression/worsening-hold-375.png),
-[pending response](../output/playwright/rehab-progression/pending-response-375.png),
-[today's schedule hold](../output/playwright/rehab-progression/readiness-schedule-hold-375.png).
-
 ## Limits
 
 These checks use authenticated synthetic athletes, FakeStore and the built Today
