@@ -50,7 +50,7 @@ const ARRIVAL_REREAD_DELAY_MS = 1500;
 
 function TodayLoadingState() {
   return (
-    <div className={`today-page ${styles.loading}`} aria-busy="true" aria-label="Loading Today">
+    <div className={`today-page ${styles.loading}`} aria-busy="true" aria-label="Loading Today" data-startup-pending>
       <section className={`panel today-shell ${styles.command}`} aria-hidden="true">
         <Skeleton variant="text" width={120} height={42} />
         <Skeleton variant="text" width="55%" height={12} />

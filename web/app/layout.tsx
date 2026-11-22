@@ -16,6 +16,7 @@ import { PushNotificationPrompt } from "@/components/push-notification-prompt";
 import { InstallPrompt } from "@/components/install-unlxck";
 import { RoundTimerProvider } from "@/components/session-timer/round-timer-provider";
 import { FadeThroughProvider } from "@/components/fade-through";
+import { StartupSplash } from "@/components/startup-splash";
 import { PageTransition } from "@/components/page-transition";
 import { PerfDiagnostics } from "@/components/perf-diagnostics";
 import { FocusCueAnnouncer } from "@/components/focus-cue-announcer";
@@ -91,7 +92,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const safety = await getTranslations("Safety");
   const rawNonce = requestHeaders.get("x-nonce");
   const nonce = rawNonce && /^[A-Za-z0-9+/]{48}$/.test(rawNonce) ? rawNonce : undefined;
-  const serverSurface = getServerShellSurface(requestHeaders.get("x-pathname"));
+  const pathname = requestHeaders.get("x-pathname");
+  const serverSurface = getServerShellSurface(pathname);
+  const showStartupSplash = pathname === "/" || pathname === "/dashboard" || pathname === "/today";
   const pwaBuildVersion =
     process.env.VERCEL_GIT_COMMIT_SHA ??
     process.env.VERCEL_DEPLOYMENT_ID ??
@@ -116,6 +119,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         />
       </head>
       <body>
+        {showStartupSplash ? <StartupSplash /> : null}
         <NextIntlClientProvider>
           <AuthProvider>
             <XpProvider>
