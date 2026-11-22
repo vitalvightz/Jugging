@@ -2,3 +2,9 @@
 .group button { min-height: 36px; padding: 0 12px; border: 0; border-radius: 9px; color: var(--text-secondary); background: transparent; font-size: 12px; font-weight: 600; cursor: pointer; }
 .group button[aria-pressed="true"] { background: var(--brand-red, #a51828); color: #fff; }
 .group button:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+
+.sidebarMode { margin: 8px 0 16px; }
+.mobileHeader { display: none; }
+@media (max-width: 960px) {
+  .mobileHeader { display: block; position: fixed; top: calc(var(--mobile-nav-offset-top) + var(--safe-area-top)); right: calc(14px + var(--safe-area-right)); z-index: 69; }
+}
