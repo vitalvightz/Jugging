@@ -106,10 +106,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       lang={locale}
       data-theme="dark"
       data-app-surface={serverSurface ?? undefined}
-      style={{ colorScheme: "dark" }}
+      style={{ colorScheme: "dark", backgroundColor: showStartupSplash ? "#0a0a0b" : undefined }}
       suppressHydrationWarning
     >
       <head>
+        {showStartupSplash ? <link rel="preload" as="image" href="/brand/unlxck-startup-mark.png" /> : null}
         <script nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
