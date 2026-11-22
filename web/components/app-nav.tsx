@@ -15,6 +15,9 @@ import { isSafeAvatarImageUrl } from "@/lib/avatar-image-url";
 import { showsMobileTabBar, SIDE_NAV_ITEMS, COACH_NAV_ITEMS, isCoachWorkspace } from "@/lib/beta-navigation";
 import { isNavToggleCondensed } from "@/lib/nav-toggle-scroll";
 import { lockOverlayScroll } from "@/lib/overlay-scroll-lock";
+import { useCoachMode } from "@/lib/coach-mode";
+import { CoachModeSwitch } from "./coach-mode-switch";
+import modeStyles from "./coach-mode-switch.module.css";
 import { useFadeNavigate } from "@/components/fade-through";
 
 type MobileNavState = "closed" | "opening" | "open" | "closing";
@@ -390,6 +393,8 @@ export function AppNav() {
   const initials = getInitials(displayName);
   const avatarUrl = profile && isSafeAvatarImageUrl(profile.avatar_url) ? profile.avatar_url : null;
   const role = profile?.role ?? null;
+  const coachAccountId = isMeHydrated && (role === "coach" || role === "admin") && (pathname === "/coach" || pathname.startsWith("/coach/")) ? session?.user_id : null;
+  const { coachMode, ready: coachModeReady, setMode: setCoachMode } = useCoachMode(coachAccountId);
   const isAdminWorkspace = shouldShowAdminPanelLink(role, isActive(pathname, "/admin"));
   // Phones with the bottom bar get + Create and the account button instead of
   // the sidebar; CSS limits both to phone widths, so tablets keep the drawer.
@@ -422,6 +427,7 @@ export function AppNav() {
       ) : null}
       {suppressWorkspaceNav ? null : (
         <>
+      {coachAccountId && coachModeReady && !isMobileDrawerVisible ? <div className={modeStyles.mobileHeader}><CoachModeSwitch mode={coachMode} onChange={setCoachMode} /></div> : null}
       {!isMobileDrawerVisible ? (
         <button
           type="button"
@@ -549,6 +555,7 @@ export function AppNav() {
             <>
               <nav className="sidebar-nav">
                 <p className="sidebar-section-label">{coachWorkspace ? "Coach Workspace" : t("workspace")}</p>
+                {coachAccountId && coachModeReady ? <div className={modeStyles.sidebarMode}><CoachModeSwitch mode={coachMode} onChange={setCoachMode} /></div> : null}
                 {coachWorkspace && role === "admin" ? <Link className="sidebar-link" href="/admin" onClick={closeMobileDrawer}>Switch Workspace</Link> : null}
                 {signedInLinks.map((link) => (
                   <Fragment key={link.href}>
