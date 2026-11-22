@@ -2,14 +2,14 @@
   position: fixed;
   inset: 0;
   z-index: 2000;
-  overflow: hidden;
   background: #0a0a0b;
   pointer-events: none;
-  animation: startup-splash-timeout 160ms ease-out 900ms both;
+  /* Uncover the page if hydration stalls. Never blend two screens together. */
+  animation: startup-splash-fallback 4s step-end forwards;
 }
 
 .startup-splash[data-ready="true"] {
-  animation: startup-splash-out 160ms ease-out both;
+  display: none;
 }
 
 .startup-splash-mark {
@@ -17,56 +17,12 @@
   left: 50%;
   top: 50%;
   top: 50lvh;
-  transform: translate(-50%, -50%);
   width: 96px;
   aspect-ratio: 1;
-  overflow: hidden;
+  transform: translate(-50%, -50%);
   background: url("/brand/unlxck-mark.webp") center / contain no-repeat;
-  mask: url("/brand/unlxck-mark.webp") center / contain no-repeat;
 }
 
-.startup-splash-mark::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(112deg,
-    transparent 30%,
-    #a82338 40%,
-    #de4358 45%,
-    #ececf0 51%,
-    #c4c5cd 58%,
-    transparent 70%);
-  mix-blend-mode: overlay;
-  animation: startup-splash-sweep 700ms 80ms ease-in-out infinite;
-}
-
-@keyframes startup-splash-sweep {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(100%); }
-}
-
-.startup-splash[data-ready="true"] .startup-splash-mark::after {
-  animation-play-state: paused;
-}
-
-@keyframes startup-splash-timeout {
-  from { opacity: 1; visibility: visible; }
-  to { opacity: 0; visibility: hidden; }
-}
-
-@keyframes startup-splash-out {
-  from { opacity: 1; visibility: visible; }
-  to { opacity: 0; visibility: hidden; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .startup-splash,
-  .startup-splash[data-ready="true"] {
-    animation-duration: 0s;
-  }
-
-  .startup-splash-mark::after {
-    content: none;
-    animation: none;
-  }
+@keyframes startup-splash-fallback {
+  to { visibility: hidden; }
 }

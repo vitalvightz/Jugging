@@ -10,7 +10,6 @@ export function StartupSplash() {
     const main = document.querySelector(".app-main");
     const finish = () => {
       observer.disconnect();
-      window.clearTimeout(timeout);
       setReady(true);
     };
     const check = () => {
@@ -21,12 +20,10 @@ export function StartupSplash() {
       }
     };
     const observer = new MutationObserver(check);
-    const timeout = window.setTimeout(finish, 900);
     if (main) observer.observe(main, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-startup-pending"] });
     check();
     return () => {
       observer.disconnect();
-      window.clearTimeout(timeout);
     };
   }, []);
 
