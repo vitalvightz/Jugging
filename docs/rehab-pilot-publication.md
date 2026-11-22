@@ -159,8 +159,7 @@ freeze checks. Existing pilot regressions cover multi-injury and subtype holds.
 runtime-error fallback, the text-first guide's order (prescription, steps,
 safety) and reachable last safety limit, the absence of horizontal overflow and
 "Demo not assigned", and one completion action per pilot. The tests do not
-contact production Supabase or YouTube. Set `REHAB_QA_DIR` to save screenshots;
-the final set is in `output/playwright/rehab-bank/`. The generated full [reachability report](rehab-bank-reachability.md)
+contact production Supabase or YouTube. Set `REHAB_QA_DIR` to save screenshots. The generated full [reachability report](rehab-bank-reachability.md)
 also probes each pilot routine's actual equipment, including alternatives.
 
 ```powershell
