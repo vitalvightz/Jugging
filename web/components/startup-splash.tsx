@@ -21,7 +21,7 @@ export function StartupSplash() {
       }
     };
     const observer = new MutationObserver(check);
-    const timeout = window.setTimeout(finish, 8_000);
+    const timeout = window.setTimeout(finish, 900);
     if (main) observer.observe(main, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-startup-pending"] });
     check();
     return () => {
