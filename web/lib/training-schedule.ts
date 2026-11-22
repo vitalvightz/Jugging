@@ -105,6 +105,13 @@ export function getSparringConsistency(
     };
   }
 
+  if (weeklyTrainingFrequency && combatDays === weeklyTrainingFrequency && hardSparringDays.length) {
+    return {
+      hardError: null,
+      softWarning: "All planned training days are already assigned to sparring or light/technical combat. There may be no room for standalone S&C sessions. Only add another training day if your schedule and recovery genuinely allow it.",
+    };
+  }
+
   if (!hardSparringDays.length && supportWorkDays.length) {
     return {
       hardError: null,
