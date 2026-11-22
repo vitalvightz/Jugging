@@ -112,6 +112,18 @@ test("changes the acknowledgement reset key when hard days or session count chan
   );
 });
 
+test("explains when existing combat fills the entire training week", () => {
+  const days = ["Tuesday", "Wednesday", "Thursday", "Sunday"];
+  assert.deepStrictEqual(
+    getSparringConsistency(days, ["Tuesday", "Thursday", "Sunday"], ["Wednesday"], false, 4),
+    { hardError: null, softWarning: "All planned training days are already assigned to sparring or light/technical combat. There may be no room for standalone S&C sessions. Only add another training day if your schedule and recovery genuinely allow it." },
+  );
+  assert.equal(
+    getSparringConsistency([...days, "Friday"], ["Tuesday", "Thursday", "Sunday"], ["Wednesday"], false, 5).softWarning,
+    null,
+  );
+});
+
 test("flags more combat days than planned training days", () => {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
   assert.deepStrictEqual(
