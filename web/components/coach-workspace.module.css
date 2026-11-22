@@ -817,6 +817,8 @@
 :global(html[data-theme="light"]) .planWeekSummary .planLatest {
   color: var(--text-secondary);
 }
+:global(html[data-theme="light"]) .workspace .completionBar,
+:global(html[data-theme="light"]) .workspace .completionBar::-webkit-progress-bar { background: var(--border-default); }
 :global(html[data-theme="light"]) .planProgress,
 :global(html[data-theme="light"]) .planSchedule,
 :global(html[data-theme="light"]) .completionMeter,
