@@ -16,7 +16,6 @@ import { PushNotificationPrompt } from "@/components/push-notification-prompt";
 import { InstallPrompt } from "@/components/install-unlxck";
 import { RoundTimerProvider } from "@/components/session-timer/round-timer-provider";
 import { FadeThroughProvider } from "@/components/fade-through";
-import { StartupSplash } from "@/components/startup-splash";
 import { PageTransition } from "@/components/page-transition";
 import { PerfDiagnostics } from "@/components/perf-diagnostics";
 import { FocusCueAnnouncer } from "@/components/focus-cue-announcer";
@@ -94,7 +93,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const nonce = rawNonce && /^[A-Za-z0-9+/]{48}$/.test(rawNonce) ? rawNonce : undefined;
   const pathname = requestHeaders.get("x-pathname");
   const serverSurface = getServerShellSurface(pathname);
-  const showStartupSplash = pathname === "/" || pathname === "/dashboard" || pathname === "/today";
   const pwaBuildVersion =
     process.env.VERCEL_GIT_COMMIT_SHA ??
     process.env.VERCEL_DEPLOYMENT_ID ??
@@ -106,11 +104,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       lang={locale}
       data-theme="dark"
       data-app-surface={serverSurface ?? undefined}
-      style={{ colorScheme: "dark", backgroundColor: showStartupSplash ? "#0a0a0b" : undefined }}
+      style={{ colorScheme: "dark" }}
       suppressHydrationWarning
     >
       <head>
-        {showStartupSplash ? <link rel="preload" as="image" href="/brand/unlxck-mark.webp" /> : null}
         <script nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -120,7 +117,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         />
       </head>
       <body>
-        {showStartupSplash ? <StartupSplash /> : null}
         <NextIntlClientProvider>
           <AuthProvider>
             <XpProvider>
