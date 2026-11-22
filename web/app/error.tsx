@@ -38,7 +38,7 @@ export default function RouteError({
   return (
     <section className={styles.card} role="alert">
       <div className={styles.header}>
-        <Image src="/brand/unlxck-one-angle-48.png" alt="" unoptimized width={28} height={28} />
+        <Image src="/icons/icon-192x192.png" alt="" unoptimized width={28} height={28} />
         <p className={styles.label}>{connectionProblem ? "CONNECTION" : "UNLXCK"}</p>
       </div>
       <h1><span className={styles.brand}>UNLXCK</span><span className={styles.headline}>{connectionProblem ? "your connection." : "hit a snag."}</span></h1>

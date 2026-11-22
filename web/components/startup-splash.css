@@ -19,9 +19,9 @@
   top: 50lvh;
   transform: translate(-50%, -50%);
   width: 96px;
-  aspect-ratio: 550 / 500;
-  mask: url("/brand/unlxck-startup-mark.png") center / contain no-repeat;
-  background: #adaeb4;
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: url("/icons/icon-512x512.png") center / contain no-repeat;
 }
 
 .startup-splash-mark::after {
@@ -35,6 +35,7 @@
     #ececf0 51%,
     #c4c5cd 58%,
     transparent 70%);
+  mix-blend-mode: overlay;
   animation: startup-splash-sweep 700ms 80ms ease-in-out infinite;
 }
 
@@ -61,10 +62,6 @@
   .startup-splash,
   .startup-splash[data-ready="true"] {
     animation-duration: 0s;
-  }
-
-  .startup-splash-mark {
-    background: #fff;
   }
 
   .startup-splash-mark::after {
