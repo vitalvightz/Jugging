@@ -70,6 +70,11 @@ REQUIRED_TABLES: tuple[str, ...] = (
     "external_training_sessions",
     "coach_connections",
     "coach_feedback",
+    # Coach chat (POST /api/chats/messages/{id}/notify, GET /api/chats/files)
+    # and the worker's check-in nudge sweep.
+    "coach_chats",
+    "coach_messages",
+    "coach_checkin_nudges",
     # Optional exercise results on a manual session and the athlete's private
     # movement names (PUT /api/training/sessions/{id}/exercises/{entry_id}).
     "manual_exercise_entries",
@@ -553,6 +558,10 @@ REQUIRED_COLUMNS: Mapping[str, tuple[str, ...]] = {
     # Coach routes must not deploy before the consent migration is present.
     "coach_connections": ("id", "coach_id", "athlete_id", "status", "share_recovery",
                           "share_injuries", "share_weight", "allow_session_logging", "share_media"),
+    "coach_chats": ("id", "coach_id", "athlete_id", "last_message_at", "last_preview", "coach_unread", "athlete_unread"),
+    "coach_messages": ("id", "chat_id", "coach_id", "athlete_id", "sender_id", "client_id", "kind", "body",
+                       "asset_id", "quote", "reactions", "created_at"),
+    "coach_checkin_nudges": ("id", "coach_id", "athlete_id", "days", "local_time", "enabled", "last_sent_day"),
     # Inferred focus from existing notes (api/services/training_focus_inference.py).
     "training_focus_inferences": ("id", "athlete_id", "source_kind", "source_id", "training_day", "source_revision",
                                   "status", "reason", "focus", "scope", "category", "sport", "exercise_targets",
@@ -631,6 +640,9 @@ REQUIRED_FUNCTIONS: tuple[str, ...] = (
     "public.reject_attachment",
     "public.attach_training_asset",
     "public.attachment_cleanup_candidates",
+    # Coach chat writes and the check-in nudge sweep's claim.
+    "public.coach_chat_send", "public.coach_chat_inbox", "public.coach_chat_read", "public.coach_chat_react",
+    "public.coach_chat_report", "public.coach_set_checkin_nudge", "public.claim_coach_checkin_nudges",
     "public.private_demo_orphan_objects",
     "public.cleanup_private_youtube_previews",
     "public.validate_custom_plan_private_media",
@@ -837,6 +849,10 @@ RLS_REQUIRED_TABLES: tuple[str, ...] = (
     "external_training_sessions",
     "coach_connections",
     "coach_feedback",
+    "coach_chats",
+    "coach_messages",
+    "coach_message_reports",
+    "coach_checkin_nudges",
     "training_focus_inferences",
     "training_focus_call_budget",
     "xp_accounts",

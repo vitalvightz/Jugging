@@ -795,7 +795,7 @@ for (const role of ["coach", "admin", "athlete"]) {
       const sidebar = page.locator('#app-sidebar');
       if (width < 720) {
         await expect(page.getByRole("navigation", { name: "Coach navigation" })).toBeVisible();
-        await expect(page.locator('.mobile-tab-bar a')).toHaveText(["Overview", "Fighters", "Plans", "Log Session"]);
+        await expect(page.locator('.mobile-tab-bar a')).toHaveText(["Overview", "Chats", "Fighters", "Plans"]);
         await page.getByRole("button", { name: "Open navigation", exact: true }).click();
       }
       await expect(sidebar.locator('a[href="/coach/invitations"]')).toBeVisible();

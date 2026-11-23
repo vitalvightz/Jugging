@@ -42,6 +42,11 @@ const TAB_ICONS: Record<string, ReactNode> = {
       <path d="M8 2.5h4M10 2.5V5M10 11l2.5-2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   ),
+  "/coach/chats": (
+    <svg viewBox="0 0 20 20" width="20" height="20" fill="none" aria-hidden="true">
+      <path d="M4 4h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H9l-4 3v-3H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  ),
 };
 
 const TAB_LABEL_KEYS = {

@@ -142,6 +142,36 @@ async def _run_reactivation_email_sweep_if_due(
     _REACTIVATION_EMAIL_TASK["task"] = asyncio.create_task(_sweep())
 
 
+_COACH_NUDGE_TASK: dict[str, asyncio.Task[None] | None] = {"task": None}
+
+
+def _coach_nudge_sweep_interval_seconds() -> int:
+    return env_int("UNLXCK_COACH_NUDGE_SWEEP_INTERVAL_SECONDS", 300, minimum=60)
+
+
+async def _run_coach_nudge_sweep_if_due(
+    *, store: AppStore, state: dict[str, float], interval_seconds: int, shutdown_event: asyncio.Event,
+) -> None:
+    """Coach-set check-in nudges. One database call claims every nudge due
+    now, so the cadence only bounds lateness after the coach's chosen time
+    (the window is two hours). Detached and never raises into the loop."""
+    if shutdown_event.is_set() or time.monotonic() - state.get("last_sweep_at", 0.0) < interval_seconds:
+        return
+    task = _COACH_NUDGE_TASK["task"]
+    if task is not None and not task.done():
+        return
+    state["last_sweep_at"] = time.monotonic()
+
+    async def _sweep() -> None:
+        try:
+            from .services.coach_chat import run_coach_checkin_nudge_sweep
+            await asyncio.to_thread(run_coach_checkin_nudge_sweep, store, should_stop=shutdown_event.is_set)
+        except Exception:  # noqa: BLE001 - nudges must never affect generation
+            logger.exception("[worker] coach check-in nudge sweep failed")
+
+    _COACH_NUDGE_TASK["task"] = asyncio.create_task(_sweep())
+
+
 class ContributionReplayState(TypedDict, total=False):
     last_sweep_at: float
     after_id: str | None
@@ -508,6 +538,8 @@ async def run_worker() -> None:
     morning_sweep_state: dict[str, float] = {}
     plan_ready_email_sweep_state: dict[str, float] = {}
     reactivation_email_sweep_state: dict[str, float] = {}
+    coach_nudge_sweep_state: dict[str, float] = {}
+    coach_nudge_sweep_interval = _coach_nudge_sweep_interval_seconds()
     morning_sweep_interval = _morning_push_sweep_interval_seconds()
     contribution_replay_state: ContributionReplayState = {}
     contribution_replay_idle_seconds = _contribution_xp_replay_idle_seconds()
@@ -530,6 +562,10 @@ async def run_worker() -> None:
             )
             await _run_reactivation_email_sweep_if_due(
                 store=store, state=reactivation_email_sweep_state, shutdown_event=shutdown_event,
+            )
+            await _run_coach_nudge_sweep_if_due(
+                store=store, state=coach_nudge_sweep_state, interval_seconds=coach_nudge_sweep_interval,
+                shutdown_event=shutdown_event,
             )
             await _run_morning_push_sweep_if_due(
                 store=store,
