@@ -197,18 +197,30 @@ class SourceCheck:
             for heading in (line for line in self.source_lines[lo:hi] if session_heading(line)):
                 words, days = _name_words(heading), set(_heading_days(heading))
                 named_heading = bool(re.search(r"(?:\s*[:|]\s*|\s+[-–—]\s*)\S", heading))
-                labels = _day_labels(heading)
+                labels, title = _day_labels(heading), _title_words(heading)
+                lead = _after_day(heading)
 
-                def written_as(session) -> bool:
-                    # Identity beyond the title, on a day the session keeps: the programme's
-                    # own "Day 5" label ("Fri (Day 5) | ..." overview row, "Day 5 - ..." in
-                    # full), or a one-line session written as its content ("Tue: Flow Roll 3 x 5 min").
+                def same_label(session) -> bool:
+                    # The programme's own "Day 5" label, on a day the session keeps, written
+                    # as an overview row and in full under different titles. Titles that are
+                    # written must share a word: "Day 1 PM: Strength" is not "Day 1 AM: Conditioning".
                     if days and not days <= set(session_days(session)):
                         return False
-                    if labels and labels == _day_labels(session.name):
-                        return True
-                    return bool(days) and any(_name_words(e.name) and _name_words(e.name) <= words
-                                              for e in session.exercises if not e.is_reference)
+                    if not labels or labels != _day_labels(session.name):
+                        return False
+                    other = _title_words(session.name)
+                    return not title or not other or bool(title & other)
+
+                def written_as_content(session) -> bool:
+                    # A one-line day written as its exercise ("Tue: Flow Roll 3 x 5 min"): the
+                    # text after the day starts with that exercise. A titled heading that only
+                    # mentions it ("Mon: Conditioning - Back squat jumps") is another session.
+                    if not days or not days <= set(session_days(session)):
+                        return False
+                    return any(_starts_with(lead, _tokens(e.name)) for e in session.exercises if not e.is_reference)
+
+                def written_as(session) -> bool:
+                    return same_label(session) or written_as_content(session)
 
                 named = [i for i, session in enumerate(remaining)
                          if _name_words(session.name) and _name_words(session.name) <= words]
@@ -226,7 +238,9 @@ class SourceCheck:
                     # Identity must agree: a written day must be one of that session's days.
                     named_any = any(_name_words(session.name) and _name_words(session.name) <= words
                                     and (not days or days <= set(session_days(session))) for session in week.sessions)
-                    named_any = named_any or any(written_as(session) for session in week.sessions)
+                    # A one-line day is matched once, by a session not yet matched; only the
+                    # programme's day label can name a session already matched.
+                    named_any = named_any or any(same_label(session) for session in week.sessions)
                     same_day_any = not named_heading and days and len([session for session in week.sessions if days <= set(session_days(session))]) == 1
                     # A rest day written by the coach needs no session. An optional
                     # session is still part of the programme, so its omission is flagged.
@@ -911,6 +925,27 @@ def _name_words(text: str) -> set[str]:
 def _day_labels(text: str) -> set[int]:
     """A programme's own day numbers ("Day 5"), never a weekday."""
     return {int(n) for n in re.findall(r"\bday\s*(\d{1,3})(?!\d)", text, re.I)}
+
+
+def _is_day_word(word: str) -> bool:
+    return word == "day" or bool(re.fullmatch(DAY_WORD, word, re.I))
+
+
+def _title_words(text: str) -> set[str]:
+    """A heading's or session's title words, without weekdays or "Day"."""
+    return {word for word in _name_words(text) if not _is_day_word(word)}
+
+
+def _after_day(text: str) -> list[str]:
+    """The words written after a heading's leading weekday or "Day N"."""
+    words = _tokens(text)
+    while words and _is_day_word(words[0]):
+        words = words[1:]
+    return words
+
+
+def _starts_with(words: list[str], name: list[str]) -> bool:
+    return bool(name) and len(words) >= len(name) and all(_same_word(a, b) for a, b in zip(words, name))
 
 
 def _heading_days(text: str) -> list[str]:
