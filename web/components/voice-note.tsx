@@ -27,8 +27,9 @@ export function VoicePlayer({ id, load, durationMs, playLabel, seekLabel, tone =
   /** Accessible name for the play button ("Play voice note 1 from coach for Boxing"). */
   playLabel: string;
   seekLabel: string;
-  /** Coach notes get the accent colour, so feedback stands out from the athlete's own. */
-  tone?: "athlete" | "coach";
+  /** Coach notes get the accent colour, so feedback stands out from the athlete's own.
+   *  "onAccent" is white on a coloured (red) chat bubble. */
+  tone?: "athlete" | "coach" | "onAccent";
 }) {
   const audio = useRef<HTMLAudioElement | null>(null);
   const objectUrl = useRef<string | null>(null);
@@ -144,8 +145,28 @@ export function VoicePlayer({ id, load, durationMs, playLabel, seekLabel, tone =
         data-played={index / bars.length < progress || undefined} style={{ height: `${Math.round(height * 100)}%` }} />)}
     </div>
     <span className={styles.time}>{formatClock((started && position ? position : length) * 1000)}</span>
-    {started ? <button type="button" className={styles.rate} onClick={cycleRate} aria-label={`Playback speed ${rate} times`}>
-      {rate}×</button> : null}
+    {/* Always in the layout; hidden (and unreachable) until the note has been played. */}
+    <button type="button" className={styles.rate} onClick={cycleRate} aria-label={`Playback speed ${rate} times`}
+      data-reserved={started ? undefined : true} aria-hidden={started ? undefined : true} tabIndex={started ? undefined : -1}>
+      {rate}×</button>
     {failed ? <span className={styles.failed} role="alert">Couldn&apos;t play. Try again.</span> : null}
+  </div>;
+}
+
+/**
+ * The player's exact shape while its file is still on the way, so a voice note
+ * never resizes when it becomes playable.
+ */
+export function VoicePlaceholder({ id, durationMs, tone = "athlete", label }: {
+  id: string; durationMs?: number | null; tone?: "athlete" | "coach" | "onAccent"; label: string;
+}) {
+  return <div className={styles.player} data-tone={tone} data-state="loading" role="group" aria-label={label} aria-busy="true">
+    <span className={styles.play} aria-hidden="true"><span className={styles.spinner} /></span>
+    <div className={styles.wave} aria-hidden="true">
+      {placeholderPeaks(id, BARS).map((height, index) => <span key={index} className={styles.bar}
+        style={{ height: `${Math.round(height * 100)}%` }} />)}
+    </div>
+    <span className={styles.time}>{durationMs ? formatClock(durationMs) : "–:––"}</span>
+    <span className={styles.rate} data-reserved aria-hidden="true" />
   </div>;
 }

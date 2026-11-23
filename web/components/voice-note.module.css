@@ -1,14 +1,25 @@
 /* A chat-style voice note: round play button, waveform, time, speed. */
+/* Fixed columns: play | waveform | time | speed. The speed slot is reserved
+   before the first play and fits "1.5×", so switching speeds, loading the
+   waveform or showing the time never resizes the note or wraps a control. */
 .player {
   --voice-accent: var(--text-primary);
-  display: flex;
+  display: grid;
+  grid-template-columns: 36px minmax(48px, 1fr) 38px 42px;
   align-items: center;
-  gap: 10px;
+  column-gap: 8px;
   min-width: 0;
-  min-height: 48px;
-  flex-wrap: wrap;
+  min-height: 40px;
 }
 .player[data-tone="coach"] { --voice-accent: var(--progress-gold); }
+/* White on a red chat bubble: grey bars and grey time were hard to see there. */
+.player[data-tone="onAccent"] { --voice-accent: #fff; }
+.player[data-tone="onAccent"] .play { color: var(--brand-red); }
+.player[data-tone="onAccent"] .bar,
+.player[data-tone="onAccent"] .wave[data-real] .bar { background: rgb(255 255 255 / 42%); }
+.player[data-tone="onAccent"] .time { color: rgb(255 255 255 / 92%); }
+.player[data-tone="onAccent"] .rate { border-color: rgb(255 255 255 / 55%); color: #fff; }
+
 
 .play {
   position: relative;
@@ -51,10 +62,9 @@
 
 .wave {
   display: flex;
-  flex: 1 1 120px;
   align-items: center;
   gap: 2px;
-  min-width: 96px;
+  min-width: 48px;
   height: 32px;
   cursor: pointer;
   touch-action: none;
@@ -72,18 +82,17 @@
 .bar[data-played] { background: var(--voice-accent) !important; }
 
 .time {
-  flex: none;
-  min-width: 34px;
+  min-width: 0;
+  white-space: nowrap;
   color: var(--text-secondary);
   font-size: var(--type-meta);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 .rate {
-  flex: none;
-  min-width: 40px;
+  width: 42px;
   height: 28px;
-  padding: 0 8px;
+  padding: 0;
   border: 1px solid var(--border-default);
   border-radius: 999px;
   background: none;
@@ -95,7 +104,8 @@
   cursor: pointer;
 }
 .rate:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
-.failed { flex-basis: 100%; color: var(--danger-ink); font-size: var(--type-meta); }
+.rate[data-reserved] { visibility: hidden; }
+.failed { grid-column: 1 / -1; color: var(--danger-ink); font-size: var(--type-meta); }
 
 @media (prefers-reduced-motion: reduce) {
   .bar { transition: none; }

@@ -441,14 +441,16 @@
 }
 
 /* Beside the bubble, never over its text. */
+/* Options sit right against the bubble's side, as a small round button. */
 .more {
   position: absolute;
   top: 50%;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   padding: 0;
-  border: 0;
-  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 50%;
+  background: var(--bg-surface-alt);
   color: var(--text-muted);
   transform: translateY(-50%);
   font-size: 16px;
@@ -458,11 +460,11 @@
 }
 
 .mine .more {
-  left: -28px;
+  left: -32px;
 }
 
 .theirs .more {
-  right: -28px;
+  right: -32px;
 }
 
 .bubble:hover .more,
@@ -529,15 +531,26 @@
   opacity: 0.8;
 }
 
+/* One width for every voice note, incoming or outgoing, loading or playable. */
 .voice {
-  width: min(260px, 64vw);
+  width: min(264px, 66vw);
 }
 
+/* A voice note is just the player with its time beneath: no extra height. */
+.bubble:has(> .voice) {
+  gap: 2px;
+  padding: 6px 10px 5px;
+}
+
+/* Reactions tuck under the bubble's bottom edge, on its outer side. */
 .reactions {
+  position: relative;
+  z-index: 1;
   display: flex;
   gap: 4px;
-  margin-top: -6px;
-  padding: 0 8px;
+  margin-top: -8px;
+  padding: 0 10px;
+  line-height: 1.2;
 }
 
 .reactions span {
@@ -729,6 +742,7 @@
    Only the middle changes; the buttons either side never move. */
 .inputRow {
   display: flex;
+  min-width: 0;
   flex-wrap: nowrap;
   align-items: flex-end;
   gap: 8px;
@@ -850,9 +864,13 @@
   background: var(--bg-input);
   color: var(--text-primary);
   font: inherit;
-  font-size: var(--type-body);
-  line-height: 1.4;
+  /* 16px: iOS Safari zooms the whole page into any field smaller than this.
+     20px lines + 11px padding + 1px borders = 44px for one line, the same as
+     the recording strip, so the mic never shifts between the two. */
+  font-size: 16px;
+  line-height: 20px;
   resize: none;
+  overflow-y: auto;
   field-sizing: content;
 }
 

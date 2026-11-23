@@ -91,6 +91,11 @@ async function chatFixture(page: Page, baseURL: string, role: "coach" | "athlete
 for (const width of [390, 1440]) {
   test(`coach chats at ${width}px: inbox, thread, training card and an optimistic send`, async ({ page, baseURL }) => {
     const { sent, notified } = await chatFixture(page, baseURL!, "coach");
+    // The headless browser has no audio output: playback reports success without sound.
+    await page.addInitScript(() => {
+      HTMLMediaElement.prototype.play = function play(this: HTMLMediaElement) { this.dispatchEvent(new Event("play")); return Promise.resolve(); };
+      HTMLMediaElement.prototype.pause = function pause(this: HTMLMediaElement) { this.dispatchEvent(new Event("pause")); };
+    });
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/coach/chats");
     const list = page.getByRole("region", { name: "Chats" });
@@ -112,8 +117,22 @@ for (const width of [390, 1440]) {
     await expect(thread.getByRole("img", { name: "Photo" })).toBeVisible();
     // Voice notes use the training attachments' waveform player, not the browser's audio bar.
     await expect(thread.locator("audio")).toHaveCount(0);
+    const note = thread.getByRole("slider", { name: "Voice note position" }).locator("..");
+    const unplayed = (await note.boundingBox())!;
     await thread.getByRole("button", { name: /^Play voice note from Leo,/ }).click();
     await expect(thread.getByRole("slider", { name: "Voice note position" })).toBeVisible();
+    // The speed chip's slot is reserved: playing, and every speed, keep the note's size and the chip's place.
+    const speed = thread.getByRole("button", { name: /^Playback speed/ });
+    await expect(speed).toBeVisible();
+    const chip = (await speed.boundingBox())!;
+    for (const label of ["1.5×", "2×", "1×"]) {
+      await speed.click();
+      await expect(speed).toHaveText(label);
+      const now = (await speed.boundingBox())!;
+      expect([now.x, now.y, now.width]).toEqual([chip.x, chip.y, chip.width]);
+      const box = (await note.boundingBox())!;
+      expect([box.width, box.height]).toEqual([unplayed.width, unplayed.height]);
+    }
 
     await thread.getByRole("textbox", { name: "Message" }).fill("Keep the last round technical.");
     await thread.getByRole("button", { name: "Send", exact: true }).click();
@@ -287,4 +306,106 @@ test("on a phone, a fighter reaches coach chat from the top bar, with the unread
   await button.click();
   await expect(page).toHaveURL(/\/chat/);
   await expect(page.getByRole("dialog", { name: "Chat with Coach Rey" })).toBeVisible();
+});
+
+test.describe("mobile composer and voice notes", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      navigator.mediaDevices.getUserMedia = async () => {
+        const context = new AudioContext();
+        const tone = context.createOscillator();
+        const out = context.createMediaStreamDestination();
+        tone.connect(out);
+        tone.start();
+        return out.stream;
+      };
+    });
+  });
+
+  test("the field never triggers iOS zoom, grows to a cap, and keeps the latest message in view", async ({ page, baseURL }) => {
+    await chatFixture(page, baseURL!, "coach");
+    await page.setViewportSize({ width: 390, height: 700 });
+    await page.goto(`/coach/chats?with=${leo}`);
+    const thread = page.getByRole("dialog", { name: "Chat with Leo Martins" });
+    const field = thread.getByRole("textbox", { name: "Message" });
+    await expect(field).toBeVisible();
+    // iOS Safari zooms into any field under 16px.
+    expect(await field.evaluate(node => parseFloat(getComputedStyle(node).fontSize))).toBeGreaterThanOrEqual(16);
+    const scroller = thread.locator("[class*='messages']").first();
+    const atBottom = () => scroller.evaluate(node => node.scrollHeight - node.scrollTop - node.clientHeight < 2);
+    await expect.poll(atBottom).toBe(true);
+    const oneLine = (await field.boundingBox())!.height;
+    await field.fill("Line one\nLine two\nLine three");
+    const threeLines = (await field.boundingBox())!.height;
+    expect(threeLines).toBeGreaterThan(oneLine + 20);
+    // The list shrank as the field grew; the newest message stays in view.
+    await expect.poll(atBottom).toBe(true);
+    await field.fill(Array.from({ length: 20 }, (_, i) => `Line ${i}`).join("\n"));
+    expect((await field.boundingBox())!.height).toBeLessThanOrEqual(142);
+    // Nothing spills sideways, and the send button stays on screen.
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const send = (await thread.getByRole("button", { name: "Send", exact: true }).boundingBox())!;
+    expect(send.x + send.width).toBeLessThanOrEqual(390);
+  });
+
+  test("a voice note keeps one size from loading to playable", async ({ page, baseURL }) => {
+    await chatFixture(page, baseURL!, "coach");
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    await page.route("**/api/chats/files**", async route => {
+      await held;
+      return route.fallback();
+    });
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.goto(`/coach/chats?with=${leo}`);
+    const thread = page.getByRole("dialog", { name: "Chat with Leo Martins" });
+    const loading = thread.getByRole("group", { name: "Voice note loading" });
+    await expect(loading).toBeVisible();
+    const before = (await loading.boundingBox())!;
+    release();
+    const player = thread.getByRole("button", { name: /^Play voice note from Leo,/ });
+    await expect(player).toBeVisible();
+    const after = (await thread.getByRole("slider", { name: "Voice note position" }).locator("..").boundingBox())!;
+    expect(Math.abs(after.height - before.height)).toBeLessThan(2);
+    expect(Math.abs(after.width - before.width)).toBeLessThan(2);
+  });
+
+  test("a failed voice upload stays one message and sends exactly once on retry", async ({ page, baseURL }) => {
+    const { sent } = await chatFixture(page, baseURL!, "coach");
+    const asset = "00000000-0000-4000-8000-0000000000f2";
+    let reserves = 0;
+    let ready = false;
+    await page.route("**/api/attachments/uploads", route => {
+      reserves++;
+      return route.fulfill({ status: 201, json: { asset_id: asset, bucket: "attachment-intake", path: `${me}/${asset}.wav`,
+        content_type: "audio/wav", expires_at: new Date(Date.now() + 600_000).toISOString() } });
+    });
+    await page.route("**/storage/v1/object/attachment-intake/**", route => route.fulfill({ json: { Key: "ok" } }));
+    await page.route(`**/api/attachments/uploads/${asset}/process`, route => route.fulfill({ json: ready
+      ? { asset_id: asset, status: "ready" } : { asset_id: asset, status: "rejected", reason: "Upload interrupted." } }));
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.goto(`/coach/chats?with=${leo}`);
+    const thread = page.getByRole("dialog", { name: "Chat with Leo Martins" });
+    const mic = thread.getByRole("button", { name: "Hold to record a voice note" });
+    const box = (await mic.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await expect(thread.getByText("‹ Slide left to cancel")).toBeVisible();
+    await page.waitForTimeout(1200);
+    await page.mouse.up();
+    // The note is in the conversation, playable from the device; the composer is free.
+    const retry = thread.getByRole("button", { name: "Not sent · Retry" });
+    await expect(retry).toBeVisible();
+    await expect(thread.getByRole("textbox", { name: "Message" })).toBeEnabled();
+    expect(sent).toHaveLength(0);
+    ready = true;
+    // A double tap on Retry still sends once.
+    await retry.dblclick();
+    await expect.poll(() => sent.length).toBe(1);
+    expect(sent[0]).toMatchObject({ p_kind: "voice", p_asset_id: asset });
+    await expect(thread.getByRole("button", { name: "Not sent · Retry" })).toHaveCount(0);
+    expect(reserves).toBe(2);
+    await page.waitForTimeout(300);
+    expect(sent).toHaveLength(1);
+  });
 });
