@@ -103,7 +103,7 @@ dedupe key means a retry never doubles a delivered nudge.
 ## Deployment order
 
 1. Apply `20261123020539_coach_chat_and_checkin_nudges.sql` (applied to
-   production on 2026-11-23), then `20261123040000_coach_chat_review_fixes.sql`. It is additive.
+   production on 2026-11-23), then `20261123023816_coach_chat_review_fixes.sql` (also applied on 2026-11-23). It is additive.
    It widens the `notification_deliveries` class check, adds three tables and
    the RPCs, adds `coach_messages` and `coach_chats` to the
    `supabase_realtime` publication, adds the typing-channel policies on

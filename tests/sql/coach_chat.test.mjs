@@ -71,7 +71,7 @@ await db.exec(`
   insert into public.attachment_assets (id, owner_id, kind, status) values
     ('${coachPhoto}', '${coach}', 'photo', 'ready'), ('${strangerPhoto}', '${stranger}', 'photo', 'ready');
 `);
-for (const name of ["20261123020539_coach_chat_and_checkin_nudges.sql", "20261123040000_coach_chat_review_fixes.sql"]) {
+for (const name of ["20261123020539_coach_chat_and_checkin_nudges.sql", "20261123023816_coach_chat_review_fixes.sql"]) {
   await db.exec(await readFile(new URL(`../../supabase/migrations/${name}`, import.meta.url), "utf8"));
 }
 // Supabase's service role can write the stub tables; the migration's own grants are untouched.
