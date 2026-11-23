@@ -46,6 +46,9 @@
   animation: chat-sheet-in var(--sheet-enter-duration, 280ms) var(--sheet-enter-ease, cubic-bezier(0.32, 0.72, 0, 1));
 }
 .sheet::backdrop { background: rgb(0 0 0 / 75%); }
+/* Opened but not yet laid out: invisible, and the entrance starts once it is. */
+.sheet[data-settling],
+.sheet[data-settling]::backdrop { opacity: 0; animation: none; }
 .sheet:focus { outline: none; }
 .sheet[open]::backdrop { animation: chat-backdrop-in var(--sheet-enter-duration, 280ms) ease-out; }
 .sheet[data-closing] {
@@ -524,16 +527,6 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: 0;
-  transition: opacity 160ms ease-out;
-}
-
-.photo[data-loaded] {
-  opacity: 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .photo { transition: none; }
 }
 
 /* One width for every voice note, incoming or outgoing, loading or playable. */
