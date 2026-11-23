@@ -19,8 +19,15 @@ RECORDS = json.loads((ROOT / "tests/fixtures/concise_coaching/october_11_15.json
 DOSE = ("display_name", "exercise_key", "sets", "reps", "duration", "work", "rounds", "distance", "load", "rest", "effort", "intensity")
 
 
-def blocks(card):
-    return [b for w in card["weeks"] for d in w["days"] for s in d["sessions"] for b in s["blocks"]]
+READ_TIME_PROGRESSION = ("rep_range", "progression_hold", "bodyweight_progression")
+
+
+def blocks(card, *, read_time=True):
+    found = [b for w in card["weeks"] for d in w["days"] for s in d["sessions"] for b in s["blocks"]]
+    if read_time:
+        return found
+    # The API read path re-derives these server-owned progression fields (api/rep_range.py).
+    return [{k: v for k, v in b.items() if k not in READ_TIME_PROGRESSION} for b in found]
 
 
 @pytest.mark.parametrize("record", RECORDS, ids=lambda r: r["plan_id"][:8])
@@ -30,7 +37,7 @@ def test_saved_examples_are_idempotent_preserve_dose_and_retain_every_warning(re
     assert original == record["card"]
     assert recover_selected_coaching(after, record["brief"]) == after
     api = resolve_effective_structured_plan({"structured_plan": original, "planning_brief": record["brief"]})
-    assert blocks(api) == blocks(after)
+    assert blocks(api, read_time=False) == blocks(after, read_time=False)
     for before, current in zip(blocks(original), blocks(after)):
         assert {k: current.get(k) for k in DOSE} == {k: before.get(k) for k in DOSE}
         assert all(option in before.get("regression_options", []) for option in current.get("regression_options", []))
