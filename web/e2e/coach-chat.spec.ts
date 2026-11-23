@@ -181,6 +181,8 @@ test.describe("voice notes are recorded by holding the mic", () => {
     const thread = page.getByRole("dialog", { name: "Chat with Leo Martins" });
     const mic = thread.getByRole("button", { name: "Hold to record a voice note" });
     await expect(mic).toBeVisible();
+    // Measure once the sheet has finished sliding in, not part-way through.
+    await thread.evaluate(sheet => Promise.all(sheet.getAnimations({ subtree: true }).map(a => a.finished)));
 
     // Idle, the composer is one row: the field and mic share a line, mic on the right.
     const field = thread.getByRole("textbox", { name: "Message" });
@@ -352,7 +354,7 @@ test.describe("mobile composer and voice notes", () => {
     expect(send.x + send.width).toBeLessThanOrEqual(390);
   });
 
-  test("a voice note keeps one size from loading to playable", async ({ page, baseURL }) => {
+  test("a voice note is playable at once and keeps one size when its link arrives", async ({ page, baseURL }) => {
     await chatFixture(page, baseURL!, "coach");
     let release: () => void = () => undefined;
     const held = new Promise<void>(resolve => { release = resolve; });
@@ -363,15 +365,50 @@ test.describe("mobile composer and voice notes", () => {
     await page.setViewportSize({ width: 390, height: 900 });
     await page.goto(`/coach/chats?with=${leo}`);
     const thread = page.getByRole("dialog", { name: "Chat with Leo Martins" });
-    const loading = thread.getByRole("group", { name: "Voice note loading" });
-    await expect(loading).toBeVisible();
-    const before = (await loading.boundingBox())!;
-    release();
+    // No spinner while the file link is on its way: the play button is there already.
     const player = thread.getByRole("button", { name: /^Play voice note from Leo,/ });
     await expect(player).toBeVisible();
-    const after = (await thread.getByRole("slider", { name: "Voice note position" }).locator("..").boundingBox())!;
+    await expect(thread.getByRole("group", { name: "Voice note loading" })).toHaveCount(0);
+    const box = thread.getByRole("slider", { name: "Voice note position" }).locator("..");
+    const before = (await box.boundingBox())!;
+    release();
+    await expect(box.getByText("0:01")).toBeVisible();
+    const after = (await box.boundingBox())!;
     expect(Math.abs(after.height - before.height)).toBeLessThan(2);
     expect(Math.abs(after.width - before.width)).toBeLessThan(2);
+  });
+
+  test("a reopened chat shows its messages at once, before the server answers", async ({ page, baseURL }) => {
+    await chatFixture(page, baseURL!, "coach");
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.goto(`/coach/chats?with=${leo}`);
+    const thread = page.getByRole("dialog", { name: "Chat with Leo Martins" });
+    await expect(thread.getByRole("button", { name: /^Play voice note from Leo,/ })).toBeVisible();
+    // Give the device copy time to save, then make the server hang.
+    await page.waitForTimeout(500);
+    await page.route("**/rest/v1/coach_messages**", () => new Promise(() => undefined));
+    await page.route("**/rest/v1/rpc/coach_chat_inbox**", () => new Promise(() => undefined));
+    await page.reload();
+    await expect(page.getByRole("dialog", { name: "Chat with Leo Martins" })
+      .getByRole("button", { name: /^Play voice note from Leo,/ })).toBeVisible();
+  });
+
+  test("a link to a fighter missing from the remembered inbox still opens their chat", async ({ page, baseURL }) => {
+    await chatFixture(page, baseURL!, "coach");
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.goto("/coach/chats");
+    await expect(page.getByRole("button", { name: /Leo Martins/ })).toBeVisible();
+    await page.waitForTimeout(500);
+    // The device copy predates the connection: Leo isn't in it yet.
+    await page.evaluate(id => {
+      for (const key of Object.keys(localStorage).filter(k => k.startsWith("unlxck.chat.v1."))) {
+        const data = JSON.parse(localStorage.getItem(key)!);
+        data.inbox = data.inbox.filter((row: { other_id: string }) => row.other_id !== id);
+        localStorage.setItem(key, JSON.stringify(data));
+      }
+    }, leo);
+    await page.goto(`/coach/chats?with=${leo}`);
+    await expect(page.getByRole("dialog", { name: "Chat with Leo Martins" })).toBeVisible();
   });
 
   test("a failed voice upload stays one message and sends exactly once on retry", async ({ page, baseURL }) => {

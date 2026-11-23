@@ -19,6 +19,9 @@ import {
   type InboxRow, type QuoteRef,
 } from "@/lib/coach-chat";
 import { subscribeToChat, subscribeToInbox, type ChatRow } from "@/lib/coach-chat-live";
+import {
+  cacheGeneration, cachedInbox, cachedThread, cacheInbox, cacheThread, freshLinks, mediaShape, photoBox, prefetchOnce, rememberLinks,
+} from "@/lib/chat-cache";
 import { formatAppDate } from "@/lib/date-format";
 import { lockOverlayScroll } from "@/lib/overlay-scroll-lock";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
@@ -50,6 +53,16 @@ function readParams() {
   return { withId: params.get("with"), quote: parseQuoteParam(params.get("quote")) };
 }
 
+/** The chat a link points at, or a fighter's only coach. A linked session waits
+ * for the first chat picked when there is a choice. */
+function firstChat(rows: InboxRow[], role: ChatRole): { selected: string | null; quote: QuoteRef | null } {
+  const { withId, quote } = readParams();
+  const open = rows.filter(row => row.active);
+  if (withId && rows.some(row => row.other_id === withId)) return { selected: withId, quote };
+  if (!withId && role === "athlete" && open.length === 1) return { selected: open[0].other_id, quote };
+  return { selected: null, quote };
+}
+
 function applyChatRow(row: InboxRow, chat: ChatRow, me: string): InboxRow {
   const coachSide = chat.coach_id === me;
   return {
@@ -68,36 +81,46 @@ function sortInbox(rows: InboxRow[]) {
 }
 
 function ChatScreen({ token, me, role }: { token: string; me: string; role: ChatRole }) {
-  const [inbox, setInbox] = useState<InboxRow[] | null>(null);
+  // The inbox from last time shows at once; the server's copy replaces it.
+  // A remembered inbox also opens the linked (or only) chat straight away.
+  const [start] = useState(() => {
+    const rows = cachedInbox(me);
+    return { rows, first: rows ? firstChat(rows, role) : null };
+  });
+  const [inbox, setInbox] = useState<InboxRow[] | null>(start.rows);
   const [error, setError] = useState("");
-  const [selected, setSelected] = useState<string | null>(null);
-  const [quote, setQuote] = useState<QuoteRef | null>(null);
-  const opened = useRef(false);
-  const selectedRef = useRef<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(start.first?.selected ?? null);
+  const [quote, setQuote] = useState<QuoteRef | null>(start.first?.quote ?? null);
+  // Only a chat actually opened counts: a link to a fighter not yet in the
+  // remembered inbox still opens once the server's inbox arrives.
+  const opened = useRef(Boolean(start.first?.selected));
+  const selectedRef = useRef<string | null>(start.first?.selected ?? null);
+
+  const openFirst = useCallback((rows: InboxRow[]) => {
+    if (opened.current) return;
+    opened.current = true;
+    const first = firstChat(rows, role);
+    setQuote(first.quote);
+    if (first.selected) {
+      selectedRef.current = first.selected;
+      setSelected(first.selected);
+    }
+  }, [role]);
 
   const load = useCallback(async () => {
     try {
       const rows = await fetchInbox(token);
       setInbox(sortInbox(rows));
       setError("");
-      if (!opened.current) {
-        opened.current = true;
-        const { withId, quote: linked } = readParams();
-        const open = rows.filter(row => row.active);
-        // A linked session waits for the first chat picked when there is a choice.
-        setQuote(linked);
-        if (withId && rows.some(row => row.other_id === withId)) {
-          selectedRef.current = withId;
-          setSelected(withId);
-        } else if (!withId && role === "athlete" && open.length === 1) {
-          selectedRef.current = open[0].other_id;
-          setSelected(open[0].other_id);
-        }
-      }
+      openFirst(rows);
+      // Warm the chats people open most, so they open without a wait.
+      for (const row of sortInbox(rows).filter(row => row.chat_id).slice(0, 3)) void prefetchThread(token, me, row.chat_id!);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong. Please retry.");
     }
-  }, [token, role]);
+  }, [token, me, openFirst]);
+
+  useEffect(() => { if (inbox) cacheInbox(me, inbox); }, [me, inbox]);
 
   // Without Realtime the inbox refreshes when the screen comes back into view.
   const inboxLive = useRef<boolean | null>(null);
@@ -163,6 +186,7 @@ function ChatScreen({ token, me, role }: { token: string; me: string; role: Chat
             {inbox.map(row => (
               <li key={row.other_id}>
                 <button type="button" className={styles.row} aria-current={row.other_id === selected ? "true" : undefined}
+                  onPointerDown={() => { if (row.chat_id) void prefetchThread(token, me, row.chat_id); }}
                   onClick={() => select(row.other_id)}>
                   <Avatar name={row.name} url={row.avatar_url} flag={row.attention ? "attention" : null} />
                   <span className={styles.rowCopy}>
@@ -267,6 +291,32 @@ function Avatar({ name, url, flag, small = false }: { name: string; url: string 
   );
 }
 
+/**
+ * Fetch a chat's newest page and its file links ahead of opening it, and start
+ * the photos downloading, so the chat shows complete the moment it opens.
+ */
+function prefetchThread(token: string, me: string, chatId: string) {
+  const generation = cacheGeneration();
+  // Signed out meanwhile: never write the previous account's chats back.
+  const current = () => cacheGeneration() === generation;
+  return prefetchOnce(me, chatId, async () => {
+    const rows = await fetchMessages(token, chatId);
+    if (!current()) return;
+    cacheThread(me, chatId, mergeMessages(cachedThread(me, chatId) ?? [], rows));
+    const ids = rows.filter(m => m.asset_id && m.id > 0).map(m => m.id).slice(-30);
+    if (!ids.length) return;
+    const files = await getChatFiles(token, ids);
+    if (!current()) return;
+    rememberLinks(me, files);
+    for (const file of files) {
+      if (file.kind !== "photo") continue;
+      const image = new Image();
+      image.decoding = "async";
+      image.src = file.thumb_url ?? file.url;
+    }
+  });
+}
+
 // A voice note carries its recording until the upload succeeds, so a retry
 // never records or uploads twice, and the note plays from the device meanwhile.
 type Pending = { draft: ChatDraft; clientId: string; voice?: { wav: Blob; durationMs: number } };
@@ -288,13 +338,14 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
   onBack: () => void; onRow: (patch: Partial<InboxRow>) => void;
 }) {
   const [chatId, setChatId] = useState(row.chat_id);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [loading, setLoading] = useState(Boolean(row.chat_id));
+  // The newest page from last time shows at once; the server's copy merges in.
+  const [messages, setMessages] = useState<ChatMessage[]>(() => cachedThread(me, row.chat_id) ?? []);
+  const [loading, setLoading] = useState(() => Boolean(row.chat_id) && !cachedThread(me, row.chat_id)?.length);
   const [hasMore, setHasMore] = useState(false);
   const [problem, setProblem] = useState("");
   const [otherReadAt, setOtherReadAt] = useState(row.other_read_at);
   const [typingUntil, setTypingUntil] = useState(0);
-  const [files, setFiles] = useState<Record<number, ChatFile & { at: number }>>({});
+  const [files, setFiles] = useState<Record<number, ChatFile & { at: number }>>(() => freshLinks(me, FILE_LINK_TTL_MS));
   const [text, setText] = useState("");
   const [quote, setQuote] = useState<QuoteRef | null>(row.active ? initialQuote : null);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
@@ -313,7 +364,7 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
   const stickToBottom = useRef(true);
   const field = useRef<HTMLTextAreaElement | null>(null);
   // Recordings this device sent, by client id: they play from here at once.
-  const localVoice = useRef(new Map<string, { wav: Blob; durationMs: number }>());
+  const [localVoice, setLocalVoice] = useState<Record<string, { wav: Blob; durationMs: number }>>({});
   const delivering = useRef(new Set<string>());
   const photoInput = useRef<HTMLInputElement | null>(null);
   const otherName = row.name.split(" ")[0] || row.name;
@@ -328,11 +379,15 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
       setLoading(false);
     }).catch(e => {
       if (controller.signal.aborted) return;
+      // Remembered messages are still worth showing; only an empty chat reports.
+      if (cachedThread(me, chatId)?.length) { setLoading(false); return; }
       setLoading(false);
       setProblem(e instanceof Error ? e.message : "Something went wrong. Please retry.");
     });
     return () => controller.abort();
-  }, [token, chatId]);
+  }, [token, chatId, me]);
+
+  useEffect(() => { if (chatId && !loading) cacheThread(me, chatId, messages); }, [me, chatId, messages, loading]);
 
   // Live messages, reactions, receipts and typing. Without Realtime (a
   // refused socket, an outage) the newest page is fetched again when the chat
@@ -418,6 +473,8 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
   // expires (never mid-play), and any link that fails is fetched again, twice
   // at most.
   const [linkClock, setLinkClock] = useState(0);
+  const filesRef = useRef(files);
+  useEffect(() => { filesRef.current = files; }, [files]);
   const playing = useRef(new Set<number>());
   const linkFailures = useRef(new Map<number, number>());
   const dropLink = useCallback((id: number) => {
@@ -434,10 +491,11 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
     const controller = new AbortController();
     getChatFiles(token, needed.slice(-30), controller.signal).then(links => {
       const at = Date.now();
+      rememberLinks(me, links, at);
       setFiles(current => ({ ...current, ...Object.fromEntries(links.map(link => [link.message_id, { ...link, at }])) }));
     }).catch(() => undefined);
     return () => controller.abort();
-  }, [token, messages, files, linkClock]);
+  }, [token, me, messages, files, linkClock]);
   useEffect(() => {
     // A played note keeps its audio, so its link is never renewed: leave it out,
     // or an expired link would wake this timer every second.
@@ -450,8 +508,9 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
 
   // Stay pinned to the newest message unless the reader scrolled up, including
   // when the list itself changes size: the keyboard opening, the composer
-  // growing, or a voice note or photo finishing loading.
-  useEffect(() => {
+  // growing, or a voice note or photo finishing loading. Before paint, so an
+  // opened chat never shows its oldest messages first.
+  useLayoutEffect(() => {
     const box = scroller.current;
     if (box && stickToBottom.current) box.scrollTop = box.scrollHeight;
   }, [messages, typingUntil]);
@@ -511,13 +570,15 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
       }]);
     });
     stickToBottom.current = true;
+    let draft = item.draft;
     try {
       if (item.voice && !item.draft.asset_id) {
         // Uploaded once: a later retry reuses this file.
-        item.draft = { ...item.draft, asset_id: await uploadChatFile(token, "voice", item.voice.wav, () => undefined) };
-        setMessages(current => current.map(m => m.client_id === clientId ? { ...m, status: "sending", asset_id: item.draft.asset_id ?? null } : m));
+        const asset = await uploadChatFile(token, "voice", item.voice.wav, () => undefined);
+        draft = { ...draft, asset_id: asset };
+        pending.current.set(clientId, { ...item, draft });
+        setMessages(current => current.map(m => m.client_id === clientId ? { ...m, status: "sending", asset_id: asset } : m));
       }
-      const draft = item.draft;
       const { created, ...message } = await sendMessage(token, row.other_id, clientId, draft);
       pending.current.delete(clientId);
       if (!chatId) setChatId(message.chat_id);
@@ -537,7 +598,7 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
 
   function send(draft: ChatDraft, voice?: Pending["voice"]) {
     const item: Pending = { draft, clientId: newClientId(), voice };
-    if (voice) localVoice.current.set(item.clientId, voice);
+    if (voice) setLocalVoice(current => ({ ...current, [item.clientId]: voice }));
     pending.current.set(item.clientId, item);
     void deliver(item);
   }
@@ -683,8 +744,10 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
           const previous = messages[index - 1];
           const newDay = !previous || !sameDay(previous.created_at, message.created_at);
           const file = files[message.id];
-          const local = message.kind === "voice" ? localVoice.current.get(message.client_id) : undefined;
-          const voiceMs = file?.duration_ms ?? local?.durationMs ?? null;
+          const local = message.kind === "voice" ? localVoice[message.client_id] : undefined;
+          const shape = message.id > 0 ? mediaShape(me, message.id) : null;
+          const voiceMs = file?.duration_ms ?? local?.durationMs ?? shape?.duration_ms ?? null;
+          const box = message.kind === "photo" ? photoBox(file?.width ?? shape?.width, file?.height ?? shape?.height) : null;
           const reply = message.reply_to_id ? byId.get(message.reply_to_id) : null;
           const reactions = reactionSummary(message.reactions, me);
           return (
@@ -707,27 +770,39 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
                     </span>
                   ) : null}
                   {message.quote ? <TrainingCard quote={message.quote} /> : null}
-                  {message.kind === "photo" ? (
-                    file ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- short-lived signed link
-                      <img className={styles.photo} src={file.thumb_url ?? file.url} alt="Photo"
-                        width={file.width ?? undefined} height={file.height ?? undefined}
-                        onError={() => dropLink(message.id)} />
-                    ) : <span className={styles.photoLoading}>Photo</span>
+                  {message.kind === "photo" && box ? (
+                    // The frame has the photo's final size from the start; the photo fades in.
+                    <span className={styles.photoFrame} style={{ width: box.width, height: box.height }}>
+                      {file ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- short-lived signed link
+                        <img className={styles.photo} src={file.thumb_url ?? file.url} alt="Photo"
+                          width={box.width} height={box.height} decoding="async"
+                          ref={image => { if (image?.complete && image.naturalWidth) image.dataset.loaded = "true"; }}
+                          onLoad={event => { event.currentTarget.dataset.loaded = "true"; }}
+                          onError={() => dropLink(message.id)} />
+                      ) : <span className="sr-only">Photo loading</span>}
+                    </span>
                   ) : null}
                   {message.kind === "voice" ? (
                     // The same player as voice notes on training: a waveform, not the browser's bar.
                     // Once played it keeps the audio, so its link no longer needs renewing.
                     // A note sent from this device plays from the recording straight away;
-                    // others show the player's exact shape until their link arrives.
+                    // Others are playable at once too: the link is fetched on play if it
+                    // hasn't arrived yet. Only a note still uploading elsewhere waits.
                     <div className={styles.voice}>
-                      {file || local ? <VoicePlayer id={`chat-${message.client_id}`} durationMs={voiceMs}
+                      {file || local || message.id > 0 ? <VoicePlayer id={`chat-${message.client_id}`} durationMs={voiceMs}
                         tone={mine ? "onAccent" : "coach"} seekLabel="Voice note position"
                         playLabel={`Play voice note from ${mine ? "you" : otherName}, ${formatDuration(voiceMs)}`}
                         load={async () => {
                           if (local) return local.wav;
                           playing.current.add(message.id);
-                          return files[message.id]?.url ?? file!.url;
+                          const known = filesRef.current[message.id]?.url;
+                          if (known) return known;
+                          const generation = cacheGeneration();
+                          const [link] = await getChatFiles(token, [message.id]);
+                          if (!link) throw new Error("unavailable");
+                          if (cacheGeneration() === generation) rememberLinks(me, [link]);
+                          return link.url;
                         }} />
                         : <VoicePlaceholder id={`chat-${message.client_id}`} tone={mine ? "onAccent" : "coach"}
                           label="Voice note loading" />}

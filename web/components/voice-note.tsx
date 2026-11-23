@@ -41,6 +41,9 @@ export function VoicePlayer({ id, load, durationMs, playLabel, seekLabel, tone =
   const [rate, setRate] = useState<(typeof RATES)[number]>(1);
   const [failed, setFailed] = useState(false);
 
+  // A length that arrives after the player is shown (before any playback) still shows.
+  useEffect(() => { if (!audio.current && durationMs) setLength(durationMs / 1000); }, [durationMs]);
+
   useEffect(() => () => {
     audio.current?.pause();
     if (playingNow === audio.current) playingNow = null;

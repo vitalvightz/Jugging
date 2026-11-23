@@ -1,5 +1,6 @@
 "use client";
 
+import { clearChatCache } from "@/lib/chat-cache";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 
 import { usePathname } from "next/navigation";
@@ -406,6 +407,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     handledAccessTokenRef.current = null;
     hydratedAccessTokenRef.current = null;
     clearSharedReads();
+    clearChatCache();
     clearRetryTimer();
     setHasTransientMeError(false);
     setAppearancePreview(null);
