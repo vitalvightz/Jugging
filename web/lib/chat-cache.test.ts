@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  cachedInbox, cachedThread, cacheInbox, cacheThread, clearChatCache, freshLinks, mediaShape, photoBox, rememberLinks,
+  cacheGeneration, cachedInbox, cachedThread, cacheInbox, cacheThread, clearChatCache, freshLinks, mediaShape, photoBox, rememberLinks,
 } from "./chat-cache.ts";
 import type { ChatMessage, InboxRow } from "./coach-chat.ts";
 
@@ -57,6 +57,12 @@ test("remembers file shapes, keeps links in memory only, and forgets everything 
   clearChatCache();
   assert.equal(storage.length, 0);
   assert.equal(cachedInbox("me"), null);
+});
+
+test("sign-out marks earlier work as stale", () => {
+  const before = cacheGeneration();
+  clearChatCache();
+  assert.notEqual(cacheGeneration(), before);
 });
 
 test("sizes photos the same before and after they load", () => {

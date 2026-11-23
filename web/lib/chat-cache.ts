@@ -26,6 +26,8 @@ type Store = {
 let owner: string | null = null;
 let store: Store | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+// Bumped at sign-out, so work started before it can tell it is stale.
+let generation = 0;
 const links = new Map<number, ChatFile & { at: number }>();
 const prefetching = new Map<string, Promise<void>>();
 
@@ -141,8 +143,13 @@ export function prefetchOnce(userId: string, chatId: string, task: () => Promise
   return running;
 }
 
+export function cacheGeneration() {
+  return generation;
+}
+
 /** Forget every account's chats on this device, e.g. at sign-out. */
 export function clearChatCache() {
+  generation += 1;
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
   owner = null;
   store = null;

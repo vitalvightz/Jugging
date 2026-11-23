@@ -181,6 +181,8 @@ test.describe("voice notes are recorded by holding the mic", () => {
     const thread = page.getByRole("dialog", { name: "Chat with Leo Martins" });
     const mic = thread.getByRole("button", { name: "Hold to record a voice note" });
     await expect(mic).toBeVisible();
+    // Measure once the sheet has finished sliding in, not part-way through.
+    await thread.evaluate(sheet => Promise.all(sheet.getAnimations({ subtree: true }).map(a => a.finished)));
 
     // Idle, the composer is one row: the field and mic share a line, mic on the right.
     const field = thread.getByRole("textbox", { name: "Message" });
@@ -389,6 +391,24 @@ test.describe("mobile composer and voice notes", () => {
     await page.reload();
     await expect(page.getByRole("dialog", { name: "Chat with Leo Martins" })
       .getByRole("button", { name: /^Play voice note from Leo,/ })).toBeVisible();
+  });
+
+  test("a link to a fighter missing from the remembered inbox still opens their chat", async ({ page, baseURL }) => {
+    await chatFixture(page, baseURL!, "coach");
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.goto("/coach/chats");
+    await expect(page.getByRole("button", { name: /Leo Martins/ })).toBeVisible();
+    await page.waitForTimeout(500);
+    // The device copy predates the connection: Leo isn't in it yet.
+    await page.evaluate(id => {
+      for (const key of Object.keys(localStorage).filter(k => k.startsWith("unlxck.chat.v1."))) {
+        const data = JSON.parse(localStorage.getItem(key)!);
+        data.inbox = data.inbox.filter((row: { other_id: string }) => row.other_id !== id);
+        localStorage.setItem(key, JSON.stringify(data));
+      }
+    }, leo);
+    await page.goto(`/coach/chats?with=${leo}`);
+    await expect(page.getByRole("dialog", { name: "Chat with Leo Martins" })).toBeVisible();
   });
 
   test("a failed voice upload stays one message and sends exactly once on retry", async ({ page, baseURL }) => {

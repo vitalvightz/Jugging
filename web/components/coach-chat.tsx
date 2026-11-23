@@ -20,7 +20,7 @@ import {
 } from "@/lib/coach-chat";
 import { subscribeToChat, subscribeToInbox, type ChatRow } from "@/lib/coach-chat-live";
 import {
-  cachedInbox, cachedThread, cacheInbox, cacheThread, freshLinks, mediaShape, photoBox, prefetchOnce, rememberLinks,
+  cacheGeneration, cachedInbox, cachedThread, cacheInbox, cacheThread, freshLinks, mediaShape, photoBox, prefetchOnce, rememberLinks,
 } from "@/lib/chat-cache";
 import { formatAppDate } from "@/lib/date-format";
 import { lockOverlayScroll } from "@/lib/overlay-scroll-lock";
@@ -91,7 +91,9 @@ function ChatScreen({ token, me, role }: { token: string; me: string; role: Chat
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<string | null>(start.first?.selected ?? null);
   const [quote, setQuote] = useState<QuoteRef | null>(start.first?.quote ?? null);
-  const opened = useRef(Boolean(start.first));
+  // Only a chat actually opened counts: a link to a fighter not yet in the
+  // remembered inbox still opens once the server's inbox arrives.
+  const opened = useRef(Boolean(start.first?.selected));
   const selectedRef = useRef<string | null>(start.first?.selected ?? null);
 
   const openFirst = useCallback((rows: InboxRow[]) => {
@@ -294,12 +296,17 @@ function Avatar({ name, url, flag, small = false }: { name: string; url: string 
  * the photos downloading, so the chat shows complete the moment it opens.
  */
 function prefetchThread(token: string, me: string, chatId: string) {
+  const generation = cacheGeneration();
+  // Signed out meanwhile: never write the previous account's chats back.
+  const current = () => cacheGeneration() === generation;
   return prefetchOnce(me, chatId, async () => {
     const rows = await fetchMessages(token, chatId);
+    if (!current()) return;
     cacheThread(me, chatId, mergeMessages(cachedThread(me, chatId) ?? [], rows));
     const ids = rows.filter(m => m.asset_id && m.id > 0).map(m => m.id).slice(-30);
     if (!ids.length) return;
     const files = await getChatFiles(token, ids);
+    if (!current()) return;
     rememberLinks(me, files);
     for (const file of files) {
       if (file.kind !== "photo") continue;
@@ -357,7 +364,7 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
   const stickToBottom = useRef(true);
   const field = useRef<HTMLTextAreaElement | null>(null);
   // Recordings this device sent, by client id: they play from here at once.
-  const localVoice = useRef(new Map<string, { wav: Blob; durationMs: number }>());
+  const [localVoice, setLocalVoice] = useState<Record<string, { wav: Blob; durationMs: number }>>({});
   const delivering = useRef(new Set<string>());
   const photoInput = useRef<HTMLInputElement | null>(null);
   const otherName = row.name.split(" ")[0] || row.name;
@@ -563,13 +570,15 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
       }]);
     });
     stickToBottom.current = true;
+    let draft = item.draft;
     try {
       if (item.voice && !item.draft.asset_id) {
         // Uploaded once: a later retry reuses this file.
-        item.draft = { ...item.draft, asset_id: await uploadChatFile(token, "voice", item.voice.wav, () => undefined) };
-        setMessages(current => current.map(m => m.client_id === clientId ? { ...m, status: "sending", asset_id: item.draft.asset_id ?? null } : m));
+        const asset = await uploadChatFile(token, "voice", item.voice.wav, () => undefined);
+        draft = { ...draft, asset_id: asset };
+        pending.current.set(clientId, { ...item, draft });
+        setMessages(current => current.map(m => m.client_id === clientId ? { ...m, status: "sending", asset_id: asset } : m));
       }
-      const draft = item.draft;
       const { created, ...message } = await sendMessage(token, row.other_id, clientId, draft);
       pending.current.delete(clientId);
       if (!chatId) setChatId(message.chat_id);
@@ -589,7 +598,7 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
 
   function send(draft: ChatDraft, voice?: Pending["voice"]) {
     const item: Pending = { draft, clientId: newClientId(), voice };
-    if (voice) localVoice.current.set(item.clientId, voice);
+    if (voice) setLocalVoice(current => ({ ...current, [item.clientId]: voice }));
     pending.current.set(item.clientId, item);
     void deliver(item);
   }
@@ -735,7 +744,7 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
           const previous = messages[index - 1];
           const newDay = !previous || !sameDay(previous.created_at, message.created_at);
           const file = files[message.id];
-          const local = message.kind === "voice" ? localVoice.current.get(message.client_id) : undefined;
+          const local = message.kind === "voice" ? localVoice[message.client_id] : undefined;
           const shape = message.id > 0 ? mediaShape(me, message.id) : null;
           const voiceMs = file?.duration_ms ?? local?.durationMs ?? shape?.duration_ms ?? null;
           const box = message.kind === "photo" ? photoBox(file?.width ?? shape?.width, file?.height ?? shape?.height) : null;
@@ -789,9 +798,10 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
                           playing.current.add(message.id);
                           const known = filesRef.current[message.id]?.url;
                           if (known) return known;
+                          const generation = cacheGeneration();
                           const [link] = await getChatFiles(token, [message.id]);
                           if (!link) throw new Error("unavailable");
-                          rememberLinks(me, [link]);
+                          if (cacheGeneration() === generation) rememberLinks(me, [link]);
                           return link.url;
                         }} />
                         : <VoicePlaceholder id={`chat-${message.client_id}`} tone={mine ? "onAccent" : "coach"}
