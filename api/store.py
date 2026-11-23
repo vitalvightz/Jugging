@@ -1385,6 +1385,35 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
             .eq("target_id", target_id).eq("exercise_ref", exercise_ref)
         )
 
+    def get_coach_chat_message(self, message_id: int) -> dict[str, Any] | None:
+        """One chat message's routing facts, or ``None``. Callers check the
+        participant themselves; the text is read only to choose push copy."""
+        return self._select_first(
+            self.client.table("coach_messages")
+            .select("id,chat_id,coach_id,athlete_id,sender_id,kind,body,quote,created_at")
+            .eq("id", message_id)
+        )
+
+    def get_coach_chat_messages(self, message_ids: list[int]) -> list[dict[str, Any]]:
+        """The pair and file of several chat messages, in one read."""
+        if not message_ids:
+            return []
+        response = (
+            self.client.table("coach_messages")
+            .select("id,coach_id,athlete_id,kind,asset_id")
+            .in_("id", list(message_ids)).execute()
+        )
+        return list(getattr(response, "data", None) or [])
+
+    def claim_coach_checkin_nudges(self, limit: int) -> list[dict[str, Any]]:
+        """Every check-in nudge due now, claimed for today in one call."""
+        response = self.client.rpc("claim_coach_checkin_nudges", {"p_limit": int(limit)}).execute()
+        return list(getattr(response, "data", None) or [])
+
+    def confirm_coach_checkin_nudge(self, nudge_id: str, training_day: str) -> None:
+        """The push went out: this nudge is done for ``training_day``."""
+        self.client.rpc("confirm_coach_checkin_nudge", {"p_nudge_id": nudge_id, "p_day": training_day}).execute()
+
     def get_profile_compliance(self, athlete_id: str) -> dict[str, Any] | None:
         """Fresh compliance facts only; intentionally no separate cache."""
         return self._select_first(

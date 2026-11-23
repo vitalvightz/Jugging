@@ -39,6 +39,8 @@
     "historyMeta": "Sessions, check-ins, injuries",
     "timer": "Round timer",
     "timerMeta": "Rounds and rest, any time",
+    "coachChat": "Coach chat",
+    "coachChatMeta": "Messages with your coach",
     "timerTab": "Timer",
     "weight": "Weight tracker",
     "weightMeta": "Daily weights and trend to target",

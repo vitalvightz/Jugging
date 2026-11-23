@@ -16,6 +16,7 @@ import { RequireAuth } from "@/components/auth-guard";
 import { ManualExerciseLogger } from "@/components/manual-exercise-logger";
 import { CoachPlans } from "./coach-plans";
 import { CoachFeedback } from "./coach-feedback";
+import { CoachFighterContact } from "./coach-fighter-contact";
 import { FighterMediaPanel } from "./fighter-media";
 import { LogTraining } from "@/components/log-training";
 import { useAppSession } from "@/components/auth-provider";
@@ -820,6 +821,8 @@ function FighterOverview({
           </div> : null}
         </div>
       </section>
+      <CoachFighterContact token={token} athleteId={f.id} name={f.name} age={f.age}
+        healthConsent={Boolean(f.can_leave_feedback)} />
       <DiscoveryHint id="coach-fighter-sections" text="Tap a section to open it." />
       {concerns.length ? <section className={`${styles.panel} ${styles.attentionPanel}`} aria-label="Needs attention">
         <h2>Needs attention</h2>

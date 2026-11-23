@@ -515,6 +515,9 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         self.profiles: dict[str, dict] = {}
         self.coach_connections: list[dict] = []
         self.coach_feedback: list[dict] = []
+        self.coach_chat_messages: dict[int, dict] = {}
+        self.due_checkin_nudges: list[dict] = []
+        self.confirmed_checkin_nudges: list[tuple[str, str]] = []
         self.intakes: dict[str, list[dict]] = {}
         self.plans: dict[str, dict] = {}
         self.active_plan_ids: dict[str, str] = {}
@@ -812,6 +815,20 @@ class FakeStore(InMemoryNotificationLedger, FullRowStatusReads):
         return next((row for row in self.coach_feedback if row["athlete_id"] == athlete_id and row["coach_id"] == coach_id
                      and row["source"] == source and row["target_id"] == target_id
                      and row["exercise_ref"] == exercise_ref), None)
+
+    def get_coach_chat_message(self, message_id: int) -> dict | None:
+        row = self.coach_chat_messages.get(int(message_id))
+        return copy.deepcopy(row) if row else None
+
+    def get_coach_chat_messages(self, message_ids: list[int]) -> list[dict]:
+        return [copy.deepcopy(self.coach_chat_messages[int(i)]) for i in message_ids if int(i) in self.coach_chat_messages]
+
+    def claim_coach_checkin_nudges(self, limit: int) -> list[dict]:
+        claimed, self.due_checkin_nudges = self.due_checkin_nudges[:limit], self.due_checkin_nudges[limit:]
+        return claimed
+
+    def confirm_coach_checkin_nudge(self, nudge_id: str, training_day: str) -> None:
+        self.confirmed_checkin_nudges.append((nudge_id, training_day))
 
     def get_latest_intake(self, athlete_id: str) -> dict | None:
         items = self.intakes.get(athlete_id, [])

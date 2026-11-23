@@ -339,6 +339,16 @@ export type Body_create_session_feedback_api_feedback_session_post = {
   screenshot?: string | null;
 };
 
+export type ChatFile = {
+  message_id: number;
+  kind: "photo" | "voice";
+  url: string;
+  thumb_url: string | null;
+  width: number | null;
+  height: number | null;
+  duration_ms: number | null;
+};
+
 export type ClinicalReviewCaptureRequest = {
   request_id: string;
   athlete_id: string;
