@@ -124,6 +124,13 @@ test("explains when existing combat fills the entire training week", () => {
   );
 });
 
+test("warns when only light combat occupies every training day", () => {
+  assert.match(
+    getSparringConsistency(["Tuesday", "Wednesday", "Thursday", "Sunday"], [], ["Tuesday", "Wednesday", "Thursday", "Sunday"], false, 4).softWarning ?? "",
+    /There may be no room for standalone S&C sessions/,
+  );
+});
+
 test("flags more combat days than planned training days", () => {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
   assert.deepStrictEqual(
