@@ -263,7 +263,14 @@
 }
 
 /* Attach menu: a small popover under the button. */
-.attachWrap { position: relative; flex: none; }
+.attachWrap { position: relative; display: flex; flex: none; gap: 8px; }
+
+/* Hold to record: a round mic beside Attach, or a labelled pill on its own. */
+.mic { justify-content: center; width: 40px; padding: 0; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.mic[data-only] { width: auto; padding: 0 16px; }
+.slideHint { flex: 1; color: var(--text-secondary); font-size: var(--type-body-sm); text-align: center; white-space: nowrap; }
+.slideHint[data-cancelling] { color: var(--danger-ink); }
+.heldMic { display: grid; flex: none; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--brand-red); color: #fff; transform: scale(1.15); box-shadow: 0 0 0 8px rgb(220 38 38 / 25%); }
 
 .menu {
   position: absolute;
@@ -429,6 +436,12 @@
   .head .headTitle { font-size: 14px; }
   .head .attachFull { display: none; }
   .head .attachShort { display: inline; }
+  /* With the mic beside it, Attach becomes a paperclip; its name stays for screen readers. */
+  .head .attachWrap:has(.mic:not([data-only])) .attach:not(.mic) { width: 40px; padding: 0; justify-content: center; }
+  .head .attachWrap:has(.mic:not([data-only])) .attachText,
+  .head .attachWrap:has(.mic:not([data-only])) .attachShort {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
 }
 .headText {
   display: grid;

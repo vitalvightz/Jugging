@@ -16,7 +16,8 @@ export function CoachFighterContact({ token, athleteId, name, age, healthConsent
   const [saved, setSaved] = useState<CheckinNudge | null | undefined>(undefined);
   const [days, setDays] = useState(WEEKDAYS);
   const [time, setTime] = useState("08:00");
-  const [enabled, setEnabled] = useState(true);
+  // Off until a saved nudge says otherwise, so the switch always shows what is saved.
+  const [enabled, setEnabled] = useState(false);
   const [state, setState] = useState<"idle" | "saving" | "saved">("idle");
   const [error, setError] = useState("");
   const first = name.split(" ")[0] || "This fighter";
@@ -43,11 +44,14 @@ export function CoachFighterContact({ token, athleteId, name, age, healthConsent
       setState("saved");
     } catch (e) {
       setState("idle");
+      setEnabled(saved?.enabled ?? false);
       setError(e instanceof Error ? e.message : "Not saved. Please retry.");
     }
   }
 
-  const changed = !saved || saved.days !== days || saved.local_time.slice(0, 5) !== time || saved.enabled !== enabled;
+  // The switch saves at once; days and time wait for Save, shown only once changed.
+  const changed = Boolean(saved?.enabled) && (saved!.days !== days || saved!.local_time.slice(0, 5) !== time);
+  const busy = state === "saving" || saved === undefined;
   return (
     <section className={styles.panel} aria-label="Contact and check-ins">
       <div className={styles.head}>
@@ -55,43 +59,49 @@ export function CoachFighterContact({ token, athleteId, name, age, healthConsent
           <p className={styles.kicker}>Check-in nudge</p>
           <p className={styles.status}>
             {saved === undefined ? "Loading…" : saved?.enabled
-              ? `${describeDays(saved.days)} at ${saved.local_time.slice(0, 5)}, their time`
+              ? `${describeDays(saved.days)} · ${saved.local_time.slice(0, 5)} their time`
               : "Off"}
           </p>
         </div>
-        <Link className="cta" href={chatLink("coach", athleteId)}>Message</Link>
+        <Link className={styles.message} href={chatLink("coach", athleteId)}>Message</Link>
       </div>
       {blocked ? <p className={styles.note}>{blocked}</p> : (
         <>
-          <div className={styles.days} role="group" aria-label="Nudge days">
-            {NUDGE_DAYS.map((day, index) => (
-              <button key={day} type="button" aria-pressed={hasDay(days, index)}
-                onClick={() => { const next = toggleDay(days, index); if (next) { setDays(next); setState("idle"); } }}>
-                {day.slice(0, 2)}
-              </button>
-            ))}
-            <button type="button" className={styles.preset} onClick={() => { setDays(days === EVERY_DAY ? WEEKDAYS : EVERY_DAY); setState("idle"); }}>
-              {days === EVERY_DAY ? "Weekdays" : "Every day"}
+          <div className={styles.switchRow}>
+            <span id={`nudge-${athleteId}`}>Remind {first} to check in</span>
+            <button type="button" role="switch" className={styles.switch} aria-checked={enabled} aria-labelledby={`nudge-${athleteId}`}
+              disabled={busy} onClick={() => { const next = !enabled; setEnabled(next); void save(next); }}>
+              <span aria-hidden="true" />
             </button>
           </div>
-          <div className={styles.controls}>
-            <label className={styles.time}>
-              <span>Time</span>
-              <input type="time" min="05:00" max="21:00" step={900} value={time}
-                onChange={event => { setTime(event.target.value); setState("idle"); }} />
-            </label>
-            <label className={styles.toggle}>
-              <input type="checkbox" checked={enabled} onChange={event => { setEnabled(event.target.checked); setState("idle"); }} />
-              <span>{enabled ? "On" : "Off"}</span>
-            </label>
-            <button type="button" className="ghost-button" disabled={!changed || state === "saving"} onClick={() => void save()}>
-              {state === "saving" ? "Saving…" : state === "saved" && !changed ? "Saved" : "Save"}
-            </button>
-          </div>
-          <p className={styles.note}>
-            Only sent if {first} hasn&apos;t checked in that day, in their time zone and outside their quiet hours.
-            You&apos;ll see &ldquo;Missed check-in&rdquo; in Chats when they don&apos;t.
-          </p>
+          {enabled ? (
+            <div className={styles.schedule}>
+              <div className={styles.days} role="group" aria-label="Nudge days">
+                {NUDGE_DAYS.map((day, index) => (
+                  <button key={day} type="button" aria-pressed={hasDay(days, index)} aria-label={day} title={day}
+                    onClick={() => { const next = toggleDay(days, index); if (next) { setDays(next); setState("idle"); } }}>
+                    {day.slice(0, 1)}
+                  </button>
+                ))}
+              </div>
+              <div className={styles.controls}>
+                <label className={styles.time}>
+                  <span>at</span>
+                  <input type="time" min="05:00" max="21:00" step={900} value={time}
+                    onChange={event => { setTime(event.target.value); setState("idle"); }} />
+                </label>
+                <button type="button" className={styles.preset} onClick={() => { setDays(days === EVERY_DAY ? WEEKDAYS : EVERY_DAY); setState("idle"); }}>
+                  {days === EVERY_DAY ? "Weekdays only" : "Every day"}
+                </button>
+                {changed ? (
+                  <button type="button" className={styles.save} disabled={state === "saving"} onClick={() => void save()}>
+                    {state === "saving" ? "Saving…" : "Save"}
+                  </button>
+                ) : state === "saved" ? <span className={styles.saved} role="status">Saved</span> : null}
+              </div>
+            </div>
+          ) : null}
+          <p className={styles.note}>Only sent on days {first} hasn&apos;t checked in, outside their quiet hours.</p>
         </>
       )}
       {error ? <p className={styles.error} role="alert">{error}</p> : null}

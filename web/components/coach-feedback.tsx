@@ -38,7 +38,8 @@ export function CoachFeedback({ token, athleteId, source, targetId, exerciseRef 
     } catch { setError(true); }
     finally { setBusy(false); }
   }
-  return <div className={styles.feedback}>
+  // data-open: notes or the form take the full width; a lone button sits in its row.
+  return <div className={styles.feedback} data-open={notes.length || editing || error ? true : undefined}>
     {editable && source === "sparring" && !exerciseRef && !notes.length && !editing ? <DiscoveryHint id="coach-feedback-note" text="Leave a note on this round." /> : null}
     {notes.map(note => <div key={note.id}><small>Coach {note.coach_name} · {formatAppDate(note.updated_at.slice(0, 10))}</small><p>{note.note}</p></div>)}
     {editable && !editing ? <button type="button" className="ghost-button" onClick={() => { setDraft(notes[0]?.note ?? ""); setEditing(true); }}>{notes.length ? "Edit feedback" : "Add feedback"}</button> : null}

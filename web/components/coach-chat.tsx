@@ -2,7 +2,7 @@
 // Coach chat: the WhatsApp layout people already know, plus quoted training
 // cards. One screen for coaches (/coach/chats) and fighters (/chat).
 import Link from "next/link";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { RequireAuth } from "@/components/auth-guard";
 import { useAppSession } from "@/components/auth-provider";
@@ -22,14 +22,13 @@ import { subscribeToChat, subscribeToInbox, type ChatRow } from "@/lib/coach-cha
 import { formatAppDate } from "@/lib/date-format";
 import { lockOverlayScroll } from "@/lib/overlay-scroll-lock";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { SLIDE_TO_CANCEL_PX, useHoldToRecord } from "@/lib/use-hold-to-record";
 import { useSheetExit } from "@/lib/use-sheet-exit";
 import styles from "./coach-chat.module.css";
 
 // A signed file link lives 120 seconds; refresh a little before that.
 const FILE_LINK_TTL_MS = 100_000;
 const TYPING_SHOWN_MS = 4000;
-// Hold the mic to record; slide this far left before letting go to cancel.
-const SLIDE_TO_CANCEL_PX = 90;
 
 export function CoachChat({ role }: { role: ChatRole }) {
   const { session, me, isMeHydrated } = useAppSession();
@@ -283,9 +282,8 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
   const [stage, setStage] = useState("");
   // "hold": recording while the mic is held down; "locked": started from the keyboard, sent with Send.
   const [recording, setRecording] = useState<"hold" | "locked" | null>(null);
-  const [slide, setSlide] = useState(0);
   const recorderReady = useRef(false);
-  const releaseHold = useRef<(() => void) | null>(null);
+
   const [today] = useState(() => new Date().toISOString().slice(0, 10));
   const recorder = useRef<VoiceRecorder | null>(null);
   const pending = useRef(new Map<string, Pending>());
@@ -533,7 +531,6 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
     const active = recorder.current;
     recorder.current = null;
     setRecording(null);
-    setSlide(0);
     if (!active) return;
     // Let go before the microphone was ready (or slid away): nothing to send.
     if (!keep || !recorderReady.current) {
@@ -555,31 +552,9 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
   }
 
   // Press and hold the mic to record, release to send, slide left to cancel.
-  // Release is watched on the window, so it still counts off the button.
-  function holdMic(event: PointerEvent<HTMLButtonElement>) {
-    if (event.button !== 0 || stage || recorder.current) return;
-    event.preventDefault();
-    const startX = event.clientX;
-    setSlide(0);
-    const move = (e: globalThis.PointerEvent) => setSlide(Math.max(0, startX - e.clientX));
-    const end = (e: globalThis.PointerEvent) => {
-      stop();
-      void finishRecording(e.type === "pointerup" && startX - e.clientX < SLIDE_TO_CANCEL_PX);
-    };
-    const stop = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", end);
-      window.removeEventListener("pointercancel", end);
-      releaseHold.current = null;
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", end);
-    window.addEventListener("pointercancel", end);
-    releaseHold.current = stop;
-    void startRecording("hold");
-  }
+  const hold = useHoldToRecord(() => void startRecording("hold"), send => void finishRecording(send));
 
-  useEffect(() => () => { releaseHold.current?.(); recorder.current?.cancel(); }, []);
+  useEffect(() => () => recorder.current?.cancel(), []);
 
   async function react(message: ChatMessage, emoji: ChatReaction) {
     const next = message.reactions?.[me] === emoji ? null : emoji;
@@ -734,11 +709,11 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
               <button type="button" className={styles.send} onClick={() => void finishRecording(true)} aria-label="Send voice note">➤</button>
             </div>
           ) : recording === "hold" ? (
-            <div className={styles.recordingBar} data-cancelling={slide >= SLIDE_TO_CANCEL_PX || undefined}>
+            <div className={styles.recordingBar} data-cancelling={hold.cancelling || undefined}>
               <span className={styles.recDot} aria-hidden="true" />
               <RecordingClock />
-              <span className={styles.slideHint} style={{ transform: `translateX(${-Math.min(slide, SLIDE_TO_CANCEL_PX)}px)` }} aria-live="polite">
-                {slide >= SLIDE_TO_CANCEL_PX ? "Release to cancel" : "‹ Slide to cancel"}
+              <span className={styles.slideHint} style={{ transform: `translateX(${-Math.min(hold.slide, SLIDE_TO_CANCEL_PX)}px)` }} aria-live="polite">
+                {hold.cancelling ? "Release to cancel" : "‹ Slide to cancel"}
               </span>
               <span className={`${styles.send} ${styles.micHeld}`} aria-hidden="true"><MicIcon /></span>
             </div>
@@ -758,7 +733,7 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
                 <button type="button" className={styles.send} onClick={submitText} aria-label="Send">➤</button>
               ) : (
                 <button type="button" className={`${styles.send} ${styles.mic}`} aria-label="Hold to record a voice note"
-                  title="Hold to record" disabled={Boolean(stage)} onPointerDown={holdMic}
+                  title="Hold to record" disabled={Boolean(stage)} onPointerDown={event => { if (!stage && !recorder.current) hold.onPointerDown(event); }}
                   onContextMenu={event => event.preventDefault()}
                   onKeyDown={event => {
                     if (event.key !== "Enter" && event.key !== " ") return;

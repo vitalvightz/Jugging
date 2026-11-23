@@ -408,9 +408,12 @@ export function SessionDetails({ row, token, cache, onDismiss, restoreFocus = tr
       <AutoHeight swapKey={details ? "loaded" : error ? "error" : "loading"} swapMotion="fade">
         {!details && !error ? <SessionRecordSkeleton /> : null}
         {error ? <div role="alert"><p>Unable to load session details. Try again.</p><button type="button" className="secondary-button" onClick={() => { setError(false); setAttempt(value => value + 1); }}>Retry</button></div> : null}
-        {details?.athlete_id && record ? <CoachFeedback token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} editable={viewer === "coach" && details.coach_feedback_allowed} /> : null}
-        {details?.athlete_id && record && (row.source === "unlxck" || row.source === "external")
-          ? <MessageAboutThis token={token} viewer={viewer ?? "athlete"} athleteId={details.athlete_id} source={row.source} targetId={row.id} /> : null}
+        {/* Feedback and messaging: compact pills on one line, like Attach. */}
+        {details?.athlete_id && record ? <div className={styles.quickActions}>
+          <CoachFeedback token={token} athleteId={details.athlete_id} source={row.source} targetId={row.id} editable={viewer === "coach" && details.coach_feedback_allowed} />
+          {row.source === "unlxck" || row.source === "external"
+            ? <MessageAboutThis token={token} viewer={viewer ?? "athlete"} athleteId={details.athlete_id} source={row.source} targetId={row.id} /> : null}
+        </div> : null}
         {details && record && run ?<div className={styles.recordContent}>
           <RunRecord run={run} history={details.runs ?? null} onEditRun={onEditRun ? () => onEditRun(run) : undefined} viewer={viewer} />
           {details.blocks.length || onEditExercises ? <section className={styles.section}>
