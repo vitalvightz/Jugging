@@ -231,6 +231,9 @@ function ChatSheet({ name, onClose, children }: { name: string; onClose: () => v
     const element = dialog.current;
     if (!element) return;
     const previous = document.activeElement as HTMLElement | null;
+    // Hidden until iOS has settled the sheet's size and the thread is pinned to
+    // its newest message, so the first frame shown is already the final one.
+    element.dataset.settling = "true";
     if (!element.open) element.showModal();
     // showModal focuses the first button (Back), and iOS draws a focus ring on it.
     // Focus the sheet itself instead; Tab still reaches Back first.
@@ -246,9 +249,13 @@ function ChatSheet({ name, onClose, children }: { name: string; onClose: () => v
       element.style.top = `${Math.round(viewport.offsetTop)}px`;
     };
     fit();
+    let frame = window.requestAnimationFrame(() => {
+      frame = window.requestAnimationFrame(() => { fit(); delete element.dataset.settling; });
+    });
     viewport?.addEventListener("resize", fit);
     viewport?.addEventListener("scroll", fit);
     return () => {
+      window.cancelAnimationFrame(frame);
       viewport?.removeEventListener("resize", fit);
       viewport?.removeEventListener("scroll", fit);
       element.close(); release(); previous?.focus();
@@ -311,8 +318,9 @@ function prefetchThread(token: string, me: string, chatId: string) {
     for (const file of files) {
       if (file.kind !== "photo") continue;
       const image = new Image();
-      image.decoding = "async";
       image.src = file.thumb_url ?? file.url;
+      // Decoded ahead too, so it paints in the chat's very first frame.
+      void image.decode?.().catch(() => undefined);
     }
   });
 }
@@ -771,14 +779,12 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
                   ) : null}
                   {message.quote ? <TrainingCard quote={message.quote} /> : null}
                   {message.kind === "photo" && box ? (
-                    // The frame has the photo's final size from the start; the photo fades in.
+                    // The frame has the photo's final size from the start; a prefetched photo is there at once.
                     <span className={styles.photoFrame} style={{ width: box.width, height: box.height }}>
                       {file ? (
                         // eslint-disable-next-line @next/next/no-img-element -- short-lived signed link
                         <img className={styles.photo} src={file.thumb_url ?? file.url} alt="Photo"
-                          width={box.width} height={box.height} decoding="async"
-                          ref={image => { if (image?.complete && image.naturalWidth) image.dataset.loaded = "true"; }}
-                          onLoad={event => { event.currentTarget.dataset.loaded = "true"; }}
+                          width={box.width} height={box.height}
                           onError={() => dropLink(message.id)} />
                       ) : <span className="sr-only">Photo loading</span>}
                     </span>
