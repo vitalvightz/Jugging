@@ -218,3 +218,15 @@ test("with WebSockets refused, chats still load, send, and refresh when the scre
   await expect(thread.getByText("Got it, coach.")).toBeVisible();
   expect(pageErrors.filter(message => /WebSocket|insecure/i.test(message))).toEqual([]);
 });
+
+test("on a phone, a fighter reaches coach chat from the top bar, with the unread count", async ({ page, baseURL }) => {
+  await chatFixture(page, baseURL!, "athlete");
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto("/history");
+  const button = page.getByRole("link", { name: "Coach chat, 1 unread" });
+  await expect(button).toBeVisible();
+  await page.screenshot({ path: "test-results/coach-chat-phone-entry-390.png" });
+  await button.click();
+  await expect(page).toHaveURL(/\/chat/);
+  await expect(page.getByRole("dialog", { name: "Chat with Coach Rey" })).toBeVisible();
+});

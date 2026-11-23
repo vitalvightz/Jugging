@@ -1660,14 +1660,15 @@ test("check-in nudge: one switch turns it on, days and time save only when chang
   await page.goto(`/coach/fighters/${fighterId}`);
   const nudge = page.getByRole("region", { name: "Contact and check-ins" });
   const toggle = nudge.getByRole("switch", { name: /Remind .* to check in/ });
-  await expect(nudge.getByText("Off", { exact: true })).toBeVisible();
   await expect(toggle).toHaveAttribute("aria-checked", "false");
+  // No summary line repeating the setting under the title.
+  await expect(nudge.getByText(/their time/)).toHaveCount(0);
   await expect(nudge.getByRole("group", { name: "Nudge days" })).toHaveCount(0);
   if (process.env.COACH_SCREENSHOTS) await nudge.screenshot({ path: `${process.env.COACH_SCREENSHOTS}/nudge-off.png` });
 
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-checked", "true");
-  await expect(nudge.getByText("Weekdays · 08:00 their time")).toBeVisible();
+  await expect(nudge.getByRole("group", { name: "Nudge days" })).toBeVisible();
   expect(saves).toEqual([expect.objectContaining({ p_enabled: true, p_days: 0b0011111, p_time: "08:00" })]);
   await expect(nudge.getByRole("button", { name: "Save" })).toHaveCount(0);
 
@@ -1678,6 +1679,6 @@ test("check-in nudge: one switch turns it on, days and time save only when chang
   if (process.env.COACH_SCREENSHOTS) await nudge.screenshot({ path: `${process.env.COACH_SCREENSHOTS}/nudge-on.png` });
 
   await toggle.click();
-  await expect(nudge.getByText("Off", { exact: true })).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
   expect(saves[2]).toMatchObject({ p_enabled: false });
 });

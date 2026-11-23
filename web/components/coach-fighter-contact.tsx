@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
-  chatLink, describeDays, EVERY_DAY, fetchCheckinNudge, hasDay, NUDGE_DAYS, saveCheckinNudge, toggleDay, WEEKDAYS,
+  chatLink, EVERY_DAY, fetchCheckinNudge, hasDay, NUDGE_DAYS, saveCheckinNudge, toggleDay, WEEKDAYS,
   type CheckinNudge,
 } from "@/lib/coach-chat";
 import styles from "./coach-fighter-contact.module.css";
@@ -55,14 +55,8 @@ export function CoachFighterContact({ token, athleteId, name, age, healthConsent
   return (
     <section className={styles.panel} aria-label="Contact and check-ins">
       <div className={styles.head}>
-        <div>
-          <p className={styles.kicker}>Check-in nudge</p>
-          <p className={styles.status}>
-            {saved === undefined ? "Loading…" : saved?.enabled
-              ? `${describeDays(saved.days)} · ${saved.local_time.slice(0, 5)} their time`
-              : "Off"}
-          </p>
-        </div>
+        {/* The switch and the days below already say what is set; no summary line repeats it. */}
+        <h3 className={styles.title}>Check-in nudge</h3>
         <Link className={styles.message} href={chatLink("coach", athleteId)}>Message</Link>
       </div>
       {blocked ? <p className={styles.note}>{blocked}</p> : (
@@ -101,7 +95,7 @@ export function CoachFighterContact({ token, athleteId, name, age, healthConsent
               </div>
             </div>
           ) : null}
-          <p className={styles.note}>Only sent on days {first} hasn&apos;t checked in, outside their quiet hours.</p>
+          <p className={styles.note}>Sent in {first}&apos;s time zone, only on days they haven&apos;t checked in.</p>
         </>
       )}
       {error ? <p className={styles.error} role="alert">{error}</p> : null}

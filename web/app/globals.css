@@ -10483,6 +10483,7 @@ html[data-theme="light"] .today-injury-other-warning {
 /* Phone workspace chrome (+ Create, account button); shown only at phone widths. */
 .phone-create-button,
 .phone-account-button,
+.phone-chat-button,
 .phone-top-band {
   display: none;
 }
@@ -17824,6 +17825,41 @@ html[data-app-surface="workspace"][data-theme="dark"] .desktop-nav-toggle {
     object-fit: cover;
   }
 
+  /* Coach chat, left of the avatar, with the unread count. */
+  .phone-chat-button {
+    position: fixed;
+    top: calc(var(--mobile-nav-offset-top) + var(--safe-area-top));
+    right: calc(var(--mobile-nav-offset-side) + var(--safe-area-right) + 50px);
+    z-index: 70;
+    display: inline-grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--border-default);
+    border-radius: 50%;
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    text-decoration: none;
+  }
+
+  .phone-chat-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    display: grid;
+    place-items: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--brand-red);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .phone-chat-button:focus-visible,
   .phone-create-button:focus-visible,
   .phone-account-button:focus-visible {
     outline: 2px solid var(--text-primary);

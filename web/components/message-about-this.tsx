@@ -20,8 +20,12 @@ export function MessageAboutThis({ token, viewer, athleteId, source, targetId }:
   const href = viewer === "coach" ? chatLink("coach", athleteId, quote)
     : `/chat?${new URLSearchParams({ quote: `${source}:${targetId}` })}`;
   return (
-    <Link className="ghost-button" href={href} style={{ justifySelf: "start" }}>
-      {viewer === "coach" ? "Message about this" : "Ask your coach about this"}
+    <Link className="ghost-button" href={href} style={{ justifySelf: "start" }}
+      aria-label={viewer === "coach" ? "Message about this session" : "Ask your coach about this session"}>
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+        <path d="M4 5h16v11H9l-5 4z" />
+      </svg>
+      {viewer === "coach" ? "Message" : "Ask your coach"}
     </Link>
   );
 }

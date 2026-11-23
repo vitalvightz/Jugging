@@ -543,32 +543,47 @@
   border-color: var(--brand-red);
 }
 
+/* Reactions and Reply / Report on one slim line, never wrapped into a tall card. */
 .actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 2px;
+  gap: 0;
+  width: max-content;
+  max-width: min(100%, calc(100vw - 32px));
   margin-top: 4px;
-  padding: 4px;
+  padding: 2px 4px;
+  overflow-x: auto;
   border: 1px solid var(--border-strong);
   border-radius: 999px;
   background: var(--bg-surface-alt);
   box-shadow: var(--shadow-support);
+  scrollbar-width: none;
 }
 
 .actions button {
-  min-width: 34px;
-  height: 34px;
+  flex: none;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
   border: 0;
   border-radius: 999px;
   background: transparent;
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: 17px;
+  line-height: 1;
   cursor: pointer;
 }
 
 .actions button[aria-pressed="true"] {
   background: var(--brand-red-soft);
+}
+
+/* A thin divider between the reactions and the words. */
+.actions button:not(.textAction) + .textAction {
+  margin-left: 4px;
+  border-left: 1px solid var(--border-default);
+  border-radius: 0 999px 999px 0;
 }
 
 .actions .textAction,
@@ -579,6 +594,7 @@
   color: var(--text-secondary);
   font-size: var(--type-body-sm);
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
 }
 
