@@ -109,7 +109,7 @@ function AccessCodeGate({
       <div className={`auth-card ${authStyles.content}`} data-granted={granted || undefined}>
         <div className={styles.header}>
           <div className={styles.mark} data-state={granted ? "granted" : "locked"} aria-hidden="true">
-            <Image src="/brand/unlxck-mark.webp" alt="" width={40} height={40} priority />
+            <Image src="/brand/unlxck-one-angle-120.png" alt="" width={40} height={40} priority />
           </div>
           <p className={styles.badge}>
             {granted ? (

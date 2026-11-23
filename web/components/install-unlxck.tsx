@@ -216,7 +216,7 @@ export function InstallPrompt() {
     <dialog ref={dialog} className={`${promptStyles.dialog} ${styles.dialog}`} aria-labelledby="install-prompt-title" aria-describedby="install-prompt-description" aria-busy={busy} data-closing={closing || undefined}
       onCancel={(event) => { event.preventDefault(); if (!busy) dismiss(); }}>
       <div className={`${promptStyles.header} ${styles.header}`}>
-        <Image src="/brand/unlxck-mark.webp" alt="" width={28} height={28} className={promptStyles.mark} />
+        <Image src="/brand/unlxck-one-angle-48.png" alt="" width={28} height={28} className={promptStyles.mark} />
         <p className={promptStyles.eyebrow}>GET UNLXCK ON YOUR PHONE</p>
       </div>
       <h2 id="install-prompt-title"><span className={styles.headline}>{guide === "instagram" ? "Open UNLXCK outside Instagram." : "Your training. One tap away."}</span></h2>
@@ -455,7 +455,7 @@ export function InstallUnlxck({ variant = "panel" }: { variant?: "panel" | "inli
     <>
       <div className="settings-subsection pwa-install-panel" data-testid="install-unlxck">
         <div className="pwa-install-mark" aria-hidden="true">
-          <Image src="/brand/unlxck-mark.webp" alt="" width={64} height={64} />
+          <Image src="/icons/icon-192x192.png" alt="" width={64} height={64} />
         </div>
         <div className="pwa-install-copy">
           <div className="settings-subsection-header">
