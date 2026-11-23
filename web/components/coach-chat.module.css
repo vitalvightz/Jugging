@@ -46,6 +46,7 @@
   animation: chat-sheet-in var(--sheet-enter-duration, 280ms) var(--sheet-enter-ease, cubic-bezier(0.32, 0.72, 0, 1));
 }
 .sheet::backdrop { background: rgb(0 0 0 / 75%); }
+.sheet:focus { outline: none; }
 .sheet[open]::backdrop { animation: chat-backdrop-in var(--sheet-enter-duration, 280ms) ease-out; }
 .sheet[data-closing] {
   pointer-events: none;
@@ -263,19 +264,26 @@
   text-transform: uppercase;
 }
 
+/* Back: a plain chevron with a round 40px hit area; a soft fill only on press or keyboard focus. */
 .back {
   display: inline-grid;
+  flex: none;
   place-items: center;
-  width: 36px;
-  height: 36px;
-  margin-left: -8px;
+  width: 40px;
+  height: 40px;
+  margin-left: -10px;
+  padding: 0;
   border: 0;
+  border-radius: 50%;
   background: transparent;
   color: var(--text-primary);
-  font-size: 30px;
-  line-height: 1;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 120ms ease-out;
 }
+.back:active { background: var(--bg-surface-alt); }
+.back:focus { outline: none; }
+.back:focus-visible { outline: none; background: var(--bg-surface-alt); box-shadow: 0 0 0 2px var(--border-active); }
 
 .threadTitle {
   display: grid;

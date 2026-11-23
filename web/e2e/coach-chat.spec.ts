@@ -104,6 +104,9 @@ for (const width of [390, 1440]) {
     await expect(page).toHaveURL(new RegExp(`with=${leo}`));
     const thread = page.getByRole("dialog", { name: "Chat with Leo Martins" });
     await expect(thread.getByText("Round 3 felt slow. Thoughts?").first()).toBeVisible();
+    // Opening the chat focuses the sheet, not Back, so no focus ring shows on Back.
+    await expect(thread.getByRole("button", { name: "Back to chats" })).not.toBeFocused();
+    await thread.getByRole("banner").or(thread.locator("header")).first().screenshot({ path: `test-results/coach-chat-header-${width}.png` });
     await expect(thread.getByText("Sparring", { exact: true })).toBeVisible();
     await expect(thread.getByText("Fight in 19 days")).toBeVisible();
     await expect(thread.getByRole("img", { name: "Photo" })).toBeVisible();

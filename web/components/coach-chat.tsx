@@ -208,6 +208,9 @@ function ChatSheet({ name, onClose, children }: { name: string; onClose: () => v
     if (!element) return;
     const previous = document.activeElement as HTMLElement | null;
     if (!element.open) element.showModal();
+    // showModal focuses the first button (Back), and iOS draws a focus ring on it.
+    // Focus the sheet itself instead; Tab still reaches Back first.
+    element.focus({ preventScroll: true });
     const release = lockOverlayScroll();
     // iOS keeps 100dvh when the keyboard opens; size the sheet to what is visible
     // so the composer sits right above the keyboard instead of behind it.
@@ -227,7 +230,7 @@ function ChatSheet({ name, onClose, children }: { name: string; onClose: () => v
     };
   }, []);
   return createPortal(
-    <dialog ref={dialog} className={styles.sheet} aria-label={`Chat with ${name}`} data-closing={closing || undefined}
+    <dialog ref={dialog} className={styles.sheet} aria-label={`Chat with ${name}`} tabIndex={-1} data-closing={closing || undefined}
       onCancel={event => { if (event.target !== event.currentTarget) return; event.preventDefault(); close(); }}
       onClick={event => {
         if (event.target !== event.currentTarget) return;
@@ -601,7 +604,10 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
   return (
     <>
       <header className={styles.threadHeader}>
-        <button type="button" className={styles.back} onClick={onBack} aria-label="Back to chats">‹</button>
+        <button type="button" className={styles.back} onClick={onBack} aria-label="Back to chats">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor"
+            strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M15 5l-7 7 7 7" /></svg>
+        </button>
         <Avatar name={row.name} url={row.avatar_url} small />
         <div className={styles.threadTitle}>
           <strong>{row.name}</strong>
