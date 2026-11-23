@@ -205,7 +205,7 @@ test("voice notes: hold the mic to record and let go to send; slide left to canc
   let box = (await mic.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
-  await expect(dialog.getByText("‹ Slide to cancel")).toBeVisible();
+  await expect(dialog.getByText("‹ Slide left to cancel")).toBeVisible();
   await page.screenshot({ path: info.outputPath("390-hold-recording.png") });
   await page.mouse.move(box.x - 150, box.y + box.height / 2, { steps: 5 });
   await expect(dialog.getByText("Release to cancel")).toBeVisible();
@@ -218,7 +218,7 @@ test("voice notes: hold the mic to record and let go to send; slide left to canc
   box = (await mic.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
-  await expect(dialog.getByText("‹ Slide to cancel")).toBeVisible();
+  await expect(dialog.getByText("‹ Slide left to cancel")).toBeVisible();
   await page.waitForTimeout(1200);
   await page.mouse.up();
   await expect.poll(() => uploads().length).toBeGreaterThan(0);

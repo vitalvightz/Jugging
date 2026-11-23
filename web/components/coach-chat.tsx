@@ -38,7 +38,8 @@ export function CoachChat({ role }: { role: ChatRole }) {
       {!isMeHydrated || !session || !userId ? (
         <div className={styles.shell} aria-busy="true"><Skeleton height={420} /></div>
       ) : (
-        <ChatScreen key={`${userId}:${session.access_token}`} token={session.access_token} me={userId} role={role} />
+        <ChatScreen key={`${userId}:${session.access_token}`} token={session.access_token} me={userId} role={role}
+          canSendPhotos={!["coach", "admin"].includes(me?.profile.role ?? "")} />
       )}
     </RequireAuth>
   );
@@ -67,7 +68,9 @@ function sortInbox(rows: InboxRow[]) {
   return [...rows].sort((a, b) => (b.last_message_at ?? "").localeCompare(a.last_message_at ?? "") || a.name.localeCompare(b.name));
 }
 
-function ChatScreen({ token, me, role }: { token: string; me: string; role: ChatRole }) {
+// Coaches share voice notes and PDFs, never photos (the upload API refuses them),
+// so their composer has no photo button.
+function ChatScreen({ token, me, role, canSendPhotos }: { token: string; me: string; role: ChatRole; canSendPhotos: boolean }) {
   const [inbox, setInbox] = useState<InboxRow[] | null>(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
@@ -187,7 +190,7 @@ function ChatScreen({ token, me, role }: { token: string; me: string; role: Chat
       </section>
       {current ? (
         <ChatSheet name={current.name} onClose={() => select(null)}>
-          {close => <ChatThread key={current.other_id} token={token} me={me} role={role} row={current} initialQuote={quote}
+          {close => <ChatThread key={current.other_id} token={token} me={me} role={role} row={current} initialQuote={quote} canSendPhotos={canSendPhotos}
             onBack={close} onRow={patch => updateRow(current.other_id, patch)} />}
         </ChatSheet>
       ) : null}
@@ -209,7 +212,22 @@ function ChatSheet({ name, onClose, children }: { name: string; onClose: () => v
     const previous = document.activeElement as HTMLElement | null;
     if (!element.open) element.showModal();
     const release = lockOverlayScroll();
-    return () => { element.close(); release(); previous?.focus(); };
+    // iOS keeps 100dvh when the keyboard opens; size the sheet to what is visible
+    // so the composer sits right above the keyboard instead of behind it.
+    const viewport = window.visualViewport;
+    const fit = () => {
+      if (!viewport) return;
+      element.style.setProperty("--chat-viewport", `${Math.round(viewport.height)}px`);
+      element.style.top = `${Math.round(viewport.offsetTop)}px`;
+    };
+    fit();
+    viewport?.addEventListener("resize", fit);
+    viewport?.addEventListener("scroll", fit);
+    return () => {
+      viewport?.removeEventListener("resize", fit);
+      viewport?.removeEventListener("scroll", fit);
+      element.close(); release(); previous?.focus();
+    };
   }, []);
   return createPortal(
     <dialog ref={dialog} className={styles.sheet} aria-label={`Chat with ${name}`} data-closing={closing || undefined}
@@ -262,8 +280,8 @@ async function uploadChatFile(token: string, kind: "photo" | "voice", blob: Blob
   return permission.asset_id;
 }
 
-function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
-  token: string; me: string; role: ChatRole; row: InboxRow; initialQuote: QuoteRef | null;
+function ChatThread({ token, me, role, row, initialQuote, canSendPhotos, onBack, onRow }: {
+  token: string; me: string; role: ChatRole; row: InboxRow; initialQuote: QuoteRef | null; canSendPhotos: boolean;
   onBack: () => void; onRow: (patch: Partial<InboxRow>) => void;
 }) {
   const [chatId, setChatId] = useState(row.chat_id);
@@ -707,55 +725,61 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
               {quote ? <Chip onClear={() => setQuote(null)} label="Remove training card"><b>Training card</b>This session will be attached</Chip> : null}
             </div>
           ) : null}
-          {recording === "locked" ? (
-            // Focus moves to the bar, not to Send: a held Enter that started the
-            // recording must never land on Send and send it straight away.
-            <div key="locked" className={styles.recordingBar} role="group" aria-label="Recording voice note" tabIndex={-1}
-              ref={lockedBar}>
-              <span className={styles.recDot} aria-hidden="true" />
-              <RecordingClock />
-              <button type="button" className={styles.textAction} onClick={() => void finishRecording(false)}>Cancel</button>
-              <button key="send-voice" type="button" className={styles.send} onClick={() => void finishRecording(true)} aria-label="Send voice note">➤</button>
-            </div>
-          ) : recording === "hold" ? (
-            <div className={styles.recordingBar} data-cancelling={hold.cancelling || undefined}>
-              <span className={styles.recDot} aria-hidden="true" />
-              <RecordingClock />
-              <span className={styles.slideHint} style={{ transform: `translateX(${-Math.min(hold.slide, SLIDE_TO_CANCEL_PX)}px)` }} aria-live="polite">
-                {hold.cancelling ? "Release to cancel" : "‹ Slide to cancel"}
-              </span>
-              <span className={`${styles.send} ${styles.micHeld}`} aria-hidden="true"><MicIcon /></span>
-            </div>
-          ) : (
-            <div key="input" className={styles.inputRow}>
-              <button type="button" className={styles.iconButton} aria-label="Send a photo" disabled={Boolean(stage)}
+          {/* One row in every state: + | field or recording | mic or send. The mic is the
+              same element while idle and while held, so it never moves under the finger. */}
+          <div className={styles.inputRow} data-recording={recording ?? undefined}
+            data-cancelling={recording === "hold" && hold.cancelling ? true : undefined}>
+            {canSendPhotos ? <>
+              <button type="button" className={styles.iconButton} aria-label="Send a photo" disabled={Boolean(stage) || Boolean(recording)}
                 onClick={() => photoInput.current?.click()}>+</button>
               <input ref={photoInput} type="file" accept="image/*" hidden
                 onChange={event => { void sendPhoto(event.target.files?.[0]); event.target.value = ""; }} />
-              <label className={styles.field}>
+            </> : null}
+            {recording ? (
+              // Focus moves here, not to Send: a held Enter that started the recording
+              // must never land on Send and send it straight away.
+              <div key="recording" className={styles.recordingField} role="group" aria-label="Recording voice note"
+                tabIndex={-1} ref={lockedBar}>
+                <span className={styles.recDot} aria-hidden="true" />
+                <RecordingClock />
+                <span className={styles.liveWave} aria-hidden="true"><i /><i /><i /><i /><i /></span>
+                {recording === "hold" ? (
+                  <span className={styles.slideHint} aria-live="polite"
+                    style={{ transform: `translateX(${-Math.min(hold.slide, SLIDE_TO_CANCEL_PX)}px)` }}>
+                    {hold.cancelling ? "Release to cancel" : "‹ Slide left to cancel"}
+                  </span>
+                ) : (
+                  <button type="button" className={styles.textAction} onClick={() => void finishRecording(false)}>Cancel</button>
+                )}
+              </div>
+            ) : (
+              <label key="field" className={styles.field}>
                 <span className="sr-only">Message</span>
                 <textarea rows={1} value={text} maxLength={CHAT_MAX_CHARS} placeholder={stage || "Message"} disabled={Boolean(stage)}
                   onKeyDown={onKey}
                   onChange={event => { setText(event.target.value); if (event.target.value) live.current?.typing(); }} />
               </label>
-              {text.trim() || quote ? (
-                <button type="button" className={styles.send} onClick={submitText} aria-label="Send">➤</button>
-              ) : (
-                <button type="button" className={`${styles.send} ${styles.mic}`} aria-label="Hold to record a voice note"
-                  title="Hold to record" disabled={Boolean(stage)} onPointerDown={event => { if (!stage && !recorder.current) hold.onPointerDown(event); }}
-                  onContextMenu={event => event.preventDefault()}
-                  onKeyDown={event => {
-                    if (event.key !== "Enter" && event.key !== " ") return;
-                    // A held key repeats: never restart a recording that is already running.
-                    if (event.repeat || recorder.current) { event.preventDefault(); return; }
-                    event.preventDefault();
-                    void startRecording("locked");
-                  }}>
-                  <MicIcon />
-                </button>
-              )}
-            </div>
-          )}
+            )}
+            {recording === "locked" ? (
+              <button key="send-voice" type="button" className={styles.send} onClick={() => void finishRecording(true)} aria-label="Send voice note">➤</button>
+            ) : !recording && (text.trim() || quote) ? (
+              <button key="send" type="button" className={styles.send} onClick={submitText} aria-label="Send">➤</button>
+            ) : (
+              <button key="mic" type="button" className={`${styles.send} ${styles.mic}`} aria-label="Hold to record a voice note"
+                title="Hold to record" disabled={Boolean(stage)} data-held={hold.holding || undefined}
+                onPointerDown={event => { if (!stage && !recorder.current) hold.onPointerDown(event); }}
+                onContextMenu={event => event.preventDefault()}
+                onKeyDown={event => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  // A held key repeats: never restart a recording that is already running.
+                  if (event.repeat || recorder.current) return;
+                  void startRecording("locked");
+                }}>
+                <MicIcon />
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         <p className={styles.readOnly}>

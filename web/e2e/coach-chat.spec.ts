@@ -73,7 +73,7 @@ async function chatFixture(page: Page, baseURL: string, role: "coach" | "athlete
         quote: body.p_quote_source ? { source: body.p_quote_source, target_id: body.p_quote_target, day: "2026-11-23", title: "Pads", meta: "Done · RPE 7" } : null,
         reactions: {}, created_at: new Date().toISOString(),
       };
-      return route.fulfill({ json: { ...message, created: true } });
+      return route.fulfill({ json: { ...message, asset_id: body.p_asset_id ?? null, created: true } });
     }
     return route.fulfill({ json: null });
   });
@@ -156,15 +156,55 @@ test.describe("voice notes are recorded by holding the mic", () => {
     const mic = thread.getByRole("button", { name: "Hold to record a voice note" });
     await expect(mic).toBeVisible();
 
-    const box = (await mic.boundingBox())!;
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    // Idle, the composer is one row: the field and mic share a line, mic on the right.
+    const field = thread.getByRole("textbox", { name: "Message" });
+    const centre = async () => {
+      const b = (await mic.boundingBox())!;
+      return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    };
+    const idle = await centre();
+    const fieldBox = (await field.boundingBox())!;
+    expect(Math.abs(idle.y - (fieldBox.y + fieldBox.height / 2))).toBeLessThan(4);
+    expect(idle.x).toBeGreaterThan(fieldBox.x + fieldBox.width);
+    // Coaches never send photos, so there is no photo button to refuse them.
+    await expect(thread.getByRole("button", { name: "Send a photo" })).toHaveCount(0);
+
+    // Held, the mic stays exactly where the finger is, through recording and cancelling.
+    await page.mouse.move(idle.x, idle.y);
     await page.mouse.down();
-    await expect(thread.getByText("‹ Slide to cancel")).toBeVisible();
-    await page.mouse.move(box.x - 150, box.y + box.height / 2, { steps: 5 });
+    await expect(thread.getByText("‹ Slide left to cancel")).toBeVisible();
+    await page.screenshot({ path: "test-results/coach-chat-hold-390.png" });
+    const held = await centre();
+    expect(Math.abs(held.x - idle.x)).toBeLessThan(1);
+    expect(Math.abs(held.y - idle.y)).toBeLessThan(1);
+    await page.mouse.move(idle.x - 150, idle.y, { steps: 5 });
     await expect(thread.getByText("Release to cancel")).toBeVisible();
+    await page.screenshot({ path: "test-results/coach-chat-cancelling-390.png" });
+    const cancelling = await centre();
+    expect(Math.abs(cancelling.x - idle.x)).toBeLessThan(1);
+    expect(Math.abs(cancelling.y - idle.y)).toBeLessThan(1);
     await page.mouse.up();
-    await expect(mic).toBeVisible();
+    await expect(field).toBeVisible();
     expect(sent).toHaveLength(0);
+    const after = await centre();
+    expect(Math.abs(after.x - idle.x)).toBeLessThan(1);
+    expect(Math.abs(after.y - idle.y)).toBeLessThan(1);
+
+    // Hold, talk, let go: the note uploads and is sent once, with no extra step.
+    const asset = "00000000-0000-4000-8000-0000000000f1";
+    await page.route("**/api/attachments/uploads", route => route.fulfill({ status: 201, json: {
+      asset_id: asset, bucket: "attachment-intake", path: `${me}/${asset}.wav`, content_type: "audio/wav",
+      expires_at: new Date(Date.now() + 600_000).toISOString() } }));
+    await page.route("**/storage/v1/object/attachment-intake/**", route => route.fulfill({ json: { Key: "ok" } }));
+    await page.route(`**/api/attachments/uploads/${asset}/process`, route => route.fulfill({ json: { asset_id: asset, status: "ready" } }));
+    await page.mouse.move(idle.x, idle.y);
+    await page.mouse.down();
+    await expect(thread.getByText("‹ Slide left to cancel")).toBeVisible();
+    await page.waitForTimeout(1200);
+    await page.mouse.up();
+    await expect.poll(() => sent.length).toBe(1);
+    expect(sent[0]).toMatchObject({ p_kind: "voice", p_asset_id: asset });
+    sent.length = 0;
 
     await mic.click();
     await expect(thread.getByRole("alert")).toContainText(/Hold the mic|Too short/);
