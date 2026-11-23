@@ -100,7 +100,7 @@ at most once a day even with two workers.
 
 ## Deployment order
 
-1. Apply `20261123120000_coach_chat_and_checkin_nudges.sql`. It is additive.
+1. Apply `20261123020539_coach_chat_and_checkin_nudges.sql`. It is additive.
    It widens the `notification_deliveries` class check, adds three tables and
    the RPCs, adds `coach_messages` and `coach_chats` to the
    `supabase_realtime` publication, adds the typing-channel policies on

@@ -71,7 +71,7 @@ await db.exec(`
   insert into public.attachment_assets (id, owner_id, kind, status) values
     ('${coachPhoto}', '${coach}', 'photo', 'ready'), ('${strangerPhoto}', '${stranger}', 'photo', 'ready');
 `);
-await db.exec(await readFile(new URL("../../supabase/migrations/20261123120000_coach_chat_and_checkin_nudges.sql", import.meta.url), "utf8"));
+await db.exec(await readFile(new URL("../../supabase/migrations/20261123020539_coach_chat_and_checkin_nudges.sql", import.meta.url), "utf8"));
 // Supabase's service role can write the stub tables; the migration's own grants are untouched.
 await db.exec("grant all on public.today_checkins, public.attachment_assets, public.training_attachments, public.notification_deliveries, public.coach_connections to service_role; grant usage on all sequences in schema public to service_role;");
 
