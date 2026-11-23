@@ -1,5 +1,7 @@
 "use client";
 
+import { prioritiseForMode, trainingRelevance, type CoachMode } from "@/lib/coach-mode";
+
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useAppSession } from "./auth-provider";
@@ -59,6 +61,7 @@ export function manualSparringDraft(row: TrainingHistorySession): SparringDraft 
 export type LogFighter = { id: string; name: string; today: string; sport?: string | null };
 
 type Props = {
+  coachMode?: CoachMode;
   /** Coach mode: the session is recorded for one of these connected fighters, not for the signed-in user. */
   fighters?: readonly LogFighter[];
   /** Parent-owned follow-ups survive the History details sheet closing. */
@@ -73,7 +76,7 @@ export function LogTraining(props: Props) {
   return props.accessToken ? <LogTrainingContent key={props.accessToken} {...props} accessToken={props.accessToken} /> : null;
 }
 
-function LogTrainingContent({ fighters, accessToken, entry, repeatEntry, recent = false, history, quickSession, onSaved, onSparringReported, variant = "compact", autoOpen = false, initialTrainingDay, historyMode = false, onSparringFollowUp, onClosed }: Props & { accessToken: string }) {
+function LogTrainingContent({ coachMode, fighters, accessToken, entry, repeatEntry, recent = false, history, quickSession, onSaved, onSparringReported, variant = "compact", autoOpen = false, initialTrainingDay, historyMode = false, onSparringFollowUp, onClosed }: Props & { accessToken: string }) {
   const [open, setOpen] = useState(false);
   // The sheet slides away before it unmounts, rather than vanishing in a frame.
   const [closing, setClosing] = useState(false);
@@ -368,7 +371,7 @@ function LogTrainingContent({ fighters, accessToken, entry, repeatEntry, recent 
           onClick={() => switchSport(value)}>{value ? sportLabel(value) : "No sport"}</button>)}
       </div> : null}
       <div className={styles.activityGrid}>
-        {trainingPicks(gridSport).map(pick => <button key={pick.label} type="button" data-activity
+        {prioritiseForMode(trainingPicks(gridSport), coachMode, trainingRelevance).map(pick => <button key={pick.label} type="button" data-activity
           aria-pressed={activity === pick.activity && sport === pick.sport && sessionType === pick.session_type}
           onClick={() => choose(pick)}>{pick.label}</button>)}
       </div>

@@ -1,4 +1,6 @@
 "use client";
+
+import { planRelevance, prioritiseForMode, type CoachMode } from "@/lib/coach-mode";
 import { CustomPlanCalendar } from './custom-plan-calendar';
 import { addCalendarDays, calendarWeekday, calendarMonday, datedCopy, duplicateCalendarWeek, copySessionsToDays, moveSessionsToDay, nextCalendarMonday } from '@/lib/custom-plan-calendar';
 import type { CustomPlan } from '@/lib/api-schema.generated';
@@ -136,7 +138,7 @@ function PencilIcon() {
     </svg>
   );
 }
-export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessionDate, onboarding = null, coachFighterId, onCoachClose, initialPlan, importedDraft, athleteTimezone, fightDate }: { importedDraft?: ImportedPlan; fightDate?: string | null; athleteTimezone?: string; initialPlan?: CustomPlan; onCoachClose?: () => void; coachFighterId?: string; accessToken: string; planId?: string; addSessionDay?: string | null; addSessionDate?: string | null; onboarding?: MeResponse | null }) {
+export function CustomPlanBuilder({ coachMode, accessToken, planId, addSessionDay, addSessionDate, onboarding = null, coachFighterId, onCoachClose, initialPlan, importedDraft, athleteTimezone, fightDate }: { coachMode?: CoachMode; importedDraft?: ImportedPlan; fightDate?: string | null; athleteTimezone?: string; initialPlan?: CustomPlan; onCoachClose?: () => void; coachFighterId?: string; accessToken: string; planId?: string; addSessionDay?: string | null; addSessionDate?: string | null; onboarding?: MeResponse | null }) {
   const router = useRouter();
   const requestId = useRef(crypto.randomUUID());
   const savedPlansHref = coachFighterId ? "/coach/plans" : "/plans#custom-plans";
@@ -1007,7 +1009,7 @@ export function CustomPlanBuilder({ accessToken, planId, addSessionDay, addSessi
             <div className={styles.typeField}>
               <span id="custom-session-type">Session type</span>
               <div className={styles.typeChips} role="group" aria-labelledby="custom-session-type">
-                {SESSION_TYPES.map(([type, label]) => <button key={type} type="button" aria-pressed={(sessionEdit.session_type ?? "mixed") === type}
+                {prioritiseForMode(SESSION_TYPES, coachMode, ([type]) => planRelevance(type)).map(([type, label]) => <button key={type} type="button" aria-pressed={(sessionEdit.session_type ?? "mixed") === type}
                   onClick={() => setSessionEdit(prepareCustomSession({ ...sessionEdit, session_type: type }, onboarding, sessionEdit.session_type ?? "mixed"))}>
                   {label}
                 </button>)}

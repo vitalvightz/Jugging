@@ -197,6 +197,14 @@ async function fixture(
   const feedback: { id: string; coach_name: string; note: string; exercise_ref: string; target_id: string; source: string; updated_at: string }[] = [];
   await page.route("**/rest/v1/coach_feedback?**", route => {
     const params = new URL(route.request().url()).searchParams;
+    if (params.get("limit") === "1") {
+      expect(params.get("athlete_id")).toBe(`eq.${fighterId}`);
+      expect(params.get("order")).toBe("updated_at.desc,id.desc");
+      expect(params.get("select")?.split(",")).toContain("target_id");
+      for (const key of ["source", "target_id", "exercise_ref"]) expect(params.has(key)).toBe(false);
+      const ordered = [...feedback].sort((a, b) => b.updated_at.localeCompare(a.updated_at) || b.id.localeCompare(a.id));
+      return route.fulfill({ json: ordered.slice(0, 1) });
+    }
     return route.fulfill({ json: feedback.filter(note => ["source", "target_id", "exercise_ref"].every(key => params.get(key) === `eq.${note[key as "source"]}`)) });
   });
   const actions: Record<string, unknown>[] = [];
@@ -331,7 +339,12 @@ for (const width of [1440, 390, 320]) {
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
     ).toBe(true);
+    const modeSwitch = page.getByRole("group", { name: "Coaching focus" });
+    await expect(modeSwitch).toBeInViewport({ ratio: 1 });
+    const modeAxe = await new AxeBuilder({ page }).include('[aria-label="Coaching focus"]').analyze();
+    expect(modeAxe.violations.filter(v => ["serious", "critical"].includes(v.impact ?? ""))).toEqual([]);
     await page.screenshot({
+      animations: "disabled",
       path: info.outputPath(`coach-roster-${width}.png`),
       fullPage: true,
     });
@@ -366,7 +379,7 @@ for (const width of [1440, 390, 320]) {
     await page.getByRole("button", { name: "Next week" }).click();
     await expect(strength).toContainText("1/1");
     await expect(page.getByText("6 rounds", { exact: true })).toBeVisible();
-    await expect(page.getByText("Technical", { exact: true })).toBeVisible();
+    await expect(page.locator("#sparring").getByText("Technical", { exact: true })).toBeVisible();
 
     // Fight weight: the athlete's own weigh-ins and target.
     const fightWeight = page
@@ -735,6 +748,8 @@ test("administrator can coach while keeping admin navigation", async ({
   await expect(
     page.getByRole("heading", { name: "Your corner. In focus." }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Technical", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Latest sparring this week" })).toBeVisible();
   await expect(page.locator('a[href="/admin"]').first()).toBeVisible();
 });
 
@@ -1654,6 +1669,160 @@ test("fighter media stays closed when the fighter doesn't share it", async ({ pa
   await expect(media.getByText(/Photos, voice notes and PDFs: Not shared/)).toBeVisible();
   await expect(media.getByRole("button")).toHaveCount(0);
   expect(lists).toEqual([]);
+});
+
+test("mode highlights use local weeks, preserve profile state and read feedback only on demand", async ({ page, baseURL }) => {
+  // The roster read carries session types, as coach_fighters returns them.
+  const typed = { ...fighter, sessions: fighter.sessions.map(row => row.session_id === "strength" ? { ...row, type: "strength_power" } : row) };
+  const mondayFighter = { ...fighter, id: "other-fighter", today: "2026-11-16", timezone: "Asia/Tokyo",
+    schedule: [...fighter.schedule, { day: "2026-11-16", id: "run", type: "conditioning", title: "Run" }],
+    sessions: [
+      { id: "tokyo-last-week", day: "2026-11-15", type: "strength_power", source: "unlxck", status: "done", recorded_at: "2026-11-15T09:00:00Z" },
+      { id: "tokyo-gym", day: "2026-11-16", type: "strength", source: "external", status: "done", recorded_at: "2026-11-16T09:00:00Z" },
+    ] };
+  const state = await fixture(page, baseURL!, "coach", false, {}, [typed, mondayFighter]);
+  let reads = 0;
+  const fighterReads: string[] = [];
+  page.on("request", request => {
+    const url = new URL(request.url());
+    if (url.pathname.endsWith("/coach_feedback") && url.searchParams.get("limit") === "1") reads++;
+    if (url.pathname.endsWith("/rpc/coach_fighters") && request.postDataJSON()?.p_athlete_id) fighterReads.push(request.postDataJSON().p_athlete_id);
+  });
+  await page.setViewportSize({ width: 390, height: 1000 });
+  await page.goto("/coach");
+  const technical = page.getByRole("button", { name: "Technical", exact: true });
+  const sc = page.getByRole("button", { name: "S&C", exact: true });
+  await expect(sc).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("2 S&C sessions completed", { exact: true })).toBeVisible();
+  // No per-fighter reads to build the roster highlight.
+  expect(fighterReads).toEqual([]);
+  await technical.focus();
+  await technical.press("Enter");
+  await expect(page.getByRole("heading", { name: "Latest sparring this week" })).toBeVisible();
+  expect(reads).toBe(0);
+  await page.goto(`/coach/fighters/${fighterId}`);
+  const highlight = page.getByRole("region", { name: "Coaching highlight" });
+  await expect(highlight.getByText("No feedback yet")).toBeVisible();
+  expect(reads).toBe(1);
+  const sectionTitles = page.locator("summary h2");
+  const order = await sectionTitles.allTextContents();
+  const sparring = page.locator("#sparring");
+  await sparring.getByRole("button", { name: "Add feedback" }).click();
+  const draft = sparring.getByRole("textbox", { name: "Feedback" });
+  await draft.fill("Stay balanced after the jab.");
+  await sc.click();
+  await expect(highlight.getByText("1 of 1 scheduled sessions completed")).toBeVisible();
+  await expect(draft).toHaveValue("Stay balanced after the jab.");
+  expect(await sectionTitles.allTextContents()).toEqual(order);
+  state.feedback.push({ id: "earlier", target_id: "earlier-session", source: "unlxck", exercise_ref: "squat",
+    coach_name: "Test Coach", note: "Keep depth consistent.", updated_at: "2026-11-13T14:00:00Z" });
+  await technical.click();
+  await expect(highlight.getByText("Exercise feedback", { exact: true })).toBeVisible();
+  await expect(highlight.getByText("Keep depth consistent.")).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await sparring.getByRole("button", { name: "Save feedback" }).click();
+  await expect(highlight.getByText("Stay balanced after the jab.")).toBeVisible();
+  expect(reads).toBe(3);
+  await page.reload();
+  await expect(technical).toHaveAttribute("aria-pressed", "true");
+  await expect(highlight.getByText("Sparring report feedback")).toBeVisible();
+  expect(reads).toBe(4);
+  state.share({ can_leave_feedback: false });
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(highlight.getByText("No feedback available to you")).toBeVisible();
+  await expect(highlight.getByText("Stay balanced after the jab.")).toHaveCount(0);
+  expect(reads).toBe(4);
+});
+
+test("changing mode in a second tab preserves the builder draft and log selection", async ({ page, context, baseURL }) => {
+  await fixture(page, baseURL!);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/coach/plans");
+  const controls = await context.newPage();
+  await fixture(controls, baseURL!);
+  await controls.goto("/coach/fighters");
+  await page.getByRole("button", { name: "Create New Plan", exact: true }).click();
+  await page.getByRole("group", { name: "Plan view" }).getByRole("button", { name: "Week" }).click();
+  await page.getByRole("button", { name: /^Monday,/ }).click();
+  await page.getByRole("button", { name: "Add session on Monday" }).click();
+  const sheet = page.getByRole("dialog", { name: "New session" });
+  const types = sheet.getByRole("group", { name: "Session type" }).getByRole("button");
+  await expect(types.first()).toHaveText("Strength / power");
+  const before = await types.allTextContents();
+  await expect(sheet.getByRole("button", { name: "Workout", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await sheet.getByLabel("Session name", { exact: true }).fill("Friday skills");
+  await controls.getByRole("button", { name: "Technical", exact: true }).click();
+  await expect(types.first()).toHaveText("Light technical / skill");
+  expect((await types.allTextContents()).sort()).toEqual(before.sort());
+  await expect(sheet.getByLabel("Session name", { exact: true })).toHaveValue("Friday skills");
+  await expect(sheet.getByRole("button", { name: "Workout", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.goto("/coach/log");
+  const picks = page.getByRole("dialog").locator("[data-activity]");
+  await expect(picks.first()).toHaveText("Pads");
+  const activities = await picks.allTextContents();
+  await picks.first().click();
+  await controls.getByRole("button", { name: "S&C", exact: true }).click();
+  await expect(picks.first()).toHaveText("Strength");
+  expect((await picks.allTextContents()).sort()).toEqual(activities.sort());
+  await expect(page.getByRole("button", { name: "Pads", exact: true })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("feedback retry targets the highlight and a denied read drops the previous observation", async ({ page, baseURL }) => {
+  const state = await fixture(page, baseURL!);
+  let attempts = 0;
+  await page.route("**/rest/v1/coach_feedback?**", route => {
+    if (!new URL(route.request().url()).searchParams.has("limit")) return route.fallback();
+    attempts++;
+    return attempts === 1 ? route.fulfill({ status: 503, json: {} }) : route.fulfill({ json: [
+      { source: "external", note: "Watch the entry.", updated_at: "2026-11-14T09:00:00Z", exercise_ref: "" },
+    ] });
+  });
+  await page.goto(`/coach/fighters/${fighterId}`);
+  await page.getByRole("button", { name: "Technical", exact: true }).click();
+  const highlight = page.getByRole("region", { name: "Coaching highlight" });
+  await expect(highlight.getByRole("alert")).toContainText("Feedback unavailable");
+  await highlight.getByRole("button", { name: "Retry" }).click();
+  await expect(highlight.getByText("Watch the entry.")).toBeVisible();
+  await expect(highlight.getByText("Session feedback", { exact: true })).toBeVisible();
+  state.share({ can_leave_feedback: false });
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(highlight.getByText("No feedback available to you")).toBeVisible();
+  await expect(highlight.getByText("Watch the entry.")).toHaveCount(0);
+  expect(attempts).toBe(2);
+});
+
+test("feedback highlight reviews the original record without a second editor", async ({ page, baseURL }) => {
+  const state = await fixture(page, baseURL!);
+  state.feedback.push({ id: "on-strength", target_id: strengthSession.id, source: "unlxck", exercise_ref: "",
+    coach_name: "Test Coach", note: "Brace before each rep.", updated_at: "2026-11-14T09:00:00Z" });
+  await page.goto(`/coach/fighters/${fighterId}`);
+  await page.getByRole("button", { name: "Technical", exact: true }).click();
+  const highlight = page.getByRole("region", { name: "Coaching highlight" });
+  await expect(highlight.getByText("Brace before each rep.")).toBeVisible();
+  // Read-only in the highlight: the editor stays on the record.
+  await expect(highlight.getByRole("button", { name: /feedback/i })).toHaveCount(0);
+  await highlight.getByRole("button", { name: "Review record" }).click();
+  const record = page.getByRole("dialog");
+  await expect(record).toContainText("Strength & power");
+  await expect(record.getByText("Brace before each rep.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(record).toHaveCount(0);
+
+  state.feedback.push({ id: "on-report", target_id: "report-1", source: "sparring", exercise_ref: "",
+    coach_name: "Test Coach", note: "Hands home after the jab.", updated_at: "2026-11-15T09:00:00Z" });
+  await page.reload();
+  await expect(highlight.getByText("Hands home after the jab.")).toBeVisible();
+  await page.locator("#sparring summary").click();
+  await highlight.getByRole("button", { name: "Review record" }).click();
+  await expect(page.locator("#sparring-report-report-1")).toBeFocused();
+  await expect(page.locator("#sparring-report-report-1")).toBeInViewport();
+
+  state.feedback.push({ id: "gone", target_id: "00000000-0000-4000-8000-0000000000ff", source: "external", exercise_ref: "",
+    coach_name: "Test Coach", note: "Deleted session note.", updated_at: "2026-11-16T09:00:00Z" });
+  await page.reload();
+  await highlight.getByRole("button", { name: "Review record" }).click();
+  await expect(highlight.getByRole("status")).toHaveText("That record is no longer available.");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
 test("check-in nudge: one switch turns it on, days and time save only when changed", async ({ page, baseURL }) => {
