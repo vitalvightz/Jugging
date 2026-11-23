@@ -238,18 +238,23 @@ function Result({ stage, onReview, onAnother }: {
 }
 
 /** What couldn't be carried over exactly, grouped by where it belongs. */
-export function ImportFlags({ flags, open, checked, onCheck, onOpen }: {
+export function ImportFlags({ flags, open, checked, onCheck, onCheckAll, onOpen }: {
   flags: ImportFlag[]; open?: boolean;
   /** In the builder: tapping a title opens that session or exercise. */
   onOpen?: (flag: ImportFlag) => void;
   /** In the builder: each one is ticked once it's been fixed or checked, and saving waits for all of them. */
   checked?: number[]; onCheck?: (index: number, done: boolean) => void;
+  /** Ticks (or unticks) every flag at once; each can still be unticked on its own. */
+  onCheckAll?: (done: boolean) => void;
 }) {
   const groups = new Map<string, { message: string; index: number }[]>();
   flags.forEach((flag, index) => groups.set(flag.where, [...(groups.get(flag.where) ?? []), { message: flag.message, index }]));
   const left = onCheck ? flags.length - (checked?.length ?? 0) : 0;
   return <details className={styles.flags} open={open}>
     <summary>{flags.length} {flags.length === 1 ? "thing" : "things"} to check{onCheck ? left ? ` · ${left} left` : " · all checked" : ""}</summary>
+    {onCheck && onCheckAll ? <div className={styles.flagTools}>
+      <button type="button" className={styles.tickAll} onClick={() => onCheckAll(left > 0)}>{left > 0 ? "Tick all" : "Untick all"}</button>
+    </div> : null}
     <dl>{[...groups].map(([where, items]) => <div key={where}><dt>{onOpen && flags[items[0].index].session_id
       ? <button type="button" className={styles.flagLink} onClick={() => onOpen(flags[items[0].index])}>{where}</button> : where}</dt>
       <dd>{items.map(({ message, index }) => onCheck
