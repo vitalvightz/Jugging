@@ -24,6 +24,8 @@ export type CoachSession = {
   type: string;
   status: string;
   source: string;
+  /** Logged (external) sessions only. */
+  sport?: string | null;
   rpe?: number | null;
   effort?: string;
   duration?: number;

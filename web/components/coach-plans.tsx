@@ -1,5 +1,6 @@
 "use client";
 import { DiscoveryHint } from "@/components/once-hint";
+import type { CoachMode } from "@/lib/coach-mode";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { CoachPlan, CoachPlannedSession } from "@/lib/api-schema.generated";
@@ -20,7 +21,7 @@ function PlanIcon({ name }: { name: "arrow-path" | "eye" | "chart-bar" | "plus" 
   return <img className={styles.planIcon} src={`/icons/coach/${name}.svg`} width={16} height={16} alt="" aria-hidden="true" />;
 }
 
-export function CoachPlans({ token, fighters }: { token: string; fighters: Fighter[] }) {
+export function CoachPlans({ token, fighters, coachMode }: { coachMode?: CoachMode; token: string; fighters: Fighter[] }) {
   const [editing, setEditing] = useState<string | null>(null);
   const editorOpen = editing !== null;
   const [selected, setSelected] = useState(fighters[0]?.id ?? "");
@@ -42,11 +43,11 @@ export function CoachPlans({ token, fighters }: { token: string; fighters: Fight
       {fighter && !editorOpen ? <button type="button" className={styles.desktopCreatePlan} aria-label="Create New Plan" onClick={() => setEditing("")}><PlanIcon name="plus" />Create Plan</button> : null}
     </div>
     {!fighters.length ? <p className={styles.empty}>Connect a fighter to create a plan.</p> : null}
-    {fighter ? <FighterPlans key={`${token}:${fighter.connection_id}`} token={token} fighter={fighter} others={fighters.filter(row => row.id !== fighter.id)} refresh={refresh} editing={editing} setEditing={setEditing} /> : null}
+    {fighter ? <FighterPlans coachMode={coachMode} key={`${token}:${fighter.connection_id}`} token={token} fighter={fighter} others={fighters.filter(row => row.id !== fighter.id)} refresh={refresh} editing={editing} setEditing={setEditing} /> : null}
   </section>;
 }
 
-function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: { token: string; fighter: Fighter; others: Fighter[]; refresh: number; editing: string | null; setEditing: (id: string | null) => void }) {
+function FighterPlans({ coachMode, token, fighter, others, refresh, editing, setEditing }: { coachMode?: CoachMode; token: string; fighter: Fighter; others: Fighter[]; refresh: number; editing: string | null; setEditing: (id: string | null) => void }) {
   const [plans, setPlans] = useState<CoachPlan[]>();
   const [schedule, setSchedule] = useState<CoachPlannedSession[]>();
   const [filter, setFilter] = useState<"all" | "active" | "draft" | "past">("all");
@@ -87,10 +88,10 @@ function FighterPlans({ token, fighter, others, refresh, editing, setEditing }: 
   }, [token, fighter, attempt, refresh]);
   if (editing === "import") return <PlanImport accessToken={token} timezone={fighter.timezone} forFighter={fighter.name}
     onCancel={() => setEditing(null)} onReview={next => { setImported(next); setEditing("imported"); }} />;
-  if (editing === "imported" && imported) return <CustomPlanBuilder accessToken={token} coachFighterId={fighter.id}
+  if (editing === "imported" && imported) return <CustomPlanBuilder coachMode={coachMode} accessToken={token} coachFighterId={fighter.id}
     athleteTimezone={fighter.timezone} fightDate={fighter.fight_date} importedDraft={imported}
     onCoachClose={() => { setImported(null); setEditing(null); setAttempt(n => n + 1); }} />;
-  if (editing !== null) return <CustomPlanBuilder accessToken={token} coachFighterId={fighter.id} athleteTimezone={fighter.timezone} fightDate={fighter.fight_date} initialPlan={editing.startsWith("revision:") ? plans?.find(plan => plan.id === editing.slice(9)) : undefined} planId={editing.startsWith("revision:") ? undefined : editing || undefined} onCoachClose={() => { setEditing(null); setAttempt(n => n + 1); }} />;
+  if (editing !== null) return <CustomPlanBuilder coachMode={coachMode} accessToken={token} coachFighterId={fighter.id} athleteTimezone={fighter.timezone} fightDate={fighter.fight_date} initialPlan={editing.startsWith("revision:") ? plans?.find(plan => plan.id === editing.slice(9)) : undefined} planId={editing.startsWith("revision:") ? undefined : editing || undefined} onCoachClose={() => { setEditing(null); setAttempt(n => n + 1); }} />;
   // Put the current prescription first, retaining the saved order of other plans.
   const ordered = plans?.toSorted((a, b) => Number(b.assignment_status === "active") - Number(a.assignment_status === "active"));
   const past = (row: CoachPlan) => ["declined", "superseded"].includes(row.assignment_status);
