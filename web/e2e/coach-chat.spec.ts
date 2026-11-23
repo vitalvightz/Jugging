@@ -122,3 +122,38 @@ test("a fighter with one coach lands in the chat with the linked session attache
   await expect(thread.getByText("Training card")).toHaveCount(0);
   await page.screenshot({ path: "test-results/coach-chat-fighter-390.png" });
 });
+
+// Sentry JAVASCRIPT-NEXTJS-2: iOS Safari refused the Realtime socket
+// ("The operation is insecure.") and the throw from subscribe() crashed the page.
+test("with WebSockets refused, chats still load, send, and refresh when the screen returns", async ({ page, baseURL }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { WebSocket: unknown }).WebSocket = function RefusedWebSocket() {
+      throw new DOMException("The operation is insecure.", "SecurityError");
+    };
+  });
+  const pageErrors: string[] = [];
+  page.on("pageerror", error => pageErrors.push(error.message));
+  const { sent } = await chatFixture(page, baseURL!, "coach");
+  await page.setViewportSize({ width: 390, height: 860 });
+  await page.goto(`/coach/chats?with=${leo}`);
+
+  const thread = page.getByRole("region", { name: "Chat with Leo Martins" });
+  await expect(thread.getByText("Round 3 felt slow. Thoughts?").first()).toBeVisible();
+  await thread.getByRole("textbox", { name: "Message" }).fill("Still works without Realtime.");
+  await thread.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(thread.getByText("Delivered")).toBeVisible();
+  expect(sent).toHaveLength(1);
+
+  // A reply lands while Realtime is down; coming back to the tab shows it.
+  const reply = { ...history("coach")[1], id: 50, client_id: "late", body: "Got it, coach.", quote: null, reactions: {},
+    created_at: new Date().toISOString() };
+  await page.route("**/rest/v1/coach_messages?**", route => route.fulfill({ json: [reply, ...[...history("coach")].reverse()] }));
+  await page.evaluate(() => {
+    for (const state of ["hidden", "visible"]) {
+      Object.defineProperty(document, "visibilityState", { value: state, configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    }
+  });
+  await expect(thread.getByText("Got it, coach.")).toBeVisible();
+  expect(pageErrors.filter(message => /WebSocket|insecure/i.test(message))).toEqual([]);
+});

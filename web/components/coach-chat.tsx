@@ -94,11 +94,19 @@ function ChatScreen({ token, me, role }: { token: string; me: string; role: Chat
     }
   }, [token, role]);
 
+  // Without Realtime the inbox refreshes when the screen comes back into view.
+  const inboxLive = useRef<boolean | null>(null);
   useEffect(() => {
     const first = window.setTimeout(() => void load(), 0);
     const onFocus = () => void load();
+    const onVisible = () => { if (document.visibilityState === "visible" && !inboxLive.current) void load(); };
     window.addEventListener("focus", onFocus);
-    return () => { window.clearTimeout(first); window.removeEventListener("focus", onFocus); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearTimeout(first);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [load]);
 
   useEffect(() => subscribeToInbox(token, me, role, chat => {
@@ -111,6 +119,10 @@ function ChatScreen({ token, me, role }: { token: string; me: string; role: Chat
       next[index] = applyChatRow(rows[index], chat, me);
       return sortInbox(next);
     });
+  }, live => {
+    // Back after an outage: catch up on anything missed while down.
+    if (live && inboxLive.current === false) void load();
+    inboxLive.current = live;
   }), [token, me, role, load]);
 
   const select = useCallback((otherId: string | null) => {
@@ -264,10 +276,30 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
     return () => controller.abort();
   }, [token, chatId]);
 
-  // Live messages, reactions, receipts and typing.
+  // Live messages, reactions, receipts and typing. Without Realtime (a
+  // refused socket, an outage) the newest page is fetched again when the chat
+  // comes back into view, and once more when Realtime recovers.
+  const chatLive = useRef<boolean | null>(null);
   useEffect(() => {
     if (!chatId) return;
+    chatLive.current = null;
+    let refreshing: AbortController | null = null;
+    const refresh = () => {
+      refreshing?.abort();
+      const controller = new AbortController();
+      refreshing = controller;
+      fetchMessages(token, chatId, undefined, controller.signal)
+        .then(rows => { if (!controller.signal.aborted) setMessages(current => mergeMessages(current, rows)); })
+        .catch(() => undefined);
+    };
+    const onVisible = () => { if (document.visibilityState === "visible" && !chatLive.current) refresh(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
     const subscription = subscribeToChat(token, chatId, me, {
+      onLive: live => {
+        if (live && chatLive.current === false) refresh();
+        chatLive.current = live;
+      },
       onMessage: message => {
         setMessages(current => mergeMessages(current, [message]));
         if (message.sender_id !== me) setTypingUntil(0);
@@ -276,7 +308,13 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
       onTyping: () => setTypingUntil(Date.now() + TYPING_SHOWN_MS),
     });
     live.current = subscription;
-    return () => { subscription.close(); live.current = null; };
+    return () => {
+      subscription.close();
+      live.current = null;
+      refreshing?.abort();
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
   }, [token, chatId, me]);
 
   useEffect(() => {
