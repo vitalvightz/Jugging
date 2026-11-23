@@ -1,4 +1,5 @@
 "use client";
+import { useChatUnread } from "@/components/phone-chat-button";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -109,6 +110,8 @@ export function MobileTabBar() {
   const { isReady, session, me } = useAppSession();
   const { isActive: generationActive } = useGenerationStatus();
   const barRef = useRef<HTMLElement>(null);
+  // Coaches see their unread messages on the Chats tab.
+  const coachUnread = useChatUnread(pathname, isCoachWorkspace(pathname, me?.profile.role));
   // The tapped tab lights at once. The route commits a moment later, and
   // waiting for it left the old tab lit over the new page for a frame or two.
   const [pendingHref, setPendingHref] = useState<string | null>(null);
@@ -252,7 +255,9 @@ export function MobileTabBar() {
           >
             <span className="mobile-tab-bar-icon" aria-hidden="true">
               {TAB_ICONS[tab.href] ?? TAB_ICONS[["/", "/today", "/plans", "/history"][tabs.indexOf(tab)]]}
+              {tab.href === "/coach/chats" && coachUnread ? <span className="phone-chat-badge">{coachUnread > 9 ? "9+" : coachUnread}</span> : null}
             </span>
+            {tab.href === "/coach/chats" && coachUnread ? <span className="sr-only">{coachUnread} unread</span> : null}
             <span className="mobile-tab-bar-label">
               {coachWorkspace ? tab.label : t(TAB_LABEL_KEYS[tab.href as keyof typeof TAB_LABEL_KEYS])}
             </span>
