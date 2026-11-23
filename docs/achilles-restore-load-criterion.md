@@ -26,6 +26,6 @@ Permission reductions or withdrawal invalidate incompatible unstarted work and s
 
 ## Schema and verification
 
-Rehabilitation permission is JSON in the existing clearance event; it requires no new table or column. Migration `20261009151500_allow_skipped_rehab_performance.sql` adds `skipped` to the existing completion-field constraint so a completed training session can record zero rehab work. It changes no RLS or ownership policy and must precede deployment of the updated API.
+Rehabilitation permission is JSON in the existing clearance event; it requires no new table or column. Migration `20261019174438_allow_skipped_rehab_performance.sql` adds `skipped` to the existing completion-field constraint so a completed training session can record zero rehab work. It changes no RLS or ownership policy and must precede deployment of the updated API.
 
 The updated activation tests exercise reported permission → existing engine → actual Today → acceptance → completion → exposure without assessments or admin approval. Existing shared review tests remain independent. UI tests cover the two selectors, self-report copy, removed worksheet, three response/completion choices and ownership-bound delayed answers. Current inventory reports use the live catalog; dated planning/archive checks reconstruct their exact preserved baseline.

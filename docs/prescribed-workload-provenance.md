@@ -63,7 +63,7 @@ being rewritten by a later day-level submission.
 
 ## Legacy and rollout
 
-Apply `20261018114339_add_completion_origin.sql` before deploying the API; the
+Apply `20261018155432_add_completion_origin.sql` before deploying the API; the
 runtime schema gate requires the column. It adds no table, index, function,
 grant or RLS policy. There is no default or historical backfill. Old binaries
 still produce unverified rows; roll API workers forward together before relying
@@ -128,7 +128,7 @@ Applied the exact repository migration to the connected Supabase project
 previously confirmed project, identified by Supabase as its default Main
 branch, not a separately verified staging database. The migration API recorded
 version `20261018155432`, name `add_completion_origin`; the repository filename
-is `20261018114339_add_completion_origin.sql`. Account for this version
+is `20261018155432_add_completion_origin.sql`. Account for this version
 difference before a future CLI `db push`.
 
 Metadata queries verify a nullable text column with no default and both

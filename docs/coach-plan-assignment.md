@@ -14,7 +14,7 @@ active plan. Sending a plan never publishes it or changes the active pointer.
 
 ## Retracting and removing sent plans
 
-`20261116190000_coach_plan_retract.sql` adds two actions to `coach_plan_command`
+`20261116235914_coach_plan_retract.sql` adds two actions to `coach_plan_command`
 and one column, `coach_removed_at`.
 
 - **Retract** (pending only): the plan becomes an unsent draft again and leaves the
@@ -34,7 +34,7 @@ deploying the backend: the coach plan list filters on the new column.
 
 ## Storage and consent
 
-`20261116145410_coach_plan_assignments.sql` extends `custom_training_plans`:
+`20261116155019_coach_plan_assignments.sql` extends `custom_training_plans`:
 `athlete_id` stays the draft author, `fighter_id` is the intended recipient, and
 assignment/consent timestamps, coach attribution and `published_plan_id` record
 consent. Existing personal drafts have null assignment fields and retain their
@@ -75,8 +75,8 @@ remains available in the fighter overview.
 ## Deployment order (not performed by this PR)
 
 1. Apply the existing Coach Workspace, signup, weight-consent, session-logging and
-   feedback migrations first, through `20261116024150_coach_feedback.sql`.
-2. Apply `20261116145410_coach_plan_assignments.sql` through the normal reviewed
+   feedback migrations first, through `20261116031516_coach_feedback.sql`.
+2. Apply `20261116155019_coach_plan_assignments.sql` through the normal reviewed
    migration process. It is additive, has no data backfill, and changes no existing
    personal drafts, plans or training records.
 3. Deploy the backend with the new endpoints and scoped personal-draft queries.
