@@ -38,7 +38,7 @@ the Today feed reports an active plan, never on `starting_path`:
 
 ## Rollout
 
-Apply `20261018160000_add_starting_path.sql` **before deploying the backend**.
+Apply `20261018212315_add_starting_path.sql` **before deploying the backend**.
 The temporary column default assigns `plan_first` to existing profiles, then
 is dropped so new profiles start with NULL. The migration is repeatable and
 preserves existing profile ownership policies and later saved choices. The
@@ -68,7 +68,7 @@ and live cross-device persistence must be verified during rollout.
 Applied the exact starting-path migration to the previously confirmed connected
 Main project `unlxckpdf` (`leienvqynijrgghhzczt`). Supabase recorded version
 `20261018212315`, name `add_starting_path` (the repository filename remains
-`20261018160000_add_starting_path.sql`; reconcile that version difference before
+`20261018212315_add_starting_path.sql`; reconcile that version difference before
 future CLI migration pushes). Metadata checks confirm nullable text, no default,
 a validated two-value check, preserved RLS, and all 20 existing profiles keeping
 `plan_first`. The GitHub Actions live runtime schema-check job was rerun and

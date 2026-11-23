@@ -1125,7 +1125,7 @@ select
   max(pl.created_at) as latest_plan_created_at,
   p.access_status,
   -- Earliest plan the athlete could train from; see
-  -- 20261012140100_admin_time_to_first_usable_plan.sql.
+  -- 20261019174515_admin_time_to_first_usable_plan.sql.
   min(pl.created_at) filter (
     where pl.status in ('ready', 'publishable_with_flags')
   ) as first_usable_plan_at
@@ -2840,7 +2840,7 @@ create table if not exists public.external_training_sessions (
   -- Optional run type; see migrations/20261104212610_add_external_training_run_type.sql.
   run_type text,
   -- Set when a connected coach entered the session for the athlete; see
-  -- migrations/20261116120000_coach_logged_sessions.sql.
+  -- migrations/20261116021019_coach_logged_sessions.sql.
   logged_by_coach_id uuid references public.profiles(id) on delete set null,
   logged_by_coach_name text constraint external_training_sessions_coach_name_length check (char_length(logged_by_coach_name) <= 120),
   constraint external_training_sessions_run_type check (
