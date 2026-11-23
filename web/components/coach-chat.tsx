@@ -2,12 +2,12 @@
 // Coach chat: the WhatsApp layout people already know, plus quoted training
 // cards. One screen for coaches (/coach/chats) and fighters (/chat).
 import Link from "next/link";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { RequireAuth } from "@/components/auth-guard";
 import { useAppSession } from "@/components/auth-provider";
 import { Skeleton } from "@/components/skeleton";
-import { VoicePlayer } from "@/components/voice-note";
+import { VoicePlaceholder, VoicePlayer } from "@/components/voice-note";
 import { getChatFiles, notifyChatMessage, processFileUpload, reserveFileUpload } from "@/lib/api";
 import type { ChatFile } from "@/lib/api-schema.generated";
 import { formatDuration, photoProblem, preparePhoto, VoiceRecorder } from "@/lib/attachments";
@@ -216,7 +216,8 @@ function ChatSheet({ name, onClose, children }: { name: string; onClose: () => v
     // so the composer sits right above the keyboard instead of behind it.
     const viewport = window.visualViewport;
     const fit = () => {
-      if (!viewport) return;
+      // Pinch-zoomed, the visible area is not the keyboard's doing: leave the layout alone.
+      if (!viewport || viewport.scale > 1.01) return;
       element.style.setProperty("--chat-viewport", `${Math.round(viewport.height)}px`);
       element.style.top = `${Math.round(viewport.offsetTop)}px`;
     };
@@ -266,7 +267,9 @@ function Avatar({ name, url, flag, small = false }: { name: string; url: string 
   );
 }
 
-type Pending = { draft: ChatDraft; clientId: string };
+// A voice note carries its recording until the upload succeeds, so a retry
+// never records or uploads twice, and the note plays from the device meanwhile.
+type Pending = { draft: ChatDraft; clientId: string; voice?: { wav: Blob; durationMs: number } };
 
 async function uploadChatFile(token: string, kind: "photo" | "voice", blob: Blob, onStage: (stage: string) => void) {
   onStage(kind === "photo" ? "Uploading photo…" : "Uploading voice note…");
@@ -274,7 +277,7 @@ async function uploadChatFile(token: string, kind: "photo" | "voice", blob: Blob
   const { error } = await getSupabaseBrowserClient().storage.from(permission.bucket)
     .upload(permission.path, blob, { contentType: permission.content_type, upsert: false });
   if (error) throw new Error("Upload failed. Check your connection and try again.");
-  onStage("Checking…");
+  onStage(kind === "photo" ? "Processing photo…" : "Processing voice note…");
   const result = await processFileUpload(token, permission.asset_id);
   if (result.status !== "ready") throw new Error(result.reason || "That file could not be used.");
   return permission.asset_id;
@@ -308,6 +311,10 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
   const live = useRef<ReturnType<typeof subscribeToChat> | null>(null);
   const scroller = useRef<HTMLDivElement | null>(null);
   const stickToBottom = useRef(true);
+  const field = useRef<HTMLTextAreaElement | null>(null);
+  // Recordings this device sent, by client id: they play from here at once.
+  const localVoice = useRef(new Map<string, { wav: Blob; durationMs: number }>());
+  const delivering = useRef(new Set<string>());
   const photoInput = useRef<HTMLInputElement | null>(null);
   const otherName = row.name.split(" ")[0] || row.name;
 
@@ -441,11 +448,36 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
     return () => window.clearTimeout(timer);
   }, [files, linkClock]);
 
-  // Stay pinned to the newest message unless the reader scrolled up.
+  // Stay pinned to the newest message unless the reader scrolled up, including
+  // when the list itself changes size: the keyboard opening, the composer
+  // growing, or a voice note or photo finishing loading.
   useEffect(() => {
     const box = scroller.current;
     if (box && stickToBottom.current) box.scrollTop = box.scrollHeight;
   }, [messages, typingUntil]);
+  useEffect(() => {
+    const box = scroller.current;
+    if (!box || typeof ResizeObserver === "undefined") return;
+    const pin = () => { if (stickToBottom.current) box.scrollTop = box.scrollHeight; };
+    const observer = new ResizeObserver(pin);
+    observer.observe(box);
+    for (const child of Array.from(box.children)) observer.observe(child);
+    const added = new MutationObserver(records => {
+      for (const record of records) record.addedNodes.forEach(node => { if (node instanceof Element) observer.observe(node); });
+    });
+    added.observe(box, { childList: true });
+    return () => { observer.disconnect(); added.disconnect(); };
+  }, []);
+
+  // The field grows with its text up to five lines, then scrolls inside.
+  // (Safari has no field-sizing, so the height is set here.)
+  useLayoutEffect(() => {
+    const element = field.current;
+    if (!element) return;
+    element.style.height = "auto";
+    const borders = element.offsetHeight - element.clientHeight;
+    element.style.height = `${Math.min(Math.max(element.scrollHeight + borders, 44), 140)}px`;
+  }, [text]);
 
   async function loadOlder() {
     if (!chatId || !messages.length) return;
@@ -462,15 +494,30 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
     }
   }
 
-  async function deliver({ draft, clientId }: Pending) {
-    setMessages(current => mergeMessages(current, [{
-      id: -Date.now(), chat_id: chatId ?? "", coach_id: "", athlete_id: "", sender_id: me, client_id: clientId,
-      kind: draft.kind, body: draft.body, asset_id: draft.asset_id ?? null, reply_to_id: draft.reply_to_id ?? null,
-      quote: draft.quote ? { ...draft.quote, day: "", title: "Training session", meta: "" } : null,
-      reactions: {}, created_at: new Date().toISOString(), status: "sending",
-    }]));
+  async function deliver(item: Pending) {
+    const { clientId } = item;
+    // One attempt at a time per message: a double tap on Retry never sends twice.
+    if (delivering.current.has(clientId)) return;
+    delivering.current.add(clientId);
+    const uploading = Boolean(item.voice && !item.draft.asset_id);
+    setMessages(current => {
+      const existing = current.find(m => m.client_id === clientId);
+      const draft = item.draft;
+      return mergeMessages(current, [{
+        id: existing?.id ?? -Date.now(), chat_id: chatId ?? "", coach_id: "", athlete_id: "", sender_id: me, client_id: clientId,
+        kind: draft.kind, body: draft.body, asset_id: draft.asset_id ?? null, reply_to_id: draft.reply_to_id ?? null,
+        quote: draft.quote ? { ...draft.quote, day: "", title: "Training session", meta: "" } : null,
+        reactions: {}, created_at: existing?.created_at ?? new Date().toISOString(), status: uploading ? "uploading" : "sending",
+      }]);
+    });
     stickToBottom.current = true;
     try {
+      if (item.voice && !item.draft.asset_id) {
+        // Uploaded once: a later retry reuses this file.
+        item.draft = { ...item.draft, asset_id: await uploadChatFile(token, "voice", item.voice.wav, () => undefined) };
+        setMessages(current => current.map(m => m.client_id === clientId ? { ...m, status: "sending", asset_id: item.draft.asset_id ?? null } : m));
+      }
+      const draft = item.draft;
       const { created, ...message } = await sendMessage(token, row.other_id, clientId, draft);
       pending.current.delete(clientId);
       if (!chatId) setChatId(message.chat_id);
@@ -483,11 +530,14 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
     } catch (e) {
       setMessages(current => current.map(m => m.client_id === clientId ? { ...m, status: "failed" } : m));
       setProblem(e instanceof Error ? e.message : "Message not sent. Tap it to retry.");
+    } finally {
+      delivering.current.delete(clientId);
     }
   }
 
-  function send(draft: ChatDraft) {
-    const item = { draft, clientId: newClientId() };
+  function send(draft: ChatDraft, voice?: Pending["voice"]) {
+    const item: Pending = { draft, clientId: newClientId(), voice };
+    if (voice) localVoice.current.set(item.clientId, voice);
     pending.current.set(item.clientId, item);
     void deliver(item);
   }
@@ -560,15 +610,10 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
     }
     const { wav, durationMs } = await active.stop();
     if (durationMs < 700) { setProblem("Too short. Hold on a little longer."); return; }
-    try {
-      const asset = await uploadChatFile(token, "voice", wav, setStage);
-      send({ kind: "voice", body: "", asset_id: asset, reply_to_id: replyTo?.id ?? null });
-      setReplyTo(null);
-    } catch (e) {
-      setProblem(e instanceof Error ? e.message : "That voice note could not be sent.");
-    } finally {
-      setStage("");
-    }
+    // The note shows in the conversation at once and uploads there; the
+    // composer stays free for the next message.
+    send({ kind: "voice", body: "", asset_id: null, reply_to_id: replyTo?.id ?? null }, { wav, durationMs });
+    setReplyTo(null);
   }
 
   // Press and hold the mic to record, release to send, slide left to cancel.
@@ -638,6 +683,8 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
           const previous = messages[index - 1];
           const newDay = !previous || !sameDay(previous.created_at, message.created_at);
           const file = files[message.id];
+          const local = message.kind === "voice" ? localVoice.current.get(message.client_id) : undefined;
+          const voiceMs = file?.duration_ms ?? local?.durationMs ?? null;
           const reply = message.reply_to_id ? byId.get(message.reply_to_id) : null;
           const reactions = reactionSummary(message.reactions, me);
           return (
@@ -671,17 +718,28 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
                   {message.kind === "voice" ? (
                     // The same player as voice notes on training: a waveform, not the browser's bar.
                     // Once played it keeps the audio, so its link no longer needs renewing.
-                    file ? <div className={styles.voice}><VoicePlayer id={`chat-${message.id}`} durationMs={file.duration_ms}
-                      tone={mine ? "athlete" : "coach"} seekLabel="Voice note position"
-                      playLabel={`Play voice note from ${mine ? "you" : otherName}, ${formatDuration(file.duration_ms)}`}
-                      load={async () => { playing.current.add(message.id); return files[message.id]?.url ?? file.url; }} /></div>
-                      : <span className={styles.photoLoading}>Voice note</span>
+                    // A note sent from this device plays from the recording straight away;
+                    // others show the player's exact shape until their link arrives.
+                    <div className={styles.voice}>
+                      {file || local ? <VoicePlayer id={`chat-${message.client_id}`} durationMs={voiceMs}
+                        tone={mine ? "onAccent" : "coach"} seekLabel="Voice note position"
+                        playLabel={`Play voice note from ${mine ? "you" : otherName}, ${formatDuration(voiceMs)}`}
+                        load={async () => {
+                          if (local) return local.wav;
+                          playing.current.add(message.id);
+                          return files[message.id]?.url ?? file!.url;
+                        }} />
+                        : <VoicePlaceholder id={`chat-${message.client_id}`} tone={mine ? "onAccent" : "coach"}
+                          label="Voice note loading" />}
+                    </div>
                   ) : null}
                   {message.body ? <span className={styles.body}>{message.body}</span> : null}
                   <span className={styles.meta}>
                     {message.status === "failed" ? (
                       <button type="button" className={styles.retry} onClick={() => retry(message)}>Not sent · Retry</button>
-                    ) : chatTime(message.created_at)}
+                    ) : message.status === "uploading" ? <span role="status">Uploading…</span>
+                      : message.status === "sending" ? <span role="status">Sending…</span>
+                      : chatTime(message.created_at)}
                   </span>
                 </div>
                 {reactions.length ? (
@@ -756,7 +814,7 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
             ) : (
               <label key="field" className={styles.field}>
                 <span className="sr-only">Message</span>
-                <textarea rows={1} value={text} maxLength={CHAT_MAX_CHARS} placeholder={stage || "Message"} disabled={Boolean(stage)}
+                <textarea ref={field} rows={1} value={text} maxLength={CHAT_MAX_CHARS} placeholder={stage || "Message"} disabled={Boolean(stage)}
                   onKeyDown={onKey}
                   onChange={event => { setText(event.target.value); if (event.target.value) live.current?.typing(); }} />
               </label>

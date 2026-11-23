@@ -31,8 +31,9 @@ export type ChatMessage = {
   reply_to_id: number | null;
   reactions: Record<string, string>;
   created_at: string;
-  // Local only: shown before the server confirms, or after a failed send.
-  status?: "sending" | "failed";
+  // Local only: a voice note still uploading, a message the server hasn't
+  // confirmed yet, or one that failed (kept for a retry).
+  status?: "uploading" | "sending" | "failed";
 };
 
 export type InboxRow = {
