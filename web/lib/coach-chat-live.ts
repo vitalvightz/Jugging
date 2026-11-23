@@ -48,6 +48,7 @@ export function joinChannel(supabase: Supabase, channel: RealtimeChannel, onLive
     onLive?.(false);
   }
   return () => {
+    if (closed) return;
     closed = true;
     try { supabase.removeChannel(channel).catch(() => undefined); } catch { /* never joined */ }
   };
