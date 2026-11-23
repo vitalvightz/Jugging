@@ -17700,6 +17700,7 @@ html[data-app-surface="workspace"][data-theme="dark"] .desktop-nav-toggle {
   }
 
   .mobile-tab-bar-icon {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;

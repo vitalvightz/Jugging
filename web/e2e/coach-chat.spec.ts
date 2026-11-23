@@ -101,6 +101,10 @@ for (const width of [390, 1440]) {
     const list = page.getByRole("region", { name: "Chats" });
     await expect(list.getByText("Leo Martins")).toBeVisible();
     await expect(list.getByLabel("2 unread")).toBeVisible();
+    if (width < 900) {
+      const tab = page.getByRole("navigation", { name: "Coach navigation" }).getByRole("link", { name: /Chats/ });
+      await expect(tab).toContainText("2 unread");
+    }
     await expect(list.getByText("Missed check-in ·")).toBeVisible();
     await expect(list.getByText("Start the conversation")).toBeVisible();
     await page.screenshot({ path: `test-results/coach-chat-inbox-${width}.png` });

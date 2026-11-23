@@ -10,9 +10,10 @@ import { fetchInbox } from "@/lib/coach-chat";
 
 const REFRESH_MS = 60_000;
 
-export function PhoneChatButton({ pathname }: { pathname: string }) {
+/** Unread chat messages for the signed-in account (coach or fighter); null with no chats. */
+export function useChatUnread(pathname: string, enabled = true): number | null {
   const { session } = useAppSession();
-  const token = session?.access_token;
+  const token = enabled ? session?.access_token : undefined;
   const [unread, setUnread] = useState<number | null>(null);
 
   useEffect(() => {
@@ -35,7 +36,11 @@ export function PhoneChatButton({ pathname }: { pathname: string }) {
       window.clearInterval(timer);
     };
   }, [token, pathname]);
+  return unread;
+}
 
+export function PhoneChatButton({ pathname }: { pathname: string }) {
+  const unread = useChatUnread(pathname);
   if (unread === null || pathname === "/chat") return null;
   return (
     <Link href="/chat" className="phone-chat-button"
