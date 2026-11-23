@@ -851,7 +851,8 @@ export function CustomPlanBuilder({ coachMode, accessToken, planId, addSessionDa
       {importedDraft && !draft.id ? <div className={styles.importNote} ref={importNoteRef}>
         <p role="status">Imported from {importedDraft.name}. {importedDraft.flags.length ? "Tick each thing to check once it's fixed or checked, then save." : "Check each session, then save."}</p>
         {importedDraft.flags.length ? <ImportFlags flags={importedDraft.flags} open checked={checkedFlags} onOpen={openFlag}
-          onCheck={(index, done) => { setCheckedFlags(current => done ? [...current, index] : current.filter(at => at !== index)); setError(undefined); }} /> : null}
+          onCheck={(index, done) => { setCheckedFlags(current => done ? [...current, index] : current.filter(at => at !== index)); setError(undefined); }}
+          onCheckAll={done => { setCheckedFlags(done ? importedDraft.flags.map((_, index) => index) : []); setError(undefined); }} /> : null}
       </div> : null}
       {message ? (
         <p role="status">

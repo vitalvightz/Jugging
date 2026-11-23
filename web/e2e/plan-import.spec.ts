@@ -148,7 +148,13 @@ for (const width of [320, 390, 1280]) {
     await save.click();
     await expect(page.getByRole("main").getByRole("alert")).toContainText("Tick the 3 things to check above before saving.");
     expect(saved.size).toBe(0);
-    for (const box of await page.getByRole("checkbox").all()) await box.check();
+    // One tap ticks every flag; each can still be unticked on its own.
+    await page.locator("details").filter({ hasText: "things to check" }).screenshot({ path: info.outputPath(`${width}-5-flags.png`) });
+    await page.getByRole("button", { name: "Tick all", exact: true }).click();
+    await expect(page.getByText("3 things to check · all checked")).toBeVisible();
+    await page.getByRole("checkbox").first().uncheck();
+    await expect(page.getByText("3 things to check · 1 left")).toBeVisible();
+    await page.getByRole("checkbox").first().check();
     await expect(page.getByText("3 things to check · all checked")).toBeVisible();
     await save.click();
     await expect.poll(() => saved.size).toBe(1);

@@ -122,6 +122,12 @@
 .dayRow span { font-weight: 600; overflow-wrap: anywhere; }
 .dayRow select { min-height: 44px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--bg-surface-alt); color: var(--text-primary); font: inherit; }
 .dayRow select:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; }
+.flagTools { display: flex; justify-content: flex-end; margin: -4px 0 10px; }
+.tickAll { min-height: 32px; padding: 4px 12px; border: 1px solid var(--border-strong); border-radius: 999px; background: none; color: var(--text-primary); font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.tickAll:hover { border-color: var(--text-secondary); }
+/* What to check reads in red until it's ticked. */
+.tick span { color: var(--danger-ink, var(--brand-red)); }
+.tick input:checked + span { color: var(--text-secondary); text-decoration: line-through; text-decoration-color: var(--border-strong); }
 .tick { display: flex; align-items: flex-start; gap: 10px; min-height: 32px; cursor: pointer; }
 .tick input { flex: none; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--text-primary); }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
