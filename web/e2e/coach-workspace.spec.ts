@@ -461,6 +461,11 @@ test("athlete accepts with one tap, then disconnects", async ({
   baseURL,
 }, info) => {
   const state = await fixture(page, baseURL!, "athlete");
+  await page.route("**/rest/v1/rpc/coach_chat_inbox", (route) => route.fulfill({ json: [{
+    chat_id: "chat-1", other_id: "coach-test", name: "Test Coach", avatar_url: null, role: "athlete", active: true,
+    last_message_at: new Date().toISOString(), last_preview: "How did sparring feel?", last_from_me: false, unread: 2,
+    other_read_at: null, fight_date: null, attention: false, missed_checkin: false,
+  }] }));
   await page.setViewportSize({ width: 390, height: 1000 });
   await page.goto("/settings/coach-access");
   await expect(page.getByText("Test Coach")).toBeVisible();
@@ -486,6 +491,10 @@ test("athlete accepts with one tap, then disconnects", async ({
   ).toEqual([]);
   await page.getByRole("button", { name: "Accept", exact: true }).click();
   await expect(page.getByRole("button", { name: "Disconnect" })).toBeVisible();
+  // Once connected, the card is the way into the chat, with what is waiting there.
+  const message = page.getByRole("link", { name: "Message Test Coach, 2 unread" });
+  await expect(message).toHaveAttribute("href", "/chat?with=coach-test");
+  await expect(page.getByText("Test: How did sparring feel?")).toBeVisible();
   expect(state.actions[0]).toMatchObject({
     p_action: "accept",
     p_recovery: true,
