@@ -9,7 +9,7 @@ const { PGlite } = require("@electric-sql/pglite");
 const db = new PGlite();
 const owner = "00000000-0000-4000-8000-000000000001";
 const other = "00000000-0000-4000-8000-000000000002";
-const migration = await readFile(new URL("../../supabase/migrations/20261011164637_add_custom_training_plans.sql", import.meta.url), "utf8");
+const migration = await readFile(new URL("../../supabase/migrations/20261011171232_add_custom_training_plans.sql", import.meta.url), "utf8");
 await db.exec(`
   create role anon; create role authenticated; create role service_role bypassrls;
   create schema auth;

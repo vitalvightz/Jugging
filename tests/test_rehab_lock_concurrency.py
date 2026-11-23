@@ -77,7 +77,7 @@ def postgres_database():
             # Exercise the upgrade from the deployed constraint, not only fresh schema.
             setup.execute("alter table session_completions drop constraint session_completions_rehab_performance_check")
             setup.execute("alter table session_completions add constraint session_completions_rehab_performance_check check (rehab_performance in ('done_as_shown', 'changed', 'stopped'))")
-            completion_migration = (ROOT / "supabase/migrations/20261009151500_allow_skipped_rehab_performance.sql").read_text(encoding="utf-8")
+            completion_migration = (ROOT / "supabase/migrations/20261019174438_allow_skipped_rehab_performance.sql").read_text(encoding="utf-8")
             setup.execute(completion_migration)
             setup.execute(completion_migration)
             setup.execute("insert into profiles values (%s)", (ATHLETE,))

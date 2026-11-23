@@ -23,7 +23,7 @@ await db.exec(`alter table session_completions add column prescription_snapshot 
   add column rehab_performance text, add column rehab_response_contexts jsonb;
   insert into session_completions(athlete_id,plan_id,session_id,training_day,status,session_rpe,notes)
     values ('${owner}','${plan}','legacy','2026-10-18','done',9,'Original');`);
-const migration = await readFile(new URL('../../supabase/migrations/20261018114339_add_completion_origin.sql', import.meta.url), 'utf8');
+const migration = await readFile(new URL('../../supabase/migrations/20261018155432_add_completion_origin.sql', import.meta.url), 'utf8');
 await db.exec(migration); await db.exec(migration);
 const legacy = (await db.query("select * from session_completions where session_id='legacy'")).rows[0];
 assert.equal(legacy.completion_origin, null);

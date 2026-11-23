@@ -11,7 +11,7 @@ await db.exec(`create role authenticated; create table profiles(id text primary 
   create policy owner_select on profiles for select to authenticated using (id=current_setting('app.owner'));
   create policy owner_update on profiles for update to authenticated using (id=current_setting('app.owner')) with check (id=current_setting('app.owner'));
   grant select,update on profiles to authenticated;`);
-const sql = await readFile(new URL('../../supabase/migrations/20261018095110_add_training_habit_preferences.sql', import.meta.url),'utf8');
+const sql = await readFile(new URL('../../supabase/migrations/20261018110229_add_training_habit_preferences.sql', import.meta.url),'utf8');
 await db.exec(sql); await db.exec(sql);
 assert.deepEqual((await db.query(`select training_habits from profiles where id='owner'`)).rows[0].training_habits,{enabled:true, decisions:[]});
 for (const bad of ['{}','{"enabled":true,"decisions":{}}','{"enabled":"true","decisions":[]}']) {

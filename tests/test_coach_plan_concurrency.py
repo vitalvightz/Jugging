@@ -12,7 +12,7 @@ from uuid import uuid4
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-MIGRATION = ROOT / 'supabase/migrations/20261116145410_coach_plan_assignments.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261116155019_coach_plan_assignments.sql'
 
 
 @pytest.fixture
@@ -48,7 +48,7 @@ def db():
             setup.execute(re.search(r'create table if not exists public\.plans \([\s\S]*?\n\);', schema)[0])
             setup.execute(re.search(r'create table public\.coach_connections \([\s\S]*?\n\);',
                 (ROOT / 'supabase/migrations/20261116001139_coach_workspace.sql').read_text())[0])
-            setup.execute((ROOT / 'supabase/migrations/20261011164637_add_custom_training_plans.sql').read_text())
+            setup.execute((ROOT / 'supabase/migrations/20261011171232_add_custom_training_plans.sql').read_text())
             setup.execute(MIGRATION.read_text())
             setup.execute((ROOT / "supabase/migrations/20261116171039_dated_custom_plans.sql").read_text())
         yield test_dsn

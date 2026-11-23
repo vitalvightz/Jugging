@@ -69,7 +69,7 @@ assert.equal((await db.query("select * from public.external_training_sessions"))
 // Optional sport and session type: rows that existed stay unclassified.
 await db.exec("reset role");
 const before = (await db.query("select id, activity from public.external_training_sessions order by id")).rows;
-const discipline = await readFile(new URL("../../supabase/migrations/20261019150000_add_external_training_discipline.sql", import.meta.url), "utf8");
+const discipline = await readFile(new URL("../../supabase/migrations/20261019121808_add_external_training_discipline.sql", import.meta.url), "utf8");
 await db.exec(discipline);
 await db.exec(discipline); // Safe migration reapplication.
 const after = (await db.query("select id, activity, sport, session_type from public.external_training_sessions order by id")).rows;

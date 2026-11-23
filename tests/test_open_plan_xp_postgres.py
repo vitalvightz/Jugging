@@ -26,7 +26,7 @@ from test_open_plan_programming_fidelity import _reference_row
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "supabase/migrations"
 MIGRATION = MIGRATIONS / "20261016143502_align_open_plan_xp_calendar.sql"
-COMPLETION_ORIGIN_MIGRATION = MIGRATIONS / "20261018114339_add_completion_origin.sql"
+COMPLETION_ORIGIN_MIGRATION = MIGRATIONS / "20261018155432_add_completion_origin.sql"
 OWNER = "00000000-0000-4000-8000-000000000001"
 OTHER = "00000000-0000-4000-8000-000000000002"
 
