@@ -197,6 +197,19 @@ class SourceCheck:
             for heading in (line for line in self.source_lines[lo:hi] if session_heading(line)):
                 words, days = _name_words(heading), set(_heading_days(heading))
                 named_heading = bool(re.search(r"(?:\s*[:|]\s*|\s+[-–—]\s*)\S", heading))
+                labels = _day_labels(heading)
+
+                def written_as(session) -> bool:
+                    # Identity beyond the title, on a day the session keeps: the programme's
+                    # own "Day 5" label ("Fri (Day 5) | ..." overview row, "Day 5 - ..." in
+                    # full), or a one-line session written as its content ("Tue: Flow Roll 3 x 5 min").
+                    if days and not days <= set(session_days(session)):
+                        return False
+                    if labels and labels == _day_labels(session.name):
+                        return True
+                    return bool(days) and any(_name_words(e.name) and _name_words(e.name) <= words
+                                              for e in session.exercises if not e.is_reference)
+
                 named = [i for i, session in enumerate(remaining)
                          if _name_words(session.name) and _name_words(session.name) <= words]
                 matched = next((i for i in named if not days or days <= set(session_days(remaining[i]))), None)
@@ -207,10 +220,13 @@ class SourceCheck:
                     if len(same_day) == 1:
                         matched = same_day[0]
                 if matched is None:
+                    matched = next((i for i, session in enumerate(remaining) if written_as(session)), None)
+                if matched is None:
                     # The same session can be written twice (an overview row, then in full).
                     # Identity must agree: a written day must be one of that session's days.
                     named_any = any(_name_words(session.name) and _name_words(session.name) <= words
                                     and (not days or days <= set(session_days(session))) for session in week.sessions)
+                    named_any = named_any or any(written_as(session) for session in week.sessions)
                     same_day_any = not named_heading and days and len([session for session in week.sessions if days <= set(session_days(session))]) == 1
                     # A rest day written by the coach needs no session. An optional
                     # session is still part of the programme, so its omission is flagged.
@@ -890,6 +906,11 @@ def _name_words(text: str) -> set[str]:
     text = re.sub(r"\bDB\b", "dumbbell", text, flags=re.I)
     words = set(_tokens(text))
     return words - {"rounds"} if len(words) > 1 else words
+
+
+def _day_labels(text: str) -> set[int]:
+    """A programme's own day numbers ("Day 5"), never a weekday."""
+    return {int(n) for n in re.findall(r"\bday\s*(\d{1,3})(?!\d)", text, re.I)}
 
 
 def _heading_days(text: str) -> list[str]:
