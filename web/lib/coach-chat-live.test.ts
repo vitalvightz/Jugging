@@ -85,6 +85,7 @@ test("after leaving, late status callbacks are ignored and the channel is remove
   // @ts-expect-error minimal stand-ins for the Supabase client and channel
   const leave = joinChannel(supabase, channel, live => states.push(live));
   leave();
+  leave();
   emit("CLOSED");
   emit("SUBSCRIBED");
   await Promise.resolve();
