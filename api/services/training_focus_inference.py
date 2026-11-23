@@ -646,7 +646,7 @@ def _run(store, athlete_id: str, kind: str, source_id: str, inferrer: FocusInfer
     except FocusOutputTruncated as exc:
         logger.warning("[training_focus] model reply truncated athlete_id=%s kind=%s reason=%s output_tokens=%s",
                        athlete_id, kind, exc.reason, exc.output_tokens)
-        return finish("failed", "truncated", model=inferrer.model, input_tokens=exc.input_tokens,
+        return finish("failed", "truncated" if exc.reason == "max_output_tokens" else "model_error", model=inferrer.model, input_tokens=exc.input_tokens,
                       output_tokens=exc.output_tokens, generated=True)
     except Exception as exc:  # noqa: BLE001 - provider or parse failure
         logger.warning("[training_focus] model call failed athlete_id=%s kind=%s error=%s",
