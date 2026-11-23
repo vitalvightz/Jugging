@@ -20,6 +20,12 @@ export async function isolateFromNetwork(page: Page, baseURL: string): Promise<v
       await route.fulfill({ contentType: "application/json", body: '[{"access_status":"approved"}]' });
       return;
     }
+    // Signed-in pages read the coach chat inbox for the phone chat button.
+    // Unless a test mocks it, the athlete has no coach (and no button).
+    if (url.includes("/rest/v1/rpc/coach_chat_inbox")) {
+      await route.fulfill({ contentType: "application/json", body: "[]" });
+      return;
+    }
     // Stub the same-origin API proxy so unauthenticated calls resolve instantly.
     if (url.startsWith(`${appOrigin}/api/`)) {
       await route.fulfill({

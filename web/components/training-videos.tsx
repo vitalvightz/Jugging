@@ -570,7 +570,7 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
         <span className={styles.recTime} role="timer" aria-live="off">{formatDuration(recording.seconds * 1000)}</span>
         <span className={styles.slideHint} data-cancelling={hold.cancelling || undefined} aria-live="polite"
           style={{ transform: `translateX(${-Math.min(hold.slide, SLIDE_TO_CANCEL_PX)}px)` }}>
-          {hold.cancelling ? "Release to cancel" : "‹ Slide to cancel"}
+          {hold.cancelling ? "Release to cancel" : "‹ Slide left to cancel"}
         </span>
         <span className={styles.heldMic} aria-hidden="true"><MicIcon /></span>
       </> : recording.stage === "recording" ? <>

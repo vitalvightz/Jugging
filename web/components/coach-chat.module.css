@@ -28,8 +28,9 @@
 .sheet {
   width: 100vw;
   max-width: 100vw;
-  height: 100dvh;
-  max-height: 100dvh;
+  /* --chat-viewport is the space above the on-screen keyboard (set from visualViewport). */
+  height: var(--chat-viewport, 100dvh);
+  max-height: var(--chat-viewport, 100dvh);
   margin: 0;
   padding: 0 0 var(--safe-area-bottom, env(safe-area-inset-bottom));
   padding-top: var(--safe-area-top, env(safe-area-inset-top));
@@ -45,6 +46,7 @@
   animation: chat-sheet-in var(--sheet-enter-duration, 280ms) var(--sheet-enter-ease, cubic-bezier(0.32, 0.72, 0, 1));
 }
 .sheet::backdrop { background: rgb(0 0 0 / 75%); }
+.sheet:focus { outline: none; }
 .sheet[open]::backdrop { animation: chat-backdrop-in var(--sheet-enter-duration, 280ms) ease-out; }
 .sheet[data-closing] {
   pointer-events: none;
@@ -262,19 +264,26 @@
   text-transform: uppercase;
 }
 
+/* Back: a plain chevron with a round 40px hit area; a soft fill only on press or keyboard focus. */
 .back {
   display: inline-grid;
+  flex: none;
   place-items: center;
-  width: 36px;
-  height: 36px;
-  margin-left: -8px;
+  width: 40px;
+  height: 40px;
+  margin-left: -10px;
+  padding: 0;
   border: 0;
+  border-radius: 50%;
   background: transparent;
   color: var(--text-primary);
-  font-size: 30px;
-  line-height: 1;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 120ms ease-out;
 }
+.back:active { background: var(--bg-surface-alt); }
+.back:focus { outline: none; }
+.back:focus-visible { outline: none; background: var(--bg-surface-alt); box-shadow: 0 0 0 2px var(--border-active); }
 
 .threadTitle {
   display: grid;
@@ -671,7 +680,8 @@
 .composer {
   display: grid;
   gap: 8px;
-  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  /* The sheet already pads for the home indicator; padding it here too left a gap. */
+  padding: 8px 10px;
   border-top: 1px solid var(--border-default);
   background: var(--bg-panel);
   flex-shrink: 0;
@@ -715,68 +725,113 @@
   cursor: pointer;
 }
 
-.inputRow,
-.recordingBar:focus { outline: none; }
-.recordingBar:focus-visible { outline: 2px solid var(--brand-red); outline-offset: 2px; border-radius: 22px; }
-
-.recordingBar {
+/* The composer is one row in every state: [+] [field or recording] [mic / send].
+   Only the middle changes; the buttons either side never move. */
+.inputRow {
   display: flex;
+  flex-wrap: nowrap;
   align-items: flex-end;
   gap: 8px;
 }
 
-.recordingBar {
+/* While recording, the field's pill shows the timer, a live waveform and the hint. */
+.recordingField {
+  position: relative;
+  display: flex;
+  flex: 1;
   align-items: center;
-  min-height: 44px;
-  padding-left: 8px;
+  gap: 10px;
+  min-width: 0;
+  height: 44px;
+  padding: 0 14px;
+  overflow: hidden;
+  border: 1px solid var(--border-active);
+  border-radius: 22px;
+  background: var(--bg-input);
+  animation: recording-in 160ms ease-out;
 }
+.recordingField:focus { outline: none; }
+.recordingField:focus-visible { outline: 2px solid var(--brand-red); outline-offset: 2px; }
+.inputRow[data-cancelling] .recordingField { border-color: var(--danger-ink); }
+@keyframes recording-in { from { opacity: 0; } to { opacity: 1; } }
 
-.recordingBar .clock {
+.recDot {
   flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand-red);
+  animation: rec-pulse 1.2s ease-in-out infinite;
+}
+@keyframes rec-pulse { 50% { opacity: 0.35; } }
+
+.clock {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--type-body-sm);
+  font-variant-numeric: tabular-nums;
 }
 
-/* Hold to record: the mic stays under the finger, the hint follows a slide. */
+.liveWave {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  height: 18px;
+}
+.liveWave i {
+  width: 3px;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--brand-red);
+  transform-origin: center;
+  animation: live-wave 0.9s ease-in-out infinite;
+}
+.liveWave i:nth-child(2) { animation-delay: -0.6s; }
+.liveWave i:nth-child(3) { animation-delay: -0.3s; }
+.liveWave i:nth-child(4) { animation-delay: -0.75s; }
+.liveWave i:nth-child(5) { animation-delay: -0.45s; }
+@keyframes live-wave { 0%, 100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }
+
+.slideHint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--type-body-sm);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 120ms ease-out;
+}
+.inputRow[data-cancelling] .slideHint,
+.inputRow[data-cancelling] .clock { color: var(--danger-ink); }
+.inputRow[data-cancelling] .recDot,
+.inputRow[data-cancelling] .liveWave i { background: var(--danger-ink); animation-play-state: paused; }
+.recordingField .textAction { margin-left: auto; }
+
+/* Hold to record: nothing under the finger scrolls, selects or opens a menu.
+   Pressed, the mic grows slightly in place (transform never moves its box). */
 .mic {
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 140ms ease-out, box-shadow 140ms ease-out, background 140ms ease-out;
+}
+.mic[data-held] {
+  transform: scale(1.12);
+  box-shadow: 0 0 0 6px rgb(220 38 38 / 22%);
+}
+.inputRow[data-cancelling] .mic {
+  background: var(--bg-surface-alt);
+  box-shadow: none;
 }
 
-.micHeld {
-  transform: scale(1.25);
-  box-shadow: 0 0 0 8px rgb(220 38 38 / 25%);
-  transition: transform 120ms ease-out;
-}
-
-.slideHint {
-  flex: 1;
-  color: var(--text-secondary);
-  font-size: var(--type-body-sm);
-  text-align: center;
-  white-space: nowrap;
-}
-
-.recordingBar[data-cancelling] .slideHint,
-.recordingBar[data-cancelling] .recDot {
-  color: var(--danger-ink);
-}
-
-.recordingBar[data-cancelling] .micHeld {
-  opacity: 0.5;
-}
-
-.recDot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--brand-red);
-}
-
-.clock {
-  flex: 1;
-  font-family: var(--font-mono);
-  font-size: var(--type-body);
+@media (prefers-reduced-motion: reduce) {
+  .recordingField, .recDot, .liveWave i { animation: none; }
+  .mic { transition: none; }
 }
 
 .field {

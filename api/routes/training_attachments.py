@@ -73,9 +73,10 @@ def build_attachment_uploads_router(*, require_profile, get_store):
     def reserve(body: FileUploadInput, profile=Depends(require_profile), store=Depends(get_store)):
         if profile.access_status != "approved":
             raise HTTPException(403, "Your account is not approved yet.")
-        # Coaches leave voice feedback and share documents (plans, guides), never photos.
-        if profile.role in {"coach", "admin"} and body.kind not in {"voice", "pdf"}:
-            raise HTTPException(403, "Coaches can attach voice notes and PDFs only.")
+        # Any approved account may upload any enabled kind: coaches and fighters both
+        # send photos in chat. Where a file may be used is checked where it is used:
+        # the database attaches only voice notes and PDFs from a coach to a fighter's
+        # training record, and coach_chat_send takes only the sender's own clean file.
         return reserve_file(store, profile.athlete_id, body.kind, body.size_bytes,
                             page_count=body.page_count, file_name=body.file_name)
 

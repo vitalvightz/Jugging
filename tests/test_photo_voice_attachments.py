@@ -132,8 +132,12 @@ def test_coach_voice_feedback_needs_media_sharing_and_the_coach_removes_only_the
     params = {"source": "external", "target_id": target}
     athlete_photo, _ = _upload(client, AS_FIGHTER)
     photo = client.post(URL, headers=AS_FIGHTER, json={"asset_id": athlete_photo["asset_id"], **params}).json()
-    # Coaches upload voice notes and PDFs, never photos.
-    assert client.post(UPLOADS, headers=AS_COACH, json={"kind": "photo", "size_bytes": 10}).status_code == 403
+    # Coaches upload photos too (to send in chat), but a coach's photo never goes
+    # on the fighter's training record: only their voice notes and PDFs do.
+    coach_photo, _ = _upload(client, AS_COACH)
+    assert coach_photo["path"].startswith(f"{COACH}/")
+    refused = client.post(path, headers=AS_COACH, json={"asset_id": coach_photo["asset_id"], **params})
+    assert refused.status_code == 404, refused.text
     voice, _ = _upload(client, AS_COACH, kind="voice")
     assert voice["path"].startswith(f"{COACH}/") and voice["content_type"] == "audio/wav"
     created = client.post(path, headers=AS_COACH, json={"asset_id": voice["asset_id"], **params})
