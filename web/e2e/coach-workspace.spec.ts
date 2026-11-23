@@ -200,6 +200,7 @@ async function fixture(
     if (params.get("limit") === "1") {
       expect(params.get("athlete_id")).toBe(`eq.${fighterId}`);
       expect(params.get("order")).toBe("updated_at.desc,id.desc");
+      expect(params.get("select")?.split(",")).toContain("target_id");
       for (const key of ["source", "target_id", "exercise_ref"]) expect(params.has(key)).toBe(false);
       const ordered = [...feedback].sort((a, b) => b.updated_at.localeCompare(a.updated_at) || b.id.localeCompare(a.id));
       return route.fulfill({ json: ordered.slice(0, 1) });
@@ -1662,27 +1663,37 @@ test("fighter media stays closed when the fighter doesn't share it", async ({ pa
 });
 
 test("mode highlights use local weeks, preserve profile state and read feedback only on demand", async ({ page, baseURL }) => {
+  // The roster read carries session types, as coach_fighters returns them.
+  const typed = { ...fighter, sessions: fighter.sessions.map(row => row.session_id === "strength" ? { ...row, type: "strength_power" } : row) };
   const mondayFighter = { ...fighter, id: "other-fighter", today: "2026-11-16", timezone: "Asia/Tokyo",
-    schedule: [...fighter.schedule, { day: "2026-11-16", id: "run", type: "conditioning", title: "Run" }] };
-  const state = await fixture(page, baseURL!, "coach", false, {}, [fighter, mondayFighter]);
+    schedule: [...fighter.schedule, { day: "2026-11-16", id: "run", type: "conditioning", title: "Run" }],
+    sessions: [
+      { id: "tokyo-last-week", day: "2026-11-15", type: "strength_power", source: "unlxck", status: "done", recorded_at: "2026-11-15T09:00:00Z" },
+      { id: "tokyo-gym", day: "2026-11-16", type: "strength", source: "external", status: "done", recorded_at: "2026-11-16T09:00:00Z" },
+    ] };
+  const state = await fixture(page, baseURL!, "coach", false, {}, [typed, mondayFighter]);
   let reads = 0;
+  const fighterReads: string[] = [];
   page.on("request", request => {
     const url = new URL(request.url());
     if (url.pathname.endsWith("/coach_feedback") && url.searchParams.get("limit") === "1") reads++;
+    if (url.pathname.endsWith("/rpc/coach_fighters") && request.postDataJSON()?.p_athlete_id) fighterReads.push(request.postDataJSON().p_athlete_id);
   });
   await page.setViewportSize({ width: 390, height: 1000 });
   await page.goto("/coach");
   const technical = page.getByRole("button", { name: "Technical", exact: true });
   const sc = page.getByRole("button", { name: "S&C", exact: true });
   await expect(sc).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByText("1 of 2 scheduled sessions completed")).toBeVisible();
+  await expect(page.getByText("2 S&C sessions completed", { exact: true })).toBeVisible();
+  // No per-fighter reads to build the roster highlight.
+  expect(fighterReads).toEqual([]);
   await technical.focus();
   await technical.press("Enter");
   await expect(page.getByRole("heading", { name: "Latest sparring this week" })).toBeVisible();
   expect(reads).toBe(0);
   await page.goto(`/coach/fighters/${fighterId}`);
   const highlight = page.getByRole("region", { name: "Coaching highlight" });
-  await expect(highlight.getByText("No feedback available to you")).toBeVisible();
+  await expect(highlight.getByText("No feedback yet")).toBeVisible();
   expect(reads).toBe(1);
   const sectionTitles = page.locator("summary h2");
   const order = await sectionTitles.allTextContents();
@@ -1769,4 +1780,38 @@ test("feedback retry targets the highlight and a denied read drops the previous 
   await expect(highlight.getByText("No feedback available to you")).toBeVisible();
   await expect(highlight.getByText("Watch the entry.")).toHaveCount(0);
   expect(attempts).toBe(2);
+});
+
+test("feedback highlight reviews the original record without a second editor", async ({ page, baseURL }) => {
+  const state = await fixture(page, baseURL!);
+  state.feedback.push({ id: "on-strength", target_id: strengthSession.id, source: "unlxck", exercise_ref: "",
+    coach_name: "Test Coach", note: "Brace before each rep.", updated_at: "2026-11-14T09:00:00Z" });
+  await page.goto(`/coach/fighters/${fighterId}`);
+  await page.getByRole("button", { name: "Technical", exact: true }).click();
+  const highlight = page.getByRole("region", { name: "Coaching highlight" });
+  await expect(highlight.getByText("Brace before each rep.")).toBeVisible();
+  // Read-only in the highlight: the editor stays on the record.
+  await expect(highlight.getByRole("button", { name: /feedback/i })).toHaveCount(0);
+  await highlight.getByRole("button", { name: "Review record" }).click();
+  const record = page.getByRole("dialog");
+  await expect(record).toContainText("Strength & power");
+  await expect(record.getByText("Brace before each rep.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(record).toHaveCount(0);
+
+  state.feedback.push({ id: "on-report", target_id: "report-1", source: "sparring", exercise_ref: "",
+    coach_name: "Test Coach", note: "Hands home after the jab.", updated_at: "2026-11-15T09:00:00Z" });
+  await page.reload();
+  await expect(highlight.getByText("Hands home after the jab.")).toBeVisible();
+  await page.locator("#sparring summary").click();
+  await highlight.getByRole("button", { name: "Review record" }).click();
+  await expect(page.locator("#sparring-report-report-1")).toBeFocused();
+  await expect(page.locator("#sparring-report-report-1")).toBeInViewport();
+
+  state.feedback.push({ id: "gone", target_id: "00000000-0000-4000-8000-0000000000ff", source: "external", exercise_ref: "",
+    coach_name: "Test Coach", note: "Deleted session note.", updated_at: "2026-11-16T09:00:00Z" });
+  await page.reload();
+  await highlight.getByRole("button", { name: "Review record" }).click();
+  await expect(highlight.getByRole("status")).toHaveText("That record is no longer available.");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });

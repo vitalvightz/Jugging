@@ -52,15 +52,16 @@ export function CoachFeedback({ token, athleteId, source, targetId, exerciseRef 
   </div>;
 }
 
-type FeedbackPreview = Pick<Note, "note" | "exercise_ref" | "updated_at"> & { source: string };
+type FeedbackPreview = Pick<Note, "note" | "exercise_ref" | "updated_at"> & { source: string; target_id: string };
+export type FeedbackTarget = Pick<FeedbackPreview, "source" | "target_id">;
 
-export function LatestCoachFeedback({ token, athleteId }: { token: string; athleteId: string }) {
+export function LatestCoachFeedback({ token, athleteId, onReview }: { token: string; athleteId: string; onReview?: (target: FeedbackTarget) => void }) {
   const [result, setResult] = useState<FeedbackPreview | "failed" | null>();
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
     const params = new URLSearchParams({
-      select: "note,source,exercise_ref,updated_at", athlete_id: `eq.${athleteId}`,
+      select: "note,source,target_id,exercise_ref,updated_at", athlete_id: `eq.${athleteId}`,
       order: "updated_at.desc,id.desc", limit: "1",
     });
     fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/coach_feedback?${params}`, {
@@ -76,7 +77,7 @@ export function LatestCoachFeedback({ token, athleteId }: { token: string; athle
   }, [token, athleteId, attempt]);
 
   if (result === undefined) return <p>Loading feedback…</p>;
-  if (result === null) return <p>No feedback available to you</p>;
+  if (result === null) return <p>No feedback yet</p>;
   if (result === "failed") return <p role="alert">Feedback unavailable <button type="button" onClick={() => {
     setResult(undefined);
     setAttempt(value => value + 1);
@@ -86,5 +87,6 @@ export function LatestCoachFeedback({ token, athleteId }: { token: string; athle
     <strong>{source}</strong>
     <div><small>Updated {formatAppDate(result.updated_at.slice(0, 10))}</small></div>
     <p>{result.note}</p>
+    {onReview && result.target_id ? <button type="button" className="ghost-button" onClick={() => onReview({ source: result.source, target_id: result.target_id })}>Review record</button> : null}
   </div>;
 }

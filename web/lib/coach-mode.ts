@@ -2,6 +2,7 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 import { activityFor, sessionTypes, type TrainingPick } from "./training-disciplines";
+import { completed, dayOffset, weekStart, type CoachSession, type Fighter } from "./coach";
 
 export type CoachMode = "technical" | "sc";
 export type CoachRelevance = CoachMode | "shared";
@@ -83,4 +84,21 @@ export function prioritiseForMode<T>(items: readonly T[], mode: CoachMode | unde
   if (!mode) return items;
   const rank = (item: T) => relevance(item) === mode ? 0 : 1;
   return [...items].sort((a, b) => rank(a) - rank(b));
+}
+
+/** A recorded coach-roster session: plan sessions by structured type, logged work by its discipline pick. */
+export function sessionRelevance(session: Pick<CoachSession, "source" | "type"> & { sport?: string | null }): CoachRelevance {
+  if (session.source !== "external") return planRelevance(session.type);
+  // The roster read omits a logged session's type, so sport-tagged work stays shared.
+  return trainingRelevance({ label: "", activity: session.type as TrainingPick["activity"], sport: (session.sport ?? null) as TrainingPick["sport"], session_type: null });
+}
+
+/** Completed S&C in each fighter's local training week, from the roster read alone. */
+export function rosterPhysicalCompleted(fighters: readonly Pick<Fighter, "today" | "sessions">[]): number {
+  return fighters.reduce((total, fighter) => {
+    const start = weekStart(fighter.today);
+    const end = dayOffset(start, 6);
+    return total + fighter.sessions.filter(session => session.day >= start && session.day <= end
+      && completed(session) && sessionRelevance(session) === "sc").length;
+  }, 0);
 }

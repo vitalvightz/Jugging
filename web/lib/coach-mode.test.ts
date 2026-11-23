@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planRelevance, prioritiseForMode, trainingRelevance, useCoachMode, validCoachMode } from "./coach-mode";
+import { planRelevance, prioritiseForMode, rosterPhysicalCompleted, sessionRelevance, trainingRelevance, useCoachMode, validCoachMode } from "./coach-mode";
+import type { CoachSession } from "./coach";
 import { window } from "../components/test-dom";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -61,4 +62,24 @@ test("mode is isolated on account change, sign-out and invalid stored values", a
     act(() => root.unmount());
     window.localStorage.clear();
   }
+});
+
+test("roster S&C counts completed work in each fighter's local week from the roster read", () => {
+  const row = (day: string, type: string, extra: Partial<CoachSession> = {}): CoachSession =>
+    ({ id: `${day}:${type}`, day, type, status: "done", source: "unlxck", recorded_at: `${day}T12:00:00Z`, ...extra });
+  assert.equal(sessionRelevance(row("2026-11-10", "strength_power")), "sc");
+  // Masked injury work arrives as "programme" and never counts.
+  assert.equal(sessionRelevance(row("2026-11-10", "programme")), "shared");
+  assert.equal(sessionRelevance(row("2026-11-10", "strength", { source: "external" })), "sc");
+  assert.equal(sessionRelevance(row("2026-11-10", "strength", { source: "external", sport: "boxing" })), "shared");
+  const london = { today: "2026-11-15", sessions: [
+    row("2026-11-09", "strength_power"), row("2026-11-15", "conditioning"),
+    row("2026-11-12", "conditioning", { status: "skipped" }), row("2026-11-11", "sparring"),
+    row("2026-11-08", "strength_power"), row("2026-11-14", "roadwork", { source: "external" }),
+  ] };
+  // Already Monday in Tokyo: last week's work belongs to the previous week.
+  const tokyo = { today: "2026-11-16", sessions: [row("2026-11-15", "strength_power"), row("2026-11-16", "conditioning")] };
+  assert.equal(rosterPhysicalCompleted([london]), 3);
+  assert.equal(rosterPhysicalCompleted([london, tokyo]), 4);
+  assert.equal(rosterPhysicalCompleted([]), 0);
 });

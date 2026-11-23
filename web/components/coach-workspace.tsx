@@ -15,7 +15,7 @@ import { createPortal } from "react-dom";
 import { RequireAuth } from "@/components/auth-guard";
 import { ManualExerciseLogger } from "@/components/manual-exercise-logger";
 import { CoachPlans } from "./coach-plans";
-import { CoachFeedback, LatestCoachFeedback } from "./coach-feedback";
+import { CoachFeedback, LatestCoachFeedback, type FeedbackTarget } from "./coach-feedback";
 import { FighterMediaPanel } from "./fighter-media";
 import { LogTraining } from "@/components/log-training";
 import { useAppSession } from "@/components/auth-provider";
@@ -72,7 +72,7 @@ import {
   sortTrainingHistory,
   type TrainingHistorySession,
 } from "@/lib/training-history";
-import { planRelevance, useCoachMode, type CoachMode } from "@/lib/coach-mode";
+import { planRelevance, rosterPhysicalCompleted, useCoachMode, type CoachMode } from "@/lib/coach-mode";
 import styles from "./coach-workspace.module.css";
 import summary from "./training-summary.module.css";
 import weightStyles from "./weight-tracker.module.css";
@@ -464,7 +464,7 @@ function reportSummary(report: NonNullable<Fighter["sparring_reports"]>[number])
   return `${formatAppDate(report.day)} · ${report.rounds} rounds · ${humanize(report.intensity)}`;
 }
 
-function RosterHighlight({ fighters, coachMode, token }: { fighters: Fighter[]; coachMode: CoachMode; token: string }) {
+function RosterHighlight({ fighters, coachMode }: { fighters: Fighter[]; coachMode: CoachMode }) {
   if (coachMode === "technical") {
     const latest = fighters.flatMap(fighter => {
       const report = latestReport(fighter, weekStart(fighter.today));
@@ -474,28 +474,16 @@ function RosterHighlight({ fighters, coachMode, token }: { fighters: Fighter[]; 
       {latest ? <p><Link href={`/coach/fighters/${latest.fighter.id}`}>{latest.fighter.name || "Fighter"}</Link> · {reportSummary(latest.report)}</p> : <p>No sparring report available this week.</p>}
     </section>;
   }
-  return <RosterPhysicalWeek fighters={fighters} token={token} />;
+  return <RosterPhysicalWeek fighters={fighters} />;
 }
 
-function RosterPhysicalWeek({ fighters, token }: { fighters: Fighter[]; token: string }) {
-  const [result, setResult] = useState<{ roster: Fighter[]; summary: string }>();
-  useEffect(() => {
-    let active = true;
-    // Only the fighter-scoped form of this read-only RPC includes the schedule.
-    // Use the same snapshot and completion rules as the fighter profile.
-    Promise.all(fighters.filter(f => f.plan_id).map(async fighter => {
-      const [detail] = await coachRpc<Fighter[]>(token, "coach_fighters", { p_athlete_id: fighter.id });
-      if (detail?.id !== fighter.id) throw Error("Fighter unavailable");
-      return physicalWeek(detail);
-    })).then(weeks => {
-      const total = weeks.reduce((sum, week) => ({ done: sum.done + week.done, scheduled: sum.scheduled + week.scheduled }), { done: 0, scheduled: 0 });
-      if (active) setResult({ roster: fighters, summary: physicalSummary(total) });
-    }).catch(() => {
-      if (active) setResult({ roster: fighters, summary: "Roster schedule unavailable" });
-    });
-    return () => { active = false; };
-  }, [fighters, token]);
-  return <section className={styles.panel}><h2>Roster S&amp;C this week</h2><p>{result?.roster === fighters ? result.summary : "Loading roster schedule…"}</p><small>Based on each fighter’s local training week.</small></section>;
+function RosterPhysicalWeek({ fighters }: { fighters: Fighter[] }) {
+  // The roster read has no schedules, so this counts completed work only; each
+  // fighter's profile shows completed against scheduled.
+  const total = rosterPhysicalCompleted(fighters);
+  return <section className={styles.panel}><h2>Roster S&amp;C this week</h2>
+    <p>{total ? `${total} S&C ${total === 1 ? "session" : "sessions"} completed` : "No S&C sessions completed this week."}</p>
+    <small>Based on each fighter’s local training week.</small></section>;
 }
 
 function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { token: string; fighters: Fighter[]; rosterOnly?: boolean; coachMode: CoachMode }) {
@@ -588,7 +576,7 @@ function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { to
           </ul>
         </section>
       ) : null}
-      <RosterHighlight token={token} fighters={fighters} coachMode={coachMode} />
+      <RosterHighlight fighters={fighters} coachMode={coachMode} />
       {upcoming.length ? (
         <section className={styles.panel}>
           <h2>Upcoming fights</h2>
@@ -819,6 +807,32 @@ function FighterOverview({
   const injuryTone = injuries.some(injury => injury.severity === "severe") ? "concern" : injuries.some(injury => ["mild", "moderate"].includes(injury.severity)) ? "caution" : "unknown";
   const [feedbackRevision, setFeedbackRevision] = useState(0);
   const onFeedbackSaved = () => setFeedbackRevision(value => value + 1);
+  // Review opens the existing record read-only path; it never adds an editor.
+  const [review, setReview] = useState<HistoryReview | null>(null);
+  const [reviewReport, setReviewReport] = useState<{ id: string; key: number } | null>(null);
+  const [reviewMissing, setReviewMissing] = useState(false);
+  const onReviewMissing = useCallback(() => setReviewMissing(true), []);
+  const openFeedbackRecord = (target: FeedbackTarget) => {
+    setReviewMissing(false);
+    if (target.source === "sparring") {
+      const report = f.sparring_reports?.find(row => row.id === target.target_id);
+      if (!report) { setReviewMissing(true); return; }
+      setWeek(weekStart(report.day));
+      setAllSparring(true);
+      setReviewReport(current => ({ id: report.id, key: (current?.key ?? 0) + 1 }));
+    } else if (target.source === "unlxck" || target.source === "external") {
+      setReview(current => ({ source: target.source as HistoryReview["source"], id: target.target_id, key: (current?.key ?? 0) + 1 }));
+    } else setReviewMissing(true);
+  };
+  useEffect(() => {
+    // Runs once per review request, after the report's week has rendered.
+    if (!reviewReport) return;
+    const item = document.getElementById(`sparring-report-${reviewReport.id}`);
+    const fold = item?.closest("details");
+    if (fold) fold.open = true;
+    item?.scrollIntoView({ block: "center" });
+    item?.focus();
+  }, [reviewReport]);
   const recentReport = latestReport(f);
   const readiness = f.share_recovery ? (f.recovery ?? []).filter(r => r.day <= f.today && r.readiness != null).sort((a, b) => b.day.localeCompare(a.day))[0] : undefined;
   const unknown = f.share_recovery ? "Not recorded" : "Not shared";
@@ -896,7 +910,8 @@ function FighterOverview({
           <p>{recentReport ? reportSummary(recentReport) : "No sparring report available"}</p>
           <h2>Latest coach feedback</h2>
           {f.can_leave_feedback === false ? <p>No feedback available to you</p> :
-            <LatestCoachFeedback key={`${f.connection_id}:${feedbackRevision}`} token={token} athleteId={f.id} />}
+            <LatestCoachFeedback key={`${f.connection_id}:${feedbackRevision}`} token={token} athleteId={f.id} onReview={openFeedbackRecord} />}
+          {reviewMissing ? <p role="status">That record is no longer available.</p> : null}
         </> : <>
           <h2>This fighter’s S&amp;C this week</h2>
           <p>{physicalSummary(physicalWeek(f))}</p>
@@ -970,7 +985,7 @@ function FighterOverview({
           </div>
           <ul className={styles.sparringReports}>
             {[...reports].sort((a, b) => b.day.localeCompare(a.day)).slice(0, allSparring ? undefined : 3).map((s) => (
-              <li key={s.id}>
+              <li key={s.id} id={`sparring-report-${s.id}`} tabIndex={-1}>
                 <div className={styles.sectionHeading}><strong>{formatAppDate(s.day)}</strong>
                   <span className={styles.intensity} data-intensity={s.intensity}>{s.intensity === "medium" ? "Moderate" : humanize(s.intensity)}</span></div>
                 <p>{s.rounds} rounds{f.share_injuries && s.head_contact != null ? ` · ${s.head_contact === "none" ? "No head contact" : `${humanize(s.head_contact)} head contact`}` : ""}</p>
@@ -993,7 +1008,7 @@ function FighterOverview({
           sheet) and reloads it under the new permissions. */}
       <FoldableSection id="fight-weight" title="Fight weight"><FightWeight key={`weight:${sharingKey}`} fighter={f} weight={weight} failed={Boolean(weightFailed)} /></FoldableSection>
       <FoldableSection id="media" title="Photos and voice notes"><FighterMediaPanel token={token} fighter={f} /></FoldableSection>
-      <FoldableSection id="training-history" title="Training history"><TrainingHistory onFeedbackSaved={onFeedbackSaved}
+      <FoldableSection id="training-history" title="Training history"><TrainingHistory onFeedbackSaved={onFeedbackSaved} review={review} onReviewMissing={onReviewMissing}
         key={`history:${sharingKey}:${historyKey}:${f.plan_id}:${f.today}`}
         token={token}
         athleteId={f.id}
@@ -1050,8 +1065,12 @@ const HISTORY_STEP = 10;
 
 // The athlete's own History, read-only: the same rows and the same session
 // record, read through the coach endpoints that check the connection.
+type HistoryReview = { source: TrainingHistorySession["source"]; id: string; key: number };
+
 function TrainingHistory({
   onFeedbackSaved,
+  review,
+  onReviewMissing,
   token,
   athleteId,
   today,
@@ -1059,6 +1078,9 @@ function TrainingHistory({
   sport,
 }: {
   onFeedbackSaved?: () => void;
+  /** Opens one record once per request, paging history until it is found. */
+  review?: HistoryReview | null;
+  onReviewMissing?: () => void;
   fightDate: string | null;
   sport: string | null;
   today: string;
@@ -1149,6 +1171,24 @@ function TrainingHistory({
     }).catch(() => { if (active) fail(); }).finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
   }, [view, month, rows, next, token, athleteId, fail]);
+  const reviewed = useRef(0);
+  useEffect(() => {
+    if (!review || review.key === reviewed.current || !rows) return;
+    const row = rows.find(item => item.source === review.source && item.id === review.id);
+    if (row || !next) {
+      reviewed.current = review.key;
+      if (row) setSelected(row); else onReviewMissing?.();
+      return;
+    }
+    let active = true;
+    getFighterHistory(token, athleteId, next).then(page => {
+      if (!active) return;
+      if (page.next_before_day && page.next_before_day >= next) throw Error("History cursor did not advance");
+      setRows(current => mergeHistory(current ?? [], page.sessions));
+      setNext(page.next_before_day ?? null);
+    }).catch(() => { if (active) fail(); });
+    return () => { active = false; };
+  }, [review, rows, next, token, athleteId, fail, onReviewMissing]);
   const completedRows = (rows ?? []).filter(row => (row.status === "done" || row.status === "modified") && row.completion_origin !== "day_credit" && row.training_day <= today && !(row as TrainingHistorySession & { deleted_at?: unknown }).deleted_at);
   const futureRows = [...new Map(planned.filter(session => session.day >= today && !(rows ?? []).some(row =>
     row.plan_id === session.plan_id && row.session_id === session.id && row.training_day === session.day
