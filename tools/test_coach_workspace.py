@@ -69,6 +69,7 @@ for filename in (
     '20261118043914_attachment_processing_fencing.sql',
     '20261118055653_pdf_attachments.sql',
     '20261118063845_progress_photos.sql',
+    '20261123120000_coach_feedback_record_visibility.sql',
 ):
     bootstrap += (root / 'supabase/migrations' / filename).read_text() + '\n'
 bootstrap += 'grant all on all tables in schema public to service_role; grant all on all sequences in schema public to service_role;\n'

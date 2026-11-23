@@ -70,6 +70,34 @@ select public.save_coach_feedback('00000000-0000-4000-8000-000000000052','unlxck
 select pg_temp.assert_ok((select count(*) from public.coach_feedback where source='unlxck')=2,'same-named exercises keep distinct feedback');
 select pg_temp.assert_denied('select public.save_coach_feedback(''00000000-0000-4000-8000-000000000052'',''unlxck'',''60000000-0000-4000-8000-000000000052'',''other-block'',''Bad target'')');
 reset role;
+-- Feedback written on injury work while sharing was on is withheld once the
+-- athlete turns injury sharing off, including from the newest-note read.
+insert into public.session_completions(id,athlete_id,plan_id,session_id,training_day,status,completion_origin,prescription_snapshot)
+ values('60000000-0000-4000-8000-000000000053','00000000-0000-4000-8000-000000000052','10000000-0000-4000-8000-000000000052','knee-rehab',current_date-1,'done','reported',
+ jsonb_build_object('readiness_context',(select jsonb_build_object('id',id,'updated_at',updated_at) from public.today_checkins where athlete_id='00000000-0000-4000-8000-000000000052' and plan_id='10000000-0000-4000-8000-000000000052'),'injury_context','[]'::jsonb,'revision',repeat('2',64),'plan_id','10000000-0000-4000-8000-000000000052','training_day',current_date-1,'session',jsonb_build_object('session_id','knee-rehab','session_type','rehab','title','Knee rehab',
+ 'blocks',jsonb_build_array(jsonb_build_object('block_id','tke','display_name','Terminal knee extension')))));
+update public.coach_connections set share_injuries=true where coach_id='00000000-0000-4000-8000-000000000053';
+set local role authenticated;
+select public.save_coach_feedback('00000000-0000-4000-8000-000000000052','unlxck','60000000-0000-4000-8000-000000000053','','PRIVATE REHAB FEEDBACK');
+select public.save_coach_feedback('00000000-0000-4000-8000-000000000052','sparring','50000000-0000-4000-8000-000000000052','','Sparring note');
+reset role;
+update public.coach_feedback set updated_at=now()+interval '1 minute' where target_id='60000000-0000-4000-8000-000000000053';
+set local role authenticated;
+select pg_temp.assert_ok((select note from public.coach_feedback where athlete_id='00000000-0000-4000-8000-000000000052' order by updated_at desc,id desc limit 1)='PRIVATE REHAB FEEDBACK','injury feedback readable while injury sharing is on');
+reset role;
+update public.coach_connections set share_injuries=false where coach_id='00000000-0000-4000-8000-000000000053';
+set local role authenticated;
+select pg_temp.assert_ok(not exists(select 1 from public.coach_feedback where note='PRIVATE REHAB FEEDBACK'),'revoked injury sharing hides feedback on injury records');
+select pg_temp.assert_ok((select note from public.coach_feedback where athlete_id='00000000-0000-4000-8000-000000000052' order by updated_at desc,id desc limit 1)<>'PRIVATE REHAB FEEDBACK','newest-note read skips withheld injury feedback');
+select pg_temp.assert_ok((select count(*) from public.coach_feedback where source='unlxck')=2 and exists(select 1 from public.coach_feedback where note='Sparring note'),'non-injury and sparring feedback stay readable');
+reset role;
+update public.coach_connections set share_injuries=true where coach_id='00000000-0000-4000-8000-000000000053';
+set local role authenticated;
+select pg_temp.assert_ok(exists(select 1 from public.coach_feedback where note='PRIVATE REHAB FEEDBACK'),'restoring injury sharing restores the feedback');
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000052',true);
+select pg_temp.assert_ok(exists(select 1 from public.coach_feedback where note='PRIVATE REHAB FEEDBACK'),'athlete always sees received feedback');
+select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000053',true);
+reset role;
 update public.profiles set health_data_consent=false where id='00000000-0000-4000-8000-000000000052';
 set local role authenticated;
 select pg_temp.assert_ok((select count(*) from public.coach_feedback)=0,'health withdrawal hides coach feedback from coach');
