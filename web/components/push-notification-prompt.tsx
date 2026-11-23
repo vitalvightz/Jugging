@@ -112,7 +112,7 @@ export function DevicePushPrompt({ token, athleteId }: { token: string; athleteI
     <dialog ref={dialog} className={styles.dialog} aria-labelledby="push-prompt-title" aria-describedby="push-prompt-description" aria-busy={busy} data-closing={closing || undefined}
       onCancel={(event) => { event.preventDefault(); if (!working.current) dismiss(); }}>
       <div className={styles.header}>
-        <Image src="/brand/unlxck-mark.webp" alt="" width={28} height={28} className={styles.mark} />
+        <Image src="/brand/unlxck-one-angle-48.png" alt="" width={28} height={28} className={styles.mark} />
         <p className={styles.eyebrow}>STAY READY</p>
       </div>
       <h2 id="push-prompt-title"><span className={styles.brand}>UNLXCK</span>{" "}<span className={styles.headline}>your next move.</span></h2>
