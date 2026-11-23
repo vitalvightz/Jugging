@@ -25,7 +25,7 @@ import {
   type IntakeOption,
 } from "@/lib/intake-options";
 import { FOCUS_CAP_DISABLED_REASON, validatePerformanceFocusSelections } from "@/lib/performance-focus-cap";
-import { HARD_SPARRING_DAY_CAP } from "@/lib/training-schedule";
+import { getSparringConsistency, HARD_SPARRING_DAY_CAP } from "@/lib/training-schedule";
 import {
   buildDaysOutContext,
   computeDaysUntilFight,
@@ -809,6 +809,10 @@ function QuickBuildFormInner() {
 
   const visibleError = (key: keyof QuickBuildValidationErrors): string | undefined =>
     showErrors ? errors[key] : undefined;
+  const sparringSchedule = getSparringConsistency(
+    input.training_availability, input.hard_sparring_days, input.support_work_days,
+    !input.no_scheduled_fight, input.weekly_training_frequency,
+  );
   const submitErrorId = "quick-build-submit-feedback";
 
   useEffect(() => {
@@ -1090,6 +1094,7 @@ function QuickBuildFormInner() {
         />
         <p className="muted">Pads, drills, movement or other lower-intensity combat work.</p>
         <FieldError message={visibleError("combat_sessions")} />
+        {sparringSchedule.softWarning ? <p className="muted" role="status">{sparringSchedule.softWarning}</p> : null}
         {!input.no_scheduled_fight && !input.hard_sparring_days.length && !input.support_work_days.length ? (
           <div className="field">
             <button
