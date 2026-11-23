@@ -217,7 +217,7 @@ def test_database_constraint_matches_the_shared_taxonomy():
     expected = {(sport["id"], "", sport["activity"]) for sport in shared} | {
         (sport["id"], kind["id"], kind.get("activity", sport["activity"])) for sport in shared for kind in sport["session_types"]}
     assert {(sport, "", entry["activity"]) for sport, entry in SPORTS.items()} <= expected
-    for path in ("supabase/migrations/20261019150000_add_external_training_discipline.sql", "supabase/schema.sql"):
+    for path in ("supabase/migrations/20261019121808_add_external_training_discipline.sql", "supabase/schema.sql"):
         sql = (ROOT / path).read_text()
         start = sql.index("constraint external_training_sessions_discipline check")
         block = sql[start:sql.index(")))", start) + 3]

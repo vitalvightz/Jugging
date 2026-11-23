@@ -16,6 +16,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { PdfViewer } from "./pdf-viewer";
 import { PhotoViewer } from "./photo-viewer";
 import { VoicePlayer } from "./voice-note";
+import { SLIDE_TO_CANCEL_PX, useHoldToRecord } from "@/lib/use-hold-to-record";
 import { PrivateVideoPlayer } from "./private-exercise-video";
 import styles from "./training-videos.module.css";
 
@@ -178,6 +179,7 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
   const photoInput = useRef<HTMLInputElement>(null);
   const pdfInput = useRef<HTMLInputElement>(null);
   const recorder = useRef<VoiceRecorder | null>(null);
+  const recorderReady = useRef(false);
   const [viewing, setViewing] = useState<string | null>(null);
   const [reading, setReading] = useState<string | null>(null);
   const opening = useRef<string | null>(null);
@@ -275,6 +277,7 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
     recorder.current?.cancel();
     const next = new VoiceRecorder(() => void stopRecording());
     recorder.current = next;
+    recorderReady.current = false;
     try {
       await next.start();
     } catch {
@@ -285,6 +288,7 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
       return;
     }
     if (recorder.current !== next) { next.cancel(); return; }
+    recorderReady.current = true;
     setRecording({ stage: "recording", seconds: 0 });
   }
 
@@ -305,7 +309,28 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
 
   async function sendRecording() {
     if (recording?.stage !== "preview" || busy) return;
-    const { wav } = recording;
+    await sendVoice(recording.wav);
+  }
+
+  // Held mic let go: send straight away (slid away: drop it). If the upload
+  // fails, the note stays as a preview with Send and Discard.
+  async function finishHeld(send: boolean) {
+    const active = recorder.current;
+    if (!active) return;
+    if (!send || !recorderReady.current) {
+      discardRecording();
+      if (send) setProblem("Hold the mic while you talk, then let go to send.");
+      return;
+    }
+    recorder.current = null;
+    const { wav, durationMs } = await active.stop();
+    if (durationMs < 500) { setRecording(null); setProblem("That was too short. Hold on a little longer."); return; }
+    setRecording({ stage: "preview", wav, url: URL.createObjectURL(wav), durationMs });
+    await sendVoice(wav);
+  }
+  const hold = useHoldToRecord(() => void startRecording(), send => void finishHeld(send));
+
+  async function sendVoice(wav: Blob) {
     const attach = (assetId: string) => athlete ? attachTrainingFile(token, assetId, key)
       : attachFighterVoiceNote(token, athleteId ?? "", assetId, key);
     const sent = await run(() => uploadFile(token, "voice", wav, attach, setStage), "Voice note could not be sent. Try again.", "voice");
@@ -406,21 +431,38 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
   }
 
   if (!rows.length && !attachable && !busy && !recording) return null;
-  const singleLabel = offered.length !== 1 ? "" : offered[0] === "voice" ? "Record voice note"
-    : offered[0] === "pdf" ? "Attach PDF" : `Attach ${NOUN[offered[0]].toLowerCase()}`;
+  // Voice notes also get their own mic: hold to record, release to send, slide left to
+  // cancel. The menu's "Voice note" (and Enter or Space on the mic) still records with
+  // Stop, a preview and Send. With voice alone, the mic is the only button.
+  const voiceOffered = offered.includes("voice");
+  const files = offered.length === 1 && voiceOffered ? [] : offered;
+  const singleLabel = files.length !== 1 ? "" : files[0] === "pdf" ? "Attach PDF" : `Attach ${NOUN[files[0]].toLowerCase()}`;
+  const micButton = voiceOffered ? <button type="button" className={`${styles.attach} ${styles.mic}`} disabled={busy}
+    aria-label={files.length ? "Hold to record a voice note" : "Record voice note"} title="Hold to record" data-only={files.length ? undefined : true}
+    onPointerDown={event => { if (!busy && !recorder.current) hold.onPointerDown(event); }}
+    onContextMenu={event => event.preventDefault()}
+    onKeyDown={event => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      // A held key repeats: never restart a recording that is already running.
+      if (!event.repeat && !recorder.current) void startRecording();
+    }}>
+    <MicIcon />{files.length ? null : <span aria-hidden="true">Hold to record</span>}
+  </button> : null;
   const attachControl = attachable && !recording ? <div className={styles.attachWrap}>
-    <button type="button" className={styles.attach} disabled={busy} aria-label={singleLabel || undefined} aria-haspopup={offered.length > 1 ? "menu" : undefined}
-      aria-expanded={offered.length > 1 ? menu : undefined}
-      onClick={() => offered.length > 1 ? setMenu(value => !value) : choose(offered[0])}>
-      {offered.length === 1 && offered[0] === "voice" ? <MicIcon /> : <PaperclipIcon />}
-      {offered.length > 1 ? "Attach" : <>
+    {files.length ? <button type="button" className={styles.attach} disabled={busy} aria-label={singleLabel || undefined} aria-haspopup={files.length > 1 ? "menu" : undefined}
+      aria-expanded={files.length > 1 ? menu : undefined}
+      onClick={() => files.length > 1 ? setMenu(value => !value) : choose(files[0])}>
+      <PaperclipIcon />
+      {files.length > 1 ? <span className={styles.attachText}>Attach</span> : <>
         <span className={styles.attachFull}>{singleLabel}</span>
-        {/* On the narrowest cards the title keeps its room and the button says just "Attach" or "Record". */}
-        <span className={styles.attachShort} aria-hidden="true">{offered[0] === "voice" ? "Record" : "Attach"}</span>
+        {/* On the narrowest cards the title keeps its room and the button says just "Attach". */}
+        <span className={styles.attachShort} aria-hidden="true">Attach</span>
       </>}
-    </button>
+    </button> : null}
+    {micButton}
     {menu ? <div className={styles.menu} data-align={heading ? "end" : undefined} role="menu" aria-label={`Attach to ${label}`}>
-      {offered.map(kind => <button key={kind} type="button" role="menuitem" className={styles.menuItem} onClick={() => choose(kind)}>
+      {files.map(kind => <button key={kind} type="button" role="menuitem" className={styles.menuItem} onClick={() => choose(kind)}>
         {kind === "photo" ? <PhotoIcon /> : kind === "voice" ? <MicIcon /> : kind === "pdf" ? <DocIcon /> : <VideoIcon />}
         {NOUN[kind]}
       </button>)}
@@ -523,7 +565,15 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
       </li> : null}
     </ul> : null}
     {recording ? <div className={styles.recorder} role="group" aria-label={`Voice note for ${label}`}>
-      {recording.stage === "recording" ? <>
+      {recording.stage === "recording" && hold.holding ? <>
+        <span className={styles.recDot} aria-hidden="true" />
+        <span className={styles.recTime} role="timer" aria-live="off">{formatDuration(recording.seconds * 1000)}</span>
+        <span className={styles.slideHint} data-cancelling={hold.cancelling || undefined} aria-live="polite"
+          style={{ transform: `translateX(${-Math.min(hold.slide, SLIDE_TO_CANCEL_PX)}px)` }}>
+          {hold.cancelling ? "Release to cancel" : "‹ Slide to cancel"}
+        </span>
+        <span className={styles.heldMic} aria-hidden="true"><MicIcon /></span>
+      </> : recording.stage === "recording" ? <>
         <span className={styles.recDot} aria-hidden="true" />
         <span className={styles.recTime} role="timer" aria-live="off">
           {formatDuration(recording.seconds * 1000)} <span className={styles.recLimit}>/ {formatDuration(VOICE_MAX_SECONDS * 1000)}</span>

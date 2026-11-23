@@ -13,7 +13,7 @@ from test_open_plan_xp_postgres import save_plan, sql_sessions, weeks_for, xp_da
 xp_database = _xp_database
 
 ROOT = Path(__file__).resolve().parents[1]
-MIGRATION = ROOT / "supabase/migrations/20261019200000_add_tracking_and_contribution_xp.sql"
+MIGRATION = ROOT / "supabase/migrations/20261019195932_add_tracking_and_contribution_xp.sql"
 OWNER = "00000000-0000-4000-8000-000000000001"
 OTHER = "00000000-0000-4000-8000-000000000002"
 
@@ -26,7 +26,7 @@ def tracking_database(xp_database):
         db.execute("""create or replace function public.set_updated_at() returns trigger language plpgsql
           as $$ begin new.updated_at=now(); return new; end $$;""")
         for filename in ("20261010184612_add_external_training_sessions.sql", "20261007141918_add_exercise_logs.sql",
-                         "20261019170000_add_manual_exercise_entries.sql"):
+                         "20261019180404_add_manual_exercise_entries.sql"):
             db.execute((ROOT / "supabase/migrations" / filename).read_text())
         # Publication storage used by the real source validator. The availability
         # function below is copied verbatim from its real migration, not mocked.

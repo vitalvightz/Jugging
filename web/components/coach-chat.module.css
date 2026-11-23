@@ -1,7 +1,7 @@
-/* Coach chat. Mobile: the list, then a full-screen chat. Desktop: side by side. */
+/* Coach chat: the inbox on the page; an open chat is its own sheet over it. */
 .shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   height: calc(100dvh - 148px);
   min-height: 420px;
   border: 1px solid var(--border-default);
@@ -10,32 +10,64 @@
   overflow: hidden;
 }
 
-.list,
-.thread {
+@media (min-width: 900px) {
+  .shell {
+    height: calc(100dvh - 120px);
+  }
+}
+
+.list {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  flex: 1;
 }
 
-.shell[data-open="thread"] .list,
-.shell[data-open="list"] .thread {
-  display: none;
+/* Full screen on a phone; a centred sheet on a wide screen. Opens and closes
+   with the same motion as session details. */
+.sheet {
+  width: 100vw;
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0;
+  padding: 0 0 var(--safe-area-bottom, env(safe-area-inset-bottom));
+  padding-top: var(--safe-area-top, env(safe-area-inset-top));
+  overflow: hidden;
+  border: 0;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  overscroll-behavior: contain;
+}
+.sheet[open] {
+  display: flex;
+  flex-direction: column;
+  animation: chat-sheet-in var(--sheet-enter-duration, 280ms) var(--sheet-enter-ease, cubic-bezier(0.32, 0.72, 0, 1));
+}
+.sheet::backdrop { background: rgb(0 0 0 / 75%); }
+.sheet[open]::backdrop { animation: chat-backdrop-in var(--sheet-enter-duration, 280ms) ease-out; }
+.sheet[data-closing] {
+  pointer-events: none;
+  animation: chat-sheet-out var(--sheet-exit-duration, 200ms) var(--sheet-exit-ease, cubic-bezier(0.32, 0.72, 0, 1)) forwards;
+}
+.sheet[data-closing]::backdrop { animation: chat-backdrop-out var(--sheet-exit-duration, 200ms) ease-in forwards; }
+@keyframes chat-sheet-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@keyframes chat-sheet-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(16px); } }
+@keyframes chat-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes chat-backdrop-out { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .sheet[open], .sheet[data-closing], .sheet[open]::backdrop, .sheet[data-closing]::backdrop { animation: none; }
 }
 
 @media (min-width: 900px) {
-  .shell {
-    grid-template-columns: 320px minmax(0, 1fr);
-    height: calc(100dvh - 120px);
-  }
-  .shell[data-open] .list,
-  .shell[data-open] .thread {
-    display: flex;
-  }
-  .list {
-    border-right: 1px solid var(--border-default);
-  }
-  .back {
-    display: none !important;
+  .sheet {
+    width: min(720px, calc(100vw - 40px));
+    height: min(820px, calc(100dvh - 48px));
+    margin: auto;
+    padding: 0;
+    border: 1px solid var(--border-default);
+    border-radius: 18px;
+    box-shadow: 0 24px 80px rgb(0 0 0 / 45%);
   }
 }
 
@@ -489,8 +521,7 @@
 }
 
 .voice {
-  width: min(260px, 60vw);
-  height: 36px;
+  width: min(260px, 64vw);
 }
 
 .reactions {
@@ -512,32 +543,47 @@
   border-color: var(--brand-red);
 }
 
+/* Reactions and Reply / Report on one slim line, never wrapped into a tall card. */
 .actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 2px;
+  gap: 0;
+  width: max-content;
+  max-width: min(100%, calc(100vw - 32px));
   margin-top: 4px;
-  padding: 4px;
+  padding: 2px 4px;
+  overflow-x: auto;
   border: 1px solid var(--border-strong);
   border-radius: 999px;
   background: var(--bg-surface-alt);
   box-shadow: var(--shadow-support);
+  scrollbar-width: none;
 }
 
 .actions button {
-  min-width: 34px;
-  height: 34px;
+  flex: none;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
   border: 0;
   border-radius: 999px;
   background: transparent;
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: 17px;
+  line-height: 1;
   cursor: pointer;
 }
 
 .actions button[aria-pressed="true"] {
   background: var(--brand-red-soft);
+}
+
+/* A thin divider between the reactions and the words. */
+.actions button:not(.textAction) + .textAction {
+  margin-left: 4px;
+  border-left: 1px solid var(--border-default);
+  border-radius: 0 999px 999px 0;
 }
 
 .actions .textAction,
@@ -548,6 +594,7 @@
   color: var(--text-secondary);
   font-size: var(--type-body-sm);
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -669,6 +716,9 @@
 }
 
 .inputRow,
+.recordingBar:focus { outline: none; }
+.recordingBar:focus-visible { outline: 2px solid var(--brand-red); outline-offset: 2px; border-radius: 22px; }
+
 .recordingBar {
   display: flex;
   align-items: flex-end;
@@ -679,6 +729,41 @@
   align-items: center;
   min-height: 44px;
   padding-left: 8px;
+}
+
+.recordingBar .clock {
+  flex: none;
+}
+
+/* Hold to record: the mic stays under the finger, the hint follows a slide. */
+.mic {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.micHeld {
+  transform: scale(1.25);
+  box-shadow: 0 0 0 8px rgb(220 38 38 / 25%);
+  transition: transform 120ms ease-out;
+}
+
+.slideHint {
+  flex: 1;
+  color: var(--text-secondary);
+  font-size: var(--type-body-sm);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.recordingBar[data-cancelling] .slideHint,
+.recordingBar[data-cancelling] .recDot {
+  color: var(--danger-ink);
+}
+
+.recordingBar[data-cancelling] .micHeld {
+  opacity: 0.5;
 }
 
 .recDot {

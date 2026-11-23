@@ -3,9 +3,11 @@
 // cards. One screen for coaches (/coach/chats) and fighters (/chat).
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { RequireAuth } from "@/components/auth-guard";
 import { useAppSession } from "@/components/auth-provider";
 import { Skeleton } from "@/components/skeleton";
+import { VoicePlayer } from "@/components/voice-note";
 import { getChatFiles, notifyChatMessage, processFileUpload, reserveFileUpload } from "@/lib/api";
 import type { ChatFile } from "@/lib/api-schema.generated";
 import { formatDuration, photoProblem, preparePhoto, VoiceRecorder } from "@/lib/attachments";
@@ -18,7 +20,10 @@ import {
 } from "@/lib/coach-chat";
 import { subscribeToChat, subscribeToInbox, type ChatRow } from "@/lib/coach-chat-live";
 import { formatAppDate } from "@/lib/date-format";
+import { lockOverlayScroll } from "@/lib/overlay-scroll-lock";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { SLIDE_TO_CANCEL_PX, useHoldToRecord } from "@/lib/use-hold-to-record";
+import { useSheetExit } from "@/lib/use-sheet-exit";
 import styles from "./coach-chat.module.css";
 
 // A signed file link lives 120 seconds; refresh a little before that.
@@ -141,7 +146,7 @@ function ChatScreen({ token, me, role }: { token: string; me: string; role: Chat
 
   const current = inbox?.find(row => row.other_id === selected) ?? null;
   return (
-    <div className={styles.shell} data-open={current ? "thread" : "list"}>
+    <div className={styles.shell}>
       <section className={styles.list} aria-label="Chats">
         <header className={styles.listHeader}>
           <h1>{role === "coach" ? "Chats" : "Coach chat"}</h1>
@@ -180,18 +185,43 @@ function ChatScreen({ token, me, role }: { token: string; me: string; role: Chat
           </ul>
         )}
       </section>
-      <section className={styles.thread} aria-label={current ? `Chat with ${current.name}` : "Chat"}>
-        {current ? (
-          <ChatThread key={current.other_id} token={token} me={me} role={role} row={current} initialQuote={quote}
-            onBack={() => select(null)} onRow={patch => updateRow(current.other_id, patch)} />
-        ) : (
-          <div className={styles.placeholder}>
-            <p className={styles.kicker}>Coach chat</p>
-            <p>{inbox?.length ? "Pick a chat to start." : "Your conversations will show here."}</p>
-          </div>
-        )}
-      </section>
+      {current ? (
+        <ChatSheet name={current.name} onClose={() => select(null)}>
+          {close => <ChatThread key={current.other_id} token={token} me={me} role={role} row={current} initialQuote={quote}
+            onBack={close} onRow={patch => updateRow(current.other_id, patch)} />}
+        </ChatSheet>
+      ) : null}
     </div>
+  );
+}
+
+/**
+ * The open chat, in its own sheet over the inbox (like session details), so the
+ * page, the tab bar and the list behind it never interfere with typing,
+ * scrolling or recording.
+ */
+function ChatSheet({ name, onClose, children }: { name: string; onClose: () => void; children: (close: () => void) => ReactNode }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const { closing, close } = useSheetExit(onClose);
+  useEffect(() => {
+    const element = dialog.current;
+    if (!element) return;
+    const previous = document.activeElement as HTMLElement | null;
+    if (!element.open) element.showModal();
+    const release = lockOverlayScroll();
+    return () => { element.close(); release(); previous?.focus(); };
+  }, []);
+  return createPortal(
+    <dialog ref={dialog} className={styles.sheet} aria-label={`Chat with ${name}`} data-closing={closing || undefined}
+      onCancel={event => { if (event.target !== event.currentTarget) return; event.preventDefault(); close(); }}
+      onClick={event => {
+        if (event.target !== event.currentTarget) return;
+        const box = event.currentTarget.getBoundingClientRect();
+        if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) close();
+      }}>
+      {children(close)}
+    </dialog>,
+    document.body,
   );
 }
 
@@ -250,7 +280,10 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
   const [activeId, setActiveId] = useState<number | null>(null);
   const [reporting, setReporting] = useState<ChatMessage | null>(null);
   const [stage, setStage] = useState("");
-  const [recording, setRecording] = useState(false);
+  // "hold": recording while the mic is held down; "locked": started from the keyboard, sent with Send.
+  const [recording, setRecording] = useState<"hold" | "locked" | null>(null);
+  const recorderReady = useRef(false);
+
   const [today] = useState(() => new Date().toISOString().slice(0, 10));
   const recorder = useRef<VoiceRecorder | null>(null);
   const pending = useRef(new Map<string, Pending>());
@@ -381,7 +414,9 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
     return () => controller.abort();
   }, [token, messages, files, linkClock]);
   useEffect(() => {
-    const voice = Object.values(files).filter(file => file.kind === "voice");
+    // A played note keeps its audio, so its link is never renewed: leave it out,
+    // or an expired link would wake this timer every second.
+    const voice = Object.values(files).filter(file => file.kind === "voice" && !playing.current.has(file.message_id));
     if (!voice.length) return;
     const soonest = Math.min(...voice.map(file => file.at + FILE_LINK_TTL_MS));
     const timer = window.setTimeout(() => setLinkClock(tick => tick + 1), Math.max(1000, soonest - Date.now() + 50));
@@ -475,11 +510,12 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
     }
   }
 
-  async function startRecording() {
+  async function startRecording(mode: "hold" | "locked") {
     setProblem("");
     recorder.current?.cancel();
     const next = new VoiceRecorder(() => void finishRecording(true));
     recorder.current = next;
+    recorderReady.current = false;
     try {
       await next.start();
     } catch {
@@ -489,15 +525,21 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
       return;
     }
     if (recorder.current !== next) { next.cancel(); return; }
-    setRecording(true);
+    recorderReady.current = true;
+    setRecording(mode);
   }
 
   async function finishRecording(keep: boolean) {
     const active = recorder.current;
     recorder.current = null;
-    setRecording(false);
+    setRecording(null);
     if (!active) return;
-    if (!keep) { active.cancel(); return; }
+    // Let go before the microphone was ready (or slid away): nothing to send.
+    if (!keep || !recorderReady.current) {
+      active.cancel();
+      if (keep) setProblem("Hold the mic while you talk, then let go to send.");
+      return;
+    }
     const { wav, durationMs } = await active.stop();
     if (durationMs < 700) { setProblem("Too short. Hold on a little longer."); return; }
     try {
@@ -511,7 +553,14 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
     }
   }
 
+  // Press and hold the mic to record, release to send, slide left to cancel.
+  const hold = useHoldToRecord(() => void startRecording("hold"), send => void finishRecording(send));
+
   useEffect(() => () => recorder.current?.cancel(), []);
+
+  // Started from the keyboard: focus the recording bar once, so Tab reaches Cancel and Send.
+  const lockedBar = useRef<HTMLDivElement | null>(null);
+  useEffect(() => { if (recording === "locked") lockedBar.current?.focus({ preventScroll: true }); }, [recording]);
 
   async function react(message: ChatMessage, emoji: ChatReaction) {
     const next = message.reactions?.[me] === emoji ? null : emoji;
@@ -576,7 +625,7 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
               <div className={`${styles.message} ${mine ? styles.mine : styles.theirs}`}>
                 <div className={styles.bubble} data-status={message.status}
                   onClick={event => {
-                    if ((event.target as HTMLElement).closest("audio, a, button")) return;
+                    if ((event.target as HTMLElement).closest("audio, a, button, [role=slider]")) return;
                     if (message.id > 0) setActiveId(activeId === message.id ? null : message.id);
                   }}>
                   {message.id > 0 ? (
@@ -599,12 +648,12 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
                     ) : <span className={styles.photoLoading}>Photo</span>
                   ) : null}
                   {message.kind === "voice" ? (
-                    file ? <audio className={styles.voice} controls preload="none" src={file.url}
-                      onPlay={() => playing.current.add(message.id)}
-                      onPause={() => playing.current.delete(message.id)}
-                      onEnded={() => playing.current.delete(message.id)}
-                      onError={() => { playing.current.delete(message.id); dropLink(message.id); }}
-                      aria-label={`Voice note, ${formatDuration(file.duration_ms)}`} />
+                    // The same player as voice notes on training: a waveform, not the browser's bar.
+                    // Once played it keeps the audio, so its link no longer needs renewing.
+                    file ? <div className={styles.voice}><VoicePlayer id={`chat-${message.id}`} durationMs={file.duration_ms}
+                      tone={mine ? "athlete" : "coach"} seekLabel="Voice note position"
+                      playLabel={`Play voice note from ${mine ? "you" : otherName}, ${formatDuration(file.duration_ms)}`}
+                      load={async () => { playing.current.add(message.id); return files[message.id]?.url ?? file.url; }} /></div>
                       : <span className={styles.photoLoading}>Voice note</span>
                   ) : null}
                   {message.body ? <span className={styles.body}>{message.body}</span> : null}
@@ -658,15 +707,27 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
               {quote ? <Chip onClear={() => setQuote(null)} label="Remove training card"><b>Training card</b>This session will be attached</Chip> : null}
             </div>
           ) : null}
-          {recording ? (
-            <div className={styles.recordingBar}>
+          {recording === "locked" ? (
+            // Focus moves to the bar, not to Send: a held Enter that started the
+            // recording must never land on Send and send it straight away.
+            <div key="locked" className={styles.recordingBar} role="group" aria-label="Recording voice note" tabIndex={-1}
+              ref={lockedBar}>
               <span className={styles.recDot} aria-hidden="true" />
               <RecordingClock />
               <button type="button" className={styles.textAction} onClick={() => void finishRecording(false)}>Cancel</button>
-              <button type="button" className={styles.send} onClick={() => void finishRecording(true)} aria-label="Send voice note">➤</button>
+              <button key="send-voice" type="button" className={styles.send} onClick={() => void finishRecording(true)} aria-label="Send voice note">➤</button>
+            </div>
+          ) : recording === "hold" ? (
+            <div className={styles.recordingBar} data-cancelling={hold.cancelling || undefined}>
+              <span className={styles.recDot} aria-hidden="true" />
+              <RecordingClock />
+              <span className={styles.slideHint} style={{ transform: `translateX(${-Math.min(hold.slide, SLIDE_TO_CANCEL_PX)}px)` }} aria-live="polite">
+                {hold.cancelling ? "Release to cancel" : "‹ Slide to cancel"}
+              </span>
+              <span className={`${styles.send} ${styles.micHeld}`} aria-hidden="true"><MicIcon /></span>
             </div>
           ) : (
-            <div className={styles.inputRow}>
+            <div key="input" className={styles.inputRow}>
               <button type="button" className={styles.iconButton} aria-label="Send a photo" disabled={Boolean(stage)}
                 onClick={() => photoInput.current?.click()}>+</button>
               <input ref={photoInput} type="file" accept="image/*" hidden
@@ -680,8 +741,16 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
               {text.trim() || quote ? (
                 <button type="button" className={styles.send} onClick={submitText} aria-label="Send">➤</button>
               ) : (
-                <button type="button" className={styles.send} onClick={() => void startRecording()} aria-label="Record a voice note"
-                  disabled={Boolean(stage)}>
+                <button type="button" className={`${styles.send} ${styles.mic}`} aria-label="Hold to record a voice note"
+                  title="Hold to record" disabled={Boolean(stage)} onPointerDown={event => { if (!stage && !recorder.current) hold.onPointerDown(event); }}
+                  onContextMenu={event => event.preventDefault()}
+                  onKeyDown={event => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    // A held key repeats: never restart a recording that is already running.
+                    if (event.repeat || recorder.current) { event.preventDefault(); return; }
+                    event.preventDefault();
+                    void startRecording("locked");
+                  }}>
                   <MicIcon />
                 </button>
               )}

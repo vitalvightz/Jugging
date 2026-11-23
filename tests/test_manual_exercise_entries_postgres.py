@@ -14,7 +14,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ("20261010184612_add_external_training_sessions.sql", "20261019103258_add_external_training_takeaway.sql",
-              "20261019150000_add_external_training_discipline.sql", "20261019170000_add_manual_exercise_entries.sql")
+              "20261019121808_add_external_training_discipline.sql", "20261019180404_add_manual_exercise_entries.sql")
 
 
 @pytest.fixture(scope="module")

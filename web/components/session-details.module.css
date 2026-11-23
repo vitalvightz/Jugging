@@ -187,3 +187,20 @@
   padding-top: 12px;
   border-top: 1px solid var(--border-subtle);
 }
+
+/* "Add feedback" and "Message": two equal pills on one line, notes and the
+   feedback form above them. The feedback block's own wrapper steps aside
+   (display: contents) so its button can share the row with Message. */
+.quickActions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 14px; }
+.quickActions:empty { display: none; }
+.quickActions > div { display: contents; }
+.quickActions > div > :not(button) { flex: 1 1 100%; order: -1; margin: 0; }
+.quickActions :global(.ghost-button) {
+  flex: 1 1 0; gap: 8px; width: auto; min-width: 0; min-height: 40px; padding: 0 12px;
+  border-color: var(--border-strong); border-radius: 999px; background: transparent;
+  font-size: var(--type-body-sm); white-space: nowrap;
+}
+.quickActions :global(.ghost-button):hover { background: var(--bg-surface-alt); }
+.quickActions :global(.ghost-button) svg { flex: none; }
+.quickActions form { display: flex; flex-wrap: wrap; gap: 8px; }
+.quickActions form :global(.ghost-button), .quickActions form :global(.cta) { flex: 0 0 auto; min-height: 40px; }

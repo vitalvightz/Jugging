@@ -835,3 +835,13 @@
 }
 :global(html[data-theme="light"]) .newPlanAction:hover { background: #f5d8e0; }
 :global(html[data-theme="light"]) .positive { color: #17643d; }
+
+/* Athlete's coach card: the way into the chat, with what's waiting there. */
+.chatPreview { margin: 2px 0 0; overflow: hidden; color: var(--text-secondary); font-size: 13px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.chatPreview[data-unread] { color: var(--text-primary); font-weight: 600; }
+.chatPreview > span { color: var(--text-muted); font-weight: 400; }
+.messageCoach { gap: 8px; text-decoration: none; }
+.unreadBadge { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #fff; color: var(--brand-red); font-size: 12px; font-weight: 700; line-height: 1; }
+@media (max-width: 600px) {
+  .connection .actions > .messageCoach { width: 100%; }
+}
