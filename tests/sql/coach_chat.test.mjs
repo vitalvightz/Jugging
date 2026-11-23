@@ -71,7 +71,9 @@ await db.exec(`
   insert into public.attachment_assets (id, owner_id, kind, status) values
     ('${coachPhoto}', '${coach}', 'photo', 'ready'), ('${strangerPhoto}', '${stranger}', 'photo', 'ready');
 `);
-await db.exec(await readFile(new URL("../../supabase/migrations/20261123020539_coach_chat_and_checkin_nudges.sql", import.meta.url), "utf8"));
+for (const name of ["20261123020539_coach_chat_and_checkin_nudges.sql", "20261123040000_coach_chat_review_fixes.sql"]) {
+  await db.exec(await readFile(new URL(`../../supabase/migrations/${name}`, import.meta.url), "utf8"));
+}
 // Supabase's service role can write the stub tables; the migration's own grants are untouched.
 await db.exec("grant all on public.today_checkins, public.attachment_assets, public.training_attachments, public.notification_deliveries, public.coach_connections to service_role; grant usage on all sequences in schema public to service_role;");
 
@@ -154,7 +156,7 @@ assert.equal((await as(coach, "select * from public.coach_message_reports").catc
 for (let n = 100; n < 128; n += 1) await send(coach, fighter, uuid(n), `m${n}`);
 await refused(coach, "select public.coach_chat_send($1, $2, 'text', 'one too many')", [fighter, uuid(200)], /Too many messages/);
 
-// Check-in nudges: coaches only, adults only, claimed once a day.
+// Check-in nudges: coaches only, adults only, a claim is a lease, a confirmed push ends the day.
 await refused(fighter, "select public.coach_set_checkin_nudge($1, 127::smallint, '12:00')", [coach], /Fighter not found/);
 await refused(coach, "select public.coach_set_checkin_nudge($1, 127::smallint, '12:00')", [minor], /18 and over/);
 await refused(coach, "select public.coach_set_checkin_nudge($1, 0::smallint, '12:00')", [fighter], /at least one day/);
@@ -165,11 +167,21 @@ const claimed = await as(null, "select * from public.claim_coach_checkin_nudges(
 assert.equal(claimed.length, 1);
 assert.equal(claimed[0].athlete_id, fighter);
 assert.equal(claimed[0].coach_name, "Coach Rey");
+// A held lease is not claimed twice; an unconfirmed claim is not "missed".
 assert.equal((await as(null, "select * from public.claim_coach_checkin_nudges()")).length, 0);
-const [{ inbox: flagged }] = await as(coach, "select public.coach_chat_inbox() as inbox");
-assert.equal(flagged.find((row) => row.other_id === fighter).missed_checkin, true);
+const inboxNow = async () => (await as(coach, "select public.coach_chat_inbox() as inbox"))[0].inbox;
+assert.equal((await inboxNow()).find((row) => row.other_id === fighter).missed_checkin, false);
+// A failed push is never confirmed: once the lease lapses, the nudge is claimed again.
+await as(null, "update public.coach_checkin_nudges set last_claimed_at = now() - interval '16 minutes'");
+assert.equal((await as(null, "select * from public.claim_coach_checkin_nudges()")).length, 1);
+await refused(coach, "select public.confirm_coach_checkin_nudge($1, $2)", [claimed[0].nudge_id, claimed[0].training_day], /permission denied/);
+await as(null, "select public.confirm_coach_checkin_nudge($1, $2)", [claimed[0].nudge_id, claimed[0].training_day]);
+assert.equal((await inboxNow()).find((row) => row.other_id === fighter).missed_checkin, true);
+// Confirmed: never claimed again that day, even after the lease.
+await as(null, "update public.coach_checkin_nudges set last_claimed_at = now() - interval '16 minutes'");
+assert.equal((await as(null, "select * from public.claim_coach_checkin_nudges()")).length, 0);
 // A fighter who already checked in is never nudged.
-await as(null, "update public.coach_checkin_nudges set last_sent_day = null");
+await as(null, "update public.coach_checkin_nudges set last_sent_day = null, last_sent_at = null, last_claimed_at = null");
 await as(null, "insert into public.today_checkins values ($1, $2)", [fighter, claimed[0].training_day]);
 assert.equal((await as(null, "select * from public.claim_coach_checkin_nudges()")).length, 0);
 const [{ inbox: cleared }] = await as(coach, "select public.coach_chat_inbox() as inbox");
@@ -191,6 +203,12 @@ assert.equal((await as(coach, "select id from public.coach_chats")).length, 0);
 assert.ok((await as(fighter, "select id from public.coach_messages")).length > 1);
 await refused(coach, "select public.coach_chat_send($1, $2, 'text', 'still there?')", [fighter, uuid(300)], /Chat unavailable/);
 await refused(fighter, "select public.coach_chat_react($1, '👍')", [first.id], /Message unavailable/);
+// Receipts: a disconnected coach changes nothing; the fighter still can.
+await as(null, "update public.coach_chats set coach_unread = 3, athlete_unread = 2 where athlete_id = $1", [fighter]);
+await as(coach, "select public.coach_chat_read($1)", [chat.id]);
+await as(fighter, "select public.coach_chat_read($1)", [chat.id]);
+const [receipts] = await as(null, "select coach_unread, athlete_unread from public.coach_chats where id = $1", [chat.id]);
+assert.deepEqual([receipts.coach_unread, receipts.athlete_unread], [3, 0]);
 const [{ inbox: after }] = await as(coach, "select public.coach_chat_inbox() as inbox");
 assert.deepEqual(after.map((row) => row.name), ["Junior"]);
 const [{ inbox: kept }] = await as(fighter, "select public.coach_chat_inbox() as inbox");

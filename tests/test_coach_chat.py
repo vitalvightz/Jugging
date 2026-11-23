@@ -127,7 +127,18 @@ def test_due_nudges_are_sent_once_with_the_coachs_name(camp, pushes):  # noqa: F
     assert push.profile_id == FIGHTER and push.title == "Rey wants your check-in"
     assert push.category == "checkin_reminders" and push.url == "/today#today-checkin"
     assert push.dedupe_key == "coach-checkin:n-1:2026-11-23" and push.training_day == "2026-11-23"
+    assert store.confirmed_checkin_nudges == [("n-1", "2026-11-23")]
     assert coach_chat.run_coach_checkin_nudge_sweep(store) == 0
+
+
+def test_an_unsent_nudge_is_left_to_retry_instead_of_marked_done(camp, monkeypatch):  # noqa: F811
+    _client, store, _ = camp
+    store.due_checkin_nudges = [{"nudge_id": "n-1", "athlete_id": FIGHTER, "coach_name": "Rey", "timezone": "UTC",
+                                 "training_day": "2026-11-23"}]
+    # Quiet hours, a switched-off category or a failed delivery: nothing went out.
+    monkeypatch.setattr(coach_chat, "dispatch_push_candidate", lambda *_args, **_kwargs: 0)
+    assert coach_chat.run_coach_checkin_nudge_sweep(store) == 0
+    assert store.confirmed_checkin_nudges == []
 
 
 def test_a_failed_nudge_never_stops_the_sweep(camp, monkeypatch):  # noqa: F811
@@ -144,6 +155,8 @@ def test_a_failed_nudge_never_stops_the_sweep(camp, monkeypatch):  # noqa: F811
     monkeypatch.setattr(coach_chat, "dispatch_push_candidate", flaky)
     assert coach_chat.run_coach_checkin_nudge_sweep(store) == 1
     assert calls[1].title == "Your coach wants your check-in" and calls[1].timezone_name == "UTC"
+    # Only the delivered nudge is done for the day; the failed one is retried.
+    assert store.confirmed_checkin_nudges == [("n-1", "2026-11-23")]
 
 
 def test_chat_pushes_have_their_own_daily_allowance():

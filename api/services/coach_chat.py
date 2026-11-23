@@ -198,9 +198,12 @@ def run_coach_checkin_nudge_sweep(store: AppStore, *, now_utc: datetime | None =
                                   should_stop: Callable[[], bool] | None = None) -> int:
     """Send every check-in nudge due now.
 
-    One database call finds and claims them all: fighters who already checked
+    One database call finds and leases them all: fighters who already checked
     in, minors, and anyone without health-data consent or a live connection are
-    excluded there, and a claimed nudge cannot be claimed again that day.
+    excluded there. A lease lasts 15 minutes. Only a push that went out
+    confirms the day; anything else (a failed delivery, a crash, quiet hours)
+    leaves the nudge to be claimed again inside its two-hour window. The push
+    ledger dedupes on the same key, so a retry never doubles a delivered push.
     """
     reference = now_utc or datetime.now(timezone.utc)
     rows = store.claim_coach_checkin_nudges(NUDGE_CLAIM_LIMIT)
@@ -209,7 +212,10 @@ def run_coach_checkin_nudge_sweep(store: AppStore, *, now_utc: datetime | None =
         if should_stop is not None and should_stop():
             break
         try:
-            sent += dispatch_push_candidate(store, build_checkin_nudge(row, now_utc=reference), now_utc=reference)
+            delivered = dispatch_push_candidate(store, build_checkin_nudge(row, now_utc=reference), now_utc=reference)
+            if delivered:
+                store.confirm_coach_checkin_nudge(str(row["nudge_id"]), str(row["training_day"]))
+            sent += delivered
         except Exception:  # noqa: BLE001 - one fighter's push must not stop the sweep
             logger.exception("[coach-chat] check-in nudge failed nudge_id=%s", row.get("nudge_id"))
     if rows:

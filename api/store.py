@@ -1410,6 +1410,10 @@ class SupabaseAppStore(CommunityStoreMixin, PrivateMediaStoreMixin, CompactGener
         response = self.client.rpc("claim_coach_checkin_nudges", {"p_limit": int(limit)}).execute()
         return list(getattr(response, "data", None) or [])
 
+    def confirm_coach_checkin_nudge(self, nudge_id: str, training_day: str) -> None:
+        """The push went out: this nudge is done for ``training_day``."""
+        self.client.rpc("confirm_coach_checkin_nudge", {"p_nudge_id": nudge_id, "p_day": training_day}).execute()
+
     def get_profile_compliance(self, athlete_id: str) -> dict[str, Any] | None:
         """Fresh compliance facts only; intentionally no separate cache."""
         return self._select_first(

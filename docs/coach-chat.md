@@ -75,9 +75,11 @@ Sends are optimistic: the bubble shows at once and is confirmed or marked
 local time between 05:00 and 21:00, and on/off. The worker runs
 `claim_coach_checkin_nudges()` every 5 minutes
 (`UNLXCK_COACH_NUDGE_SWEEP_INTERVAL_SECONDS`). One statement finds every nudge
-due in the fighter's own time zone within two hours of the chosen time, skips
-fighters who already checked in today, and stamps the day, so a nudge is sent
-at most once a day even with two workers.
+due in the fighter's own time zone within two hours of the chosen time and
+skips fighters who already checked in today. A claim is a 15-minute lease; the
+worker confirms the day (`confirm_coach_checkin_nudge`) only after a push went
+out, so a failed delivery is retried inside the window, and the push ledger's
+dedupe key means a retry never doubles a delivered nudge.
 
 - **Never for under-18s or without health-data consent.** The children's
   policy forbids nudging a child to disclose health data, and a check-in is
@@ -100,7 +102,8 @@ at most once a day even with two workers.
 
 ## Deployment order
 
-1. Apply `20261123020539_coach_chat_and_checkin_nudges.sql`. It is additive.
+1. Apply `20261123020539_coach_chat_and_checkin_nudges.sql` (applied to
+   production on 2026-11-23), then `20261123040000_coach_chat_review_fixes.sql`. It is additive.
    It widens the `notification_deliveries` class check, adds three tables and
    the RPCs, adds `coach_messages` and `coach_chats` to the
    `supabase_realtime` publication, adds the typing-channel policies on

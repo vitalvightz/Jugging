@@ -285,22 +285,55 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
     return () => window.clearTimeout(timer);
   }, [typingUntil]);
 
-  // Read receipts: one cheap call when something from the other side is unread.
+  // Read receipts: one cheap call per newest message from the other side, sent
+  // when it arrives while the chat is in view, or when the reader comes back to
+  // a backgrounded tab.
   const lastFromOther = useMemo(() => [...messages].reverse().find(m => m.sender_id !== me && !m.status), [messages, me]);
+  const readThrough = useRef(0);
   useEffect(() => {
-    if (!chatId || !lastFromOther || document.visibilityState !== "visible") return;
-    const timer = window.setTimeout(() => {
-      markChatRead(token, chatId).then(() => onRow({ unread: 0 })).catch(() => undefined);
-    }, 400);
-    return () => window.clearTimeout(timer);
+    if (!chatId || !lastFromOther) return;
+    const target = lastFromOther.id;
+    let timer = 0;
+    const mark = () => {
+      if (document.visibilityState !== "visible" || readThrough.current >= target) return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        if (readThrough.current >= target) return;
+        const previous = readThrough.current;
+        readThrough.current = target;
+        markChatRead(token, chatId).then(() => onRow({ unread: 0 }))
+          .catch(() => { readThrough.current = previous; });
+      }, 400);
+    };
+    mark();
+    document.addEventListener("visibilitychange", mark);
+    window.addEventListener("focus", mark);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", mark);
+      window.removeEventListener("focus", mark);
+    };
     // onRow is stable per row; the last message from the other side drives this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, chatId, lastFromOther?.id]);
 
-  // File links for every photo and voice note on screen, in one call.
+  // File links for every photo and voice note on screen, in one call. A shown
+  // photo keeps its loaded image; a voice note's link is renewed before it
+  // expires (never mid-play), and any link that fails is fetched again, twice
+  // at most.
+  const [linkClock, setLinkClock] = useState(0);
+  const playing = useRef(new Set<number>());
+  const linkFailures = useRef(new Map<number, number>());
+  const dropLink = useCallback((id: number) => {
+    const failures = linkFailures.current.get(id) ?? 0;
+    if (failures >= 2) return;
+    linkFailures.current.set(id, failures + 1);
+    setFiles(current => { const next = { ...current }; delete next[id]; return next; });
+  }, []);
   useEffect(() => {
     const now = Date.now();
-    const needed = messages.filter(m => m.asset_id && m.id > 0 && (!files[m.id] || now - files[m.id].at > FILE_LINK_TTL_MS)).map(m => m.id);
+    const needed = messages.filter(m => m.asset_id && m.id > 0 && (!files[m.id]
+      || (files[m.id].kind === "voice" && !playing.current.has(m.id) && now - files[m.id].at > FILE_LINK_TTL_MS))).map(m => m.id);
     if (!needed.length) return;
     const controller = new AbortController();
     getChatFiles(token, needed.slice(-30), controller.signal).then(links => {
@@ -308,7 +341,14 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
       setFiles(current => ({ ...current, ...Object.fromEntries(links.map(link => [link.message_id, { ...link, at }])) }));
     }).catch(() => undefined);
     return () => controller.abort();
-  }, [token, messages, files]);
+  }, [token, messages, files, linkClock]);
+  useEffect(() => {
+    const voice = Object.values(files).filter(file => file.kind === "voice");
+    if (!voice.length) return;
+    const soonest = Math.min(...voice.map(file => file.at + FILE_LINK_TTL_MS));
+    const timer = window.setTimeout(() => setLinkClock(tick => tick + 1), Math.max(1000, soonest - Date.now() + 50));
+    return () => window.clearTimeout(timer);
+  }, [files, linkClock]);
 
   // Stay pinned to the newest message unless the reader scrolled up.
   useEffect(() => {
@@ -517,11 +557,15 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
                       // eslint-disable-next-line @next/next/no-img-element -- short-lived signed link
                       <img className={styles.photo} src={file.thumb_url ?? file.url} alt="Photo"
                         width={file.width ?? undefined} height={file.height ?? undefined}
-                        onError={() => setFiles(current => { const next = { ...current }; delete next[message.id]; return next; })} />
+                        onError={() => dropLink(message.id)} />
                     ) : <span className={styles.photoLoading}>Photo</span>
                   ) : null}
                   {message.kind === "voice" ? (
                     file ? <audio className={styles.voice} controls preload="none" src={file.url}
+                      onPlay={() => playing.current.add(message.id)}
+                      onPause={() => playing.current.delete(message.id)}
+                      onEnded={() => playing.current.delete(message.id)}
+                      onError={() => { playing.current.delete(message.id); dropLink(message.id); }}
                       aria-label={`Voice note, ${formatDuration(file.duration_ms)}`} />
                       : <span className={styles.photoLoading}>Voice note</span>
                   ) : null}

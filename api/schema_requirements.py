@@ -561,7 +561,8 @@ REQUIRED_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "coach_chats": ("id", "coach_id", "athlete_id", "last_message_at", "last_preview", "coach_unread", "athlete_unread"),
     "coach_messages": ("id", "chat_id", "coach_id", "athlete_id", "sender_id", "client_id", "kind", "body",
                        "asset_id", "quote", "reactions", "created_at"),
-    "coach_checkin_nudges": ("id", "coach_id", "athlete_id", "days", "local_time", "enabled", "last_sent_day"),
+    "coach_checkin_nudges": ("id", "coach_id", "athlete_id", "days", "local_time", "enabled", "last_sent_day",
+                             "last_claimed_at"),
     # Inferred focus from existing notes (api/services/training_focus_inference.py).
     "training_focus_inferences": ("id", "athlete_id", "source_kind", "source_id", "training_day", "source_revision",
                                   "status", "reason", "focus", "scope", "category", "sport", "exercise_targets",
@@ -643,6 +644,7 @@ REQUIRED_FUNCTIONS: tuple[str, ...] = (
     # Coach chat writes and the check-in nudge sweep's claim.
     "public.coach_chat_send", "public.coach_chat_inbox", "public.coach_chat_read", "public.coach_chat_react",
     "public.coach_chat_report", "public.coach_set_checkin_nudge", "public.claim_coach_checkin_nudges",
+    "public.confirm_coach_checkin_nudge",
     "public.private_demo_orphan_objects",
     "public.cleanup_private_youtube_previews",
     "public.validate_custom_plan_private_media",
