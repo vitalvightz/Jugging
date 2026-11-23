@@ -414,7 +414,9 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
     return () => controller.abort();
   }, [token, messages, files, linkClock]);
   useEffect(() => {
-    const voice = Object.values(files).filter(file => file.kind === "voice");
+    // A played note keeps its audio, so its link is never renewed: leave it out,
+    // or an expired link would wake this timer every second.
+    const voice = Object.values(files).filter(file => file.kind === "voice" && !playing.current.has(file.message_id));
     if (!voice.length) return;
     const soonest = Math.min(...voice.map(file => file.at + FILE_LINK_TTL_MS));
     const timer = window.setTimeout(() => setLinkClock(tick => tick + 1), Math.max(1000, soonest - Date.now() + 50));
@@ -555,6 +557,10 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
   const hold = useHoldToRecord(() => void startRecording("hold"), send => void finishRecording(send));
 
   useEffect(() => () => recorder.current?.cancel(), []);
+
+  // Started from the keyboard: focus the recording bar once, so Tab reaches Cancel and Send.
+  const lockedBar = useRef<HTMLDivElement | null>(null);
+  useEffect(() => { if (recording === "locked") lockedBar.current?.focus({ preventScroll: true }); }, [recording]);
 
   async function react(message: ChatMessage, emoji: ChatReaction) {
     const next = message.reactions?.[me] === emoji ? null : emoji;
@@ -702,11 +708,14 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
             </div>
           ) : null}
           {recording === "locked" ? (
-            <div className={styles.recordingBar}>
+            // Focus moves to the bar, not to Send: a held Enter that started the
+            // recording must never land on Send and send it straight away.
+            <div key="locked" className={styles.recordingBar} role="group" aria-label="Recording voice note" tabIndex={-1}
+              ref={lockedBar}>
               <span className={styles.recDot} aria-hidden="true" />
               <RecordingClock />
               <button type="button" className={styles.textAction} onClick={() => void finishRecording(false)}>Cancel</button>
-              <button type="button" className={styles.send} onClick={() => void finishRecording(true)} aria-label="Send voice note">➤</button>
+              <button key="send-voice" type="button" className={styles.send} onClick={() => void finishRecording(true)} aria-label="Send voice note">➤</button>
             </div>
           ) : recording === "hold" ? (
             <div className={styles.recordingBar} data-cancelling={hold.cancelling || undefined}>
@@ -718,7 +727,7 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
               <span className={`${styles.send} ${styles.micHeld}`} aria-hidden="true"><MicIcon /></span>
             </div>
           ) : (
-            <div className={styles.inputRow}>
+            <div key="input" className={styles.inputRow}>
               <button type="button" className={styles.iconButton} aria-label="Send a photo" disabled={Boolean(stage)}
                 onClick={() => photoInput.current?.click()}>+</button>
               <input ref={photoInput} type="file" accept="image/*" hidden
@@ -737,6 +746,8 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
                   onContextMenu={event => event.preventDefault()}
                   onKeyDown={event => {
                     if (event.key !== "Enter" && event.key !== " ") return;
+                    // A held key repeats: never restart a recording that is already running.
+                    if (event.repeat || recorder.current) { event.preventDefault(); return; }
                     event.preventDefault();
                     void startRecording("locked");
                   }}>

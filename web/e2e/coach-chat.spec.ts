@@ -136,9 +136,11 @@ for (const width of [390, 1440]) {
 
 test.describe("voice notes are recorded by holding the mic", () => {
   test("hold to record, slide left to cancel; a tap only explains", async ({ page, baseURL }) => {
-    // A tone stands in for the microphone.
+    // A tone stands in for the microphone; each request for it is counted.
     await page.addInitScript(() => {
+      (window as unknown as { micRequests: number }).micRequests = 0;
       navigator.mediaDevices.getUserMedia = async () => {
+        (window as unknown as { micRequests: number }).micRequests++;
         const context = new AudioContext();
         const tone = context.createOscillator();
         const out = context.createMediaStreamDestination();
@@ -166,6 +168,19 @@ test.describe("voice notes are recorded by holding the mic", () => {
 
     await mic.click();
     await expect(thread.getByRole("alert")).toContainText(/Hold the mic|Too short/);
+    expect(sent).toHaveLength(0);
+
+    // Holding Enter repeats the key: it starts one recording, never restarts it.
+    await page.getByRole("button", { name: "Dismiss" }).click();
+    const before = await page.evaluate(() => (window as unknown as { micRequests: number }).micRequests);
+    await mic.focus();
+    await page.keyboard.down("Enter");
+    await page.keyboard.down("Enter");
+    await page.keyboard.down("Enter");
+    await page.keyboard.up("Enter");
+    await expect(thread.getByRole("button", { name: "Send voice note" })).toBeVisible();
+    expect(await page.evaluate(() => (window as unknown as { micRequests: number }).micRequests)).toBe(before + 1);
+    await thread.getByRole("button", { name: "Cancel" }).click();
     expect(sent).toHaveLength(0);
   });
 });

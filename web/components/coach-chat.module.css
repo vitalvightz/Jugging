@@ -716,6 +716,9 @@
 }
 
 .inputRow,
+.recordingBar:focus { outline: none; }
+.recordingBar:focus-visible { outline: 2px solid var(--brand-red); outline-offset: 2px; border-radius: 22px; }
+
 .recordingBar {
   display: flex;
   align-items: flex-end;

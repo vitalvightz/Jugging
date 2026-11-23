@@ -74,7 +74,7 @@ export function CoachFighterContact({ token, athleteId, name, age, healthConsent
                 {NUDGE_DAYS.map((day, index) => (
                   <button key={day} type="button" aria-pressed={hasDay(days, index)} aria-label={day} title={day}
                     onClick={() => { const next = toggleDay(days, index); if (next) { setDays(next); setState("idle"); } }}>
-                    {day.slice(0, 1)}
+                    {day.slice(0, 2)}
                   </button>
                 ))}
               </div>

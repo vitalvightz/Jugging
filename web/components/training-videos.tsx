@@ -441,7 +441,12 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
     aria-label={files.length ? "Hold to record a voice note" : "Record voice note"} title="Hold to record" data-only={files.length ? undefined : true}
     onPointerDown={event => { if (!busy && !recorder.current) hold.onPointerDown(event); }}
     onContextMenu={event => event.preventDefault()}
-    onKeyDown={event => { if (event.key !== "Enter" && event.key !== " ") return; event.preventDefault(); void startRecording(); }}>
+    onKeyDown={event => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      // A held key repeats: never restart a recording that is already running.
+      if (!event.repeat && !recorder.current) void startRecording();
+    }}>
     <MicIcon />{files.length ? null : <span aria-hidden="true">Hold to record</span>}
   </button> : null;
   const attachControl = attachable && !recording ? <div className={styles.attachWrap}>
