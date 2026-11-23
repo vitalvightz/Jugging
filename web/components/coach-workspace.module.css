@@ -727,7 +727,7 @@
 :global(html[data-theme="light"]) .planShareList label:has(input:checked) { background: #fbe9ed; border-color: #d82a4b; }
 
 /* Upcoming fights: an expandable calendar under a fighter's row. */
-.fightCalendar { display: grid; gap: 12px; padding: 0 0 12px; }
+.fightCalendar { display: grid; gap: 12px; padding: 12px 0 12px; }
 .fightCalendar > .pill { justify-self: start; }
 
 /* Pending invite: share first, copy second, cancel set apart. */
