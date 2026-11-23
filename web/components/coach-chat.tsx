@@ -38,8 +38,7 @@ export function CoachChat({ role }: { role: ChatRole }) {
       {!isMeHydrated || !session || !userId ? (
         <div className={styles.shell} aria-busy="true"><Skeleton height={420} /></div>
       ) : (
-        <ChatScreen key={`${userId}:${session.access_token}`} token={session.access_token} me={userId} role={role}
-          canSendPhotos={!["coach", "admin"].includes(me?.profile.role ?? "")} />
+        <ChatScreen key={`${userId}:${session.access_token}`} token={session.access_token} me={userId} role={role} />
       )}
     </RequireAuth>
   );
@@ -68,9 +67,7 @@ function sortInbox(rows: InboxRow[]) {
   return [...rows].sort((a, b) => (b.last_message_at ?? "").localeCompare(a.last_message_at ?? "") || a.name.localeCompare(b.name));
 }
 
-// Coaches share voice notes and PDFs, never photos (the upload API refuses them),
-// so their composer has no photo button.
-function ChatScreen({ token, me, role, canSendPhotos }: { token: string; me: string; role: ChatRole; canSendPhotos: boolean }) {
+function ChatScreen({ token, me, role }: { token: string; me: string; role: ChatRole }) {
   const [inbox, setInbox] = useState<InboxRow[] | null>(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
@@ -190,7 +187,7 @@ function ChatScreen({ token, me, role, canSendPhotos }: { token: string; me: str
       </section>
       {current ? (
         <ChatSheet name={current.name} onClose={() => select(null)}>
-          {close => <ChatThread key={current.other_id} token={token} me={me} role={role} row={current} initialQuote={quote} canSendPhotos={canSendPhotos}
+          {close => <ChatThread key={current.other_id} token={token} me={me} role={role} row={current} initialQuote={quote}
             onBack={close} onRow={patch => updateRow(current.other_id, patch)} />}
         </ChatSheet>
       ) : null}
@@ -280,8 +277,8 @@ async function uploadChatFile(token: string, kind: "photo" | "voice", blob: Blob
   return permission.asset_id;
 }
 
-function ChatThread({ token, me, role, row, initialQuote, canSendPhotos, onBack, onRow }: {
-  token: string; me: string; role: ChatRole; row: InboxRow; initialQuote: QuoteRef | null; canSendPhotos: boolean;
+function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
+  token: string; me: string; role: ChatRole; row: InboxRow; initialQuote: QuoteRef | null;
   onBack: () => void; onRow: (patch: Partial<InboxRow>) => void;
 }) {
   const [chatId, setChatId] = useState(row.chat_id);
@@ -729,12 +726,10 @@ function ChatThread({ token, me, role, row, initialQuote, canSendPhotos, onBack,
               same element while idle and while held, so it never moves under the finger. */}
           <div className={styles.inputRow} data-recording={recording ?? undefined}
             data-cancelling={recording === "hold" && hold.cancelling ? true : undefined}>
-            {canSendPhotos ? <>
-              <button type="button" className={styles.iconButton} aria-label="Send a photo" disabled={Boolean(stage) || Boolean(recording)}
-                onClick={() => photoInput.current?.click()}>+</button>
-              <input ref={photoInput} type="file" accept="image/*" hidden
-                onChange={event => { void sendPhoto(event.target.files?.[0]); event.target.value = ""; }} />
-            </> : null}
+            <button type="button" className={styles.iconButton} aria-label="Send a photo" disabled={Boolean(stage) || Boolean(recording)}
+              onClick={() => photoInput.current?.click()}>+</button>
+            <input ref={photoInput} type="file" accept="image/*" hidden
+              onChange={event => { void sendPhoto(event.target.files?.[0]); event.target.value = ""; }} />
             {recording ? (
               // Focus moves here, not to Send: a held Enter that started the recording
               // must never land on Send and send it straight away.

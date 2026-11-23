@@ -166,8 +166,8 @@ test.describe("voice notes are recorded by holding the mic", () => {
     const fieldBox = (await field.boundingBox())!;
     expect(Math.abs(idle.y - (fieldBox.y + fieldBox.height / 2))).toBeLessThan(4);
     expect(idle.x).toBeGreaterThan(fieldBox.x + fieldBox.width);
-    // Coaches never send photos, so there is no photo button to refuse them.
-    await expect(thread.getByRole("button", { name: "Send a photo" })).toHaveCount(0);
+    // Coaches send photos in chat too.
+    await expect(thread.getByRole("button", { name: "Send a photo" })).toBeVisible();
 
     // Held, the mic stays exactly where the finger is, through recording and cancelling.
     await page.mouse.move(idle.x, idle.y);
