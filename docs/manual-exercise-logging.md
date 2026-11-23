@@ -27,7 +27,7 @@ did on that session, without creating an UNLXCK programme.
 - Community exercises and private media are separate opt-in tables; nothing
   here touches them.
 
-## Storage model (migration `20261019170000_add_manual_exercise_entries.sql`)
+## Storage model (migration `20261019180404_add_manual_exercise_entries.sql`)
 
 `personal_exercises` — an athlete's private movement names.
 - Unique `(athlete_id, name_key)`; `name_key` folds case and whitespace only,

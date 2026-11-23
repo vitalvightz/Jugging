@@ -12,14 +12,14 @@ import messages from "../messages/en.json";
 import { emptyPlanRequest } from "@/lib/onboarding";
 import type { MeResponse } from "@/lib/types";
 
-async function mountSchedule(trainingAvailability = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]) {
+async function mountSchedule(trainingAvailability = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"], overrides: Partial<ReturnType<typeof emptyPlanRequest>> = {}) {
   const originalScrollTo = window.scrollTo;
   const originalFrame = globalThis.requestAnimationFrame;
   const originalScrollIntoView = window.HTMLElement.prototype.scrollIntoView;
   window.scrollTo = () => {};
   globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
   window.HTMLElement.prototype.scrollIntoView = () => {};
-  const draft = { ...emptyPlanRequest(), weekly_training_frequency: 6, training_availability: trainingAvailability };
+  const draft = { ...emptyPlanRequest(), weekly_training_frequency: 6, training_availability: trainingAvailability, ...overrides };
   const me = { profile: { id: "fixture-athlete", full_name: "Fixture athlete", role: "athlete",
     health_consent_granted: true, onboarding_draft: draft }, latest_intake: null } as unknown as MeResponse;
   const router = { push() {}, replace() {}, refresh() {}, back() {}, forward() {}, prefetch() {}, bfcacheId: "fixture" };
@@ -75,6 +75,17 @@ test("quick build never offers more than selected training days", async () => {
     assert.equal(saturday.checked, false);
     await act(async () => frequency.click());
     assert.equal(Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).some(option => option.textContent?.trim() === "6"), false);
+  } finally { await ui.cleanup(); }
+});
+
+test("quick build warns when existing combat occupies every training day", async () => {
+  const ui = await mountSchedule(["Tuesday", "Wednesday", "Thursday", "Sunday"], {
+    weekly_training_frequency: 4,
+    hard_sparring_days: ["Tuesday", "Thursday", "Sunday"],
+    support_work_days: ["Wednesday"],
+  });
+  try {
+    assert.match(ui.host.textContent ?? "", /There may be no room for standalone S&C sessions/);
   } finally { await ui.cleanup(); }
 });
 

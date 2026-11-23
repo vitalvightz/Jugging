@@ -402,6 +402,38 @@ def test_model_failure_never_blocks_the_save(api):
     assert read_items(client) == []
 
 
+def test_truncated_reply_is_recorded_apart_from_other_model_errors(api):
+    client, store, fake = api
+    fake.error = inference.FocusOutputTruncated("max_output_tokens", input_tokens=900, output_tokens=1200)
+    row = lower_body_completion(store)
+    response = edit_notes(client, row["id"], "Balance on split squats was poor.")
+    assert response.json()["notes"] == "Balance on split squats was poor."
+    [stored] = store.training_focus_inferences
+    assert (stored["status"], stored["reason"]) == ("failed", "truncated")
+    assert (stored["input_tokens"], stored["output_tokens"]) == (900, 1200)
+    assert read_items(client) == []
+
+
+def test_openai_inferrer_raises_on_an_incomplete_reply(monkeypatch):
+    class Usage:
+        input_tokens, output_tokens = 700, 400
+
+    class Responses:
+        def create(self, **request):
+            # A reply cut off at the cap: partial JSON that would fail to parse.
+            return type("R", (), {"status": "incomplete", "output_text": '{"focus": "Keep the',
+                                  "incomplete_details": type("D", (), {"reason": "max_output_tokens"})(),
+                                  "usage": Usage()})()
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(inference, "_inferrer_cache", {})
+    inferrer = inference.get_focus_inferrer()
+    inferrer.client = type("C", (), {"responses": Responses()})()
+    with pytest.raises(inference.FocusOutputTruncated) as caught:
+        inferrer.infer({"note": "x", "context": {}})
+    assert caught.value.reason == "max_output_tokens" and caught.value.output_tokens == 400
+
+
 def test_store_failure_in_inference_never_blocks_the_save(api, monkeypatch):
     client, store, fake = api
     monkeypatch.setattr(store, "claim_training_focus_inference",
@@ -465,7 +497,7 @@ def test_openai_inferrer_uses_its_own_model_and_structured_output(monkeypatch):
     assert result.inferred.exercise_targets == ["split squat"] and result.input_tokens == 512
     [request] = calls
     assert request["model"] == "gpt-6-luna" and request["store"] is False
-    assert request["text"]["format"] == response_schema() and request["max_output_tokens"] == 400
+    assert request["text"]["format"] == response_schema() and request["max_output_tokens"] == 1200
     assert "reasoning" not in request
     monkeypatch.setenv("UNLXCK_FOCUS_MODEL", "focus-model-x")
     monkeypatch.setattr(inference, "_inferrer_cache", {})

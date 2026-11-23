@@ -11,6 +11,7 @@ import type { ExternalTrainingFields, TrainingHistoryPage, TrainingHistorySessio
 import type { CoachPlannedSession, CoachFighterWeight, SessionDetails, ExerciseLibraryResponse, ExercisePerformancesResponse } from "@/lib/api-schema.generated";
 import type { ManualExerciseEntry, ManualExerciseListResponse, PerformedExerciseInput } from "@/lib/api-schema.generated";
 import type { LibraryFeaturedResponse, LibraryPreview, LibrarySearchResponse } from "@/lib/api-schema.generated";
+import type { ChatFile } from "@/lib/api-schema.generated";
 import type { CustomDoseSuggestion, CustomPlan, CustomPlanInput, CoachPlan, PlanImportResult as PlanImportResponse } from "@/lib/api-schema.generated";
 import type { AttachmentSettings, FighterMedia, FileUploadPermission, FileUploadResult, PrivateMediaPreview, PrivateMediaSettings, TrainingAttachment, TrainingAttachmentInput, UploadPermission, UploadState, YouTubeClipInput } from "@/lib/api-schema.generated";
 import type {
@@ -706,6 +707,16 @@ export function getFighterWeight(token: string, athleteId: string): Promise<Coac
 /** Tell the fighter about a note this coach just saved. The API reads the note back as the coach's own. */
 export function notifyFighterOfFeedback(token: string, athleteId: string, body: { source: string; target_id: string; exercise_ref?: string }): Promise<void> {
   return requestVoid(`${fighterPath(athleteId)}/feedback/notify`, { method: "POST", token, body: JSON.stringify(body) });
+}
+
+/** Push the other side of a coach chat about a message the caller just sent. */
+export function notifyChatMessage(token: string, messageId: number): Promise<void> {
+  return requestVoid(`/api/chats/messages/${messageId}/notify`, { method: "POST", token });
+}
+
+/** Short links to the photos and voice notes on up to 30 chat messages, in one call. */
+export function getChatFiles(token: string, messageIds: number[], signal?: AbortSignal): Promise<ChatFile[]> {
+  return readJson<ChatFile[]>(`/api/chats/files?ids=${messageIds.join(",")}`, { token, signal });
 }
 
 export function getExerciseLibrary(token: string): Promise<ExerciseLibraryResponse> {

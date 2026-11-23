@@ -26,6 +26,7 @@ export const SIDE_NAV_ITEMS: readonly NavItem[] = [
   { href: "/today", label: "Today", meta: "Check-in and session log" },
   { href: "/plans", label: "Plan", meta: "Active and saved plans" },
   { href: "/history", label: "History", meta: "Sessions, check-ins, injuries" },
+  { href: "/chat", label: "Coach chat", meta: "Messages with your coach" },
   { href: "/timer", label: "Round timer", meta: "Rounds and rest, any time" },
   { href: "/nutrition", label: "Weight tracker", meta: "Daily weights and trend to target" },
   { href: "/onboarding", label: "Camp Setup", meta: "Start or edit your camp" },
@@ -58,6 +59,7 @@ export function isStandaloneNutritionPath(path: string): boolean {
 
 export const COACH_NAV_ITEMS: readonly NavItem[] = [
   { href: "/coach", label: "Overview", meta: "Team activity and alerts" },
+  { href: "/coach/chats", label: "Chats", meta: "Messages with your fighters" },
   { href: "/coach/fighters", label: "Fighters", meta: "Profiles and training progress" },
   { href: "/coach/plans", label: "Plans", meta: "Build plans and track assignments" },
   { href: "/coach/log", label: "Log Session", meta: "Record fighter training" },

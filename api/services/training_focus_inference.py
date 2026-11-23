@@ -44,6 +44,10 @@ _MAX_BLOCKS = 14
 _MAX_OTHER_SESSIONS = 4
 _MAX_OTHER_BLOCKS = 6
 _DEFAULT_DAILY_LIMIT = 12
+# Reasoning tokens count against max_output_tokens. At 400 a reasoning model
+# could spend the budget before finishing the JSON, so the reply came back
+# truncated and failed to parse.
+_DEFAULT_MAX_OUTPUT_TOKENS = 1200
 
 INSTRUCTIONS = """You are UNLXCK Coach: a high-performance strength & conditioning, combat sports and applied sport psychology coach.
 
@@ -100,6 +104,17 @@ class FocusModelResult:
     output_tokens: int = 0
 
 
+class FocusOutputTruncated(Exception):
+    """The provider stopped the reply early (usually the output token cap), so
+    there is no complete answer to parse."""
+
+    def __init__(self, reason: str, input_tokens: int = 0, output_tokens: int = 0):
+        super().__init__(reason)
+        self.reason = reason
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
+
+
 class FocusInferrer(Protocol):
     model: str
 
@@ -129,6 +144,11 @@ class OpenAIFocusInferrer:
             request["reasoning"] = {"effort": self.reasoning_effort}
         response = self.client.responses.create(**request)
         usage = getattr(response, "usage", None)
+        if getattr(response, "status", None) == "incomplete":
+            details = getattr(response, "incomplete_details", None)
+            raise FocusOutputTruncated(str(getattr(details, "reason", None) or "incomplete"),
+                                       input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
+                                       output_tokens=int(getattr(usage, "output_tokens", 0) or 0))
         text = getattr(response, "output_text", "") or ""
         inferred = InferredFocus.model_validate_json(text) if text.strip() else None
         return FocusModelResult(inferred=inferred,
@@ -165,7 +185,7 @@ def get_focus_inferrer() -> FocusInferrer | None:
             inferrer = OpenAIFocusInferrer(
                 client=OpenAI(api_key=api_key, timeout=float(_env_int("UNLXCK_FOCUS_TIMEOUT_SECONDS", 20)), max_retries=0),
                 model=os.getenv("UNLXCK_FOCUS_MODEL", DEFAULT_FOCUS_MODEL).strip() or DEFAULT_FOCUS_MODEL,
-                max_output_tokens=_env_int("UNLXCK_FOCUS_MAX_OUTPUT_TOKENS", 400),
+                max_output_tokens=_env_int("UNLXCK_FOCUS_MAX_OUTPUT_TOKENS", _DEFAULT_MAX_OUTPUT_TOKENS),
                 reasoning_effort=os.getenv("UNLXCK_FOCUS_REASONING_EFFORT", "").strip(),
             )
     _inferrer_cache["default"] = inferrer
@@ -623,6 +643,11 @@ def _run(store, athlete_id: str, kind: str, source_id: str, inferrer: FocusInfer
         return finish("none", "no_consent")
     try:
         result = inferrer.infer(payload)
+    except FocusOutputTruncated as exc:
+        logger.warning("[training_focus] model reply truncated athlete_id=%s kind=%s reason=%s output_tokens=%s",
+                       athlete_id, kind, exc.reason, exc.output_tokens)
+        return finish("failed", "truncated" if exc.reason == "max_output_tokens" else "model_error", model=inferrer.model, input_tokens=exc.input_tokens,
+                      output_tokens=exc.output_tokens, generated=True)
     except Exception as exc:  # noqa: BLE001 - provider or parse failure
         logger.warning("[training_focus] model call failed athlete_id=%s kind=%s error=%s",
                        athlete_id, kind, type(exc).__name__)

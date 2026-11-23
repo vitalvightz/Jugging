@@ -74,6 +74,7 @@ from .routes.private_media import build_private_media_router
 from .routes.training_attachments import build_attachment_uploads_router, build_training_attachments_router
 from .routes.community_exercises import build_community_router
 from .routes.coach import build_coach_router
+from .routes.coach_chat import build_coach_chat_router
 from .routes import (
     build_daily_router,
     build_feedback_router,
@@ -715,6 +716,7 @@ def create_app(
     app.include_router(build_attachment_uploads_router(require_profile=require_profile, get_store=get_store))
     app.include_router(build_community_router(require_profile=require_profile, require_admin=require_admin, get_store=get_store))
     app.include_router(build_coach_router(require_profile=require_profile, get_store=get_store))
+    app.include_router(build_coach_chat_router(require_profile=require_profile, get_store=get_store))
     app.include_router(
         build_xp_router(
             require_profile=require_profile,

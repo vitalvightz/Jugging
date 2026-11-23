@@ -15,7 +15,7 @@ UNLXCK remains one Next.js web application. The PWA layer adds installation, sta
 
 ## Updating icons
 
-Navigation, startup, and notifications use the transparent silver-and-red mark in `public/brand/unlxck-mark.webp`. Installed app icons use the boxed artwork in `public/icons/`.
+The navigation and notification prompt use the current one-angle mark in `public/brand/unlxck-one-angle-48.png`. The installed app uses the black-background icon files in `public/icons/`; keep the supplied silver/white monogram and red diagonal light intact. Do not reintroduce the retired stacked monogram.
 
 Keep `app/icon.png` identical to `public/icons/icon-512x512.png` and
 `app/apple-icon.png` identical to `public/icons/apple-touch-icon.png`; Next.js

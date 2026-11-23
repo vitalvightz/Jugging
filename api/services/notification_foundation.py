@@ -33,6 +33,8 @@ NOTIFICATION_STALE_CLAIM_AFTER = timedelta(minutes=15)
 ROUTINE_DAILY_CAP = 6
 SAFETY_DAILY_CAP = 2
 EVENT_DAILY_CAP = 3
+CONVERSATION_DAILY_CAP = 40
+CONVERSATION_MIN_SPACING_MINUTES = 1
 ROUTINE_MIN_SPACING_MINUTES = 45
 
 # Repeated worker sweeps must keep *evaluating* every intent, but persisting an
@@ -62,7 +64,9 @@ def diagnostic_persist_interval(intent: str) -> timedelta:
     return STABLE_PERSIST_INTERVAL
 
 DeliveryStatus = Literal["sent", "partial", "failed"]
-NotificationClass = Literal["routine", "safety", "event"]
+# "conversation" is coach chat: its own daily allowance, so a busy chat never
+# uses up the event allowance that plan, feedback and safety alerts share.
+NotificationClass = Literal["routine", "safety", "event", "conversation"]
 TimingConfidence = Literal["high", "medium", "low"]
 
 
@@ -138,7 +142,7 @@ class NotificationCandidate:
             )
         if self.timing_confidence not in {None, "high", "medium", "low"}:
             raise ValueError("notification timing_confidence is invalid")
-        if self.notification_class not in {"routine", "safety", "event"}:
+        if self.notification_class not in {"routine", "safety", "event", "conversation"}:
             raise ValueError("notification_class is invalid")
         if self.daily_cap is not None and int(self.daily_cap) < 1:
             raise ValueError("notification daily_cap must be positive")
@@ -186,6 +190,7 @@ def _candidate_daily_cap(candidate: NotificationCandidate) -> int:
         "routine": ROUTINE_DAILY_CAP,
         "safety": SAFETY_DAILY_CAP,
         "event": EVENT_DAILY_CAP,
+        "conversation": CONVERSATION_DAILY_CAP,
     }[candidate.notification_class]
 
 
@@ -196,6 +201,8 @@ def _candidate_min_spacing(candidate: NotificationCandidate) -> int:
         return ROUTINE_MIN_SPACING_MINUTES
     if candidate.notification_class == "safety":
         return 30
+    if candidate.notification_class == "conversation":
+        return CONVERSATION_MIN_SPACING_MINUTES
     return 30
 
 

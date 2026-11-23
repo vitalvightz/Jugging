@@ -181,6 +181,49 @@ test("a voice note is recorded, previewed and sent only when the athlete presses
   expect(calls.filter(call => call.includes("/api/attachments/uploads"))).toEqual([]);
 });
 
+test("voice notes: hold the mic to record and let go to send; slide left to cancel", async ({ page, baseURL, browserName }, info) => {
+  test.skip(browserName !== "chromium", "uses Chromium's audio context as the microphone");
+  await page.setViewportSize({ width: 390, height: 900 });
+  const { calls } = await setup(page, baseURL!);
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      const context = new AudioContext();
+      const tone = context.createOscillator();
+      const out = context.createMediaStreamDestination();
+      tone.connect(out); tone.start();
+      return out.stream;
+    };
+  });
+  await page.goto("/history");
+  await page.getByRole("button", { name: /View Boxing details/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Boxing" });
+  const mic = dialog.getByRole("button", { name: "Hold to record a voice note" });
+  const uploads = () => calls.filter(call => call.includes("/api/attachments/uploads"));
+
+  // Slide left before letting go: nothing is sent.
+  await mic.scrollIntoViewIfNeeded();
+  let box = (await mic.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect(dialog.getByText("‹ Slide to cancel")).toBeVisible();
+  await page.screenshot({ path: info.outputPath("390-hold-recording.png") });
+  await page.mouse.move(box.x - 150, box.y + box.height / 2, { steps: 5 });
+  await expect(dialog.getByText("Release to cancel")).toBeVisible();
+  await page.mouse.up();
+  await expect(mic).toBeVisible();
+  expect(uploads()).toEqual([]);
+
+  // Hold, talk, let go: it uploads at once, with no Stop or Send step.
+  await mic.scrollIntoViewIfNeeded();
+  box = (await mic.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect(dialog.getByText("‹ Slide to cancel")).toBeVisible();
+  await page.waitForTimeout(1200);
+  await page.mouse.up();
+  await expect.poll(() => uploads().length).toBeGreaterThan(0);
+});
+
 test("navigation during microphone permission closes a late stream", async ({ page, baseURL }, info) => {
   const { calls } = await setup(page, baseURL!);
   await page.setViewportSize({ width: 390, height: 900 });

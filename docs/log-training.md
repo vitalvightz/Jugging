@@ -188,7 +188,7 @@ only one suggestion/prompt is shown at a time to keep Today compact. No start
 times are inferred. Existing Plan and History entry points remain unchanged.
 
 Preferences live in the existing profile (`training_habits` and a revision), not
-in training history. Apply `20261018095110_add_training_habit_preferences.sql`
+in training history. Apply `20261018110229_add_training_habit_preferences.sql`
 before deploying the API. Existing profile ownership/RLS remains in force; the
 API validates a maximum of 42 unique weekday/activity decisions and performs an
 athlete-scoped compare-and-swap to reject stale-device writes. Lost-response

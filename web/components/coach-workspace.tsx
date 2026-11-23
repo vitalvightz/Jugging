@@ -16,6 +16,7 @@ import { RequireAuth } from "@/components/auth-guard";
 import { ManualExerciseLogger } from "@/components/manual-exercise-logger";
 import { CoachPlans } from "./coach-plans";
 import { CoachFeedback, LatestCoachFeedback, type FeedbackTarget } from "./coach-feedback";
+import { CoachFighterContact } from "./coach-fighter-contact";
 import { FighterMediaPanel } from "./fighter-media";
 import { LogTraining } from "@/components/log-training";
 import { useAppSession } from "@/components/auth-provider";
@@ -55,6 +56,7 @@ import {
   type Connection,
   type Fighter,
 } from "@/lib/coach";
+import { chatLink, fetchInbox, inboxTime, type InboxRow } from "@/lib/coach-chat";
 import { CALENDAR_WEEKDAYS } from "@/lib/plan-calendar";
 import { formatAppDate } from "@/lib/date-format";
 import {
@@ -189,6 +191,15 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
     [token],
   );
   const { data: connections, error, setError, reload } = useLive(fetcher);
+  // The athlete's chats, for each connected coach's unread count and latest message.
+  const [chats, setChats] = useState<InboxRow[] | null>(null);
+  const connectedCoaches = (connections ?? []).filter(c => c.status === "accepted").map(c => c.coach_id).join(",");
+  useEffect(() => {
+    if (coach || !connectedCoaches) return;
+    const controller = new AbortController();
+    fetchInbox(token, controller.signal).then(setChats).catch(() => undefined);
+    return () => controller.abort();
+  }, [coach, token, connectedCoaches]);
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   async function command(action: string, id?: string, connection?: Connection) {
@@ -262,6 +273,8 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
         const pending = c.status === "pending";
         const name = c.coach_name || "Your coach";
         const sharing = connectionSharing(c);
+        const chat = !coach && !pending ? chats?.find(row => row.other_id === c.coach_id) : undefined;
+        const firstName = name.split(" ")[0];
         return (
           coach && pending ? <PendingInvite key={c.id} connection={c} busy={busy} onCancel={() => void command("remove", c.id)} /> :
           <article className={styles.connection} key={c.id}>
@@ -279,6 +292,12 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
               {!coach && !pending && sharing.note ? (
                 <small>{sharing.note}</small>
               ) : null}
+              {chat?.last_message_at ? (
+                <p className={styles.chatPreview} data-unread={chat.unread ? true : undefined}>
+                  {chat.last_from_me ? "You: " : `${firstName}: `}{chat.last_preview || "Message"}
+                  <span> · {inboxTime(chat.last_message_at)}</span>
+                </p>
+              ) : null}
               {!coach && !pending && c.health_consent !== false ? (
                 <small className={styles.mediaSharing}>
                   <span>{c.share_media ? "Sharing photos and voice notes" : "Not sharing photos and voice notes"}</span>
@@ -288,9 +307,19 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
               ) : null}
             </div>
             <div className={`${styles.actions} ${pending ? styles.invitationActions : ""}`}>
+              {!coach && !pending ? (
+                <Link className={`cta ${styles.messageCoach}`} href={chatLink("athlete", c.coach_id)}
+                  aria-label={chat?.unread ? `Message ${name}, ${chat.unread} unread` : `Message ${name}`}>
+                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+                    <path d="M4 5h16v11H9l-5 4z" />
+                  </svg>
+                  Message {firstName}
+                  {chat?.unread ? <span className={styles.unreadBadge} aria-hidden="true">{chat.unread > 99 ? "99+" : chat.unread}</span> : null}
+                </Link>
+              ) : null}
               {!coach && !pending && sharing.missing.length ? (
                 <button
-                  className="cta"
+                  className="ghost-button"
                   disabled={busy}
                   onClick={() => void command("consent", c.id, c)}
                 >
@@ -298,12 +327,12 @@ function CoachAccess({ token, coach }: { token: string; coach: boolean }) {
                 </button>
               ) : null}
               {!coach && !pending && !c.share_media && c.health_consent !== false ? (
-                <button className="cta" disabled={busy} onClick={() => void command("media_on", c.id, c)}>
+                <button className="ghost-button" disabled={busy} onClick={() => void command("media_on", c.id, c)}>
                   Share photos &amp; voice notes
                 </button>
               ) : null}
               {!coach && !pending && !c.allow_session_logging ? (
-                <button className="cta" disabled={busy} onClick={() => void command("logging", c.id, c)}>
+                <button className="ghost-button" disabled={busy} onClick={() => void command("logging", c.id, c)}>
                   Allow session logging
                 </button>
               ) : null}
@@ -887,6 +916,8 @@ function FighterOverview({
           </div> : null}
         </div>
       </section>
+      <CoachFighterContact token={token} athleteId={f.id} name={f.name} age={f.age}
+        healthConsent={Boolean(f.can_leave_feedback)} />
       <DiscoveryHint id="coach-fighter-sections" text="Tap a section to open it." />
       {concerns.length ? <section className={`${styles.panel} ${styles.attentionPanel}`} aria-label="Needs attention">
         <h2>Needs attention</h2>

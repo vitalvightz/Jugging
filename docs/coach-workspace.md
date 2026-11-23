@@ -154,9 +154,10 @@ Missing, unshared or stale check-ins never create a concern.
 ## Limits
 
 Invitations are in-app only; there is no email or push notification. A coach
-can hold 250 pending or accepted connections. Generated-programme editing, messaging and
+can hold 250 pending or accepted connections. Generated-programme editing and
 long-term analytics are out of scope. Coach-authored custom plans and consent-based
-assignment are documented in [Coach plan assignment](coach-plan-assignment.md). Coach screens use English copy.
+assignment are documented in [Coach plan assignment](coach-plan-assignment.md). Messaging
+and check-in nudges are documented in [Coach chat](coach-chat.md). Coach screens use English copy.
 
 ## Coach feedback and profile details
 
@@ -164,7 +165,7 @@ Sparring summaries count the reports displayed for the selected week. Rounds,
 report count and hard reports come from that same list. Intensity, head contact
 and a rocked warning are separate signals.
 
-`20261116024150_coach_feedback.sql` adds separate coach-authored feedback and
+`20261116031516_coach_feedback.sql` adds separate coach-authored feedback and
 extends the existing permission-checked fighter projection. Feedback never
 updates athlete notes. Only the author can update it through the authenticated
 RPC; accepted connections, approved roles, health consent and target ownership

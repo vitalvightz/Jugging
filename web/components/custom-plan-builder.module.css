@@ -542,7 +542,9 @@
   .calendarToolbar { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
   .calendarToolbar > strong { grid-column: 1 / -1; grid-row: 2; font-size: 11px; }
   .copyBanner > div { flex: 1 1 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .calendarPaste { flex-basis: 100%; min-height: 44px; font-size: 11px; }
+  /* The phone cell is ~30px wide: no side padding and a lighter 10px label keep
+     "Paste" inside it with wider fallback fonts (Linux sans) too. */
+  .calendarPaste { flex-basis: 100%; min-height: 44px; padding-inline: 0; font-size: 10px; font-weight: 500; }
   .calendarFooter span { display: none; }
   .dayActions { flex: 1 1 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .copyBanner > div[data-move] { grid-template-columns: minmax(0, 1fr); }

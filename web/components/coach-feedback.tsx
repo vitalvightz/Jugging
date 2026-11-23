@@ -39,10 +39,11 @@ export function CoachFeedback({ token, athleteId, source, targetId, exerciseRef 
     } catch { setError(true); }
     finally { setBusy(false); }
   }
-  return <div className={styles.feedback}>
+  // data-open: notes or the form take the full width; a lone button sits in its row.
+  return <div className={styles.feedback} data-open={notes.length || editing || error ? true : undefined}>
     {editable && source === "sparring" && !exerciseRef && !notes.length && !editing ? <DiscoveryHint id="coach-feedback-note" text="Leave a note on this round." /> : null}
     {notes.map(note => <div key={note.id}><small>Coach {note.coach_name} · {formatAppDate(note.updated_at.slice(0, 10))}</small><p>{note.note}</p></div>)}
-    {editable && !editing ? <button type="button" className="ghost-button" onClick={() => { setDraft(notes[0]?.note ?? ""); setEditing(true); }}>{notes.length ? "Edit feedback" : "Add feedback"}</button> : null}
+    {editable && !editing ? <button type="button" className="ghost-button" onClick={() => { setDraft(notes[0]?.note ?? ""); setEditing(true); }}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z" /></svg>{notes.length ? "Edit feedback" : "Add feedback"}</button> : null}
     {editing ? <form onSubmit={event => { event.preventDefault(); void save(); }}>
       <label>Feedback<textarea required maxLength={1500} value={draft} onChange={event => setDraft(event.target.value)} /></label>
       <button type="submit" className="cta" disabled={busy || !draft.trim()}>{busy ? "Saving…" : "Save feedback"}</button>

@@ -66,9 +66,9 @@ The backend-only per-revision RPC remains available for immediate manual repair.
 
 ## Rollout and verification
 
-1. Verify existing migrations through `20261019170000_add_manual_exercise_entries.sql`
+1. Verify existing migrations through `20261019180404_add_manual_exercise_entries.sql`
    are applied in the target database.
-2. Review/apply `20261019200000_add_tracking_and_contribution_xp.sql` before backend
+2. Review/apply `20261019195932_add_tracking_and_contribution_xp.sql` before backend
    rollout. Runtime schema requirements include both reconciliation RPCs, the
    `list_unrewarded_contribution_revisions` discovery RPC and the new source
    guard. Only `service_role` can execute them. No new browser grants, RLS

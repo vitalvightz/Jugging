@@ -32,7 +32,7 @@ test("bottom nav never links to the standalone Nutrition route", () => {
 test("side menu keeps Camp Setup without exposing Progress", () => {
   assert.deepEqual(
     SIDE_NAV_ITEMS.map((item) => item.label),
-    ["Overview", "Today", "Plan", "History", "Round timer", "Weight tracker", "Camp Setup", "Settings"],
+    ["Overview", "Today", "Plan", "History", "Coach chat", "Round timer", "Weight tracker", "Camp Setup", "Settings"],
   );
 });
 

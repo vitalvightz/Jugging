@@ -10,7 +10,7 @@ await db.exec(`create role authenticated; create table profiles(id text primary 
   alter table profiles enable row level security;
   create policy owner on profiles to authenticated using (id=current_setting('app.owner')) with check (id=current_setting('app.owner'));
   grant select, insert, update on profiles to authenticated;`);
-const migration = await readFile(new URL('../../supabase/migrations/20261018160000_add_starting_path.sql', import.meta.url), 'utf8');
+const migration = await readFile(new URL('../../supabase/migrations/20261018212315_add_starting_path.sql', import.meta.url), 'utf8');
 await db.exec(migration);
 assert.equal((await db.query(`select starting_path from profiles where id='existing'`)).rows[0].starting_path, 'plan_first');
 await db.exec(`insert into profiles(id) values ('new'); update profiles set starting_path='tracking_first' where id='existing';`);

@@ -252,7 +252,7 @@ test(`S&C screenshot import keeps seven exercises through stage editing, save an
   await page.screenshot({ path: info.outputPath("sc-stage-editor.png") });
   await expect(page.getByLabel("Stage 8 source notation", { exact: true })).toHaveValue("WT: 225");
   await page.getByLabel("Stage 8 source notation", { exact: true }).fill("WT: 230");
-  await page.getByRole("button", { name: "Done editing dose" }).click();
+  await page.getByRole("group", { name: "Quick dose for Clean", exact: true }).getByRole("button", { name: "Done", exact: true }).click();
   await page.getByText("A1 — Clean", { exact: true }).click();
   await expect(page.getByRole("list", { name: "Prescribed sets" }).locator("li")).toHaveCount(8);
   await expect(page.getByText("95% · 3 × 1 · WT: 230", { exact: true })).toBeVisible();

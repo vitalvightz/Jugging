@@ -12,6 +12,7 @@ import { HistoryHint } from "@/components/history-hint";
 import { shouldShowAdminPanelLink } from "@/lib/admin-nav-visibility";
 import { getShellSurface, isAuthSurfaceRoute, shouldShowBrandTopbar } from "@/lib/app-surface";
 import { isSafeAvatarImageUrl } from "@/lib/avatar-image-url";
+import { PhoneChatButton } from "@/components/phone-chat-button";
 import { showsMobileTabBar, SIDE_NAV_ITEMS, COACH_NAV_ITEMS, isCoachWorkspace } from "@/lib/beta-navigation";
 import { isNavToggleCondensed } from "@/lib/nav-toggle-scroll";
 import { lockOverlayScroll } from "@/lib/overlay-scroll-lock";
@@ -107,6 +108,7 @@ function PhoneWorkspaceBar({ pathname, identity }: { pathname: string; identity:
           {t("create")}
         </Link>
       )}
+      <PhoneChatButton pathname={pathname} />
       <Link href="/settings" className="phone-account-button" aria-label={t("account")}>
         <AccountAvatar identity={identity} />
       </Link>
@@ -376,6 +378,7 @@ export function AppNav() {
     "/plans": { label: t("plan"), meta: t("planMeta") },
     "/history": { label: t("history"), meta: t("historyMeta") },
     "/timer": { label: t("timer"), meta: t("timerMeta") },
+    "/chat": { label: t("coachChat"), meta: t("coachChatMeta") },
     "/nutrition": { label: t("weight"), meta: t("weightMeta") },
     "/onboarding": { label: t("campSetup"), meta: t("campSetupMeta") },
     "/settings": { label: t("settings"), meta: t("settingsMeta") },
@@ -408,7 +411,7 @@ export function AppNav() {
           <Link href="/" className="brand-topbar-mark" aria-label="UNLXCK">
             <img
               className="brand-topbar-logo"
-              src="/brand/unlxck-mark.webp"
+              src="/brand/unlxck-one-angle-48.png"
               alt=""
               width={48}
               height={48}
@@ -487,7 +490,7 @@ export function AppNav() {
             <div className="sidebar-brand-header">
               <img
                 className="sidebar-brand-logo"
-                src="/brand/unlxck-mark.webp"
+                src="/brand/unlxck-one-angle-48.png"
                 alt="UNLXCK"
                 width={48}
                 height={48}

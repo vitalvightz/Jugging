@@ -474,6 +474,11 @@ test("athlete accepts with one tap, then disconnects", async ({
   baseURL,
 }, info) => {
   const state = await fixture(page, baseURL!, "athlete");
+  await page.route("**/rest/v1/rpc/coach_chat_inbox", (route) => route.fulfill({ json: [{
+    chat_id: "chat-1", other_id: "coach-test", name: "Test Coach", avatar_url: null, role: "athlete", active: true,
+    last_message_at: new Date().toISOString(), last_preview: "How did sparring feel?", last_from_me: false, unread: 2,
+    other_read_at: null, fight_date: null, attention: false, missed_checkin: false,
+  }] }));
   await page.setViewportSize({ width: 390, height: 1000 });
   await page.goto("/settings/coach-access");
   await expect(page.getByText("Test Coach")).toBeVisible();
@@ -499,6 +504,10 @@ test("athlete accepts with one tap, then disconnects", async ({
   ).toEqual([]);
   await page.getByRole("button", { name: "Accept", exact: true }).click();
   await expect(page.getByRole("button", { name: "Disconnect" })).toBeVisible();
+  // Once connected, the card is the way into the chat, with what is waiting there.
+  const message = page.getByRole("link", { name: "Message Test Coach, 2 unread" });
+  await expect(message).toHaveAttribute("href", "/chat?with=coach-test");
+  await expect(page.getByText("Test: How did sparring feel?")).toBeVisible();
   expect(state.actions[0]).toMatchObject({
     p_action: "accept",
     p_recovery: true,
@@ -810,7 +819,7 @@ for (const role of ["coach", "admin", "athlete"]) {
       const sidebar = page.locator('#app-sidebar');
       if (width < 720) {
         await expect(page.getByRole("navigation", { name: "Coach navigation" })).toBeVisible();
-        await expect(page.locator('.mobile-tab-bar a')).toHaveText(["Overview", "Fighters", "Plans", "Log Session"]);
+        await expect(page.locator('.mobile-tab-bar a')).toHaveText(["Overview", "Chats", "Fighters", "Plans"]);
         await page.getByRole("button", { name: "Open navigation", exact: true }).click();
       }
       await expect(sidebar.locator('a[href="/coach/invitations"]')).toBeVisible();
@@ -1814,4 +1823,40 @@ test("feedback highlight reviews the original record without a second editor", a
   await highlight.getByRole("button", { name: "Review record" }).click();
   await expect(highlight.getByRole("status")).toHaveText("That record is no longer available.");
   await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("check-in nudge: one switch turns it on, days and time save only when changed", async ({ page, baseURL }) => {
+  await fixture(page, baseURL!, "coach", false, {}, [fighter]);
+  const saves: Record<string, unknown>[] = [];
+  await page.route("**/rest/v1/coach_checkin_nudges?**", route => route.fulfill({ json: [] }));
+  await page.route("**/rest/v1/rpc/coach_set_checkin_nudge", route => {
+    const body = route.request().postDataJSON();
+    saves.push(body);
+    return route.fulfill({ json: { days: body.p_days, local_time: `${body.p_time}:00`, enabled: body.p_enabled, last_sent_day: null } });
+  });
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto(`/coach/fighters/${fighterId}`);
+  const nudge = page.getByRole("region", { name: "Contact and check-ins" });
+  const toggle = nudge.getByRole("switch", { name: /Remind .* to check in/ });
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  // No summary line repeating the setting under the title.
+  await expect(nudge.getByText(/their time/)).toHaveCount(0);
+  await expect(nudge.getByRole("group", { name: "Nudge days" })).toHaveCount(0);
+  if (process.env.COACH_SCREENSHOTS) await nudge.screenshot({ path: `${process.env.COACH_SCREENSHOTS}/nudge-off.png` });
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await expect(nudge.getByRole("group", { name: "Nudge days" })).toBeVisible();
+  expect(saves).toEqual([expect.objectContaining({ p_enabled: true, p_days: 0b0011111, p_time: "08:00" })]);
+  await expect(nudge.getByRole("button", { name: "Save" })).toHaveCount(0);
+
+  await nudge.getByRole("button", { name: "Sat" }).click();
+  await nudge.getByRole("button", { name: "Save" }).click();
+  await expect(nudge.getByRole("status")).toHaveText("Saved");
+  expect(saves[1]).toMatchObject({ p_enabled: true, p_days: 0b0111111 });
+  if (process.env.COACH_SCREENSHOTS) await nudge.screenshot({ path: `${process.env.COACH_SCREENSHOTS}/nudge-on.png` });
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  expect(saves[2]).toMatchObject({ p_enabled: false });
 });

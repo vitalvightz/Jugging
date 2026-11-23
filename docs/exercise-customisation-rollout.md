@@ -10,7 +10,7 @@ On 12 October 2026, the user confirmed `unlxckpdf`
 project as its default `Main` branch; no separate staging branch was listed.
 
 Applied the SQL from
-`supabase/migrations/20261012120000_add_plan_exercise_overrides.sql` through
+`supabase/migrations/20261012071454_add_plan_exercise_overrides.sql` through
 Supabase's migration API. The API recorded it as version `20261012071454`,
 name `add_plan_exercise_overrides`. Operators using CLI migration history
 must account for this version difference before a later `db push`.
