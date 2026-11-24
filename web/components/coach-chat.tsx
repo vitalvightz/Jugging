@@ -255,8 +255,11 @@ function ChatSheet({ name, onClose, children }: { name: string; onClose: () => v
       if (probe.offsetHeight - viewport.height < 120) {
         element.style.removeProperty("--chat-viewport");
         element.style.top = "";
+        delete element.dataset.keyboard;
         return;
       }
+      // The keyboard covers the home indicator: no safe-area gap above it.
+      element.dataset.keyboard = "true";
       element.style.setProperty("--chat-viewport", `${Math.round(viewport.height)}px`);
       element.style.top = `${Math.round(viewport.offsetTop)}px`;
     };

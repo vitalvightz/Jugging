@@ -47,6 +47,7 @@
 }
 .sheet::backdrop { background: rgb(0 0 0 / 75%); }
 /* Opened but not yet laid out: invisible, and the entrance starts once it is. */
+.sheet[data-keyboard] { padding-bottom: 0; }
 .sheet[data-settling],
 .sheet[data-settling]::backdrop { opacity: 0; animation: none; }
 .sheet:focus { outline: none; }

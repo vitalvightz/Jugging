@@ -411,6 +411,37 @@ test.describe("mobile composer and voice notes", () => {
     await expect(page.getByRole("dialog", { name: "Chat with Leo Martins" })).toBeVisible();
   });
 
+  test("the sheet fills the screen without a keyboard and sits on the keyboard with one", async ({ page, baseURL }) => {
+    // iOS's visible area, under the test's control: a little short of the screen
+    // (as iOS reports it with no keyboard), then a keyboard's worth shorter.
+    await page.addInitScript(() => {
+      const fake = new EventTarget() as EventTarget & { height: number; offsetTop: number; scale: number };
+      fake.height = innerHeight - 60;
+      fake.offsetTop = 0;
+      fake.scale = 1;
+      Object.defineProperty(window, "visualViewport", { value: fake });
+      (window as unknown as { keyboard: (open: boolean) => void }).keyboard = open => {
+        fake.height = open ? innerHeight - 340 : innerHeight - 60;
+        fake.dispatchEvent(new Event("resize"));
+      };
+    });
+    await chatFixture(page, baseURL!, "coach");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/coach/chats?with=${leo}`);
+    const thread = page.getByRole("dialog", { name: "Chat with Leo Martins" });
+    await expect(thread).toBeVisible();
+    await expect(thread).not.toHaveAttribute("data-settling");
+    const height = () => thread.evaluate(sheet => sheet.getBoundingClientRect().height);
+    // No keyboard: the whole screen, so the composer sits on the home indicator.
+    expect(await height()).toBe(844);
+    await page.evaluate(() => (window as unknown as { keyboard: (open: boolean) => void }).keyboard(true));
+    await expect.poll(height).toBe(844 - 340);
+    await expect(thread).toHaveAttribute("data-keyboard", "true");
+    await page.evaluate(() => (window as unknown as { keyboard: (open: boolean) => void }).keyboard(false));
+    await expect.poll(height).toBe(844);
+    await expect(thread).not.toHaveAttribute("data-keyboard");
+  });
+
   test("a failed voice upload stays one message and sends exactly once on retry", async ({ page, baseURL }) => {
     const { sent } = await chatFixture(page, baseURL!, "coach");
     const asset = "00000000-0000-4000-8000-0000000000f2";
