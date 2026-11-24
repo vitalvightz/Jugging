@@ -242,9 +242,21 @@ function ChatSheet({ name, onClose, children }: { name: string; onClose: () => v
     // iOS keeps 100dvh when the keyboard opens; size the sheet to what is visible
     // so the composer sits right above the keyboard instead of behind it.
     const viewport = window.visualViewport;
+    // The full screen height (100dvh), to tell a keyboard from iOS simply
+    // reporting a visible area a little shorter than the screen.
+    const probe = document.createElement("div");
+    probe.style.cssText = "position:fixed;top:0;left:0;width:0;height:100dvh;visibility:hidden;pointer-events:none";
+    document.body.appendChild(probe);
     const fit = () => {
       // Pinch-zoomed, the visible area is not the keyboard's doing: leave the layout alone.
       if (!viewport || viewport.scale > 1.01) return;
+      // No keyboard: fill the screen (CSS 100dvh), so the composer sits just above
+      // the home indicator rather than floating over an empty strip.
+      if (probe.offsetHeight - viewport.height < 120) {
+        element.style.removeProperty("--chat-viewport");
+        element.style.top = "";
+        return;
+      }
       element.style.setProperty("--chat-viewport", `${Math.round(viewport.height)}px`);
       element.style.top = `${Math.round(viewport.offsetTop)}px`;
     };
@@ -256,6 +268,7 @@ function ChatSheet({ name, onClose, children }: { name: string; onClose: () => v
     viewport?.addEventListener("scroll", fit);
     return () => {
       window.cancelAnimationFrame(frame);
+      probe.remove();
       viewport?.removeEventListener("resize", fit);
       viewport?.removeEventListener("scroll", fit);
       element.close(); release(); previous?.focus();
