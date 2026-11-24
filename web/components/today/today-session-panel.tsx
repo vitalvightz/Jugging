@@ -931,6 +931,12 @@ export function TodaySessionPanel({
   // Tint the session card to match today's decision (green/amber/red) so the page
   // reads at a glance instead of being a wall of identical dark cards. Neutral
   // (not-checked-in) carries no tone — the card stays default until check-in.
+  // A held session takes its label from today's guidance tier, so the card and
+  // the guidance never name one trigger at two severities.
+  const sessionHeld = Boolean(livePrescription?.safety_hold) && resolvedDecision.sessionIsToday;
+  const holdSeverityTitle = resolvedDecision.authoritativeTier === "stop"
+    ? "Stop today"
+    : resolvedDecision.authoritativeTier === "pull_back" ? "Pull back today" : "Training caution";
   const cardTone =
     resolvedDecision.tone === "green" ||
     resolvedDecision.tone === "amber" ||
@@ -938,7 +944,7 @@ export function TodaySessionPanel({
       ? resolvedDecision.tone
       : undefined;
   const terminalStatusCopy = severeInjuryBlocksCurrentSession || livePrescription?.safety_hold
-    ? `Training caution: ${livePrescription?.safety_hold_reason?.replace(/\b(?:blocked|locked|on hold)\b/gi, "not recommended") || injuryStripText(state.open_injuries ?? []) || "Follow your current injury guidance."}`
+    ? `${holdSeverityTitle}: ${livePrescription?.safety_hold_reason?.replace(/\b(?:blocked|locked|on hold)\b/gi, "not recommended") || injuryStripText(state.open_injuries ?? []) || "Follow your current injury guidance."}`
     : !clearanceAllowsContact
       ? "Training caution: follow your clinician's contact restrictions."
       : resolvedDecision.authoritativeTier === "not_checked_in"
@@ -1547,7 +1553,7 @@ export function TodaySessionPanel({
           <a href="#today-injury" className="today-injury-strip">
             <ToolIcon name="shield" />
             <span className="today-injury-strip-text">
-              <span className="today-injury-strip-title">Training caution</span>
+              <span className="today-injury-strip-title">{sessionHeld ? holdSeverityTitle : "Training caution"}</span>
               <span className="today-injury-strip-detail">Training around {injuryText}</span>
             </span>
             <span className="today-injury-strip-chevron" aria-hidden="true" />
@@ -1572,6 +1578,7 @@ export function TodaySessionPanel({
               </button>
             )}
             {timerTools(
+              sessionHeld ? undefined : (
               <button
                 type="button"
                 className="today-tool-link"
@@ -1579,7 +1586,7 @@ export function TodaySessionPanel({
                 disabled={isSubmitting}
               >
                 Skip session
-              </button>,
+              </button>),
               { contactAsPrimary: contactLeads && contactTimerAvailable },
             )}
           </div>
@@ -1766,6 +1773,7 @@ export function TodaySessionPanel({
               {timerHandoffPending ? "Save timer results" : "Finish session"}
             </button>
             {timerTools(
+              sessionHeld ? undefined : (
               <button
                 type="button"
                 className="today-tool-link"
@@ -1773,7 +1781,7 @@ export function TodaySessionPanel({
                 disabled={isSubmitting}
               >
                 Skip session
-              </button>,
+              </button>),
             )}
           </div>
         ) : null}
@@ -1804,7 +1812,8 @@ export function TodaySessionPanel({
         </div> : null}
         {sparringPrompt}
 
-        {livePrescription?.safety_hold && resolvedDecision.sessionIsToday ? <div className="today-session-actions">
+        {/* One tray for a held session's exits, laid out like the other trays. */}
+        {sessionHeld && livePrescription ? <div className="today-session-actions today-action-tray">
           {livePrescription.frozen && status === "started" ? <button type="button" className="secondary-button" disabled={isSubmitting} onClick={() => setIntent("modified")}>Log stopped session</button> : null}
           <button type="button" className="ghost-button" disabled={isSubmitting} onClick={() => setIntent("skipped")}>Mark skipped</button>
         </div> : null}

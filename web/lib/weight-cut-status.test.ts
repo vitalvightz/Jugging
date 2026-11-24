@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { cutProgress, daysLeftLabel, daysToFight, describeCutStatus, inFinalWeeks, weighInDetails, weighInMoment } from "./weight-cut-status.ts";
+import { cutProgress, daysLeftLabel, daysToFight, describeCutStatus, inFinalWeeks, isCutFinished, weighInDetails, weighInMoment } from "./weight-cut-status.ts";
 import type { NutritionDerivedState } from "./types.ts";
 
 const derived = (overrides: Partial<NutritionDerivedState>): NutritionDerivedState => ({
@@ -81,4 +81,14 @@ test("progress runs from the first weight of the final weeks to the target", () 
   assert.equal(cutProgress({ trend: [], fightDate: "2026-11-22", currentKg: 73, targetKg: 71 }), null);
   assert.equal(cutProgress({ trend, fightDate: "2026-11-22", currentKg: 72, targetKg: 74 }), null);
   assert.equal(cutProgress({ trend, fightDate: "2026-11-22", currentKg: null, targetKg: 71 }), null);
+});
+
+test("after the weigh-in the status reports the result, never kg to go", () => {
+  assert.equal(describeCutStatus(derived({ weight_cut_status: "made_weight", kg_to_target: 0, days_until_fight: 0 }))?.label, "Made weight");
+  const missed = describeCutStatus(derived({ weight_cut_status: "missed_weight", kg_to_target: 0.4, days_until_fight: 0 }));
+  assert.equal(missed?.label, "Missed by 0.4 kg");
+  assert.equal(missed?.tone, "red");
+  assert.equal(describeCutStatus(derived({ weight_cut_status: "weigh_in_done", days_until_fight: 0 }))?.label, "Cut finished");
+  assert.equal(isCutFinished("weigh_in_done"), true);
+  assert.equal(isCutFinished("on_track"), false);
 });

@@ -161,7 +161,7 @@ export type NutritionBodyweightTrendPoint = {
 };
 
 export type WeightCutRiskBand = "none" | "moderate" | "high" | "severe";
-export type WeightCutStatus = "none" | "on_target" | "on_track" | "behind" | "too_aggressive";
+export type WeightCutStatus = "none" | "on_target" | "on_track" | "behind" | "too_aggressive" | "made_weight" | "missed_weight" | "weigh_in_done";
 
 // Fields added after first release are optional: the web app can deploy ahead
 // of the API, and the tracker must read an older response without them.
@@ -1325,6 +1325,9 @@ export type TodayCommandView = {
     session_scope: "today" | "next" | "none";
     session_label: string;
     completion_status: TodayCompletionStatus;
+    /** D-0 of a dated camp. Fight day is a state, not a session: Today shows
+     * its own layout and offers nothing to start, log or repeat. */
+    fight_day?: boolean;
   };
   risk_watch: Array<{
     category: string;

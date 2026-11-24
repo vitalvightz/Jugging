@@ -328,6 +328,9 @@ class CommandViewToday(BaseModel):
     session_scope: Literal["today", "next", "none"] = "none"
     session_label: str = ""
     completion_status: CompletionStatus = "not_started"
+    # D-0 of a dated camp. Fight day is a state, not a session: no session is
+    # offered, logged or held, and the UI renders its own fight-day layout.
+    fight_day: bool = False
 
 
 class CommandView(BaseModel):

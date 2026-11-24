@@ -159,7 +159,9 @@ function TodayReadinessStrip({
   checkinHref,
   injuriesHref,
   sessionHref,
+  fightDay = false,
 }: {
+  fightDay?: boolean;
   hasPlan: boolean;
   canCheckIn: boolean;
   loggedToday: boolean | null;
@@ -195,7 +197,9 @@ function TodayReadinessStrip({
       ) : (
         <StatusTile label="Readiness" value="Not assessed" icon="pulse" actionLabel="" />
       )}
-      {hasPlan ? (
+      {hasPlan && fightDay ? (
+        <StatusTile label="Session" value="Fight day" tone="clear" icon="check" actionLabel="" />
+      ) : hasPlan ? (
         <StatusTile
           label="Session"
           value={SESSION_TILE_VALUE[completionStatus] ?? getCompletionLabel(completionStatus)}
@@ -401,6 +405,8 @@ export function TodayScreen() {
     return <TodayLoadingState />;
   }
   const resolvedDecision = resolveTodayDecision(state);
+  // D-0 is a state, not a session: no session card, no log or repeat actions.
+  const fightDay = hasPlan && Boolean(state.today.fight_day);
   const availableRehabInjuries = new Set((state.open_injuries ?? []).filter(injury => {
     const decision = injury.rehab_decision;
     return decision?.outcome === "prescribed_rehab" && (decision.schedule?.state === "due"
@@ -445,7 +451,7 @@ export function TodayScreen() {
       ) : null}
     </Collapse>
   );
-  const sessionPanel = hasPlan ? (
+  const sessionPanel = fightDay ? null : hasPlan ? (
     <TodaySessionPanel
       state={state}
       structuredPlan={structuredPlan}
@@ -507,6 +513,7 @@ export function TodayScreen() {
           checkinHref={showCheckin ? "#today-checkin" : undefined}
           injuriesHref={token ? "#today-injury" : undefined}
           sessionHref={resolvedDecision.displayTier === "preview" ? undefined : "#today-session"}
+          fightDay={fightDay}
         />
         {/* A refresh marks the guidance stale in place; swapping it for a
             one-line notice collapsed the page and pulled everything below up. */}
@@ -535,7 +542,7 @@ export function TodayScreen() {
         />
         {/* Asked beside the guidance it is about, once a check-in has given
             the athlete something to judge, rather than at the foot of the page. */}
-        {hasPlan && !error && decisionBanner && resolvedDecision.recommendationState !== "not_checked_in" ? (
+        {hasPlan && !fightDay && !error && decisionBanner && resolvedDecision.recommendationState !== "not_checked_in" ? (
           <details className="today-feedback-disclosure">
             <summary>Does today&apos;s guidance fit how you feel?</summary>
             <ContextualFeedback
@@ -558,15 +565,17 @@ export function TodayScreen() {
       {token && me?.profile.role === "athlete"
         ? <EnableRemindersRow key={`${me.profile.athlete_id}:${token}`} token={token} athleteId={me.profile.athlete_id} /> : null}
 
-      <div id="today-training-log" className={styles.trainingLog} tabIndex={-1}>
-        <TrainingHabitLog
-          accessToken={token}
-          state={state}
-          variant={hasPlan ? "compact" : "primary"}
-          onLoggedToday={setLoggedToday}
-          onSaved={() => void refresh()}
-        />
-      </div>
+      {fightDay ? null : (
+        <div id="today-training-log" className={styles.trainingLog} tabIndex={-1}>
+          <TrainingHabitLog
+            accessToken={token}
+            state={state}
+            variant={hasPlan ? "compact" : "primary"}
+            onLoggedToday={setLoggedToday}
+            onSaved={() => void refresh()}
+          />
+        </div>
+      )}
 
       {/* Injury reports are health data: the server rejects them without
           consent, so a new report is never offered until it is granted. Open

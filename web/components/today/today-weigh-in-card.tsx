@@ -9,7 +9,7 @@ import { updateNutritionCurrent } from "@/lib/api";
 import { formatWeight, getBodyweightEntriesWithIndex, getCampWeight } from "@/lib/nutrition-bodyweight";
 import { localDateValue, withBodyweightLog } from "@/lib/nutrition-workspace";
 import type { NutritionBodyweightLogEntry, NutritionWorkspaceState } from "@/lib/types";
-import { type CutStatusView, cutProgress, daysLeftLabel, daysToFight, describeCutStatus, weighInDetails } from "@/lib/weight-cut-status";
+import { type CutStatusView, cutProgress, daysLeftLabel, daysToFight, describeCutStatus, isCutFinished, weighInDetails } from "@/lib/weight-cut-status";
 import styles from "./today-weigh-in-card.module.css";
 
 function StatusIcon({ tone }: { tone: CutStatusView["tone"] }) {
@@ -57,6 +57,8 @@ export function TodayWeighInCard({ token, fightDate, trainingDay, workspace, onW
   const target = shared.target_weight_kg ?? null;
   const toGo = derived.kg_to_target ?? (campWeight != null && target != null ? Math.max(0, Math.round((campWeight - target) * 10) / 10) : null);
   const status = describeCutStatus(derived);
+  // After the weigh-in the card reports the result, never kg still to lose.
+  const finished = isCutFinished(derived.weight_cut_status);
   const days = daysToFight(fightDate, trainingDay);
   const weighIn = weighInDetails(shared.fight_date || fightDate, shared.weigh_in_type, shared.weigh_in_time);
   const progress = cutProgress({ trend: derived.bodyweight_trend, fightDate: shared.fight_date || fightDate, currentKg: campWeight, targetKg: target });
@@ -77,7 +79,9 @@ export function TodayWeighInCard({ token, fightDate, trainingDay, workspace, onW
         {status ? <span className={styles.status} data-tone={status.tone}><StatusIcon tone={status.tone} />{status.label}</span> : null}
       </div>
 
-      {target != null && toGo != null ? (
+      {finished && status ? (
+        <p className={styles.detail}>{status.detail}</p>
+      ) : target != null && toGo != null ? (
         <>
           <p className={styles.main}><strong>{toGo.toFixed(1)}</strong> kg to go</p>
           <div className={styles.journey}>

@@ -492,3 +492,42 @@ def test_target_and_weigh_in_can_be_added_from_the_tracker_and_the_newest_target
     workspace = put_target(workspace, 66.0)
     assert workspace["shared_camp_context"]["target_weight_kg"] == 66.0
     assert store.get_latest_intake("athlete-1")["intake"]["athlete"]["target_weight_kg"] == 66.0
+
+
+def _fight_day_workspace(weigh_in_type: str):
+    client, store, _ = _build_client()
+    client.get("/api/me", headers={"Authorization": "Bearer athlete-token"})
+    today = current_training_day(athlete_timezone=store.profiles["athlete-1"].get("athlete_timezone")).isoformat()
+    athlete = {**_build_request({}).athlete.model_dump(mode="json"), "weight_kg": 80.0, "target_weight_kg": 74.0}
+    request = _build_request({"fight_date": today, "athlete": athlete})
+    intake = store.create_intake("athlete-1", request)
+    plan = store.create_plan(athlete_id="athlete-1", intake_id=intake["id"], request=request, result={"status": "ready"})
+    store.set_active_plan_id("athlete-1", plan["id"])
+    workspace = _get_current_workspace(client)
+    response = client.put(
+        "/api/nutrition/current",
+        headers={"Authorization": "Bearer athlete-token"},
+        json={**workspace, "shared_camp_context": {
+            **workspace["shared_camp_context"], "weigh_in_type": weigh_in_type, "weigh_in_time": "18:00"}},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["derived"]
+
+
+def test_after_a_day_before_weigh_in_rehydration_scores_no_cut_risk():
+    derived = _fight_day_workspace("day_before")
+    assert derived["days_until_fight"] == 0
+    assert derived["weight_cut_status"] == "weigh_in_done"
+    assert derived["weight_cut_pct"] == 0.0
+    assert derived["weight_cut_risk"] is False
+    assert derived["weight_cut_risk_band"] == "none"
+    assert derived["weight_cut_supervision_required"] is False
+    assert derived["aggressive_weight_cut"] is False
+    assert derived["high_pressure_weight_cut"] is False
+    assert not [flag for flag in derived["readiness_flags"] if "weight_cut" in flag]
+
+
+def test_a_same_day_weigh_in_still_scores_the_cut_on_fight_day():
+    derived = _fight_day_workspace("same_day")
+    assert derived["weight_cut_pct"] == 7.5
+    assert derived["weight_cut_risk_band"] == "severe"

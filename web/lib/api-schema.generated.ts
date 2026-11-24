@@ -381,7 +381,7 @@ export type ClinicalReviewLifecycleRequest = {
 };
 
 export type CoachCutAssessment = {
-  weight_cut_status: "behind" | "none" | "on_target" | "on_track" | "too_aggressive";
+  weight_cut_status: "behind" | "made_weight" | "missed_weight" | "none" | "on_target" | "on_track" | "too_aggressive" | "weigh_in_done";
   weight_cut_risk_band: string;
   days_until_fight: number | null;
   kg_to_target: number | null;
@@ -512,6 +512,7 @@ export type CommandViewToday = {
   session_scope: "next" | "none" | "today";
   session_label: string;
   completion_status: "done" | "modified" | "not_started" | "skipped" | "started";
+  fight_day: boolean;
 };
 
 export type CommunityContributor = {
@@ -1846,7 +1847,7 @@ export type NutritionDerivedState = {
   weight_cut_risk_band: "high" | "moderate" | "none" | "severe";
   weight_cut_supervision_required: boolean;
   kg_to_target: number | null;
-  weight_cut_status: "behind" | "none" | "on_target" | "on_track" | "too_aggressive";
+  weight_cut_status: "behind" | "made_weight" | "missed_weight" | "none" | "on_target" | "on_track" | "too_aggressive" | "weigh_in_done";
   weight_cut_behind_kg: number | null;
   aggressive_weight_cut: boolean;
   high_pressure_weight_cut: boolean;
