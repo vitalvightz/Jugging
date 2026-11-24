@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from datetime import date, datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Sequence
 
 from pydantic import ValidationError
 
@@ -643,6 +643,34 @@ def _foundation_status(
     return "sufficient"
 
 
+def _fight_day_cut_status(
+    live: tuple[str, float | None, float | None],
+    *,
+    days_until_fight: int | None,
+    weigh_in_type: str | None,
+    fight_date: date | None,
+    target_weight_kg: float | None,
+    readings: Sequence[tuple[date, float]],
+) -> tuple[str, float | None, float | None]:
+    """On fight day the cut is over unless the weigh-in is that same day.
+
+    Counting kg to target after a day-before weigh-in reads as "keep cutting" to
+    a fighter who has rehydrated, which is exactly the wrong message. With a
+    day-before weigh-in the reading logged that day says whether weight was
+    made; without one (or with no weigh-in type) the cut is simply finished.
+    """
+    if days_until_fight != 0 or weigh_in_type == "same_day":
+        return live
+    if weigh_in_type == "day_before" and fight_date is not None and target_weight_kg is not None:
+        weigh_in_day = fight_date - timedelta(days=1)
+        weigh_in = next((weight for day, weight in readings if day == weigh_in_day), None)
+        if weigh_in is not None:
+            if weigh_in <= target_weight_kg:
+                return "made_weight", 0.0, None
+            return "missed_weight", round(weigh_in - target_weight_kg, 1), None
+    return "weigh_in_done", None, None
+
+
 def _weight_cut_status(
     *,
     current_weight_kg: float | None,
@@ -751,6 +779,15 @@ def build_nutrition_workspace(
     reference_day = athlete_today(profile)
     # Same future-date rule as camp weight: a day that has begun nowhere is ignored.
     readings = [reading for reading in daily_readings(monitoring.daily_bodyweight_log) if reading[0] <= latest_calendar_day()]
+    if not is_minor and cut_status != "none":
+        cut_status, kg_to_target, behind_kg = _fight_day_cut_status(
+            (cut_status, kg_to_target, behind_kg),
+            days_until_fight=days_until_fight,
+            weigh_in_type=shared_camp_context.weigh_in_type,
+            fight_date=parse_calendar_date(active_plan_fight_date or shared_camp_context.fight_date),
+            target_weight_kg=shared_camp_context.target_weight_kg,
+            readings=readings,
+        )
     average_weight, average_days = seven_day_average(readings, reference_day)
     injuries_for_flags = []
     if shared_camp_context.injuries.strip():

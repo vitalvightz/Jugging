@@ -439,6 +439,16 @@ function getPrimarySafetyNoticeBanner(
   };
 }
 
+const FIGHT_DAY_BANNER: TodayDecisionBanner = {
+  state: "train_as_planned",
+  displayState: "go",
+  chip: "NO TRAINING",
+  title: "Fight day",
+  detail: "No training today. Your camp is done.",
+  action: "Follow your coach's warm-up and fight protocol.",
+  tone: "green",
+};
+
 function scopeToCurrentGuidance(banner: TodayDecisionBanner | null): TodayDecisionBanner | null {
   if (!banner) {
     return null;
@@ -514,7 +524,13 @@ export function resolveTodayDecision(state: TodayCommandView): ResolvedTodayDeci
       );
   // A future workout must stay a neutral preview. The current-day decision can
   // still explain the athlete's check-in or injury hold in its own scoped panel.
-  const currentGuidanceBanner = isPreview && !safetyNoticeLeads &&
+  // Fight day is a state, not a session: unless a current safety stop leads,
+  // the guidance is the fight itself, never a "Session unchanged" card.
+  const fightDayLeads = Boolean(state.today.fight_day) && !safetyNoticeLeads
+    && authoritativeTier !== "stop" && authoritativeTier !== "pull_back";
+  const currentGuidanceBanner = fightDayLeads
+    ? FIGHT_DAY_BANNER
+    : isPreview && !safetyNoticeLeads &&
     authoritativeTier !== "not_checked_in"
     ? scopeToCurrentGuidance(resolvePresentationBanner(
         recommendationState,

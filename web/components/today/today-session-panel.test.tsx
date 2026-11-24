@@ -1896,3 +1896,19 @@ for (const saved of [null, "07:30"] as const) {
     }
   });
 }
+
+test("a held session names one severity and offers one skip", () => {
+  const state = contactDayState("stop");
+  state.today.next_session = { ...state.today.next_session, coach_led_contact: undefined, title: "Strength" };
+  state.open_injuries = [{ label: "Left shoulder tightness", body_area: "shoulder" }] as TodayCommandView["open_injuries"];
+  state.live_prescription = { revision: "a".repeat(64), frozen: false, safety_hold: true,
+    safety_hold_reason: "The injury-loading details for your planned training are unavailable.", changes: [],
+    session: { session_id: state.today.next_session.session_id!, title: "Strength", session_type: "strength",
+      blocks: [{ block_id: "rdl", block_type: "strength", display_name: "Romanian Deadlift", sets: 3, reps: "8" }] } };
+  const html = renderPanel(state);
+  assert.doesNotMatch(html, /Training caution/);
+  assert.match(html, /today-injury-strip-title">Stop today</);
+  assert.match(html, /Stop today: The injury-loading details/);
+  assert.match(html, />Mark skipped</);
+  assert.doesNotMatch(html, />Skip session</);
+});

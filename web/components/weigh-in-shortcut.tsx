@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { getNutritionCurrent } from "@/lib/api";
 import type { NutritionDerivedState } from "@/lib/types";
-import { describeCutStatus } from "@/lib/weight-cut-status";
+import { describeCutStatus, isCutFinished } from "@/lib/weight-cut-status";
 
 /**
  * Home's purple shortcut to the weight tracker. In a camp's final weeks
@@ -28,7 +28,7 @@ export function WeighInShortcut({ token, showStatus }: { token: string | null; s
   const toGo = showStatus ? derived?.kg_to_target ?? null : null;
   const label = !status
     ? "Weight tracker: log today's weight"
-    : derived?.weight_cut_status === "on_target" || toGo == null
+    : derived?.weight_cut_status === "on_target" || isCutFinished(derived?.weight_cut_status) || toGo == null
       ? `Weight · ${status.label}`
       : `Weight · ${toGo.toFixed(1)} kg to go · ${status.label}`;
 

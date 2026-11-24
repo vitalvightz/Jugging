@@ -280,6 +280,7 @@ class TestShape:
             "session_scope",
             "session_label",
             "completion_status",
+            "fight_day",
         }
         assert dumped["today"]["training_day"] == TODAY
 

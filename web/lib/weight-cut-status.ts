@@ -104,7 +104,24 @@ export function describeCutStatus(derived: Pick<NutritionDerivedState, "weight_c
         tone: "red",
         detail: "Don't attempt this without your coach or a medical professional overseeing it.",
       };
+    case "made_weight":
+      return { label: "Made weight", tone: "green", detail: "You made weight. Follow your coach's refuel plan." };
+    case "missed_weight": {
+      const over = derived.kg_to_target ?? null;
+      return {
+        label: over != null ? `Missed by ${kg(over)}` : "Missed weight",
+        tone: "red",
+        detail: "Talk to your coach and the promotion about what happens next.",
+      };
+    }
+    case "weigh_in_done":
+      return { label: "Cut finished", tone: "green", detail: "Weight tracking ends at the weigh-in. Follow your coach's refuel plan." };
     default:
       return null;
   }
+}
+
+/** The cut is over: the card reports the weigh-in result, never kg still to lose. */
+export function isCutFinished(status: NutritionDerivedState["weight_cut_status"] | null | undefined): boolean {
+  return status === "made_weight" || status === "missed_weight" || status === "weigh_in_done";
 }

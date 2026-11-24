@@ -71,7 +71,7 @@ class ConnectedFighter:
 
 class CoachCutAssessment(BaseModel):
     # Only the athlete's authoritative cut fields, never private readiness flags.
-    weight_cut_status: Literal["none", "on_target", "on_track", "behind", "too_aggressive"]
+    weight_cut_status: Literal["none", "on_target", "on_track", "behind", "too_aggressive", "made_weight", "missed_weight", "weigh_in_done"]
     weight_cut_risk_band: str
     days_until_fight: int | None = None
     kg_to_target: float | None = None

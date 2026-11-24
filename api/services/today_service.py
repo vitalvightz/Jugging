@@ -1671,6 +1671,13 @@ def upsert_session_completion(
             status_code=status.HTTP_409_CONFLICT,
             detail="That day is a rest day in your plan, so there is no session to log.",
         )
+    if status_value != "not_started" and is_fight_day(plan_row, training_day):
+        # Fight day is a state, not a session: there is nothing to start, log or
+        # skip. ``not_started`` stays allowed so a stray record can be cleared.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="That day is your fight day, so there is no session to log.",
+        )
 
     # Readiness, injury and check-in holds are advisory. Keep their guidance in
     # the command view, but allow the athlete to start and log the session.
@@ -3258,6 +3265,43 @@ def session_hold(decision_tier: str, live: dict | None, *, session_id: str | Non
     return {"held": False, "reason": None, "source": None}
 
 
+def is_fight_day(plan_row: Mapping[str, Any] | None, training_day: str) -> bool:
+    """True when ``training_day`` is the active dated camp's fight date (D-0)."""
+    fight_date = _parse_structured_date((plan_row or {}).get("fight_date"))
+    day = parse_iso_date(training_day)
+    return fight_date is not None and day is not None and fight_date == day
+
+
+_FIGHT_DAY_REASON = ("Fight day\nNo training today. Your camp is done."
+                     "\nFollow your coach's warm-up and fight protocol.")
+
+
+def _apply_fight_day_guidance(view: CommandView) -> None:
+    """Make D-0 its own state on the command view.
+
+    A current safety stop (red flags, severe injury, medical review) still leads:
+    it is about the athlete, not the session. Everything else is replaced by the
+    fight-day line, because readiness for a session that does not exist has no
+    meaning, and the camp context is the fight itself, not "fight week".
+    """
+    today = view.today
+    today.fight_day = True
+    today.session_scope = "none"
+    today.session_label = ""
+    today.next_session = {}
+    today.completion_status = "not_started"
+    today.recommendation_context_labels = ["Fight day"]
+    view.session_hold = None
+    if today.decision_tier in {"stop", "pull_back"} and not view._injury_hold_stop:
+        return
+    today.decision_tier = "green"
+    today.recommendation_state = "train_as_planned"
+    today.recommendation_reason = _FIGHT_DAY_REASON
+    today.recommendation_trigger_labels = []
+    today.recommendation_safety_checks = []
+    today.recommendation_sources = ["your camp phase"]
+
+
 def build_today_command_view(
     store: AppStore,
     *,
@@ -3438,6 +3482,12 @@ def _build_today_command_view(
         if structured_today.is_rest_day
         else (structured_today.entries or ([today_entry] if today_entry is not None else []))
     )
+    # Fight day (D-0) is a state, not a session. The plan renders it as a
+    # coach-owned protocol line, but nothing on that day may be started, logged,
+    # held or replaced with rehab, so no candidate survives.
+    fight_day = is_fight_day(plan_row, training_day)
+    if fight_day:
+        today_candidates = []
     source_allocation_ceiling = 1 if any("sparring" in str(_entry_mapping_for_readiness(entry).get("session_type") or "").lower()
                                         for entry in today_candidates) else 2
     # A partial accepted support session explicitly holds other source owners.
@@ -3504,6 +3554,9 @@ def _build_today_command_view(
         today_session_entry = today_completion["prescription_snapshot"]["session"]
         has_today_session = True
         today_session_id = _session_id_for_entry(today_session_entry)
+    if fight_day:
+        # No rehab occurrence or earlier snapshot resurrects a session on D-0.
+        has_today_session, today_session_entry, today_session_id, today_completion = False, None, None, None
     today_is_complete = completion_status_of(today_completion) in TERMINAL_COMPLETION_STATUSES
     target_entry = today_session_entry if has_today_session and not today_is_complete else next_entry
     if target_entry is None and week is not None:
@@ -3734,6 +3787,8 @@ def _build_today_command_view(
         injuries=open_injuries,
         allocation_ceiling=source_allocation_ceiling if support_projection or partial_support_ownership else None,
     )
+    if fight_day:
+        live = None
     if live and not frozen and (today_completion or {}).get("status") == "started":
         # Activation must not rewrite work that started before snapshots existed.
         live["session"] = _entry_mapping_for_readiness(today_session_entry)
@@ -3826,7 +3881,11 @@ def _build_today_command_view(
             view._injury_hold_stop = True
             view.today.recommendation_state = "pull_back"
             view.today.decision_tier = "stop"
-            view.today.recommendation_reason = "Session blocked\n" + live.get("safety_hold_reason", "This session is on hold for the current injury guidance.") + "\nDo not start this session. Review your injury guidance."
+            # Already started: "do not start" no longer applies; say what to do now.
+            action = ("Stop this session. Review your injury guidance."
+                      if completion_status_of(today_completion) == "started"
+                      else "Do not start this session. Review your injury guidance.")
+            view.today.recommendation_reason = "Session blocked\n" + live.get("safety_hold_reason", "This session is on hold for the current injury guidance.") + "\n" + action
         # Rehab added beside finished or absent training changes nothing: only a
         # held planned session (it carries a hold reason) adjusts the guidance.
         elif not live["safety_hold"] and view.today.decision_tier in {"green", "modify"} and (
@@ -3854,6 +3913,8 @@ def _build_today_command_view(
             live["revision"] = content_hash({k: v for k, v in live.items() if k != "revision"})
     view.live_prescription = live
     _apply_rehab_session_hold(open_injuries, live)
+    if fight_day:
+        _apply_fight_day_guidance(view)
     if view.today.session_scope == "today":
         view.session_hold = session_hold(view.today.decision_tier, live, check_in_possible=can_check_in,
                                          readiness_held=bool(live and readiness_held))
@@ -3914,7 +3975,7 @@ def resolve_today_landing(
         structured_today = _structured_today(plan_row, training_day)
         session_id = (
             None
-            if structured_today.is_rest_day
+            if structured_today.is_rest_day or is_fight_day(plan_row, training_day)
             else _session_id_for_entry(structured_today.entry or today_entry or next_entry)
         )
         if session_id:

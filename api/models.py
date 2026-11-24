@@ -811,7 +811,7 @@ class NutritionBodyweightTrendPoint(BaseModel):
 
 
 WeightCutRiskBand = Literal["none", "moderate", "high", "severe"]
-WeightCutStatus = Literal["none", "on_target", "on_track", "behind", "too_aggressive"]
+WeightCutStatus = Literal["none", "on_target", "on_track", "behind", "too_aggressive", "made_weight", "missed_weight", "weigh_in_done"]
 
 
 class NutritionDerivedState(BaseModel):

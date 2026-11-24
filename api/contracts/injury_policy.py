@@ -365,6 +365,14 @@ _HARD_CONTACT_WORDS = ("hard", "live", "full contact", "full-contact", "all-out"
 _TECHNICAL_CONTACT_WORDS = ("technical", "light", "controlled", "positional", "flow")
 
 
+# Restriction reasons that name a found conflict, versus ones that only say the
+# session lacked the details needed to check it.
+_PROVEN_RESTRICTION_REASONS = frozenset({
+    "injury_loading_restriction", "injury_movement_restriction", "contact_restriction"})
+_MISSING_DETAIL_REASONS = frozenset({
+    "missing_load_details", "unknown_load_regions", "missing_movement_details", "missing_contact_details"})
+
+
 def _hard_contact(mapping: Mapping[str, Any] | None) -> bool:
     """Contact that needs the contact scope: hard sparring, not technical sparring.
 
@@ -515,10 +523,10 @@ def reconcile_session_prescription(
     # An explicit contact headline/coach portion remains contact even when its
     # child blocks are only support; the allocation type alone is not that owner.
     headline = {**entry, "blocks": [], "session_type": ""}
-    restriction_hold = False
+    restriction_hold = contact_headline_hold = blockless_hold = False
     if _session_has_contact(headline) and (allowed_contact < contact_rank["controlled"]
                                            or (allowed_contact < contact_rank["full"] and _hard_contact(headline))):
-        hold = restriction_hold = True
+        hold = restriction_hold = contact_headline_hold = True
     # A blockless day has nothing to check against restrictions. Clearance that
     # removes them all releases it: training covers technical sparring, contact
     # covers hard sparring.
@@ -527,7 +535,7 @@ def reconcile_session_prescription(
                          and (allowed_contact == contact_rank["full"]
                               or (allowed_contact >= contact_rank["controlled"] and not _hard_contact(entry))))
     if session is not None and not entry.get("blocks") and entry.get("session_type") != "rehab" and not cleared_blockless:
-        hold = True
+        hold = blockless_hold = True
     blocks, changes = [], []
     if clearance_hold and not block_contact_ceiling:
         changes.append({"action": "held", "reason": "clinician_clearance_ceiling"})
@@ -726,11 +734,20 @@ def reconcile_session_prescription(
     # logged) is additional work: nothing was held, so there is no hold reason.
     if hold or (rehab_only and session is not None):
         reasons = {reason for change in changes for reason in change.get("restriction_reasons", [])}
+        # A conflict is only claimed when one was found: a block that loads a
+        # restricted region or tag, or contact above the limit. A hold that comes
+        # only from missing details, or from a session with no blocks to check,
+        # says the details are unavailable instead.
+        proven_conflict = contact_headline_hold or bool(reasons & _PROVEN_RESTRICTION_REASONS)
+        other_authority = bool(clearance_hold) or any(d.get("outcome") == "medical_review" for d in decisions)
+        unverified_only = (not proven_conflict and not other_authority
+                           and (restriction_hold or blockless_hold or bool(reasons & _MISSING_DETAIL_REASONS)))
+        readiness_only = readiness_hold and not restriction_hold
         detail = ("The injury-loading details for your planned training are unavailable."
-                  if reasons & {"missing_load_details", "unknown_load_regions"}
+                  if reasons & {"missing_load_details", "unknown_load_regions"} or (unverified_only and not readiness_only)
                   # Pull back is a readiness verdict, not an injury restriction.
                   else "Today's pull-back guidance holds your planned training."
-                  if readiness_hold and not restriction_hold
+                  if readiness_only
                   else "Your planned training conflicts with the current injury restrictions.")
         snapshot["training_hold_reason"] = detail
         # Which rule held training, so every surface names the same cause.

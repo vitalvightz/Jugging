@@ -912,3 +912,38 @@ test("the open-injury tracking reminder is dropped only while the injury is show
   assert.deepEqual(withoutInjuryTrackingReminder([tracking], 0), [tracking]);
   assert.deepEqual(withoutInjuryTrackingReminder(undefined, 2), []);
 });
+
+test("fight day leads with its own guidance, not a session card", () => {
+  const state: TodayCommandView = {
+    ...BASE_STATE,
+    today: {
+      ...BASE_STATE.today,
+      fight_day: true,
+      next_session: {},
+      session_scope: "none",
+      session_label: "",
+      recommendation_context_labels: ["Fight day"],
+    },
+  };
+  const decision = resolveTodayDecision(state);
+  assert.equal(decision.currentGuidanceBanner?.title, "Fight day");
+  assert.equal(decision.sessionIsToday, false);
+  assert.equal(decision.canCompleteSession, false);
+});
+
+test("a safety stop still outranks fight day", () => {
+  const state: TodayCommandView = {
+    ...BASE_STATE,
+    today: {
+      ...BASE_STATE.today,
+      fight_day: true,
+      decision_tier: "stop",
+      recommendation_state: "pull_back",
+      recommendation_reason: "No training today.\nYour report includes dizziness.\nSeek medical advice.",
+      next_session: {},
+      session_scope: "none",
+      session_label: "",
+    },
+  };
+  assert.notEqual(resolveTodayDecision(state).currentGuidanceBanner?.title, "Fight day");
+});
