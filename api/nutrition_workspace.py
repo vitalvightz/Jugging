@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Sequence
 
@@ -653,21 +652,11 @@ def _weigh_in_passed(days_until_fight: int | None, weigh_in_type: str | None) ->
     return days_until_fight == 0 and weigh_in_type != "same_day"
 
 
-def _clock_minutes(value: str | None) -> int | None:
-    """Minutes past midnight for "HH:MM" (or "H:MM", seconds ignored), else None."""
-    match = re.match(r"^\s*(\d{1,2}):(\d{2})", value or "")
-    if not match:
-        return None
-    hours, minutes = int(match.group(1)), int(match.group(2))
-    return hours * 60 + minutes if hours < 24 and minutes < 60 else None
-
-
 def _fight_day_cut_status(
     live: tuple[str, float | None, float | None],
     *,
     days_until_fight: int | None,
     weigh_in_type: str | None,
-    weigh_in_time: str | None,
     fight_date: date | None,
     target_weight_kg: float | None,
     entries: Sequence[NutritionBodyweightLogEntry],
@@ -675,28 +664,17 @@ def _fight_day_cut_status(
     """On fight day the cut is over unless the weigh-in is that same day.
 
     Counting kg to target after a day-before weigh-in reads as "keep cutting" to
-    a fighter who has rehydrated, which is exactly the wrong message.
-
-    Only a reading the weigh-in could have produced decides the result. Any
-    weigh-in-day reading at or under target means weight was made. "Missed" needs
-    a reading at or after the set weigh-in time: a morning reading before an
-    evening weigh-in says nothing about the official result. Anything else is
-    simply "cut finished".
+    a fighter who has rehydrated. A weigh-in-day reading at or under target
+    shows weight was made. Nothing else is reported as a result: ordinary weight
+    logs cannot confirm a failed official weigh-in, so the cut is simply finished.
     """
     if not _weigh_in_passed(days_until_fight, weigh_in_type):
         return live
     if weigh_in_type == "day_before" and fight_date is not None and target_weight_kg is not None:
         weigh_in_day = (fight_date - timedelta(days=1)).isoformat()
-        same_day = [entry for entry in entries
-                    if str(entry.date or "").strip()[:10] == weigh_in_day and entry.weight_kg and entry.weight_kg > 0]
-        if any(entry.weight_kg <= target_weight_kg for entry in same_day):
+        if any(str(entry.date or "").strip()[:10] == weigh_in_day and 0 < entry.weight_kg <= target_weight_kg
+               for entry in entries):
             return "made_weight", 0.0, None
-        official_at = _clock_minutes(weigh_in_time)
-        at_weigh_in = [entry.weight_kg for entry in same_day
-                       if official_at is not None and (logged := _clock_minutes(entry.time)) is not None
-                       and logged >= official_at]
-        if at_weigh_in:
-            return "missed_weight", round(min(at_weigh_in) - target_weight_kg, 1), None
     return "weigh_in_done", None, None
 
 
@@ -817,7 +795,6 @@ def build_nutrition_workspace(
             (cut_status, kg_to_target, behind_kg),
             days_until_fight=days_until_fight,
             weigh_in_type=shared_camp_context.weigh_in_type,
-            weigh_in_time=shared_camp_context.weigh_in_time,
             fight_date=parse_calendar_date(active_plan_fight_date or shared_camp_context.fight_date),
             target_weight_kg=shared_camp_context.target_weight_kg,
             entries=monitoring.daily_bodyweight_log,
