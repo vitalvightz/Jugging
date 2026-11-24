@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Sequence
 
@@ -643,31 +644,59 @@ def _foundation_status(
     return "sufficient"
 
 
+def _weigh_in_passed(days_until_fight: int | None, weigh_in_type: str | None) -> bool:
+    """Fight day after a weigh-in that is not on fight day itself: the cut is over.
+
+    From here the scale reads rehydration, not the cut, so nothing may score it
+    as one (status, risk band, readiness flags).
+    """
+    return days_until_fight == 0 and weigh_in_type != "same_day"
+
+
+def _clock_minutes(value: str | None) -> int | None:
+    """Minutes past midnight for "HH:MM" (or "H:MM", seconds ignored), else None."""
+    match = re.match(r"^\s*(\d{1,2}):(\d{2})", value or "")
+    if not match:
+        return None
+    hours, minutes = int(match.group(1)), int(match.group(2))
+    return hours * 60 + minutes if hours < 24 and minutes < 60 else None
+
+
 def _fight_day_cut_status(
     live: tuple[str, float | None, float | None],
     *,
     days_until_fight: int | None,
     weigh_in_type: str | None,
+    weigh_in_time: str | None,
     fight_date: date | None,
     target_weight_kg: float | None,
-    readings: Sequence[tuple[date, float]],
+    entries: Sequence[NutritionBodyweightLogEntry],
 ) -> tuple[str, float | None, float | None]:
     """On fight day the cut is over unless the weigh-in is that same day.
 
     Counting kg to target after a day-before weigh-in reads as "keep cutting" to
-    a fighter who has rehydrated, which is exactly the wrong message. With a
-    day-before weigh-in the reading logged that day says whether weight was
-    made; without one (or with no weigh-in type) the cut is simply finished.
+    a fighter who has rehydrated, which is exactly the wrong message.
+
+    Only a reading the weigh-in could have produced decides the result. Any
+    weigh-in-day reading at or under target means weight was made. "Missed" needs
+    a reading at or after the set weigh-in time: a morning reading before an
+    evening weigh-in says nothing about the official result. Anything else is
+    simply "cut finished".
     """
-    if days_until_fight != 0 or weigh_in_type == "same_day":
+    if not _weigh_in_passed(days_until_fight, weigh_in_type):
         return live
     if weigh_in_type == "day_before" and fight_date is not None and target_weight_kg is not None:
-        weigh_in_day = fight_date - timedelta(days=1)
-        weigh_in = next((weight for day, weight in readings if day == weigh_in_day), None)
-        if weigh_in is not None:
-            if weigh_in <= target_weight_kg:
-                return "made_weight", 0.0, None
-            return "missed_weight", round(weigh_in - target_weight_kg, 1), None
+        weigh_in_day = (fight_date - timedelta(days=1)).isoformat()
+        same_day = [entry for entry in entries
+                    if str(entry.date or "").strip()[:10] == weigh_in_day and entry.weight_kg and entry.weight_kg > 0]
+        if any(entry.weight_kg <= target_weight_kg for entry in same_day):
+            return "made_weight", 0.0, None
+        official_at = _clock_minutes(weigh_in_time)
+        at_weigh_in = [entry.weight_kg for entry in same_day
+                       if official_at is not None and (logged := _clock_minutes(entry.time)) is not None
+                       and logged >= official_at]
+        if at_weigh_in:
+            return "missed_weight", round(min(at_weigh_in) - target_weight_kg, 1), None
     return "weigh_in_done", None, None
 
 
@@ -763,6 +792,10 @@ def build_nutrition_workspace(
             days = (fight_day - current_training_day(athlete_timezone=profile.athlete_timezone)).days
             days_until_fight = days if days >= 0 else None
     weight_cut_pct = compute_weight_cut_pct(shared_camp_context.current_weight_kg or 0.0, shared_camp_context.target_weight_kg or 0.0)
+    if _weigh_in_passed(days_until_fight, shared_camp_context.weigh_in_type):
+        # After the weigh-in the scale reads rehydration: no cut left to score,
+        # so no risk band, supervision or readiness flag may come from it.
+        weight_cut_pct = 0.0
     weight_cut_risk = weight_cut_pct >= 3.0
     is_minor = bool(getattr(profile, "is_minor", False))
     risk_band = "none" if is_minor else weight_cut_risk_band(weight_cut_risk, weight_cut_pct, days_until_fight)
@@ -784,9 +817,10 @@ def build_nutrition_workspace(
             (cut_status, kg_to_target, behind_kg),
             days_until_fight=days_until_fight,
             weigh_in_type=shared_camp_context.weigh_in_type,
+            weigh_in_time=shared_camp_context.weigh_in_time,
             fight_date=parse_calendar_date(active_plan_fight_date or shared_camp_context.fight_date),
             target_weight_kg=shared_camp_context.target_weight_kg,
-            readings=readings,
+            entries=monitoring.daily_bodyweight_log,
         )
     average_weight, average_days = seven_day_average(readings, reference_day)
     injuries_for_flags = []

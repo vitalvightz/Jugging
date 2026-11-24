@@ -11,6 +11,7 @@ from uuid import uuid4
 import pytest
 
 from api.contracts.injury_policy import reconcile_session_prescription, resolve_injury_policy
+from api.models import NutritionBodyweightLogEntry
 from api.nutrition_workspace import _fight_day_cut_status
 from fightcamp.rehab_clinical import load_clinical_policies
 from fightcamp.rehab_protocols import get_rehab_bank
@@ -65,13 +66,18 @@ class TestFightDayCommandView:
         assert "fight day" in resp.json()["detail"]
 
 
+def _entry(day: str, kg: float, time: str | None = None) -> NutritionBodyweightLogEntry:
+    return NutritionBodyweightLogEntry(date=day, weight_kg=kg, time=time)
+
+
 class TestFightDayWeightStatus:
     FIGHT = date(2026, 11, 22)
     LIVE = ("on_track", 1.0, None)
 
-    def status(self, weigh_in_type, readings, days=0):
+    def status(self, weigh_in_type, entries, days=0, weigh_in_time="18:00"):
         return _fight_day_cut_status(self.LIVE, days_until_fight=days, weigh_in_type=weigh_in_type,
-                                     fight_date=self.FIGHT, target_weight_kg=65.0, readings=readings)
+                                     weigh_in_time=weigh_in_time, fight_date=self.FIGHT,
+                                     target_weight_kg=65.0, entries=entries)
 
     def test_before_fight_day_the_cut_is_live(self):
         assert self.status("day_before", [], days=1) == self.LIVE
@@ -79,16 +85,30 @@ class TestFightDayWeightStatus:
     def test_same_day_weigh_in_keeps_the_cut_live_on_fight_day(self):
         assert self.status("same_day", []) == self.LIVE
 
-    def test_day_before_weigh_in_reports_made_weight(self):
-        assert self.status("day_before", [(date(2026, 11, 21), 64.8), (self.FIGHT, 66.0)]) == ("made_weight", 0.0, None)
+    def test_any_weigh_in_day_reading_on_target_is_made_weight(self):
+        entries = [_entry("2026-11-21", 66.1, "07:00"), _entry("2026-11-21", 64.8, "18:05"), _entry("2026-11-22", 66.0)]
+        assert self.status("day_before", entries) == ("made_weight", 0.0, None)
 
-    def test_day_before_weigh_in_reports_missed_weight(self):
-        assert self.status("day_before", [(date(2026, 11, 21), 65.4)]) == ("missed_weight", 0.4, None)
+    def test_a_reading_at_the_weigh_in_time_over_target_is_missed_weight(self):
+        entries = [_entry("2026-11-21", 65.4, "18:10")]
+        assert self.status("day_before", entries) == ("missed_weight", 0.4, None)
+
+    def test_a_morning_reading_before_the_weigh_in_is_never_missed_weight(self):
+        entries = [_entry("2026-11-21", 66.1, "07:00")]
+        assert self.status("day_before", entries) == ("weigh_in_done", None, None)
+
+    @pytest.mark.parametrize("weigh_in_time", [None, "", "evening"])
+    def test_without_a_weigh_in_time_an_over_target_reading_is_never_missed_weight(self, weigh_in_time):
+        entries = [_entry("2026-11-21", 65.4, "18:10")]
+        assert self.status("day_before", entries, weigh_in_time=weigh_in_time) == ("weigh_in_done", None, None)
+
+    def test_an_untimed_reading_is_never_missed_weight(self):
+        assert self.status("day_before", [_entry("2026-11-21", 65.4)]) == ("weigh_in_done", None, None)
 
     @pytest.mark.parametrize("weigh_in_type", [None, "informal", "day_before"])
     def test_without_a_weigh_in_reading_the_cut_is_finished(self, weigh_in_type):
         # A rehydrated fight-day reading is never counted as kg still to lose.
-        assert self.status(weigh_in_type, [(self.FIGHT, 66.0)]) == ("weigh_in_done", None, None)
+        assert self.status(weigh_in_type, [_entry("2026-11-22", 66.0)]) == ("weigh_in_done", None, None)
 
 
 def _shoulder_decision():
