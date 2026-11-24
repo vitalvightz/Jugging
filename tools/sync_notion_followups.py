@@ -592,12 +592,11 @@ def stage_changes(page, now):
     if "Confirmed Stage" not in p:
         return {}
     confirmed = plain(p, "Confirmed Stage")
-    first_seen = datetime.fromisoformat(
-        p["Observed Since"]["date"]["start"].replace("Z", "+00:00"))
+    first_seen = parse_stamp(p["Observed Since"]["date"]["start"]).astimezone(timezone.utc)
     # General page edits can delay confirmation; they cannot prove stage continuity.
     edited = page.get("last_edited_time")
     if edited:
-        last_edit = datetime.fromisoformat(edited.replace("Z", "+00:00"))
+        last_edit = parse_stamp(edited).astimezone(timezone.utc)
         if last_edit > first_seen and (now - last_edit).total_seconds() < STAGE_STABILITY_SECONDS:
             return {}
     if (now - first_seen).total_seconds() < STAGE_STABILITY_SECONDS:
