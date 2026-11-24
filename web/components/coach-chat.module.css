@@ -46,6 +46,8 @@
   animation: chat-sheet-in var(--sheet-enter-duration, 280ms) var(--sheet-enter-ease, cubic-bezier(0.32, 0.72, 0, 1));
 }
 .sheet::backdrop { background: rgb(0 0 0 / 75%); }
+/* The keyboard covers the home indicator: no safe-area gap above it. */
+.sheet[data-keyboard] { padding-bottom: 0; }
 /* Opened but not yet laid out: invisible, and the entrance starts once it is. */
 .sheet[data-settling],
 .sheet[data-settling]::backdrop { opacity: 0; animation: none; }

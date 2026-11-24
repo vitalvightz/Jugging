@@ -30,6 +30,10 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let generation = 0;
 const links = new Map<number, ChatFile & { at: number }>();
 const prefetching = new Map<string, Promise<void>>();
+// When each chat was last warmed: inbox refreshes on every focus, and a chat
+// fetched moments ago needn't be fetched again.
+const warmedAt = new Map<string, number>();
+const WARM_FOR_MS = 60_000;
 
 function storage(): Storage | null {
   try {
@@ -49,6 +53,7 @@ function open(userId: string): Store {
   owner = userId;
   links.clear();
   prefetching.clear();
+  warmedAt.clear();
   store = empty();
   try {
     const raw = storage()?.getItem(PREFIX + userId);
@@ -136,7 +141,9 @@ export function freshLinks(userId: string, maxAgeMs: number): Record<number, Cha
 export function prefetchOnce(userId: string, chatId: string, task: () => Promise<void>): Promise<void> {
   open(userId);
   let running = prefetching.get(chatId);
+  if (!running && Date.now() - (warmedAt.get(chatId) ?? 0) < WARM_FOR_MS) return Promise.resolve();
   if (!running) {
+    warmedAt.set(chatId, Date.now());
     running = task().catch(() => undefined).finally(() => prefetching.delete(chatId));
     prefetching.set(chatId, running);
   }
@@ -155,6 +162,7 @@ export function clearChatCache() {
   store = null;
   links.clear();
   prefetching.clear();
+  warmedAt.clear();
   const local = storage();
   if (!local) return;
   try {
