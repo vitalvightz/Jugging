@@ -9,12 +9,16 @@ import { useAppSession } from "@/components/auth-provider";
 import { fetchInbox } from "@/lib/coach-chat";
 
 const REFRESH_MS = 60_000;
+// Moving between pages reuses a count this fresh instead of asking again.
+const FRESH_MS = 30_000;
+let lastUnread: { token: string; at: number; value: number | null; path: string } | null = null;
+const isChatPath = (path: string) => path === "/chat" || path.startsWith("/coach/chats");
 
 /** Unread chat messages for the signed-in account (coach or fighter); null with no chats. */
 export function useChatUnread(pathname: string, enabled = true): number | null {
   const { session } = useAppSession();
   const token = enabled ? session?.access_token : undefined;
-  const [unread, setUnread] = useState<number | null>(null);
+  const [unread, setUnread] = useState<number | null>(() => token && lastUnread?.token === token ? lastUnread.value : null);
 
   useEffect(() => {
     if (!token) return;
@@ -23,10 +27,19 @@ export function useChatUnread(pathname: string, enabled = true): number | null {
       controller.abort();
       controller = new AbortController();
       fetchInbox(token, controller.signal)
-        .then(rows => setUnread(rows.length ? rows.reduce((total, row) => total + row.unread, 0) : null))
+        .then(rows => {
+          const value = rows.length ? rows.reduce((total, row) => total + row.unread, 0) : null;
+          lastUnread = { token, at: Date.now(), value, path: pathname };
+          setUnread(value);
+        })
         .catch(() => undefined);
     };
-    load();
+    // A page change reuses a fresh count, except on leaving a chat, where
+    // messages were just read.
+    const cached = lastUnread;
+    if (cached && cached.token === token && Date.now() - cached.at < FRESH_MS && !isChatPath(cached.path) && !isChatPath(pathname)) {
+      lastUnread = { ...cached, path: pathname };
+    } else load();
     const onVisible = () => { if (document.visibilityState === "visible") load(); };
     document.addEventListener("visibilitychange", onVisible);
     const timer = window.setInterval(onVisible, REFRESH_MS);

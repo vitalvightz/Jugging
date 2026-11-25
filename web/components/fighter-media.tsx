@@ -14,8 +14,10 @@ import styles from "./fighter-media.module.css";
  * files from Training history and can reply to sparring reports here. Files
  * are available only when the fighter shares media with the coach.
  */
-export function FighterMediaPanel({ token, fighter, onSummary }: {
+export function FighterMediaPanel({ token, fighter, onSummary, showFiles = true }: {
   token: string; fighter: Fighter;
+  /** False while its section is closed: the summary loads, the file lists (one request each) wait. */
+  showFiles?: boolean;
   /** One line for the section header: what is there, and how recent. */
   onSummary?: (summary: string) => void;
 }) {
@@ -43,6 +45,7 @@ export function FighterMediaPanel({ token, fighter, onSummary }: {
     return () => controller.abort();
   }, [token, fighter.id]);
 
+  if (!showFiles) return null;
   if (failed) return <p className={styles.muted} role="status">Media couldn&apos;t load. Reopen this fighter to try again.</p>;
   if (!media) return <p className={styles.muted} role="status">Loading media…</p>;
   if (!media.share_media) {

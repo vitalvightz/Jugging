@@ -774,15 +774,20 @@ function Avatar({ fighter }: { fighter: Fighter }) {
  * line wraps rather than cut it off. Each section remembers being left open,
  * per fighter, on this device.
  */
-function FoldableSection({ title, summary, tone, children, id, scope, autoOpen = false }: {
-  title: string; summary?: ReactNode; tone?: string; children: ReactNode; id: string;
+function FoldableSection({ title, summary, tone, children, id, scope, autoOpen = false, lazy = false }: {
+  title: string; summary?: ReactNode; tone?: string; id: string;
+  /** Content, or content given whether the section has been opened yet. */
+  children: ReactNode | ((shown: boolean) => ReactNode);
   /** Whose profile: a section opened for one fighter stays closed for the next. */
   scope: string;
   /** The one section the profile opens by itself (see profileFocus) until the coach chooses. */
   autoOpen?: boolean;
+  /** Mount the content (and its requests) only once the section is first opened. */
+  lazy?: boolean;
 }) {
   const fold = useRef<HTMLDetailsElement>(null);
   const tapped = useRef(false);
+  const [shown, setShown] = useState(false);
   const key = `coach-fold:${scope}:${id}`;
   // Before paint: the section is already open or closed when the page appears.
   useLayoutEffect(() => {
@@ -791,9 +796,11 @@ function FoldableSection({ title, summary, tone, children, id, scope, autoOpen =
     let chosen: string | null = null;
     try { chosen = window.localStorage.getItem(key); } catch { /* storage unavailable */ }
     element.open = chosen ? chosen === "open" : autoOpen;
+    if (element.open) setShown(true);
   }, [key, autoOpen]);
   return <section id={id} className={`${styles.panel} ${styles.fold}`}><details ref={fold}
     onToggle={event => {
+      if (event.currentTarget.open) setShown(true);
       // Only the coach's own tap is remembered; automatic opening and
       // Needs-attention links are not a choice.
       if (!tapped.current) return;
@@ -805,7 +812,9 @@ function FoldableSection({ title, summary, tone, children, id, scope, autoOpen =
         {summary ? <small className={styles.foldSummary} data-recovery-tone={tone}>{summary}</small> : null}</span>
       <span aria-hidden="true">⌄</span>
     </summary>
-    <div className={styles.foldContent}>{children}</div>
+    <div className={styles.foldContent}>
+      {typeof children === "function" ? children(shown) : lazy && !shown ? null : children}
+    </div>
   </details></section>;
 }
 
@@ -904,6 +913,12 @@ function FighterOverview({
       setReview(current => ({ source: target.source as HistoryReview["source"], id: target.target_id, key: (current?.key ?? 0) + 1 }));
     } else setReviewMissing(true);
   };
+  useEffect(() => {
+    // A record review opens Training history (mounting it, as it loads on demand).
+    if (!review) return;
+    const fold = document.querySelector<HTMLDetailsElement>("#training-history details");
+    if (fold && !fold.open) fold.open = true;
+  }, [review]);
   useEffect(() => {
     // Runs once per review request, after the report's week has rendered.
     if (!reviewReport) return;
@@ -1139,8 +1154,8 @@ function FighterOverview({
           sheet) and reloads it under the new permissions. */}
       <FoldableSection scope={f.id} id="fight-weight" autoOpen={focus === "fight-weight"} title="Fight weight" summary={weightSummary} tone={weightTone}><FightWeight key={`weight:${sharingKey}`} fighter={f} weight={weight} failed={Boolean(weightFailed)} /></FoldableSection>
       <FoldableSection scope={f.id} id="media" title="Photos and voice notes" summary={mediaSummary ?? undefined}>
-        <FighterMediaPanel token={token} fighter={f} onSummary={setMediaSummary} /></FoldableSection>
-      <FoldableSection scope={f.id} id="training-history" autoOpen={focus === "training-history"} title="Training history" summary={historySummary}><TrainingHistory onFeedbackSaved={onFeedbackSaved} review={review} onReviewMissing={onReviewMissing}
+        {(shown: boolean) => <FighterMediaPanel token={token} fighter={f} onSummary={setMediaSummary} showFiles={shown} />}</FoldableSection>
+      <FoldableSection scope={f.id} id="training-history" lazy autoOpen={focus === "training-history"} title="Training history" summary={historySummary}><TrainingHistory onFeedbackSaved={onFeedbackSaved} review={review} onReviewMissing={onReviewMissing}
         key={`history:${sharingKey}:${historyKey}:${f.plan_id}:${f.today}`}
         token={token}
         athleteId={f.id}
