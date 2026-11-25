@@ -42,6 +42,7 @@ import {
   getOverviewCommandEyebrow,
   getOverviewPrimaryAction,
   getRiskTimeframeLabel,
+  getSessionTitle,
   getTierMeta,
   resolveTodayDecision,
 } from "@/lib/today";
@@ -631,6 +632,12 @@ export default function HomePage() {
     const decisionTier = resolvedDecision?.displayTier ?? "not_checked_in";
     const tierMeta = getTierMeta(decisionTier);
     const safetyNoticeLeads = resolvedDecision?.primaryMessageKind === "safety_notice";
+    const scheduledTitle = hasActivePlan && commandState && resolvedDecision?.hasSession
+      && !safetyNoticeLeads
+      && ["not_checked_in", "green"].includes(resolvedDecision.authoritativeTier) && !resolvedDecision.blocksCurrentSession
+      ? getSessionTitle(commandState.today.next_session)
+      : null;
+    const scheduledCheckin = Boolean(scheduledTitle && recommendation === "not_checked_in");
     const decisionTitle = safetyNoticeLeads
       ? decisionBanner?.title ?? "Current safety"
       : tierMeta.label;
@@ -651,14 +658,18 @@ export default function HomePage() {
       ? hasSavedPlans
         ? "Select active plan"
         : "Build your plan"
-      : decisionTitle;
+      : scheduledTitle ?? decisionTitle;
     const overviewLines = !hasActivePlan
       ? [
           hasSavedPlans
             ? "Choose which saved plan should control Today, check-ins and session tracking."
             : "Create your first plan to unlock Today and session tracking.",
         ]
-      : decisionLines;
+      : scheduledCheckin
+        ? ["Check in so your recommendation reflects how you feel today."]
+        : scheduledTitle && decisionTier === "preview" && decisionBanner?.action
+          ? [decisionBanner.action]
+          : decisionLines;
     // Safety copy only belongs to a real decision — never on the no-plan states.
     const overviewSafety = hasActivePlan ? decisionSafety : undefined;
     // Today's countdown to the fight, and whether the scheduled session is today
@@ -687,7 +698,7 @@ export default function HomePage() {
       sessionIsToday,
     });
     const primaryHref = primaryAction.href;
-    const primaryLabel = primaryAction.label;
+    const primaryLabel = scheduledCheckin && sessionIsToday ? "Check in for this session" : primaryAction.label;
     const trainingDay = shownState?.today?.training_day ?? "";
     const tracking = tracksWithoutPlan && commandState
       ? getTrackingHome({
@@ -712,7 +723,7 @@ export default function HomePage() {
     const trackingSlot = tracking ? tracking.slot ?? (trainingStreak > 0 ? "habits" : null) : null;
     const hero = tracking
       ? { ...tracking.hero, primary: tracking.hero.primary }
-      : { eyebrow: overviewEyebrow, title: overviewTitle, lines: overviewLines, safety: overviewSafety, tone: decisionTone,
+      : { eyebrow: scheduledTitle && sessionIsToday ? "Today’s session" : overviewEyebrow, title: overviewTitle, lines: overviewLines, safety: overviewSafety, tone: decisionTone,
         primary: { href: primaryHref, label: primaryLabel } };
 
     return (
