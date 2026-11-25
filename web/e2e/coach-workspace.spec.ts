@@ -1909,3 +1909,44 @@ test("on a phone the fighter profile is a short list: sections start closed with
   await expect(page.locator("#recovery details")).toHaveAttribute("open", "");
   expect(await page.evaluate(id => window.localStorage.getItem(`coach-fold:${id}:recovery`), fighterId)).toBeNull();
 });
+
+test("on a phone the auto-opened section never shifts the layout, even when data arrives late", async ({ page, baseURL }) => {
+  // No sessions this week, so S&C focuses on fight weight; the weight answer is slow and empty.
+  await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, sessions: [], schedule: [] }], false);
+  let release: () => void = () => undefined;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/api/coach/fighters/*/weight", async route => {
+    await held;
+    await route.fulfill({ json: { shared: true, entries: [], current_weight_kg: null, target_weight_kg: null, cut_assessment: null } });
+  });
+  await page.addInitScript(() => {
+    const shifts: number[] = [];
+    (window as unknown as { shifts: number[] }).shifts = shifts;
+    new PerformanceObserver(list => {
+      for (const entry of list.getEntries() as (PerformanceEntry & { value: number; hadRecentInput: boolean })[]) {
+        if (!entry.hadRecentInput) shifts.push(entry.value);
+      }
+    }).observe({ type: "layout-shift", buffered: true });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/coach/fighters/${fighterId}`);
+  await expect(page.locator("#check-in-nudge summary")).toBeVisible();
+  const open = () => page.locator("section[id] > details[open]").evaluateAll(nodes => nodes.map(node => node.parentElement!.id));
+  const tops = () => page.locator("section[id] > details > summary").evaluateAll(nodes => nodes.map(node => Math.round(node.getBoundingClientRect().top + window.scrollY)));
+  await expect.poll(open).toEqual(["fight-weight"]);
+  const before = await tops();
+  // From here on, only this change is measured (the page's own first load is not).
+  await page.evaluate(() => { (window as unknown as { shifts: number[] }).shifts.length = 0; });
+  // The weight arrives, and turns out empty: the open section stays put, and nothing below it moves.
+  release();
+  await expect(page.locator("#fight-weight")).toContainText("No weight logged yet");
+  await page.waitForTimeout(500);
+  expect(await open()).toEqual(["fight-weight"]);
+  // Everything down to the open section's header stays where it was. (The open
+  // section's own content may settle from its loading state; that is below it.)
+  const focusIndex = PROFILE_SECTIONS.indexOf("fight-weight");
+  expect((await tops()).slice(0, focusIndex + 1)).toEqual(before.slice(0, focusIndex + 1));
+  const shift = await page.evaluate(() => (window as unknown as { shifts: number[] }).shifts.reduce((a, b) => a + b, 0));
+  // Below the open section's content settling (off the first screen), nothing on screen moves.
+  expect(shift).toBeLessThan(0.01);
+});

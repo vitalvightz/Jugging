@@ -6,6 +6,7 @@ import Image from "next/image";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type FormEvent,
@@ -780,7 +781,8 @@ function FoldableSection({ title, summary, tone, children, id, scope, autoOpen =
   const fold = useRef<HTMLDetailsElement>(null);
   const tapped = useRef(false);
   const key = `coach-fold:${scope}:${id}`;
-  useEffect(() => {
+  // Before paint: the section is already open or closed when the page appears.
+  useLayoutEffect(() => {
     const element = fold.current;
     if (!element) return;
     let chosen: string | null = null;
@@ -939,7 +941,7 @@ function FighterOverview({
     f.share_recovery ? (warnings.length ? `${injuries.length ? "" : "⚠ "}${plural(warnings.length, "recovery concern")}` : latest ? `Check-in ${formatAppDate(latest.day)}` : "No check-ins")
       : "Check-ins not shared",
   ].filter(Boolean).join(" · ");
-  const focus = profileFocus(coachMode, {
+  const candidate = profileFocus(coachMode, {
     weekly: done.length > 0 || physical.scheduled > 0,
     sparring: reports.length > 0,
     // Still loading counts as data, so the choice doesn't jump past it and back.
@@ -947,6 +949,13 @@ function FighterOverview({
     "training-history": Boolean(f.last_training || lastDone),
     recovery: injuries.length > 0 || (f.share_recovery && checkIns.length > 0),
   });
+  // Decided once per mode for this visit: data arriving or refreshing later
+  // never moves the open section under the coach. Only switching mode re-decides.
+  const [decided, setDecided] = useState<{ fighter: string; byMode: Partial<Record<CoachMode, string | null>> }>(
+    () => ({ fighter: f.id, byMode: { [coachMode]: candidate } }));
+  const known = decided.fighter === f.id && coachMode in decided.byMode;
+  if (!known) setDecided({ fighter: f.id, byMode: { ...(decided.fighter === f.id ? decided.byMode : {}), [coachMode]: candidate } });
+  const focus = known ? decided.byMode[coachMode] ?? null : candidate;
   // Filled in by the panels that load them.
   const [mediaSummary, setMediaSummary] = useState<string | null>(null);
   const [nudgeSummary, setNudgeSummary] = useState<string | null>(null);
