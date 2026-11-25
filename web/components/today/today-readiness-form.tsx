@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import { SafetyNote } from "@/components/safety-note";
 import { SegmentGroup } from "@/components/today/segment-group";
@@ -62,16 +62,28 @@ export type TodaySafetyFlags = {
  */
 export function TodayReadinessForm({
   plan,
+  sessionTitle,
   token,
   warnings,
   onRefresh,
 }: {
   /** Omitted when the athlete has no active programme. */
   plan?: TodayActivePlan;
+  sessionTitle?: string;
   token: string;
   warnings?: string[];
   onRefresh: () => Promise<void>;
 }) {
+  const sectionRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    // The form can mount after the router has already tried to find the fragment.
+    if (window.location.hash !== "#today-checkin") return;
+    const frame = window.requestAnimationFrame(() => {
+      sectionRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
+      sectionRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
   const { showToast } = useToast();
   const [sleep, setSleep] = useState<TodayCheckinSleep>("good");
   const [body, setBody] = useState<TodayCheckinBody>("normal");
@@ -136,10 +148,10 @@ export function TodayReadinessForm({
   }
 
   return (
-    <section id="today-checkin" className="today-card today-checkin-card" aria-labelledby="today-checkin-heading">
+    <section ref={sectionRef} tabIndex={-1} id="today-checkin" className="today-card today-checkin-card" aria-labelledby="today-checkin-heading">
       <div className="today-card-head">
         <div>
-          <p className="kicker">Fast check-in</p>
+          <p className="kicker">{sessionTitle ?? "Fast check-in"}</p>
           <h2 id="today-checkin-heading">Set today&apos;s recommendation</h2>
         </div>
       </div>

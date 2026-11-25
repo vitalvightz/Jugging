@@ -40,6 +40,7 @@ import {
   hasActivePlan,
   resolveTodayDecision,
   shouldShowTodayCheckin,
+  getSessionTitle,
   withoutInjuryTrackingReminder,
 } from "@/lib/today-authoritative";
 import type { NutritionWorkspaceState, TodayCompletionStatus } from "@/lib/types";
@@ -439,6 +440,7 @@ export function TodayScreen() {
         <TodayReadinessForm
           plan={hasPlan ? activePlan : undefined}
           token={token ?? ""}
+          sessionTitle={hasPlan && resolvedDecision.hasSession ? getSessionTitle(state.today.next_session) : undefined}
           warnings={state.today.warnings}
           onRefresh={refresh}
         />

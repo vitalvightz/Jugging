@@ -3,7 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { isolateFromNetwork } from "./support";
 import type { TrainingHistorySession } from "../lib/training-history";
 
-async function setup(page: Page, baseURL: string, options: { path?: string | null; failSave?: boolean; failMe?: boolean; failToday?: boolean; terms?: boolean; plan?: boolean; consent?: boolean; rejectConsent?: boolean; failConsent?: boolean; manualHistory?: TrainingHistorySession[]; sharedHistory?: TrainingHistorySession[]; activePlan?: boolean; sports?: string[] } = {}) {
+async function setup(page: Page, baseURL: string, options: { path?: string | null; failSave?: boolean; failMe?: boolean; failToday?: boolean; terms?: boolean; plan?: boolean; consent?: boolean; rejectConsent?: boolean; failConsent?: boolean; manualHistory?: TrainingHistorySession[]; sharedHistory?: TrainingHistorySession[]; activePlan?: boolean; scheduledSession?: string; sports?: string[] } = {}) {
   await isolateFromNetwork(page, baseURL);
   const storageKey = `sb-${new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://stub.supabase.co").hostname.split(".")[0]}-auth-token`;
   await page.addInitScript(([key, value]) => localStorage.setItem(key, value), [storageKey, JSON.stringify({
@@ -49,6 +49,7 @@ async function setup(page: Page, baseURL: string, options: { path?: string | nul
     if (endpoint === "/api/today") return options.failToday ? json({ detail: "Unavailable" }, 503) : json({
       active_plan: options.activePlan ? { id: "plan-9", name: "Autumn camp", phase: "GPP", fight_date: "2026-12-12" } : {},
       today: { training_day: "2026-10-18", warnings: [], next_session: {}, completion_status: "not_started", session_scope: "none",
+        ...(options.scheduledSession ? { next_session: { title: options.scheduledSession, session_relation: "next" }, session_scope: "next" } : {}),
         ...(checkin ? { recommendation_state: checkin.recommendation_state, decision_tier: checkin.decision_tier, recommendation_reason: checkin.recommendation_reason }
           : { recommendation_state: "not_checked_in", decision_tier: "not_checked_in" }) },
       open_injuries: injuries, risk_watch: [], week_summary: {}, quick_actions: [],
@@ -97,6 +98,34 @@ async function setup(page: Page, baseURL: string, options: { path?: string | nul
   });
   return writes;
 }
+
+test("Home opens the scheduled session check-in in one tap on mobile", async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setup(page, baseURL!, { activePlan: true, plan: true, scheduledSession: "Hard sparring" });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Hard sparring", level: 1 })).toBeInViewport();
+  const action = page.getByRole("link", { name: "Check in for this session" });
+  await expect(action).toBeInViewport();
+  await page.screenshot({ animations: "disabled", path: test.info().outputPath("athlete-home.png") });
+  await action.click();
+  const form = page.locator("#today-checkin");
+  await expect(form.getByText("Hard sparring", { exact: true })).toBeInViewport();
+  await expect(form.getByRole("group", { name: "Sleep" })).toBeInViewport({ ratio: 1 });
+  await page.screenshot({ animations: "disabled", path: test.info().outputPath("today-checkin.png") });
+  await form.getByRole("button", { name: "Submit check-in" }).click();
+  await expect(form).toHaveCount(0);
+  await page.goto("/");
+  await expect(page.getByRole("link", { name: "Preview session" })).toBeVisible();
+});
+
+test("Home keeps a daily check-in when an active plan has no scheduled session", async ({ page, baseURL }) => {
+  await setup(page, baseURL!, { activePlan: true, plan: true });
+  await page.goto("/");
+  await page.getByRole("link", { name: "Check in now" }).click();
+  const form = page.locator("#today-checkin");
+  await expect(form.getByText("Fast check-in", { exact: true })).toBeInViewport();
+  await expect(form.getByRole("group", { name: "Sleep" })).toBeInViewport();
+});
 
 test("tracking keeps consent optional and grants it in one explicit tap inside the logger", async ({ page, baseURL }) => {
   await page.setViewportSize({ width: 390, height: 844 });
