@@ -46,6 +46,8 @@
   justify-content: space-between;
   gap: 8px 12px;
   flex-wrap: wrap;
+  /* The Log session button's height, held while it loads, so nothing beside it moves. */
+  min-height: 44px;
 }
 .pageHead :global(.cta) {
   min-height: 40px;

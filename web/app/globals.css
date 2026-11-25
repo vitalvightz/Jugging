@@ -21890,6 +21890,12 @@ td[data-state="outside"] .cm-cal-cell {
   color: var(--danger-ink);
 }
 
+/* While a page is still loading, its footer waits: shown under a short loading
+   card, it jumped away as soon as the real page arrived. */
+body:has([data-page-loading]) .app-safety-footer {
+  visibility: hidden;
+}
+
 .app-safety-footer {
   margin: var(--space-5) auto 0;
   max-width: var(--content-width);

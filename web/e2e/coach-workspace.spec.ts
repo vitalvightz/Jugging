@@ -1935,7 +1935,11 @@ test("on a phone the auto-opened section never shifts the layout, even when data
   const tops = () => page.locator("section[id] > details > summary").evaluateAll(nodes => nodes.map(node => Math.round(node.getBoundingClientRect().top + window.scrollY)));
   await expect.poll(open).toEqual(["fight-weight"]);
   const before = await tops();
-  // From here on, only this change is measured (the page's own first load is not).
+  // Loading itself doesn't jump either: the skeleton fills the screen (the
+  // footer never shows and drops) and the header holds the button's height.
+  const loadShift = await page.evaluate(() => (window as unknown as { shifts: number[] }).shifts.reduce((a, b) => a + b, 0));
+  console.log("load shift", loadShift.toFixed(4));
+  expect(loadShift).toBeLessThan(0.01);
   await page.evaluate(() => { (window as unknown as { shifts: number[] }).shifts.length = 0; });
   // The weight arrives, and turns out empty: the open section stays put, and nothing below it moves.
   release();
@@ -1947,6 +1951,6 @@ test("on a phone the auto-opened section never shifts the layout, even when data
   const focusIndex = PROFILE_SECTIONS.indexOf("fight-weight");
   expect((await tops()).slice(0, focusIndex + 1)).toEqual(before.slice(0, focusIndex + 1));
   const shift = await page.evaluate(() => (window as unknown as { shifts: number[] }).shifts.reduce((a, b) => a + b, 0));
-  // Below the open section's content settling (off the first screen), nothing on screen moves.
+  // As the open section's content settles (off the first screen), nothing on screen moves.
   expect(shift).toBeLessThan(0.01);
 });

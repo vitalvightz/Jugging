@@ -96,7 +96,7 @@ export function CoachWorkspace({
     <RequireAuth>
       <div className={`${styles.workspace} ${view === "plans" ? styles.plansWorkspace : ""}`}>
         {!isMeHydrated || !session || !me || (coach && !coachModeReady) ? (
-          <Loading />
+          <Loading tall={Boolean(fighterId)} />
         ) : connectionsOnly || !coach ? (
           <CoachAccess
             key={`${session.user_id}:${session.access_token}`}
@@ -159,9 +159,12 @@ function LoadState({
   error,
   loading,
   retry,
+  tall = false,
 }: {
   error: string;
   loading: boolean;
+  /** A whole page is loading (not one panel): the footer waits for the page. */
+  tall?: boolean;
   retry: () => void;
 }) {
   return error ? (
@@ -172,13 +175,13 @@ function LoadState({
       </button>
     </div>
   ) : loading ? (
-    <Loading />
+    <Loading tall={tall} />
   ) : null;
 }
 
-function Loading() {
+function Loading({ tall = false }: { tall?: boolean }) {
   return (
-    <div className={styles.loading} role="status" aria-label="Loading">
+    <div className={styles.loading} role="status" aria-label="Loading" data-page-loading={tall || undefined}>
       <Skeleton height={84} />
       <Skeleton height={148} />
       <Skeleton height={148} />
@@ -453,7 +456,7 @@ function Fighters({ token, fighterId, view, coachMode }: { token: string; fighte
       </div>}
       {view === "plans" && fighters ? <CoachPlans key={token} token={token} fighters={fighters} coachMode={coachMode} /> : view === "log" && fighters && !loggingFighters.length ? <p className={styles.empty}>No fighters have authorised session logging.</p> : view === "log" && fighters ? <DiscoveryHint id="coach-log-consent" text="You can only log for fighters who said yes." /> : null}
       {fighterId ? <h1 className={styles.srOnly}>Fighter overview</h1> : null}
-      <LoadState error={error} loading={!fighters} retry={reload} />
+      <LoadState error={error} loading={!fighters} retry={reload} tall={Boolean(fighterId)} />
       {!fighters ? null : !fighterId ? (
         view === "plans" || view === "log" ? null : <CoachDashboard token={token} fighters={fighters} rosterOnly={view === "fighters"} coachMode={coachMode} />
       ) : fighters[0] ? (
