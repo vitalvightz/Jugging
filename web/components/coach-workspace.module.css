@@ -46,6 +46,8 @@
   justify-content: space-between;
   gap: 8px 12px;
   flex-wrap: wrap;
+  /* The Log session button's height, held while it loads, so nothing beside it moves. */
+  min-height: 44px;
 }
 .pageHead :global(.cta) {
   min-height: 40px;
@@ -488,8 +490,16 @@
 .recoveryTiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .foldTitle { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; list-style: none; }
 .foldTitle::-webkit-details-marker { display: none; }
-.foldTitle > span { color: var(--text-muted); font-size: 20px; transition: transform 180ms ease; }
-.fold details:not([open]) > .foldTitle > span { transform: rotate(-90deg); }
+.foldTitle > span[aria-hidden] { flex: none; color: var(--text-muted); font-size: 20px; transition: transform 180ms ease; }
+.foldHeading { display: grid; gap: 3px; min-width: 0; }
+.foldHeading > h2 { margin: 0; }
+/* Wraps, never cut off: a warning must always be read in full. */
+.foldSummary { color: var(--text-secondary); font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.foldSummary[data-recovery-tone="concern"] { color: var(--danger-ink); }
+.foldSummary[data-recovery-tone="caution"] { color: var(--progress-gold); }
+/* Open, the section's own content carries the detail: the summary steps back. */
+.fold details[open] .foldSummary { display: none; }
+.fold details:not([open]) > .foldTitle > span[aria-hidden] { transform: rotate(-90deg); }
 .foldContent { padding-top: 14px; }
 .foldContent > section { padding: 0; border: 0; background: transparent; }
 .foldContent > section > h2, .foldContent > section > .sectionHeading > h2 { display: none; }
@@ -498,7 +508,7 @@
 .checkInList > li > strong { flex: 0 0 140px; }
 .checkInReadings { display: flex; flex-wrap: wrap; gap: 6px 18px; }
 @media (max-width: 600px) { .checkInList > li > strong { flex-basis: 100%; } }
-@media (prefers-reduced-motion: reduce) { .foldTitle > span { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .foldTitle > span[aria-hidden] { transition: none; } }
 @keyframes coachFoldOpen { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: no-preference) { .fold details[open] > .foldContent { animation: coachFoldOpen 180ms ease-out; } }
 @keyframes coachWatchShimmer { 0%, 68%, 100% { box-shadow: 0 0 0 transparent; border-color: var(--border-strong); } 82% { box-shadow: 0 0 12px rgba(201, 25, 53, .35); border-color: var(--brand-red); } }
@@ -845,3 +855,22 @@
 @media (max-width: 600px) {
   .connection .actions > .messageCoach { width: 100%; }
 }
+
+/* Profile header: Message is the coach's main action on a fighter. */
+.messageFighter {
+  display: inline-flex;
+  flex: none;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  margin-left: auto;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.messageFighter:hover { background: var(--bg-surface-alt); }

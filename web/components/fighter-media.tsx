@@ -14,9 +14,26 @@ import styles from "./fighter-media.module.css";
  * files from Training history and can reply to sparring reports here. Files
  * are available only when the fighter shares media with the coach.
  */
-export function FighterMediaPanel({ token, fighter }: { token: string; fighter: Fighter }) {
+export function FighterMediaPanel({ token, fighter, onSummary }: {
+  token: string; fighter: Fighter;
+  /** One line for the section header: what is there, and how recent. */
+  onSummary?: (summary: string) => void;
+}) {
   const [media, setMedia] = useState<FighterMedia | null>(null);
   const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!onSummary) return;
+    if (failed) { onSummary("Couldn't load"); return; }
+    if (!media) return;
+    if (!media.share_media) { onSummary("Not shared"); return; }
+    const latest = media.recent.map(item => item.last_at).sort().at(-1);
+    const parts = [
+      media.progress_count ? `${media.progress_count} progress ${media.progress_count === 1 ? "photo" : "photos"}` : null,
+      media.recent.length ? `files on ${media.recent.length} ${media.recent.length === 1 ? "session" : "sessions"}` : null,
+      latest ? `latest ${formatAppDate(latest.slice(0, 10))}` : null,
+    ].filter(Boolean);
+    onSummary(parts.length ? parts.join(" · ") : "Nothing shared yet");
+  }, [media, failed, onSummary]);
 
   useEffect(() => {
     const controller = new AbortController();

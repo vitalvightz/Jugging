@@ -205,3 +205,7 @@
   color: var(--danger-ink);
   font-size: var(--type-body-sm);
 }
+
+/* Inside a profile section: the section is the card and gives the title. */
+.panel[data-embedded] { padding: 0; border: 0; background: transparent; }
+.panel[data-embedded] .switchRow { padding-top: 0; border-top: 0; }

@@ -8,6 +8,7 @@ import type {
 } from "../lib/api-schema.generated";
 import type { TrainingHistorySession } from "../lib/training-history";
 const fighterId = "00000000-0000-4000-8000-000000000003";
+const PROFILE_SECTIONS = ["weekly", "sparring", "fight-weight", "media", "training-history", "recovery", "check-in-nudge"];
 // Isolated test responses only. Never written to production.
 const connection: Connection = {
   id: "test-connection",
@@ -180,8 +181,14 @@ async function fixture(
   empty = false,
   athleteConnection: Partial<Connection> = {},
   roster: Fighter[] = [fighter],
+  sectionsOpen = true,
 ) {
   await setup(page, baseURL, role);
+  // Profile sections start closed; these tests read their content, so the
+  // coach has left them open (the profile remembers that per device).
+  if (sectionsOpen) await page.addInitScript(({ ids, fighters }) => {
+    for (const fighterId of fighters) for (const id of ids) window.localStorage.setItem(`coach-fold:${fighterId}:${id}`, "open");
+  }, { ids: PROFILE_SECTIONS, fighters: roster.map(row => row.id) });
   let rows = empty ? [] : roster;
   // Sessions the coach records, newest first, as the API would return them.
   const logged: (TrainingHistorySession & { athlete: string })[] = [];
@@ -1859,4 +1866,91 @@ test("check-in nudge: one switch turns it on, days and time save only when chang
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   expect(saves[2]).toMatchObject({ p_enabled: false });
+});
+
+test("on a phone the fighter profile is a short list: sections start closed with a summary, and stay as the coach leaves them", async ({ page, baseURL }) => {
+  await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, share_injuries: true,
+    sparring_reports: [{ id: "report-hard", day: "2026-11-15", intensity: "hard", rounds: 5, round_seconds: 180, head_contact: "heavy", rocked: true }] }], false);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/coach/fighters/${fighterId}`);
+  const sparring = page.locator("#sparring");
+  // Intensity is per report: "hard" counts sessions, never rounds.
+  // A warning leads the line in words, not only colour.
+  await expect(sparring.locator("summary")).toContainText("⚠ Rocked reported · 1 report · 5 rounds · 1 hard session");
+  // Lines wrap rather than cut a warning off.
+  expect(await sparring.locator("summary small").evaluate(node => getComputedStyle(node).whiteSpace)).toBe("normal");
+  await expect(page.locator("#fight-weight summary")).toContainText("73.6 kg");
+  await expect(page.locator("#weekly summary")).toContainText("This week");
+  await expect(page.locator("#check-in-nudge summary")).toContainText("Off");
+  // Messaging is in the profile header; the nudge setting sits last, closed.
+  await expect(page.getByRole("link", { name: `Message ${fighter.name}` })).toHaveAttribute("href", /\/coach\/chats\?with=/);
+  const order = await page.locator("section[id]").evaluateAll(nodes => nodes.map(node => node.id));
+  expect(order.at(-1)).toBe("check-in-nudge");
+  // One section opens by itself: the first in the mode's order that has something to show.
+  const open = () => page.locator("section[id] > details[open]").evaluateAll(nodes => nodes.map(node => node.parentElement!.id));
+  await expect.poll(open).toEqual(["weekly"]); // S&C: this week's sessions
+  // Collapsed otherwise, the whole profile stays short.
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThan(2400);
+  if (process.env.COACH_SCREENSHOTS) await page.screenshot({ path: `${process.env.COACH_SCREENSHOTS}/profile-collapsed.png`, fullPage: true });
+  // Technical: sparring comes first, and this week has a report.
+  await page.getByRole("group", { name: "Coaching focus" }).getByRole("button", { name: "Technical" }).click();
+  await expect.poll(open).toEqual(["sparring"]);
+  await expect(sparring.getByRole("button", { name: "Add feedback" })).toBeVisible();
+  // The coach's own choice wins, and is remembered for this fighter.
+  await sparring.locator("summary").click();
+  await expect.poll(open).toEqual([]);
+  expect(await page.evaluate(id => window.localStorage.getItem(`coach-fold:${id}:sparring`), fighterId)).toBe("closed");
+  await page.reload();
+  await expect(page.locator("#training-history summary")).toBeVisible();
+  await expect.poll(open).toEqual([]);
+  // A "Needs attention" link opens the section it points to (without making it a preference).
+  const link = page.getByRole("region", { name: "Needs attention" }).getByRole("link").filter({ hasText: "Sleep" }).first();
+  await link.click();
+  await expect(page.locator("#recovery details")).toHaveAttribute("open", "");
+  expect(await page.evaluate(id => window.localStorage.getItem(`coach-fold:${id}:recovery`), fighterId)).toBeNull();
+});
+
+test("on a phone the auto-opened section never shifts the layout, even when data arrives late", async ({ page, baseURL }) => {
+  // No sessions this week, so S&C focuses on fight weight; the weight answer is slow and empty.
+  await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, sessions: [], schedule: [] }], false);
+  let release: () => void = () => undefined;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/api/coach/fighters/*/weight", async route => {
+    await held;
+    await route.fulfill({ json: { shared: true, entries: [], current_weight_kg: null, target_weight_kg: null, cut_assessment: null } });
+  });
+  await page.addInitScript(() => {
+    const shifts: number[] = [];
+    (window as unknown as { shifts: number[] }).shifts = shifts;
+    new PerformanceObserver(list => {
+      for (const entry of list.getEntries() as (PerformanceEntry & { value: number; hadRecentInput: boolean })[]) {
+        if (!entry.hadRecentInput) shifts.push(entry.value);
+      }
+    }).observe({ type: "layout-shift", buffered: true });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/coach/fighters/${fighterId}`);
+  await expect(page.locator("#check-in-nudge summary")).toBeVisible();
+  const open = () => page.locator("section[id] > details[open]").evaluateAll(nodes => nodes.map(node => node.parentElement!.id));
+  const tops = () => page.locator("section[id] > details > summary").evaluateAll(nodes => nodes.map(node => Math.round(node.getBoundingClientRect().top + window.scrollY)));
+  await expect.poll(open).toEqual(["fight-weight"]);
+  const before = await tops();
+  // Loading itself doesn't jump either: the skeleton fills the screen (the
+  // footer never shows and drops) and the header holds the button's height.
+  const loadShift = await page.evaluate(() => (window as unknown as { shifts: number[] }).shifts.reduce((a, b) => a + b, 0));
+  console.log("load shift", loadShift.toFixed(4));
+  expect(loadShift).toBeLessThan(0.01);
+  await page.evaluate(() => { (window as unknown as { shifts: number[] }).shifts.length = 0; });
+  // The weight arrives, and turns out empty: the open section stays put, and nothing below it moves.
+  release();
+  await expect(page.locator("#fight-weight")).toContainText("No weight logged yet");
+  await page.waitForTimeout(500);
+  expect(await open()).toEqual(["fight-weight"]);
+  // Everything down to the open section's header stays where it was. (The open
+  // section's own content may settle from its loading state; that is below it.)
+  const focusIndex = PROFILE_SECTIONS.indexOf("fight-weight");
+  expect((await tops()).slice(0, focusIndex + 1)).toEqual(before.slice(0, focusIndex + 1));
+  const shift = await page.evaluate(() => (window as unknown as { shifts: number[] }).shifts.reduce((a, b) => a + b, 0));
+  // As the open section's content settles (off the first screen), nothing on screen moves.
+  expect(shift).toBeLessThan(0.01);
 });
