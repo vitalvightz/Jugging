@@ -202,7 +202,7 @@ for (const width of [320, 390, 1280, 1600]) {
     ).toHaveCount(0);
     // XP and product analytics are side channels; every plan write goes through custom plans.
     expect(
-      mutations.filter((path) => path !== "/api/xp/activity" && path !== "/api/analytics/events").every((path) => path.startsWith("/api/custom-plans")),
+      mutations.filter((path) => path !== "/api/xp/activity" && !path.startsWith("/api/analytics/events")).every((path) => path.startsWith("/api/custom-plans")),
     ).toBe(true);
     expect(errors).toEqual([]);
   });
@@ -504,7 +504,7 @@ for (const width of [320, 390]) test(`private strength progression uses confirme
   await edit.getByRole("combobox", { name: "Exercise type (optional)", exact: true }).selectOption("strength");
   await edit.getByRole("button", { name: "Use suggested weight", exact: true }).click();
   await expect(edit.getByLabel("Weight", { exact: true })).toHaveValue("82.5");
-  expect(mutations.filter(path => path !== "/api/xp/activity" && path !== "/api/analytics/events")).toEqual([]);
+  expect(mutations.filter(path => path !== "/api/xp/activity" && !path.startsWith("/api/analytics/events"))).toEqual([]);
   expect(actual.load.value).toBe(80);
   expect(await edit.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
 });

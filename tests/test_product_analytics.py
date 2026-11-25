@@ -219,6 +219,23 @@ def test_ingestion_actor_timestamp_and_controlled_events():
     )
 
 
+def test_batched_events_follow_the_same_rules_one_by_one():
+    c, s = api_client()
+    good = dict(event_name="timer_started", feature="timer", request_id=str(uuid4()))
+    view = dict(event_name="page_viewed", feature="history", request_id=str(uuid4()))
+    wrong = dict(event_name="timer_started", feature="plans", request_id=str(uuid4()))
+    response = c.post("/api/analytics/events/batch", json={"events": [good, wrong, view]})
+    assert response.status_code == 202
+    # The unsupported pair is refused alone; the others are recorded, as the owner.
+    assert response.json() == {"accepted": [True, False, True]}
+    assert [call[1]["p_event_name"] for call in s.client.calls] == ["timer_started", "page_viewed"]
+    assert {call[1]["p_athlete_id"] for call in s.client.calls} == {"owner"}
+    # No actor, timestamp or payload sneaks in through a batch; size is bounded.
+    assert c.post("/api/analytics/events/batch", json={"events": [{**good, "athlete_id": "other"}]}).status_code == 422
+    assert c.post("/api/analytics/events/batch", json={"events": []}).status_code == 422
+    assert c.post("/api/analytics/events/batch", json={"events": [good] * 21}).status_code == 422
+
+
 def test_all_reports_admin_only():
     c, _ = api_client()
     assert c.get("/api/admin/product-analytics").status_code == 403

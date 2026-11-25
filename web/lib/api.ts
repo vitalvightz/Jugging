@@ -430,7 +430,7 @@ async function executeRequest(path: string, init?: ApiRequestInit): Promise<Exec
 
 async function sendRequest(path: string, method: string, init?: ApiRequestInit): Promise<ExecutedRequest> {
   // Telemetry delivery is not evidence that training/API connectivity is degraded.
-  const backgroundAnalytics = path === "/api/analytics/events";
+  const backgroundAnalytics = path === "/api/analytics/events" || path === "/api/analytics/events/batch";
   const headers = new Headers(init?.headers ?? {});
   if (init?.body && !(typeof FormData !== "undefined" && init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
@@ -1915,20 +1915,76 @@ export function reportCommunityExercise(token: string, revision: string, reason:
 }
 
 // First-party beta telemetry retries independently of app connectivity.
-export async function trackProductEvent(token: string, event_name: string, feature: string, request_id?: string, flow_id?: string) {
-  try {
-    const body = JSON.stringify({ event_name, feature, request_id: request_id ?? crypto.randomUUID(), flow_id });
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const result = await readJson<{ accepted: boolean }>("/api/analytics/events", { token, method: "POST", body, keepalive: true });
-        return result.accepted;
-      } catch (error) {
-        if (error instanceof ApiError && error.status < 500 && error.status !== 429) return false;
-        if (attempt === 2) return false;
-        await new Promise(resolve => setTimeout(resolve, 250 * 2 ** attempt));
-      }
+// Events a moment apart (a page view and that screen's own event) share one
+// request: a lone event goes as before, two or more as a batch. The queue is
+// sent at once when the app is hidden or closed, so nothing waits for a timer
+// that will never fire.
+const PRODUCT_EVENT_BATCH_MS = 3000;
+type QueuedProductEvent = { event: { event_name: string; feature: string; request_id: string; flow_id?: string }; settle: (accepted: boolean | undefined) => void };
+const productEventQueues = new Map<string, { events: QueuedProductEvent[]; timer: ReturnType<typeof setTimeout> | null }>();
+let productEventFlushWired = false;
+
+async function postProductEvents(token: string, path: string, payload: unknown): Promise<unknown> {
+  const body = JSON.stringify(payload);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await readJson<unknown>(path, { token, method: "POST", body, keepalive: true });
+    } catch (error) {
+      if (error instanceof ApiError && error.status < 500 && error.status !== 429) return null;
+      if (attempt === 2) return null;
+      await new Promise(resolve => setTimeout(resolve, 250 * 2 ** attempt));
     }
-  } catch { /* Analytics must never prevent training or replace Sentry. */ }
+  }
+  return null;
+}
+
+function flushProductEvents(token: string) {
+  const queue = productEventQueues.get(token);
+  if (!queue?.events.length) return;
+  if (queue.timer) clearTimeout(queue.timer);
+  productEventQueues.delete(token);
+  const items = queue.events.slice(0, 20);
+  const rest = queue.events.slice(20);
+  if (rest.length) {
+    productEventQueues.set(token, { events: rest, timer: null });
+    flushProductEvents(token);
+  }
+  const send = items.length === 1
+    ? postProductEvents(token, "/api/analytics/events", items[0].event)
+      .then(result => [Boolean((result as { accepted?: boolean } | null)?.accepted)])
+    : postProductEvents(token, "/api/analytics/events/batch", { events: items.map(item => item.event) })
+      .then(result => {
+        const accepted = (result as { accepted?: unknown } | null)?.accepted;
+        return items.map((_, index) => Array.isArray(accepted) && accepted[index] === true);
+      });
+  send.then(results => items.forEach((item, index) => item.settle(results[index])),
+    () => items.forEach(item => item.settle(undefined)));
+}
+
+function wireProductEventFlush() {
+  if (productEventFlushWired || typeof window === "undefined") return;
+  productEventFlushWired = true;
+  const flushAll = () => { for (const token of [...productEventQueues.keys()]) flushProductEvents(token); };
+  window.addEventListener("pagehide", flushAll);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushAll(); });
+}
+
+/** Send every queued event now (tests, and anything that must not wait). */
+export function sendQueuedProductEvents() {
+  for (const token of [...productEventQueues.keys()]) flushProductEvents(token);
+}
+
+export function trackProductEvent(token: string, event_name: string, feature: string, request_id?: string, flow_id?: string): Promise<boolean | undefined> {
+  try {
+    const event = { event_name, feature, request_id: request_id ?? crypto.randomUUID(), ...(flow_id ? { flow_id } : {}) };
+    return new Promise(settle => {
+      wireProductEventFlush();
+      let queue = productEventQueues.get(token);
+      if (!queue) { queue = { events: [], timer: null }; productEventQueues.set(token, queue); }
+      queue.events.push({ event, settle });
+      if (!queue.timer) queue.timer = setTimeout(() => flushProductEvents(token), PRODUCT_EVENT_BATCH_MS);
+    });
+  } catch { /* Analytics must never prevent training or replace Sentry. */ return Promise.resolve(undefined); }
 }
 
 export function getProductAnalytics(token: string, query: string, signal?: AbortSignal) {
