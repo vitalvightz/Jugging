@@ -763,12 +763,31 @@ function Avatar({ fighter }: { fighter: Fighter }) {
   );
 }
 
-function FoldableSection({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
-  return <section id={id} className={`${styles.panel} ${styles.fold}`}><details open>
-    <summary className={styles.foldTitle}><h2>{title}</h2><span aria-hidden="true">⌄</span></summary>
+/**
+ * A fighter-profile section. Closed by default, with a one-line summary in its
+ * header, so the profile reads as a short list on a phone; a coach opens what
+ * they need. Each section remembers being left open on this device.
+ */
+function FoldableSection({ title, summary, tone, children, id }: {
+  title: string; summary?: ReactNode; tone?: string; children: ReactNode; id: string;
+}) {
+  const fold = useRef<HTMLDetailsElement>(null);
+  const key = `coach-fold:${id}`;
+  useEffect(() => {
+    try { if (window.localStorage.getItem(key) === "open" && fold.current) fold.current.open = true; } catch { /* storage unavailable */ }
+  }, [key]);
+  return <section id={id} className={`${styles.panel} ${styles.fold}`}><details ref={fold}
+    onToggle={event => { try { window.localStorage.setItem(key, event.currentTarget.open ? "open" : "closed"); } catch { /* storage unavailable */ } }}>
+    <summary className={styles.foldTitle}>
+      <span className={styles.foldHeading}><h2>{title}</h2>
+        {summary ? <small className={styles.foldSummary} data-recovery-tone={tone}>{summary}</small> : null}</span>
+      <span aria-hidden="true">⌄</span>
+    </summary>
     <div className={styles.foldContent}>{children}</div>
   </details></section>;
 }
+
+const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 
 function FighterOverview({
   fighter: f,
@@ -865,6 +884,29 @@ function FighterOverview({
   const recentReport = latestReport(f);
   const readiness = f.share_recovery ? (f.recovery ?? []).filter(r => r.day <= f.today && r.readiness != null).sort((a, b) => b.day.localeCompare(a.day))[0] : undefined;
   const unknown = f.share_recovery ? "Not recorded" : "Not shared";
+  // One line per section header: enough to decide whether to open it.
+  const weekLabel = week === weekStart(f.today) ? "This week" : `Week of ${formatAppDate(week)}`;
+  const weeklySummary = [weekLabel, plural(done.length, "session"), physical.scheduled ? `S&C ${physical.done}/${physical.scheduled}` : null]
+    .filter(Boolean).join(" · ");
+  const hardRounds = reports.filter(report => report.intensity === "hard").length;
+  const sparringSummary = reports.length
+    ? [plural(reports.length, "report"), plural(reports.reduce((sum, report) => sum + report.rounds, 0), "round"), hardRounds ? `${hardRounds} hard` : null].filter(Boolean).join(" · ")
+    : `No reports · ${weekLabel.toLowerCase()}`;
+  const cut = f.share_weight ? coachCutStatus(weight, f.today) : null;
+  const weightSummary = !f.share_weight ? "Not shared" : weightFailed ? "Unavailable" : !weight ? "Loading…"
+    : !weight.shared ? "Not shared" : weight.current_weight_kg == null ? "No weight logged"
+      : [formatWeight(weight.current_weight_kg), weight.target_weight_kg != null ? `target ${formatWeight(weight.target_weight_kg)}` : null,
+        cut && cut.tone !== "unknown" ? cut.label : null].filter(Boolean).join(" · ");
+  const weightTone = cut?.tone === "red" ? "concern" : cut?.tone === "amber" ? "caution" : undefined;
+  const lastDone = [...f.sessions].filter(session => completed(session) && session.day <= f.today).sort((a, b) => b.day.localeCompare(a.day))[0];
+  const historySummary = f.last_training ? `Last · ${humanize(f.last_training.activity)} · ${formatAppDate(f.last_training.day)}`
+    : lastDone ? `Last session · ${formatAppDate(lastDone.day)}` : "No training logged yet";
+  const recoverySummary = [
+    injuries.length ? plural(injuries.length, "open injury", "open injuries") : null,
+    f.share_recovery ? (warnings.length ? plural(warnings.length, "recovery concern") : latest ? `Check-in ${formatAppDate(latest.day)}` : "No check-ins")
+      : "Check-ins not shared",
+  ].filter(Boolean).join(" · ");
+  const recoveryTone = injuries.length ? injuryTone : warnings.length ? "caution" : undefined;
   return (
     <>
       <section className={styles.panel}>
@@ -916,8 +958,6 @@ function FighterOverview({
           </div> : null}
         </div>
       </section>
-      <CoachFighterContact token={token} athleteId={f.id} name={f.name} age={f.age}
-        healthConsent={Boolean(f.can_leave_feedback)} />
       <DiscoveryHint id="coach-fighter-sections" text="Tap a section to open it." />
       {concerns.length ? <section className={`${styles.panel} ${styles.attentionPanel}`} aria-label="Needs attention">
         <h2>Needs attention</h2>
@@ -949,7 +989,10 @@ function FighterOverview({
           {f.share_recovery && <p>{readiness ? `Readiness · ${readiness.readiness}/5 · ${formatAppDate(readiness.day)}${readiness.day < dayOffset(f.today, -6) ? " · Older check-in" : ""}` : "No readiness recorded"}</p>}
         </>}
       </section>
-      <FoldableSection title="Weekly performance"><section aria-label="Weekly performance">
+      {/* What needs acting on comes first; the nudge setting follows. */}
+      <CoachFighterContact token={token} athleteId={f.id} name={f.name} age={f.age}
+        healthConsent={Boolean(f.can_leave_feedback)} />
+      <FoldableSection id="weekly" title="Weekly performance" summary={weeklySummary}><section aria-label="Weekly performance">
         <DiscoveryHint id="coach-week-arrows" text="Use the arrows to see other weeks." />
         <div className={styles.sectionHeading}>
           <h2>Weekly performance</h2>
@@ -1000,7 +1043,7 @@ function FighterOverview({
         </div>
       </section>
       </FoldableSection>
-      <FoldableSection id="sparring" title="Sparring">{reports.length ? (
+      <FoldableSection id="sparring" title="Sparring" summary={sparringSummary} tone={reports.some(report => report.rocked || report.head_contact === "heavy") && f.share_injuries ? "concern" : undefined}>{reports.length ? (
         <section className={styles.panel}>
           <div className={styles.sectionHeading}>
             <h2>Sparring</h2>
@@ -1037,9 +1080,9 @@ function FighterOverview({
       {/* A new key when sharing changes drops everything these loaded
           (weigh-ins, session rows, cached session records, an open record
           sheet) and reloads it under the new permissions. */}
-      <FoldableSection id="fight-weight" title="Fight weight"><FightWeight key={`weight:${sharingKey}`} fighter={f} weight={weight} failed={Boolean(weightFailed)} /></FoldableSection>
+      <FoldableSection id="fight-weight" title="Fight weight" summary={weightSummary} tone={weightTone}><FightWeight key={`weight:${sharingKey}`} fighter={f} weight={weight} failed={Boolean(weightFailed)} /></FoldableSection>
       <FoldableSection id="media" title="Photos and voice notes"><FighterMediaPanel token={token} fighter={f} /></FoldableSection>
-      <FoldableSection id="training-history" title="Training history"><TrainingHistory onFeedbackSaved={onFeedbackSaved} review={review} onReviewMissing={onReviewMissing}
+      <FoldableSection id="training-history" title="Training history" summary={historySummary}><TrainingHistory onFeedbackSaved={onFeedbackSaved} review={review} onReviewMissing={onReviewMissing}
         key={`history:${sharingKey}:${historyKey}:${f.plan_id}:${f.today}`}
         token={token}
         athleteId={f.id}
@@ -1047,7 +1090,7 @@ function FighterOverview({
         fightDate={f.fight_date}
         sport={f.sport}
       /></FoldableSection>
-      <FoldableSection id="recovery" title="Recovery"><section className={styles.panel}>
+      <FoldableSection id="recovery" title="Recovery" summary={recoverySummary} tone={recoveryTone === "unknown" ? undefined : recoveryTone}><section className={styles.panel}>
         <div className={styles.sectionHeading}><h2>Recovery</h2>{latest ? <small className={styles.muted}>Latest check-in · {formatAppDate(latest.day)}</small> : null}</div>
         {injuries.length ? <div className={styles.recoveryPriority}>
           <h3>Open injuries · {injuries.length}</h3>

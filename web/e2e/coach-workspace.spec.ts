@@ -8,6 +8,7 @@ import type {
 } from "../lib/api-schema.generated";
 import type { TrainingHistorySession } from "../lib/training-history";
 const fighterId = "00000000-0000-4000-8000-000000000003";
+const PROFILE_SECTIONS = ["weekly", "sparring", "fight-weight", "media", "training-history", "recovery"];
 // Isolated test responses only. Never written to production.
 const connection: Connection = {
   id: "test-connection",
@@ -180,8 +181,14 @@ async function fixture(
   empty = false,
   athleteConnection: Partial<Connection> = {},
   roster: Fighter[] = [fighter],
+  sectionsOpen = true,
 ) {
   await setup(page, baseURL, role);
+  // Profile sections start closed; these tests read their content, so the
+  // coach has left them open (the profile remembers that per device).
+  if (sectionsOpen) await page.addInitScript(ids => {
+    for (const id of ids) window.localStorage.setItem(`coach-fold:${id}`, "open");
+  }, PROFILE_SECTIONS);
   let rows = empty ? [] : roster;
   // Sessions the coach records, newest first, as the API would return them.
   const logged: (TrainingHistorySession & { athlete: string })[] = [];
@@ -1859,4 +1866,28 @@ test("check-in nudge: one switch turns it on, days and time save only when chang
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   expect(saves[2]).toMatchObject({ p_enabled: false });
+});
+
+test("on a phone the fighter profile is a short list: sections start closed with a summary, and stay as the coach leaves them", async ({ page, baseURL }) => {
+  await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, share_injuries: true,
+    sparring_reports: [{ id: "report-hard", day: "2026-11-15", intensity: "hard", rounds: 5, round_seconds: 180, head_contact: "light", rocked: false }] }], false);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/coach/fighters/${fighterId}`);
+  const sparring = page.locator("#sparring");
+  await expect(sparring.locator("summary")).toContainText("1 report · 5 rounds · 1 hard");
+  await expect(page.locator("#fight-weight summary")).toContainText("73.6 kg");
+  await expect(page.locator("#weekly summary")).toContainText("This week");
+  for (const id of PROFILE_SECTIONS) await expect(page.locator(`#${id} details`)).not.toHaveAttribute("open", "");
+  // Collapsed, the whole profile is about two screens, not five.
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThan(2000);
+  if (process.env.COACH_SCREENSHOTS) await page.screenshot({ path: `${process.env.COACH_SCREENSHOTS}/profile-collapsed.png`, fullPage: true });
+  // Opening a section shows its content and is remembered on this device.
+  await sparring.locator("summary").click();
+  await expect(sparring.getByRole("button", { name: "Add feedback" })).toBeVisible();
+  await page.reload();
+  await expect(page.locator("#sparring details")).toHaveAttribute("open", "");
+  await expect(page.locator("#recovery details")).not.toHaveAttribute("open", "");
+  // A "Needs attention" link opens the section it points to.
+  await page.getByRole("region", { name: "Needs attention" }).getByRole("link").first().click();
+  await expect(page.locator("#recovery details")).toHaveAttribute("open", "");
 });
