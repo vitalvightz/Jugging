@@ -1938,27 +1938,31 @@ async function postProductEvents(token: string, path: string, payload: unknown):
   return null;
 }
 
+function sendProductEvents(token: string, items: QueuedProductEvent[]) {
+  const single = (item: QueuedProductEvent) => postProductEvents(token, "/api/analytics/events", item.event)
+    .then(result => Boolean((result as { accepted?: boolean } | null)?.accepted));
+  const send: Promise<boolean[]> = items.length === 1
+    ? single(items[0]).then(accepted => [accepted])
+    : postProductEvents(token, "/api/analytics/events/batch", { events: items.map(item => item.event) })
+      .then(result => {
+        const accepted = (result as { accepted?: unknown } | null)?.accepted;
+        if (Array.isArray(accepted) && accepted.length === items.length) return accepted.map(value => value === true);
+        // No batch answer (an API without the batch route yet, or a failure):
+        // send them one by one. Recording is idempotent per event, so a batch
+        // that did land is never counted twice.
+        return Promise.all(items.map(single));
+      });
+  send.then(results => items.forEach((item, index) => item.settle(results[index])),
+    () => items.forEach(item => item.settle(undefined)));
+}
+
 function flushProductEvents(token: string) {
   const queue = productEventQueues.get(token);
   if (!queue?.events.length) return;
   if (queue.timer) clearTimeout(queue.timer);
   productEventQueues.delete(token);
-  const items = queue.events.slice(0, 20);
-  const rest = queue.events.slice(20);
-  if (rest.length) {
-    productEventQueues.set(token, { events: rest, timer: null });
-    flushProductEvents(token);
-  }
-  const send = items.length === 1
-    ? postProductEvents(token, "/api/analytics/events", items[0].event)
-      .then(result => [Boolean((result as { accepted?: boolean } | null)?.accepted)])
-    : postProductEvents(token, "/api/analytics/events/batch", { events: items.map(item => item.event) })
-      .then(result => {
-        const accepted = (result as { accepted?: unknown } | null)?.accepted;
-        return items.map((_, index) => Array.isArray(accepted) && accepted[index] === true);
-      });
-  send.then(results => items.forEach((item, index) => item.settle(results[index])),
-    () => items.forEach(item => item.settle(undefined)));
+  // In the order they happened: oldest twenty first.
+  for (let start = 0; start < queue.events.length; start += 20) sendProductEvents(token, queue.events.slice(start, start + 20));
 }
 
 function wireProductEventFlush() {
