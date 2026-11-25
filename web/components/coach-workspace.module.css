@@ -491,7 +491,8 @@
 .foldTitle > span[aria-hidden] { flex: none; color: var(--text-muted); font-size: 20px; transition: transform 180ms ease; }
 .foldHeading { display: grid; gap: 3px; min-width: 0; }
 .foldHeading > h2 { margin: 0; }
-.foldSummary { overflow: hidden; color: var(--text-secondary); font-size: 13px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+/* Wraps, never cut off: a warning must always be read in full. */
+.foldSummary { color: var(--text-secondary); font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
 .foldSummary[data-recovery-tone="concern"] { color: var(--danger-ink); }
 .foldSummary[data-recovery-tone="caution"] { color: var(--progress-gold); }
 /* Open, the section's own content carries the detail: the summary steps back. */
@@ -852,3 +853,22 @@
 @media (max-width: 600px) {
   .connection .actions > .messageCoach { width: 100%; }
 }
+
+/* Profile header: Message is the coach's main action on a fighter. */
+.messageFighter {
+  display: inline-flex;
+  flex: none;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  margin-left: auto;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.messageFighter:hover { background: var(--bg-surface-alt); }

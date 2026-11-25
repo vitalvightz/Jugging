@@ -8,7 +8,7 @@ import type {
 } from "../lib/api-schema.generated";
 import type { TrainingHistorySession } from "../lib/training-history";
 const fighterId = "00000000-0000-4000-8000-000000000003";
-const PROFILE_SECTIONS = ["weekly", "sparring", "fight-weight", "media", "training-history", "recovery"];
+const PROFILE_SECTIONS = ["weekly", "sparring", "fight-weight", "media", "training-history", "recovery", "check-in-nudge"];
 // Isolated test responses only. Never written to production.
 const connection: Connection = {
   id: "test-connection",
@@ -186,9 +186,9 @@ async function fixture(
   await setup(page, baseURL, role);
   // Profile sections start closed; these tests read their content, so the
   // coach has left them open (the profile remembers that per device).
-  if (sectionsOpen) await page.addInitScript(ids => {
-    for (const id of ids) window.localStorage.setItem(`coach-fold:${id}`, "open");
-  }, PROFILE_SECTIONS);
+  if (sectionsOpen) await page.addInitScript(({ ids, fighters }) => {
+    for (const fighterId of fighters) for (const id of ids) window.localStorage.setItem(`coach-fold:${fighterId}:${id}`, "open");
+  }, { ids: PROFILE_SECTIONS, fighters: roster.map(row => row.id) });
   let rows = empty ? [] : roster;
   // Sessions the coach records, newest first, as the API would return them.
   const logged: (TrainingHistorySession & { athlete: string })[] = [];
@@ -1870,24 +1870,42 @@ test("check-in nudge: one switch turns it on, days and time save only when chang
 
 test("on a phone the fighter profile is a short list: sections start closed with a summary, and stay as the coach leaves them", async ({ page, baseURL }) => {
   await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, share_injuries: true,
-    sparring_reports: [{ id: "report-hard", day: "2026-11-15", intensity: "hard", rounds: 5, round_seconds: 180, head_contact: "light", rocked: false }] }], false);
+    sparring_reports: [{ id: "report-hard", day: "2026-11-15", intensity: "hard", rounds: 5, round_seconds: 180, head_contact: "heavy", rocked: true }] }], false);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/coach/fighters/${fighterId}`);
   const sparring = page.locator("#sparring");
-  await expect(sparring.locator("summary")).toContainText("1 report · 5 rounds · 1 hard");
+  // Intensity is per report: "hard" counts sessions, never rounds.
+  // A warning leads the line in words, not only colour.
+  await expect(sparring.locator("summary")).toContainText("⚠ Rocked reported · 1 report · 5 rounds · 1 hard session");
+  // Lines wrap rather than cut a warning off.
+  expect(await sparring.locator("summary small").evaluate(node => getComputedStyle(node).whiteSpace)).toBe("normal");
   await expect(page.locator("#fight-weight summary")).toContainText("73.6 kg");
   await expect(page.locator("#weekly summary")).toContainText("This week");
-  for (const id of PROFILE_SECTIONS) await expect(page.locator(`#${id} details`)).not.toHaveAttribute("open", "");
-  // Collapsed, the whole profile is about two screens, not five.
-  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThan(2000);
+  await expect(page.locator("#check-in-nudge summary")).toContainText("Off");
+  // Messaging is in the profile header; the nudge setting sits last, closed.
+  await expect(page.getByRole("link", { name: `Message ${fighter.name}` })).toHaveAttribute("href", /\/coach\/chats\?with=/);
+  const order = await page.locator("section[id]").evaluateAll(nodes => nodes.map(node => node.id));
+  expect(order.at(-1)).toBe("check-in-nudge");
+  // One section opens by itself: the first in the mode's order that has something to show.
+  const open = () => page.locator("section[id] > details[open]").evaluateAll(nodes => nodes.map(node => node.parentElement!.id));
+  await expect.poll(open).toEqual(["weekly"]); // S&C: this week's sessions
+  // Collapsed otherwise, the whole profile stays short.
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThan(2400);
   if (process.env.COACH_SCREENSHOTS) await page.screenshot({ path: `${process.env.COACH_SCREENSHOTS}/profile-collapsed.png`, fullPage: true });
-  // Opening a section shows its content and is remembered on this device.
-  await sparring.locator("summary").click();
+  // Technical: sparring comes first, and this week has a report.
+  await page.getByRole("group", { name: "Coaching focus" }).getByRole("button", { name: "Technical" }).click();
+  await expect.poll(open).toEqual(["sparring"]);
   await expect(sparring.getByRole("button", { name: "Add feedback" })).toBeVisible();
+  // The coach's own choice wins, and is remembered for this fighter.
+  await sparring.locator("summary").click();
+  await expect.poll(open).toEqual([]);
+  expect(await page.evaluate(id => window.localStorage.getItem(`coach-fold:${id}:sparring`), fighterId)).toBe("closed");
   await page.reload();
-  await expect(page.locator("#sparring details")).toHaveAttribute("open", "");
-  await expect(page.locator("#recovery details")).not.toHaveAttribute("open", "");
-  // A "Needs attention" link opens the section it points to.
-  await page.getByRole("region", { name: "Needs attention" }).getByRole("link").first().click();
+  await expect(page.locator("#training-history summary")).toBeVisible();
+  await expect.poll(open).toEqual([]);
+  // A "Needs attention" link opens the section it points to (without making it a preference).
+  const link = page.getByRole("region", { name: "Needs attention" }).getByRole("link").filter({ hasText: "Sleep" }).first();
+  await link.click();
   await expect(page.locator("#recovery details")).toHaveAttribute("open", "");
+  expect(await page.evaluate(id => window.localStorage.getItem(`coach-fold:${id}:recovery`), fighterId)).toBeNull();
 });

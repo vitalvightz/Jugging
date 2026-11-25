@@ -5,13 +5,16 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
-  chatLink, EVERY_DAY, fetchCheckinNudge, hasDay, NUDGE_DAYS, saveCheckinNudge, toggleDay, WEEKDAYS,
+  chatLink, describeDays, EVERY_DAY, fetchCheckinNudge, hasDay, NUDGE_DAYS, saveCheckinNudge, toggleDay, WEEKDAYS,
   type CheckinNudge,
 } from "@/lib/coach-chat";
 import styles from "./coach-fighter-contact.module.css";
 
-export function CoachFighterContact({ token, athleteId, name, age, healthConsent }: {
+export function CoachFighterContact({ token, athleteId, name, age, healthConsent, embedded = false, onSummary }: {
   token: string; athleteId: string; name: string; age: number | null | undefined; healthConsent: boolean;
+  /** Inside a profile section: the section gives the title, and Message lives in the profile header. */
+  embedded?: boolean;
+  onSummary?: (summary: string) => void;
 }) {
   const [saved, setSaved] = useState<CheckinNudge | null | undefined>(undefined);
   const [days, setDays] = useState(WEEKDAYS);
@@ -34,6 +37,13 @@ export function CoachFighterContact({ token, athleteId, name, age, healthConsent
     return () => controller.abort();
   }, [token, athleteId]);
 
+  useEffect(() => {
+    if (!onSummary) return;
+    if (blocked) { onSummary("Unavailable"); return; }
+    if (saved === undefined) return;
+    onSummary(saved?.enabled ? `${describeDays(saved.days)} · ${saved.local_time.slice(0, 5)}` : "Off");
+  }, [saved, blocked, onSummary]);
+
   async function save(nextEnabled = enabled) {
     setState("saving");
     setError("");
@@ -53,12 +63,12 @@ export function CoachFighterContact({ token, athleteId, name, age, healthConsent
   const changed = Boolean(saved?.enabled) && (saved!.days !== days || saved!.local_time.slice(0, 5) !== time);
   const busy = state === "saving" || saved === undefined;
   return (
-    <section className={styles.panel} aria-label="Contact and check-ins">
-      <div className={styles.head}>
+    <section className={styles.panel} aria-label="Contact and check-ins" data-embedded={embedded || undefined}>
+      {embedded ? null : <div className={styles.head}>
         {/* The switch and the days below already say what is set; no summary line repeats it. */}
         <h3 className={styles.title}>Check-in nudge</h3>
         <Link className={styles.message} href={chatLink("coach", athleteId)}>Message</Link>
-      </div>
+      </div>}
       {blocked ? <p className={styles.note}>{blocked}</p> : (
         <>
           <div className={styles.switchRow}>

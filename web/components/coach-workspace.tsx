@@ -766,19 +766,36 @@ function Avatar({ fighter }: { fighter: Fighter }) {
 /**
  * A fighter-profile section. Closed by default, with a one-line summary in its
  * header, so the profile reads as a short list on a phone; a coach opens what
- * they need. Each section remembers being left open on this device.
+ * they need. A warning leads its summary in words (not only colour) and the
+ * line wraps rather than cut it off. Each section remembers being left open,
+ * per fighter, on this device.
  */
-function FoldableSection({ title, summary, tone, children, id }: {
+function FoldableSection({ title, summary, tone, children, id, scope, autoOpen = false }: {
   title: string; summary?: ReactNode; tone?: string; children: ReactNode; id: string;
+  /** Whose profile: a section opened for one fighter stays closed for the next. */
+  scope: string;
+  /** The one section the profile opens by itself (see profileFocus) until the coach chooses. */
+  autoOpen?: boolean;
 }) {
   const fold = useRef<HTMLDetailsElement>(null);
-  const key = `coach-fold:${id}`;
+  const tapped = useRef(false);
+  const key = `coach-fold:${scope}:${id}`;
   useEffect(() => {
-    try { if (window.localStorage.getItem(key) === "open" && fold.current) fold.current.open = true; } catch { /* storage unavailable */ }
-  }, [key]);
+    const element = fold.current;
+    if (!element) return;
+    let chosen: string | null = null;
+    try { chosen = window.localStorage.getItem(key); } catch { /* storage unavailable */ }
+    element.open = chosen ? chosen === "open" : autoOpen;
+  }, [key, autoOpen]);
   return <section id={id} className={`${styles.panel} ${styles.fold}`}><details ref={fold}
-    onToggle={event => { try { window.localStorage.setItem(key, event.currentTarget.open ? "open" : "closed"); } catch { /* storage unavailable */ } }}>
-    <summary className={styles.foldTitle}>
+    onToggle={event => {
+      // Only the coach's own tap is remembered; automatic opening and
+      // Needs-attention links are not a choice.
+      if (!tapped.current) return;
+      tapped.current = false;
+      try { window.localStorage.setItem(key, event.currentTarget.open ? "open" : "closed"); } catch { /* storage unavailable */ }
+    }}>
+    <summary className={styles.foldTitle} onClick={() => { tapped.current = true; }}>
       <span className={styles.foldHeading}><h2>{title}</h2>
         {summary ? <small className={styles.foldSummary} data-recovery-tone={tone}>{summary}</small> : null}</span>
       <span aria-hidden="true">⌄</span>
@@ -788,6 +805,16 @@ function FoldableSection({ title, summary, tone, children, id }: {
 }
 
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
+
+// Which section a profile opens by itself: the first, in the coaching mode's
+// order, that has something to show.
+const PROFILE_FOCUS: Record<CoachMode, string[]> = {
+  technical: ["sparring", "training-history", "recovery", "weekly"],
+  sc: ["weekly", "fight-weight", "recovery", "training-history"],
+};
+function profileFocus(mode: CoachMode, hasData: Record<string, boolean>): string | null {
+  return PROFILE_FOCUS[mode].find(id => hasData[id]) ?? null;
+}
 
 function FighterOverview({
   fighter: f,
@@ -888,24 +915,41 @@ function FighterOverview({
   const weekLabel = week === weekStart(f.today) ? "This week" : `Week of ${formatAppDate(week)}`;
   const weeklySummary = [weekLabel, plural(done.length, "session"), physical.scheduled ? `S&C ${physical.done}/${physical.scheduled}` : null]
     .filter(Boolean).join(" · ");
-  const hardRounds = reports.filter(report => report.intensity === "hard").length;
+  // Intensity is per report, so "hard" counts sessions, never rounds.
+  const hardSessions = reports.filter(report => report.intensity === "hard").length;
+  const rocked = f.share_injuries && reports.some(report => report.rocked);
+  const heavyContact = f.share_injuries && reports.some(report => report.head_contact === "heavy");
   const sparringSummary = reports.length
-    ? [plural(reports.length, "report"), plural(reports.reduce((sum, report) => sum + report.rounds, 0), "round"), hardRounds ? `${hardRounds} hard` : null].filter(Boolean).join(" · ")
+    ? [rocked ? "⚠ Rocked reported" : heavyContact ? "⚠ Heavy head contact" : null,
+      plural(reports.length, "report"), plural(reports.reduce((sum, report) => sum + report.rounds, 0), "round"),
+      hardSessions ? plural(hardSessions, "hard session") : null].filter(Boolean).join(" · ")
     : `No reports · ${weekLabel.toLowerCase()}`;
   const cut = f.share_weight ? coachCutStatus(weight, f.today) : null;
   const weightSummary = !f.share_weight ? "Not shared" : weightFailed ? "Unavailable" : !weight ? "Loading…"
     : !weight.shared ? "Not shared" : weight.current_weight_kg == null ? "No weight logged"
-      : [formatWeight(weight.current_weight_kg), weight.target_weight_kg != null ? `target ${formatWeight(weight.target_weight_kg)}` : null,
-        cut && cut.tone !== "unknown" ? cut.label : null].filter(Boolean).join(" · ");
+      : [cut && (cut.tone === "red" || cut.tone === "amber") ? `⚠ ${cut.label}` : null,
+        formatWeight(weight.current_weight_kg), weight.target_weight_kg != null ? `target ${formatWeight(weight.target_weight_kg)}` : null,
+        cut?.tone === "green" ? cut.label : null].filter(Boolean).join(" · ");
   const weightTone = cut?.tone === "red" ? "concern" : cut?.tone === "amber" ? "caution" : undefined;
   const lastDone = [...f.sessions].filter(session => completed(session) && session.day <= f.today).sort((a, b) => b.day.localeCompare(a.day))[0];
   const historySummary = f.last_training ? `Last · ${humanize(f.last_training.activity)} · ${formatAppDate(f.last_training.day)}`
     : lastDone ? `Last session · ${formatAppDate(lastDone.day)}` : "No training logged yet";
   const recoverySummary = [
-    injuries.length ? plural(injuries.length, "open injury", "open injuries") : null,
-    f.share_recovery ? (warnings.length ? plural(warnings.length, "recovery concern") : latest ? `Check-in ${formatAppDate(latest.day)}` : "No check-ins")
+    injuries.length ? `⚠ ${plural(injuries.length, "open injury", "open injuries")}` : null,
+    f.share_recovery ? (warnings.length ? `${injuries.length ? "" : "⚠ "}${plural(warnings.length, "recovery concern")}` : latest ? `Check-in ${formatAppDate(latest.day)}` : "No check-ins")
       : "Check-ins not shared",
   ].filter(Boolean).join(" · ");
+  const focus = profileFocus(coachMode, {
+    weekly: done.length > 0 || physical.scheduled > 0,
+    sparring: reports.length > 0,
+    // Still loading counts as data, so the choice doesn't jump past it and back.
+    "fight-weight": f.share_weight && !weightFailed && (!weight || (weight.shared && weight.current_weight_kg != null)),
+    "training-history": Boolean(f.last_training || lastDone),
+    recovery: injuries.length > 0 || (f.share_recovery && checkIns.length > 0),
+  });
+  // Filled in by the panels that load them.
+  const [mediaSummary, setMediaSummary] = useState<string | null>(null);
+  const [nudgeSummary, setNudgeSummary] = useState<string | null>(null);
   const recoveryTone = injuries.length ? injuryTone : warnings.length ? "caution" : undefined;
   return (
     <>
@@ -923,6 +967,10 @@ function FighterOverview({
               <small className={styles.concern} data-recovery-tone={injuries.length ? injuryTone : undefined}>{summary.attention}</small>
             ) : null}
           </div>
+          <Link className={styles.messageFighter} href={chatLink("coach", f.id)} aria-label={`Message ${f.name || "fighter"}`}>
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M4 5h16v11H9l-5 4z" /></svg>
+            Message
+          </Link>
         </div>
         <div className={styles.campGrid}>
           <div>
@@ -989,10 +1037,7 @@ function FighterOverview({
           {f.share_recovery && <p>{readiness ? `Readiness · ${readiness.readiness}/5 · ${formatAppDate(readiness.day)}${readiness.day < dayOffset(f.today, -6) ? " · Older check-in" : ""}` : "No readiness recorded"}</p>}
         </>}
       </section>
-      {/* What needs acting on comes first; the nudge setting follows. */}
-      <CoachFighterContact token={token} athleteId={f.id} name={f.name} age={f.age}
-        healthConsent={Boolean(f.can_leave_feedback)} />
-      <FoldableSection id="weekly" title="Weekly performance" summary={weeklySummary}><section aria-label="Weekly performance">
+      <FoldableSection scope={f.id} id="weekly" autoOpen={focus === "weekly"} title="Weekly performance" summary={weeklySummary}><section aria-label="Weekly performance">
         <DiscoveryHint id="coach-week-arrows" text="Use the arrows to see other weeks." />
         <div className={styles.sectionHeading}>
           <h2>Weekly performance</h2>
@@ -1043,7 +1088,7 @@ function FighterOverview({
         </div>
       </section>
       </FoldableSection>
-      <FoldableSection id="sparring" title="Sparring" summary={sparringSummary} tone={reports.some(report => report.rocked || report.head_contact === "heavy") && f.share_injuries ? "concern" : undefined}>{reports.length ? (
+      <FoldableSection scope={f.id} id="sparring" autoOpen={focus === "sparring"} title="Sparring" summary={sparringSummary} tone={rocked || heavyContact ? "concern" : undefined}>{reports.length ? (
         <section className={styles.panel}>
           <div className={styles.sectionHeading}>
             <h2>Sparring</h2>
@@ -1080,9 +1125,10 @@ function FighterOverview({
       {/* A new key when sharing changes drops everything these loaded
           (weigh-ins, session rows, cached session records, an open record
           sheet) and reloads it under the new permissions. */}
-      <FoldableSection id="fight-weight" title="Fight weight" summary={weightSummary} tone={weightTone}><FightWeight key={`weight:${sharingKey}`} fighter={f} weight={weight} failed={Boolean(weightFailed)} /></FoldableSection>
-      <FoldableSection id="media" title="Photos and voice notes"><FighterMediaPanel token={token} fighter={f} /></FoldableSection>
-      <FoldableSection id="training-history" title="Training history" summary={historySummary}><TrainingHistory onFeedbackSaved={onFeedbackSaved} review={review} onReviewMissing={onReviewMissing}
+      <FoldableSection scope={f.id} id="fight-weight" autoOpen={focus === "fight-weight"} title="Fight weight" summary={weightSummary} tone={weightTone}><FightWeight key={`weight:${sharingKey}`} fighter={f} weight={weight} failed={Boolean(weightFailed)} /></FoldableSection>
+      <FoldableSection scope={f.id} id="media" title="Photos and voice notes" summary={mediaSummary ?? undefined}>
+        <FighterMediaPanel token={token} fighter={f} onSummary={setMediaSummary} /></FoldableSection>
+      <FoldableSection scope={f.id} id="training-history" autoOpen={focus === "training-history"} title="Training history" summary={historySummary}><TrainingHistory onFeedbackSaved={onFeedbackSaved} review={review} onReviewMissing={onReviewMissing}
         key={`history:${sharingKey}:${historyKey}:${f.plan_id}:${f.today}`}
         token={token}
         athleteId={f.id}
@@ -1090,7 +1136,7 @@ function FighterOverview({
         fightDate={f.fight_date}
         sport={f.sport}
       /></FoldableSection>
-      <FoldableSection id="recovery" title="Recovery" summary={recoverySummary} tone={recoveryTone === "unknown" ? undefined : recoveryTone}><section className={styles.panel}>
+      <FoldableSection scope={f.id} id="recovery" autoOpen={focus === "recovery"} title="Recovery" summary={recoverySummary} tone={recoveryTone === "unknown" ? undefined : recoveryTone}><section className={styles.panel}>
         <div className={styles.sectionHeading}><h2>Recovery</h2>{latest ? <small className={styles.muted}>Latest check-in · {formatAppDate(latest.day)}</small> : null}</div>
         {injuries.length ? <div className={styles.recoveryPriority}>
           <h3>Open injuries · {injuries.length}</h3>
@@ -1113,6 +1159,11 @@ function FighterOverview({
           {checkIns.length > 3 ? <button type="button" className="ghost-button" aria-expanded={allCheckIns} onClick={() => setAllCheckIns(!allCheckIns)}>{allCheckIns ? "Show recent check-ins" : "View all check-ins"}</button> : null}
         </> : <p className={styles.muted}>Recovery check-ins: Not shared</p>}
       </section></FoldableSection>
+      {/* A setting, not a daily task: last, closed, its state in the header. */}
+      <FoldableSection scope={f.id} id="check-in-nudge" title="Check-in nudge" summary={nudgeSummary ?? undefined}>
+        <CoachFighterContact token={token} athleteId={f.id} name={f.name} age={f.age}
+          healthConsent={Boolean(f.can_leave_feedback)} embedded onSummary={setNudgeSummary} />
+      </FoldableSection>
     </>
   );
 }
