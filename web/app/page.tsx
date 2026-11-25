@@ -698,7 +698,7 @@ export default function HomePage() {
       sessionIsToday,
     });
     const primaryHref = primaryAction.href;
-    const primaryLabel = scheduledCheckin ? "Check in for this session" : primaryAction.label;
+    const primaryLabel = scheduledCheckin && sessionIsToday ? "Check in for this session" : primaryAction.label;
     const trainingDay = shownState?.today?.training_day ?? "";
     const tracking = tracksWithoutPlan && commandState
       ? getTrackingHome({
