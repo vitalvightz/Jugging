@@ -202,6 +202,7 @@ async function fixture(
         },
       ];
   const feedback: { id: string; coach_name: string; note: string; exercise_ref: string; target_id: string; source: string; updated_at: string }[] = [];
+  const feedbackReads: string[] = [];
   await page.route("**/rest/v1/coach_feedback?**", route => {
     const params = new URL(route.request().url()).searchParams;
     if (params.get("limit") === "1") {
@@ -212,7 +213,9 @@ async function fixture(
       const ordered = [...feedback].sort((a, b) => b.updated_at.localeCompare(a.updated_at) || b.id.localeCompare(a.id));
       return route.fulfill({ json: ordered.slice(0, 1) });
     }
-    return route.fulfill({ json: feedback.filter(note => ["source", "target_id", "exercise_ref"].every(key => params.get(key) === `eq.${note[key as "source"]}`)) });
+    // Like PostgREST: only the filters actually sent apply.
+    feedbackReads.push(`${params.get("source")}:${params.get("target_id")}:${params.get("exercise_ref") ?? "*"}`);
+    return route.fulfill({ json: feedback.filter(note => ["source", "target_id", "exercise_ref"].every(key => !params.has(key) || params.get(key) === `eq.${note[key as "source"]}`)) });
   });
   const actions: Record<string, unknown>[] = [];
   await page.route("**/rest/v1/rpc/**", async (route) => {
@@ -309,6 +312,7 @@ async function fixture(
   return {
     actions,
     feedback,
+    feedbackReads,
     logged,
     revoke: () => {
       rows = [];
@@ -879,7 +883,12 @@ test("sparring totals use displayed reports and coach feedback stays attached to
   await dialog.getByRole("textbox", { name: "Feedback" }).fill("Good session today.");
   await dialog.getByRole("button", { name: "Save feedback" }).click();
   await expect(dialog.getByText("Good session today.", { exact: true })).toBeVisible();
+  // Every feedback box on a session shares one read of its notes (not one per exercise).
+  const sessionReads = () => state.feedbackReads.filter(read => read.startsWith("unlxck:"));
+  expect(sessionReads().every(read => read.endsWith(":*"))).toBe(true);
+  const readsBefore = sessionReads().length;
   await dialog.getByRole("button", { name: "Trap bar deadlift", exact: true }).click();
+  expect(sessionReads().length).toBe(readsBefore);
   await dialog.getByRole("button", { name: "Add feedback", exact: true }).click();
   await dialog.getByRole("textbox", { name: "Feedback" }).fill("Control the descent.");
   await dialog.getByRole("button", { name: "Save feedback" }).click();
@@ -1871,6 +1880,10 @@ test("check-in nudge: one switch turns it on, days and time save only when chang
 test("on a phone the fighter profile is a short list: sections start closed with a summary, and stay as the coach leaves them", async ({ page, baseURL }) => {
   await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, share_injuries: true,
     sparring_reports: [{ id: "report-hard", day: "2026-11-15", intensity: "hard", rounds: 5, round_seconds: 180, head_contact: "heavy", rocked: true }] }], false);
+  // Closed sections that load on demand make no requests until opened.
+  const requested: string[] = [];
+  page.on("request", request => { const path = new URL(request.url()).pathname; if (path.startsWith("/api/coach/fighters/")) requested.push(path); });
+  const onDemand = () => requested.filter(path => /\/training\/(history|plan|attachments)$/.test(path));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/coach/fighters/${fighterId}`);
   const sparring = page.locator("#sparring");
@@ -1889,6 +1902,13 @@ test("on a phone the fighter profile is a short list: sections start closed with
   // One section opens by itself: the first in the mode's order that has something to show.
   const open = () => page.locator("section[id] > details[open]").evaluateAll(nodes => nodes.map(node => node.parentElement!.id));
   await expect.poll(open).toEqual(["weekly"]); // S&C: this week's sessions
+  await page.waitForTimeout(500);
+  expect(onDemand()).toEqual([]);
+  // The media summary still loads (one light request); its file lists wait.
+  expect(requested.some(path => path.endsWith("/media"))).toBe(true);
+  await page.locator("#training-history summary").click();
+  await expect.poll(() => onDemand().some(path => path.endsWith("/training/history"))).toBe(true);
+  await page.locator("#training-history summary").click();
   // Collapsed otherwise, the whole profile stays short.
   expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThan(2400);
   if (process.env.COACH_SCREENSHOTS) await page.screenshot({ path: `${process.env.COACH_SCREENSHOTS}/profile-collapsed.png`, fullPage: true });

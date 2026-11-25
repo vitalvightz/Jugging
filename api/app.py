@@ -338,7 +338,9 @@ _TODAY_NEUTRAL_MUTATION_PREFIXES = (
 )
 # Product analytics only inserts product_events, which no Today input reads; the
 # web app posts one per page view, and each used to discard the reusable view.
-_TODAY_NEUTRAL_MUTATION_PATHS = frozenset({"/api/me/username", "/api/onboarding/draft", "/api/analytics/events"})
+_TODAY_NEUTRAL_MUTATION_PATHS = frozenset({
+    "/api/me/username", "/api/onboarding/draft", "/api/analytics/events", "/api/analytics/events/batch",
+})
 
 
 def _is_today_neutral_mutation(path: str) -> bool:

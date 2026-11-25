@@ -1,3 +1,4 @@
+import { sendQueuedProductEvents } from "@/lib/api";
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -32,6 +33,11 @@ async function withApi(run: (events: unknown[]) => Promise<void>) {
       events.push(JSON.parse(String(init?.body)));
       return new Response(JSON.stringify({ accepted: true }), { status: 202 });
     }
+    if (path.endsWith("/api/analytics/events/batch")) {
+      const batch = JSON.parse(String(init?.body)).events as unknown[];
+      events.push(...batch);
+      return new Response(JSON.stringify({ accepted: batch.map(() => true) }), { status: 202 });
+    }
     return new Response("{}", { status: 500 });
   };
   try {
@@ -62,7 +68,8 @@ async function mount(node: React.ReactNode) {
   };
 }
 
-const flush = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+// Events queue for a moment to share one request; send them before checking.
+const flush = () => act(async () => { sendQueuedProductEvents(); await new Promise((resolve) => setTimeout(resolve, 0)); });
 
 test("a check-in's first answer records one start without any answer values", async () => {
   await withApi( async (events) => {
@@ -129,7 +136,7 @@ test("a saved check-in offers reminders; a failed one does not", async () => {
   window.addEventListener(PUSH_PROMPT_EVENT, onOffer);
   globalThis.fetch = async (input) => String(input).endsWith("/api/today/checkin") && ok
     ? new Response(JSON.stringify({ recommendation_state: "green", warnings: [] }))
-    : new Response("{}", { status: String(input).endsWith("/api/analytics/events") ? 202 : 500 });
+    : new Response("{}", { status: /\/api\/analytics\/events(\/batch)?$/.test(String(input)) ? 202 : 500 });
   const view = await mount(<TodayReadinessForm token="checkin-save" onRefresh={async () => {}} />);
   const submit = async () => {
     await act(async () => {

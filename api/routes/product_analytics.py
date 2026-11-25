@@ -3,7 +3,7 @@
 from typing import Literal
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from api.dependencies import get_store, require_admin, require_profile
 from api.services.product_analytics import EVENT_FEATURES, FEATURES, summarize
 
@@ -25,6 +25,13 @@ class Event(BaseModel):
     ]
     request_id: UUID
     flow_id: UUID | None = None
+
+
+class EventBatch(BaseModel):
+    """Events the app queued within a moment of each other (a page view and the
+    screen's own event), sent as one request instead of one each."""
+    model_config = ConfigDict(extra="forbid")
+    events: list[Event] = Field(min_length=1, max_length=20)
 
 
 class Preference(BaseModel):
@@ -70,25 +77,37 @@ def build_product_analytics_router():
             "Usage analytics is included in this private beta; there is no optional analytics switch.",
         )
 
-    @router.post("/api/analytics/events", status_code=202)
-    def ingest(body: Event, profile=Depends(require_profile), store=Depends(get_store)):
-        if EVENT_FEATURES.get(body.event_name) != body.feature and not (
+    def supported(body: Event) -> bool:
+        return EVENT_FEATURES.get(body.event_name) == body.feature or (
             body.event_name in ("frontend_error", "page_viewed")
             and body.feature in (*FEATURES, "onboarding")
-        ):
-            raise HTTPException(422, "Unsupported event and feature combination")
+        )
+
+    def record(body: Event, athlete_id: str, store) -> bool:
         # No client actor, timestamp, payload or URL is accepted.
         result = store.client.rpc(
             "ingest_product_event",
             {
-                "p_athlete_id": profile.athlete_id,
+                "p_athlete_id": athlete_id,
                 "p_event_name": body.event_name,
                 "p_feature": body.feature,
                 "p_request_id": str(body.request_id),
                 "p_flow_id": str(body.flow_id) if body.flow_id else None,
             },
         ).execute()
-        return {"accepted": bool(result.data)}
+        return bool(result.data)
+
+    @router.post("/api/analytics/events", status_code=202)
+    def ingest(body: Event, profile=Depends(require_profile), store=Depends(get_store)):
+        if not supported(body):
+            raise HTTPException(422, "Unsupported event and feature combination")
+        return {"accepted": record(body, profile.athlete_id, store)}
+
+    @router.post("/api/analytics/events/batch", status_code=202)
+    def ingest_batch(body: EventBatch, profile=Depends(require_profile), store=Depends(get_store)):
+        """Same rules per event as /api/analytics/events. An unsupported
+        combination is refused on its own (accepted false), never the batch."""
+        return {"accepted": [supported(event) and record(event, profile.athlete_id, store) for event in body.events]}
 
     def facts(store, athlete_id=None):
         result = (

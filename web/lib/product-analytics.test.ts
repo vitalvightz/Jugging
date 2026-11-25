@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  sendQueuedProductEvents,
   trackProductEvent,
   productEventIdentity,
 } from "./api";
@@ -133,4 +134,38 @@ test("analytics network and gateway failures never degrade app connectivity", as
     globalThis.fetch = original;
     __resetConnectivityForTests();
   }
+});
+
+test("a long queue goes out oldest first, twenty to a request", async () => {
+  const original = globalThis.fetch;
+  const sent: string[][] = [];
+  globalThis.fetch = async (input, init) => {
+    assert.ok(String(input).endsWith("/api/analytics/events/batch"));
+    const events = JSON.parse(String(init?.body)).events as { event_name: string }[];
+    sent.push(events.map(event => event.event_name));
+    return new Response(JSON.stringify({ accepted: events.map(() => true) }), { status: 202 });
+  };
+  try {
+    const names = Array.from({ length: 45 }, (_, index) => `event_${index}`);
+    const results = names.map(name => trackProductEvent("ordered", name, "timer"));
+    sendQueuedProductEvents();
+    assert.deepEqual(await Promise.all(results), names.map(() => true));
+    assert.deepEqual(sent, [names.slice(0, 20), names.slice(20, 40), names.slice(40)]);
+  } finally { globalThis.fetch = original; }
+});
+
+test("an API without the batch route still records every event, one by one", async () => {
+  const original = globalThis.fetch;
+  const singles: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    if (String(input).endsWith("/batch")) return new Response(JSON.stringify({ detail: "Not Found" }), { status: 404 });
+    singles.push(JSON.parse(String(init?.body)).event_name);
+    return new Response(JSON.stringify({ accepted: true }), { status: 202 });
+  };
+  try {
+    const results = [trackProductEvent("old-api", "page_viewed", "history"), trackProductEvent("old-api", "history_opened", "history")];
+    sendQueuedProductEvents();
+    assert.deepEqual(await Promise.all(results), [true, true]);
+    assert.deepEqual(singles, ["page_viewed", "history_opened"]);
+  } finally { globalThis.fetch = original; }
 });

@@ -7,6 +7,33 @@ import { formatAppDate } from "@/lib/date-format";
 import styles from "./coach-feedback.module.css";
 
 type Note = { id: string; coach_name: string; note: string; exercise_ref: string; updated_at: string };
+
+// One read per record, shared by every feedback box on it (the whole session
+// and each exercise): a session with eight exercises made nine identical-shape
+// requests. It is shared only while those boxes mount together (kept briefly
+// after it lands), never as a long-lived cache; a save or a retry drops it.
+const SHARE_MS = 1500;
+const notesByRecord = new Map<string, Promise<Note[]>>();
+function recordNotes(token: string, athleteId: string, source: string, targetId: string): Promise<Note[]> {
+  const key = `${token}:${athleteId}:${source}:${targetId}`;
+  let pending = notesByRecord.get(key);
+  if (!pending) {
+    const params = new URLSearchParams({ select: "id,coach_name,note,exercise_ref,updated_at", athlete_id: `eq.${athleteId}`,
+      source: `eq.${source}`, target_id: `eq.${targetId}`, order: "created_at.asc" });
+    pending = fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/coach_feedback?${params}`, {
+      cache: "no-store", headers: { apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "", Authorization: `Bearer ${token}` },
+    }).then(async response => { if (!response.ok) throw Error(); return response.json(); })
+      .then(rows => { if (!Array.isArray(rows)) throw Error(); return rows as Note[]; });
+    const settled = pending;
+    const drop = () => { if (notesByRecord.get(key) === settled) notesByRecord.delete(key); };
+    settled.then(() => setTimeout(drop, SHARE_MS), drop);
+    notesByRecord.set(key, settled);
+  }
+  return pending;
+}
+function forgetRecordNotes(token: string, athleteId: string, source: string, targetId: string) {
+  notesByRecord.delete(`${token}:${athleteId}:${source}:${targetId}`);
+}
 export function CoachFeedback({ token, athleteId, source, targetId, exerciseRef = "", onSaved, editable = false }: {
   onSaved?: () => void; token: string; athleteId: string; source: string; targetId: string; exerciseRef?: string; editable?: boolean;
 }) {
@@ -17,22 +44,19 @@ export function CoachFeedback({ token, athleteId, source, targetId, exerciseRef 
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    const controller = new AbortController();
+    let active = true;
     setNotes([]);
-    const params = new URLSearchParams({ select: "id,coach_name,note,exercise_ref,updated_at", athlete_id: `eq.${athleteId}`,
-      source: `eq.${source}`, target_id: `eq.${targetId}`, exercise_ref: `eq.${exerciseRef}`, order: "created_at.asc" });
-    fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/coach_feedback?${params}`, {
-      signal: controller.signal, cache: "no-store", headers: { apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "", Authorization: `Bearer ${token}` },
-    }).then(async response => { if (!response.ok) throw Error(); return response.json(); })
-      .then(rows => { if (!Array.isArray(rows)) throw Error(); if (!controller.signal.aborted) { setNotes(rows); setError(false); } })
-      .catch(() => { if (!controller.signal.aborted) { setNotes([]); setError(true); } });
-    return () => controller.abort();
+    recordNotes(token, athleteId, source, targetId)
+      .then(rows => { if (active) { setNotes(rows.filter(row => (row.exercise_ref ?? "") === exerciseRef)); setError(false); } })
+      .catch(() => { if (active) { setNotes([]); setError(true); } });
+    return () => { active = false; };
   }, [token, athleteId, source, targetId, exerciseRef, attempt]);
   async function save() {
     setBusy(true);
     try {
       await coachRpc(token, "save_coach_feedback", { p_athlete_id: athleteId, p_source: source, p_target_id: targetId, p_exercise_ref: exerciseRef, p_note: draft.trim() });
       onSaved?.();
+      forgetRecordNotes(token, athleteId, source, targetId);
       setEditing(false); setAttempt(value => value + 1);
       // Best-effort: the note is saved whether or not the fighter is pinged.
       notifyFighterOfFeedback(token, athleteId, { source, target_id: targetId, exercise_ref: exerciseRef }).catch(() => undefined);
@@ -49,7 +73,7 @@ export function CoachFeedback({ token, athleteId, source, targetId, exerciseRef 
       <button type="submit" className="cta" disabled={busy || !draft.trim()}>{busy ? "Saving…" : "Save feedback"}</button>
       <button type="button" className="ghost-button" disabled={busy} onClick={() => setEditing(false)}>Cancel</button>
     </form> : null}
-    {error ? <p role="alert">Coach feedback unavailable. <button type="button" className="ghost-button" onClick={() => setAttempt(value => value + 1)}>Retry</button></p> : null}
+    {error ? <p role="alert">Coach feedback unavailable. <button type="button" className="ghost-button" onClick={() => { forgetRecordNotes(token, athleteId, source, targetId); setAttempt(value => value + 1); }}>Retry</button></p> : null}
   </div>;
 }
 

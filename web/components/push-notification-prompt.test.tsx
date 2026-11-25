@@ -1,3 +1,4 @@
+import { sendQueuedProductEvents } from "@/lib/api";
 import test from "node:test";
 import assert from "node:assert/strict";
 import "./test-dom";
@@ -32,6 +33,11 @@ async function mount(options: { permission?: string; enabled?: boolean; subscrib
       events.push(JSON.parse(String(init?.body)).event_name);
       return new Response(JSON.stringify({ accepted: true }), { status: 202 });
     }
+    if (String(input).endsWith("/api/analytics/events/batch")) {
+      const batch = JSON.parse(String(init?.body)).events as { event_name: string }[];
+      events.push(...batch.map(event => event.event_name));
+      return new Response(JSON.stringify({ accepted: batch.map(() => true) }), { status: 202 });
+    }
     if (String(input).endsWith("/api/push/settings")) return new Response(JSON.stringify({
       enabled: options.enabled !== false, public_key: "AQAB", preferences: { push_enabled: !options.paused },
       ...(options.serverEndpoints ? { subscription_endpoints: options.serverEndpoints } : {}),
@@ -49,6 +55,8 @@ async function mount(options: { permission?: string; enabled?: boolean; subscrib
 
 async function saved(token = "test-token") {
   await act(async () => { offerPushNotifications(token); await new Promise(resolve => setTimeout(resolve, 600)); });
+  // Events queue for a moment to share one request; send them before checking.
+  await act(async () => { sendQueuedProductEvents(); await new Promise(resolve => setTimeout(resolve, 20)); });
 }
 
 test("waits behind an existing modal; dismissing prevents another offer", async () => {
@@ -208,7 +216,7 @@ test("records shown, accepted and subscribed so activation drop-off is measurabl
     await saved();
     assert.deepEqual(app.events, ["push_prompt_shown"]);
     const enable = Array.from(app.container.querySelectorAll("button")).find(button => button.textContent === "Enable reminders")!;
-    await act(async () => { enable.click(); await new Promise(resolve => setTimeout(resolve, 50)); });
+    await act(async () => { enable.click(); await new Promise(resolve => setTimeout(resolve, 50)); sendQueuedProductEvents(); await new Promise(resolve => setTimeout(resolve, 20)); });
     assert.deepEqual(app.events, ["push_prompt_shown", "push_prompt_accepted", "push_subscribed"]);
     assert.equal(app.container.querySelector("dialog"), null);
   } finally { await app.cleanup(); }
@@ -222,7 +230,7 @@ test("recovers a lost subscription on a granted device without asking for permis
       await saved();
       assert.ok(app.container.querySelector("dialog[open]"), "a granted device with nothing reaching it is offered reminders");
       const enable = Array.from(app.container.querySelectorAll("button")).find(button => button.textContent === "Enable reminders")!;
-      await act(async () => { enable.click(); await new Promise(resolve => setTimeout(resolve, 50)); });
+      await act(async () => { enable.click(); await new Promise(resolve => setTimeout(resolve, 50)); sendQueuedProductEvents(); await new Promise(resolve => setTimeout(resolve, 20)); });
       assert.equal(app.requests(), 0, "permission is never requested again");
       assert.ok(app.events.includes("push_subscribed"));
     } finally { await app.cleanup(); }

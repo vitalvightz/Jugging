@@ -5,6 +5,8 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { CoachFeedback } from "./coach-feedback";
 
+// Each mount is its own sign-in: the brief read-sharing between boxes never crosses tests.
+let mounts = 0;
 const original = { id: "note", coach_name: "Sam", note: "Control the descent.", exercise_ref: "squat", updated_at: "2026-11-16T12:00:00Z" };
 async function mount(editable: boolean, denySave = false) {
   const host = document.createElement("div"); document.body.append(host);
@@ -27,7 +29,7 @@ async function mount(editable: boolean, denySave = false) {
     }
     return new Response(JSON.stringify(notes));
   };
-  await act(async () => root.render(<CoachFeedback token="token" athleteId="fighter" source="unlxck" targetId="session" exerciseRef="squat" editable={editable} />));
+  await act(async () => root.render(<CoachFeedback token={`token-${++mounts}`} athleteId="fighter" source="unlxck" targetId="session" exerciseRef="squat" editable={editable} />));
   const click = async (label: string) => {
     const button = [...host.querySelectorAll("button")].find(button => button.textContent === label);
     assert.ok(button, label); await act(async () => button.click());

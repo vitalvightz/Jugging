@@ -23,6 +23,12 @@ test("a beta athlete sends visits and page events without any preference request
       events.push(route.request().postDataJSON());
       return route.fulfill({ status: 202, json: { accepted: true } });
     }
+    // Events a moment apart share one request.
+    if (endpoint === "/api/analytics/events/batch") {
+      const batch = route.request().postDataJSON().events as Record<string, unknown>[];
+      events.push(...batch);
+      return route.fulfill({ status: 202, json: { accepted: batch.map(() => true) } });
+    }
     if (endpoint === "/api/analytics/preference") choices.push(route.request().method());
     return route.fulfill({ json: {} });
   });
