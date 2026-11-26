@@ -278,7 +278,7 @@ test("one skipped session is not a concern; two in a week are, for S&C only", ()
 test("a training frequency spike needs four weeks of history and a clear jump", () => {
   const usual = (n: number) => [1, 2, 3, 4].flatMap(w => Array.from({ length: n }, (_, i) => session(`w${w}-${i}`, dayOffset("2026-11-09", -7 * w + i))));
   const thisWeek = (n: number) => Array.from({ length: n }, (_, i) => session(`now-${i}`, dayOffset("2026-11-09", i)));
-  assert.deepEqual(coachConcerns({ ...blank, sessions: [...usual(3), ...thisWeek(6)] }, null).map(c => c.reason), ["Training frequency spike · 6 sessions, usually 3"]);
+  assert.deepEqual(coachConcerns({ ...blank, sessions: [...usual(3), ...thisWeek(6)] }, null).map(c => c.reason), ["Training frequency spike · 6 vs 3 usual"]);
   assert.deepEqual(coachConcerns({ ...blank, sessions: [...usual(3), ...thisWeek(4)] }, null), []);
   assert.deepEqual(coachConcerns({ ...blank, sessions: thisWeek(6) }, null), []);
   assert.deepEqual(coachConcerns({ ...blank, sessions: [...usual(1), ...thisWeek(4)] }, null), []);

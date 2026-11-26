@@ -380,7 +380,7 @@ export function coachConcerns(f: Fighter, weight: import("./api-schema.generated
   const history = [1, 2, 3, 4].map(n => loadSessions(f, dayOffset(week, -7 * n), dayOffset(week, -7 * n + 6)));
   const usual = history.reduce((a, b) => a + b, 0) / history.length;
   if (history.every(n => n > 0) && usual >= 2 && thisWeek >= usual * 1.5 && thisWeek - usual >= 2) {
-    concerns.push({ id: "load:spike", category: "load", tone: "caution", reason: `Training frequency spike · ${thisWeek} sessions, usually ${Math.round(usual)}`, section: "weekly" });
+    concerns.push({ id: "load:spike", category: "load", tone: "caution", reason: `Training frequency spike · ${thisWeek} vs ${Math.round(usual)} usual`, section: "weekly" });
   }
   return concerns.sort(compareCoachConcerns);
 }

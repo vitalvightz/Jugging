@@ -2041,12 +2041,11 @@ for (const width of [320, 390]) {
     await expect(attention).not.toContainText("Okay");
     await expect(attention.getByRole("listitem").nth(0)).toContainText("Cut too aggressive · 6 days to fight");
     await expect(attention.getByRole("listitem").nth(1)).toContainText("Low recovery · 3 of 3 check-ins");
-    await expect(attention.getByRole("listitem").nth(2)).toContainText("Training frequency spike · 6 sessions, usually 3");
+    await expect(attention.getByRole("listitem").nth(2)).toContainText("Training frequency spike · 6 vs 3 usual");
     await expect(attention.getByRole("listitem").nth(2)).toContainText("+1 more concern");
     // Each concern fits on one line.
     for (const reason of await attention.locator("[data-recovery-tone]").all()) {
-      const box = await reason.boundingBox();
-      expect(box!.height).toBeLessThan(30);
+      expect(await reason.evaluate(el => el.getClientRects().length)).toBe(1);
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await attention.screenshot({ path: `/tmp/coach-attention-sc-${width}.png` });
