@@ -1261,6 +1261,17 @@ for (const mode of ["Technical", "S&C"]) {
   }
 }
 
+test("a sparring alert opens the report week and shows additional concerns", async ({ page, baseURL }) => {
+  const report = { id: "prior-week", round_seconds: 180, day: "2026-11-14", rounds: 3, intensity: "technical", head_contact: "heavy", rocked: true };
+  await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, today: "2026-11-16", share_weight: false, share_injuries: true, sparring_reports: [report] }], false);
+  await page.goto("/coach");
+  const alert = page.getByRole("region", { name: "Needs attention" }).getByRole("link");
+  await expect(alert).toContainText(/\+\d+ more concerns?/);
+  await alert.click();
+  await expect(page.locator("#sparring details[open] > summary")).toBeInViewport();
+  await expect(page.locator("#sparring-report-prior-week")).toBeVisible();
+});
+
 test("team weight checks show pending and unavailable states, and never request unshared or minor assessments", async ({ page, baseURL }) => {
   const base = { ...fighter, share_recovery: false, share_injuries: false, age: 25 };
   await fixture(page, baseURL!, "coach", false, {}, [base,
@@ -1277,8 +1288,8 @@ test("team weight checks show pending and unavailable states, and never request 
   });
   await page.goto("/coach");
   const metric = page.getByRole("region", { name: "Roster summary" }).locator("article").filter({ hasText: "Needs attention" }).locator("strong");
-  await expect(metric).toHaveText("—");
-  await expect(page.getByText("Checking weight…", { exact: true })).toBeVisible();
+  await expect(page.getByText("Checking roster alerts…")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your fighters" })).toHaveCount(0);
   release();
   await expect(metric).toHaveText("1");
   await expect(page.getByRole("region", { name: "Needs attention" }).getByText("Weight status unavailable", { exact: true })).toHaveAttribute("data-recovery-tone", "unknown");

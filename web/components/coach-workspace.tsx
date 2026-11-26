@@ -533,13 +533,14 @@ function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { to
       const result = previous[f.id];
       return result?.token === token && result.connectionId === f.connection_id ? [[f.id, result]] : [];
     })));
-    for (const f of eligible) {
-      void getFighterWeight(token, f.id).then(weight => {
-        if (active) setWeights(previous => ({ ...previous, [f.id]: { token, connectionId: f.connection_id, weight, failed: false } }));
-      }).catch(() => {
-        if (active) setWeights(previous => ({ ...previous, [f.id]: { token, connectionId: f.connection_id, weight: null, failed: true } }));
-      });
-    }
+    void Promise.all(eligible.map(async f => {
+      const result = await getFighterWeight(token, f.id)
+        .then(weight => ({ weight, failed: false }))
+        .catch(() => ({ weight: null, failed: true }));
+      return [f.id, { token, connectionId: f.connection_id, ...result }] as const;
+    })).then(results => {
+      if (active) setWeights(Object.fromEntries(results));
+    });
     return () => { active = false; };
   }, [token, fighters]);
   const rows = fighters.map(fighter => {
@@ -560,7 +561,7 @@ function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { to
     const position = window.history.state?.coachOverviewScroll;
     if (typeof position !== "number") return;
     const frame = window.requestAnimationFrame(() => {
-      window.scrollTo({ top: position, behavior: "instant" });
+      if (window.scrollY !== position) window.scrollTo({ top: position, behavior: "instant" });
       const state = { ...window.history.state };
       delete state.coachOverviewScroll;
       window.history.replaceState(state, "");
@@ -642,6 +643,10 @@ function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { to
       </section>
   );
   if (rosterOnly) return roster;
+  if (pending) return <section className={styles.panel} role="status">
+    <p>Checking roster alerts…</p>
+    <Skeleton height={84} />
+  </section>;
   const rosterLeads = !attention.length && !upcoming.length;
   return (
     <>
@@ -654,6 +659,7 @@ function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { to
                 key={f.id}
                 fighter={f}
                 section={concerns[0].section}
+                extra={concerns.length > 1 ? `+${concerns.length - 1} more ${concerns.length === 2 ? "concern" : "concerns"}` : undefined}
                 lead={<Avatar fighter={f} />}
                 detail={<span data-recovery-tone={concerns[0].tone}>{concerns[0].reason}</span>}
               />
