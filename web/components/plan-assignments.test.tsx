@@ -83,3 +83,30 @@ test("overlap requires the existing plan-switch dialog before retrying", async (
     assert.equal(ui.activated(), 1); assert.deepEqual(ui.writes[1].body, { overlap_action: "pause" });
   } finally { ui.close(); }
 });
+
+test("reports when the read settles, and a revisit shows the last rows at once", async () => {
+  const before = globalThis.fetch;
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  globalThis.fetch = async () => { await gate; return Response.json([{ ...original, id: "remembered" }]); };
+  const first = document.createElement("div"); document.body.append(first);
+  const firstRoot = createRoot(first);
+  let settled = 0;
+  try {
+    await act(async () => firstRoot.render(<PlanAssignments token="recall-token" onActivated={() => undefined} onSettled={() => { settled++; }} />));
+    assert.equal(settled, 0, "not settled while the read is in flight");
+    assert.equal(first.textContent, "");
+    await act(async () => { release(); await gate; });
+    assert.equal(settled, 1);
+    assert.match(first.textContent!, /Coach week/);
+    act(() => firstRoot.unmount());
+
+    // The next visit renders the remembered rows in its very first frame.
+    globalThis.fetch = () => new Promise<Response>(() => undefined);
+    const second = document.createElement("div"); document.body.append(second);
+    const secondRoot = createRoot(second);
+    act(() => secondRoot.render(<PlanAssignments token="recall-token" onActivated={() => undefined} />));
+    assert.match(second.textContent!, /Coach week/);
+    act(() => secondRoot.unmount()); second.remove();
+  } finally { first.remove(); globalThis.fetch = before; }
+});

@@ -95,6 +95,10 @@ function ChatScreen({ token, me, role }: { token: string; me: string; role: Chat
   // remembered inbox still opens once the server's inbox arrives.
   const opened = useRef(Boolean(start.first?.selected));
   const selectedRef = useRef<string | null>(start.first?.selected ?? null);
+  // A chat opened on arrival (a fighter's only coach, or a linked chat) is the
+  // screen itself: it appears in place instead of sliding in over an inbox
+  // the person never asked to see.
+  const [openedOnArrival, setOpenedOnArrival] = useState(Boolean(start.first?.selected));
 
   const openFirst = useCallback((rows: InboxRow[]) => {
     if (opened.current) return;
@@ -104,6 +108,7 @@ function ChatScreen({ token, me, role }: { token: string; me: string; role: Chat
     if (first.selected) {
       selectedRef.current = first.selected;
       setSelected(first.selected);
+      setOpenedOnArrival(true);
     }
   }, [role]);
 
@@ -158,6 +163,7 @@ function ChatScreen({ token, me, role }: { token: string; me: string; role: Chat
     if (selectedRef.current || !otherId) setQuote(null);
     selectedRef.current = otherId;
     setSelected(otherId);
+    setOpenedOnArrival(false);
     const url = new URL(window.location.href);
     url.search = otherId ? `?with=${encodeURIComponent(otherId)}` : "";
     window.history.replaceState(window.history.state, "", url);
@@ -168,15 +174,21 @@ function ChatScreen({ token, me, role }: { token: string; me: string; role: Chat
   }, []);
 
   const current = inbox?.find(row => row.other_id === selected) ?? null;
+  // A fighter usually has one coach, whose chat opens as soon as the inbox is
+  // known: until then there is no inbox heading to flash first.
+  const awaitingFighterInbox = role === "athlete" && !inbox && !error;
   return (
     <div className={styles.shell}>
-      <section className={styles.list} aria-label="Chats">
-        <header className={styles.listHeader}>
+      {/* Hidden from the same render the arrival chat opens in, so not even one frame of it shows. */}
+      <section className={styles.list} aria-label="Chats" data-behind={openedOnArrival && current ? true : undefined}>
+        {awaitingFighterInbox ? null : <header className={styles.listHeader}>
           <h1>{role === "coach" ? "Chats" : "Coach chat"}</h1>
           {inbox ? <span className={styles.count}>{inbox.reduce((total, row) => total + row.unread, 0) || ""}</span> : null}
-        </header>
+        </header>}
         {error && !inbox ? (
           <div className={styles.problem} role="alert">{error}<button type="button" onClick={() => void load()}>Retry</button></div>
+        ) : awaitingFighterInbox ? (
+          <div className={`${styles.listLoading} loading-reveal`} aria-busy="true"><Skeleton height={56} /></div>
         ) : !inbox ? (
           <div className={styles.listLoading}><Skeleton height={56} /><Skeleton height={56} /><Skeleton height={56} /></div>
         ) : inbox.length === 0 ? (
@@ -210,7 +222,7 @@ function ChatScreen({ token, me, role }: { token: string; me: string; role: Chat
         )}
       </section>
       {current ? (
-        <ChatSheet name={current.name} onClose={() => select(null)}>
+        <ChatSheet name={current.name} instant={openedOnArrival} onClose={() => select(null)}>
           {close => <ChatThread key={current.other_id} token={token} me={me} role={role} row={current} initialQuote={quote}
             onBack={close} onRow={patch => updateRow(current.other_id, patch)} />}
         </ChatSheet>
@@ -224,7 +236,13 @@ function ChatScreen({ token, me, role }: { token: string; me: string; role: Chat
  * page, the tab bar and the list behind it never interfere with typing,
  * scrolling or recording.
  */
-function ChatSheet({ name, onClose, children }: { name: string; onClose: () => void; children: (close: () => void) => ReactNode }) {
+function ChatSheet({ name, instant = false, onClose, children }: {
+  name: string;
+  /** Opened on arrival: shown in place, with no slide over the inbox. */
+  instant?: boolean;
+  onClose: () => void;
+  children: (close: () => void) => ReactNode;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
   const { closing, close } = useSheetExit(onClose);
   useEffect(() => {
@@ -279,6 +297,7 @@ function ChatSheet({ name, onClose, children }: { name: string; onClose: () => v
   }, []);
   return createPortal(
     <dialog ref={dialog} className={styles.sheet} aria-label={`Chat with ${name}`} tabIndex={-1} data-closing={closing || undefined}
+      data-instant={instant || undefined}
       onCancel={event => { if (event.target !== event.currentTarget) return; event.preventDefault(); close(); }}
       onClick={event => {
         if (event.target !== event.currentTarget) return;

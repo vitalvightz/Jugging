@@ -61,6 +61,14 @@
 @keyframes chat-sheet-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(16px); } }
 @keyframes chat-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes chat-backdrop-out { from { opacity: 1; } to { opacity: 0; } }
+/* A chat opened on arrival is the screen itself: it still waits the two frames
+   for iOS to settle its size, then appears at once rather than sliding in. The
+   inbox behind it stays hidden, so it never shows through or flashes first. */
+.sheet[open][data-instant],
+.sheet[open][data-instant]::backdrop { animation-duration: 1ms; }
+.list[data-behind] { visibility: hidden; }
+/* Closing the chat shows the inbox it fades back to. */
+:global(body):has(.sheet[data-closing]) .list[data-behind] { visibility: visible; }
 @media (prefers-reduced-motion: reduce) {
   .sheet[open], .sheet[data-closing], .sheet[open]::backdrop, .sheet[data-closing]::backdrop { animation: none; }
 }
