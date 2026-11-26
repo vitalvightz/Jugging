@@ -157,7 +157,8 @@ test("the timer page opens on the athlete's last round setup", async () => {
     );
   });
   const summary = document.querySelector(".st-plan-summary");
-  assert.equal(summary?.textContent, "6 × 2:00 · 0:30 rest");
+  assert.equal(document.querySelector(".st-board-format")?.textContent, "6 rounds");
+  assert.equal(summary?.textContent, "2:00 work · 0:30 rest");
 
   await act(async () => root.unmount());
   container.remove();

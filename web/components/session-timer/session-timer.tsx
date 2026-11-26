@@ -266,6 +266,25 @@ function ringProgress(state: TimerState, item: TimerItem | null, view: TimerView
   return 1 - view.remainingMs / state.phaseMs;
 }
 
+// Seven-segment face for the standalone gym clock. Assistive technology reads the time once.
+const DIGIT_SEGMENTS = ["abcdef", "bc", "abdeg", "abcdg", "bcfg", "acdfg", "acdefg", "abc", "abcdefg", "abcdfg"];
+
+function ScoreboardDigits({ time }: { time: string }) {
+  return <span className="st-clock-digits st-score-digits" role="timer">
+    <span className="sr-only">{time}</span>
+    <span className="st-score-face" aria-hidden="true">
+      {Array.from(time.padStart(5, "0"), (char, index) => char === ":" ? (
+        <span key={index} className="st-score-colon" />
+      ) : (
+        <span key={index} className="st-score-digit">
+          {Array.from("abcdefg", segment => <i key={segment} data-segment={segment}
+            data-lit={DIGIT_SEGMENTS[Number(char)]?.includes(segment) || undefined} />)}
+        </span>
+      ))}
+    </span>
+  </span>;
+}
+
 function Ring({ progress, children }: { progress: number | null; children: ReactNode }) {
   const clamped = progress === null ? 1 : Math.min(1, Math.max(0, progress));
   return (
@@ -497,12 +516,14 @@ function Stepper({
 }
 
 function ReadyPanel({
+  ringside,
   timer,
   item,
   onAdjust,
 }: {
   timer: SessionTimerController;
   item: TimerItem;
+  ringside: boolean;
   onAdjust: () => void;
 }) {
   if (item.kind === "task") {
@@ -557,12 +578,12 @@ function ReadyPanel({
   return (
     <div className="st-setup">
       <button type="button" className="st-plan-summary" onClick={onAdjust} aria-label="Edit rounds and timing">
-        {item.rounds > 1 ? (
+        {!ringside && item.rounds > 1 ? (
           <>
             <span>{item.rounds}</span> ×{" "}
           </>
         ) : null}
-        <span>{formatClock(item.workSec)}</span>
+        <span>{formatClock(item.workSec)}</span>{ringside && " work"}
         {item.restSec > 0 ? (
           <>
             {" "}
@@ -1020,6 +1041,7 @@ export function SessionTimer({
   storageKey,
   sessionTitle,
   visible,
+  ringside = false,
   finishLabel = "Finish session",
   handOffWhenDone = false,
   onMinimize,
@@ -1032,6 +1054,7 @@ export function SessionTimer({
   sessionTitle: string;
   visible: boolean;
   /** The done screen's button: logging a planned session, or just closing. */
+  ringside?: boolean;
   finishLabel?: string;
   /**
    * Skip the per-exercise done list: show "Session complete" briefly, then
@@ -1160,6 +1183,10 @@ export function SessionTimer({
 
   const phaseText = phaseLabel(state, item, view);
   const counter = counterLabel(state, item);
+  const round = ringside && item?.kind === "interval" ? item : null;
+  const betweenRounds = state.phase === "rest" && !isPrep(state);
+  const progress = ringProgress(state, item, view);
+  const digits = <span className="st-clock-digits" role="timer">{formatClock(clockSeconds)}</span>;
   const sessionElapsed =
     state.startedAt !== null ? formatClock(Math.floor(((state.endedAt ?? now) - state.startedAt) / 1000)) : null;
   const restNote =
@@ -1189,6 +1216,7 @@ export function SessionTimer({
     <div
       ref={dialogRef}
       className="st-root"
+      data-ringside={ringside || undefined}
       data-tone={tone}
       data-strength-logging={strengthLogging || undefined}
       data-set-log-context={restLogTarget ? finalSetLog ? "complete" : state.phase === "ready" ? "transition" : "rest" : undefined}
@@ -1198,7 +1226,7 @@ export function SessionTimer({
       aria-label={`${sessionTitle} timer`}
       tabIndex={-1}
     >
-      <div className="st-glow" aria-hidden="true" />
+      {!ringside && <div className="st-glow" aria-hidden="true" />}
       <header className="st-top">
         <button type="button" className="st-icon" onClick={() => { dismissMinimizeHint(); onMinimize(); }} aria-label="Minimise timer">
           <Icon name="chevron" />
@@ -1237,13 +1265,13 @@ export function SessionTimer({
             <Icon name="settings" />
           </button>
         </div>
-        {sheet === null && !restLogTarget && item?.kind === "interval" && settingsHint ? (
+        {sheet === null && (!ringside || state.phase === "ready") && !restLogTarget && item?.kind === "interval" && settingsHint ? (
           <OnceHint className="st-hint st-hint-settings" onDismiss={dismissSettingsHint}
             label="Tap ⚙ to change timer settings" />
         ) : sheet === null && !restLogTarget && canAdjust && adjustHint && item?.kind !== "interval" ? (
           <OnceHint className="st-hint" onDismiss={dismissAdjustHint}
             label={item?.kind === "sets" ? `Tap to edit ${countNoun(item)}s & rest` : "Tap to edit rounds & timing"} />
-        ) : sheet === null && !restLogTarget && minimizeHint && state.phase !== "ready" && state.phase !== "done" ? (
+        ) : !ringside && sheet === null && !restLogTarget && minimizeHint && state.phase !== "ready" && state.phase !== "done" ? (
           <OnceHint className="st-hint st-hint-minimize" onDismiss={dismissMinimizeHint}
             label="Tap ↓ to leave and return later" />
         ) : null}
@@ -1292,19 +1320,42 @@ export function SessionTimer({
         </div>
       ) : (
         <div className="st-main" data-phase={state.phase}>
-          {state.phase === "ready" && state.items.length === 1 ? null : (
+          {round && state.phase !== "ready" ? (
+            <div className="st-board-header">
+              <span className="st-phase" aria-live="polite">
+                {state.phase === "work" && !view.paused ? (
+                  <span key={state.unit} className="st-work-mark">
+                    {phaseText}
+                    <span aria-hidden="true" className="st-work-slice">{phaseText}</span>
+                  </span>
+                ) : phaseText}
+              </span>
+              <span className="st-clock-caption">{betweenRounds ? "Next: round" : "Round"} {state.unit} / {round.rounds}</span>
+            </div>
+          ) : state.phase === "ready" && state.items.length === 1 ? null : (
             <p className="st-phase" aria-live="polite">
               <span className="st-phase-dot" aria-hidden="true" />
               {phaseText}
             </p>
           )}
-          <h2 className="st-title">{item?.title}</h2>
+          {round ? state.phase === "ready" && (
+            <>
+              <div className="st-board-header">
+                <span className="st-phase">Ready</span>
+                <h2 className="st-board-format">{round.rounds} {round.rounds === 1 ? "round" : "rounds"}</h2>
+              </div>
+              <button type="button" className="st-clock" aria-label="Edit work duration" onClick={toggleAdjust}>
+                <ScoreboardDigits time={formatClock(round.workSec)} />
+              </button>
+            </>
+          ) : <h2 className="st-title">{item?.title}</h2>}
           {item ? <DoseStats item={item} /> : null}
 
           {state.phase === "ready" && item ? (
             <ReadyPanel
               timer={timer}
               item={item}
+              ringside={ringside}
               onAdjust={() => {
                 dismissAdjustHint();
                 setSheet("adjust");
@@ -1318,14 +1369,19 @@ export function SessionTimer({
                 onClick={togglePause}
                 aria-label={view.paused ? "Resume timer" : "Pause timer"}
               >
-                <Ring progress={ringProgress(state, item, view)}>
-                  <span className="st-clock-digits" role="timer">
-                    {formatClock(clockSeconds)}
-                  </span>
-                  <span className="st-clock-caption">
-                    {view.paused ? "Tap to resume" : counter ?? (timed ? "remaining" : "elapsed")}
-                  </span>
-                </Ring>
+                {round ? <>
+                  <ScoreboardDigits time={formatClock(clockSeconds)} />
+                  {progress !== null && <span className="st-board-track" aria-hidden="true">
+                    <span style={{ transform: `scaleX(${Math.max(0, Math.min(1, 1 - progress))})` }} />
+                  </span>}
+                </> : (
+                  <Ring progress={progress}>
+                    {digits}
+                    <span className="st-clock-caption">
+                      {view.paused ? "Tap to resume" : counter ?? (timed ? "remaining" : "elapsed")}
+                    </span>
+                  </Ring>
+                )}
               </button>
               {restNote ? <p className="st-note">{restNote}</p> : null}
               {state.phase === "rest" && state.phaseMs === null && !view.paused ? (
@@ -1345,7 +1401,7 @@ export function SessionTimer({
               ) : null}
             </>
           )}
-          {state.phase !== "ready" ? <Progress state={state} item={item} /> : null}
+          {!round && state.phase !== "ready" ? <Progress state={state} item={item} /> : null}
           {item?.kind === "interval" ? (
             <div className="st-audio-status" role="status">
               {view.paused ? "Round timer paused." : timer.roundAudioStatus === "preparing" ? "Preparing round audio… Keep this screen open." :
@@ -1368,7 +1424,7 @@ export function SessionTimer({
           {restLogTarget ? <RestSetLogger key={`${restLogTarget.itemId}:${restLogTarget.set}`} timer={timer} target={restLogTarget} /> : null}
           {/* One light row of tools above the one main action: ±10s either side,
               pause (or End round during a round) in the middle. */}
-          {hasTools ? (
+          {hasTools || (round && view.paused) ? (
             <div className="st-tools">
               {nudges ? (
                 <button

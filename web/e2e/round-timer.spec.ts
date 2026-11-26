@@ -312,3 +312,36 @@ test("a 90-minute session keeps its foreground clock without allocating an audio
   expect(await page.evaluate(() => (window as unknown as { __roundTimerAudioBlobs: Map<string, Blob> }).__roundTimerAudioBlobs.size)).toBe(0);
   await expect(page.locator(".st-clock-digits")).not.toHaveText("3:00");
 });
+for (const viewport of [{ width: 320, height: 640 }, { width: 844, height: 390 }]) {
+  test(`ringside clock fits ${viewport.width}px and pauses in place`, async ({ page }, info) => {
+    await page.setViewportSize(viewport);
+    await page.emulateMedia({ reducedMotion: viewport.width === 320 ? "no-preference" : "reduce" });
+    await page.goto("/timer");
+    await page.getByRole("button", { name: "Start round 1", exact: true }).click();
+    const clock = page.getByRole("timer");
+    await expect(page.locator(".st-board-header")).toContainText("Work");
+    await expect(page.locator(".st-board-track")).toBeVisible();
+    await expect(page.locator(".st-glow, .st-phase-dot, .st-ring")).toHaveCount(0);
+    const box = await clock.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
+    const geometry = () => page.locator(".st-root").evaluate(root => ({
+      height: root.scrollHeight,
+      boxes: [".st-board-header", ".st-clock", ".st-board-track", ".st-tools", ".st-primary"].map(selector => {
+        const { x, y, width, height } = root.querySelector(selector)!.getBoundingClientRect();
+        return [x, y, width, height];
+      }),
+    }));
+    const initial = await geometry();
+    await page.screenshot({ path: info.outputPath("ringside.png") });
+    await page.getByRole("button", { name: "Pause timer", exact: true }).click();
+    await expect(page.locator(".st-phase")).toHaveText("Paused");
+    expect(await geometry()).toEqual(initial);
+    await page.getByRole("button", { name: "Resume timer", exact: true }).click();
+    expect(await geometry()).toEqual(initial);
+    await page.getByRole("button", { name: "End round", exact: true }).click();
+    await expect(page.locator(".st-phase")).toHaveText("Rest");
+    expect(await geometry()).toEqual(initial);
+  });
+}
