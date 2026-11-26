@@ -1,5 +1,5 @@
 "use client";
-import { PlanAssignments } from "@/components/plan-assignments";
+import { PlanAssignments, recallPlanAssignments } from "@/components/plan-assignments";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -152,6 +152,12 @@ export default function PlansPage() {
   const [customError, setCustomError] = useState<string | null>(() => recalled?.customError ?? null);
   const [plans, setPlans] = useState<PlanSummary[]>(() => recalled?.plans ?? []);
   const [isLoading, setIsLoading] = useState(!recalled);
+  // "From your coach" sits above the plan list, so the list waits for it on a
+  // first visit: the whole page appears at once instead of jumping down when
+  // the assigned plans arrive a moment later.
+  const [assignmentsSettled, setAssignmentsSettled] = useState(() => !session?.access_token
+    || recallPlanAssignments(session.access_token) !== null);
+  const markAssignmentsSettled = useCallback(() => setAssignmentsSettled(true), []);
   const [error, setError] = useState<string | null>(null);
   const [localPlans, setLocalPlans] = useState<PlanSummary[] | null>(null);
   const [activePlanId, setActivePlanId] = useState<string | null>(() => recalled?.activePlanId ?? null);
@@ -328,7 +334,7 @@ export default function PlansPage() {
     await activatePlan(overlapConflictPlan, action);
   }
 
-  const isPlanListLoading = isLoading;
+  const isPlanListLoading = isLoading || !assignmentsSettled;
 
   return (
     <RequireAuth>
@@ -336,7 +342,7 @@ export default function PlansPage() {
         <header className={styles.pageHeader}>
           <h1 className={`athlete-motion-slot athlete-motion-header ${styles.pageTitle}`}>
             {/* The heading depends on the active plan: hold its space, never guess. */}
-            {isLoading ? <Skeleton variant="text" width="6em" height="0.9em" /> : activePlan?.fight_date ? t("fightCampHeading") : t("planWorkspace")}
+            {isPlanListLoading ? <Skeleton variant="text" width="6em" height="0.9em" /> : activePlan?.fight_date ? t("fightCampHeading") : t("planWorkspace")}
           </h1>
           <p className={styles.pageSubtitle}>Follow and manage your training.</p>
         </header>
@@ -357,7 +363,7 @@ export default function PlansPage() {
           </div>
         ) : null}
 
-        {session ? <PlanAssignments key={session.access_token} token={session.access_token} onActivated={() => void loadPlans()} /> : null}
+        {session ? <PlanAssignments key={session.access_token} token={session.access_token} onActivated={() => void loadPlans()} onSettled={markAssignmentsSettled} /> : null}
 
         <div className="athlete-motion-slot athlete-motion-main">
           {isPlanListLoading ? (
@@ -373,11 +379,11 @@ export default function PlansPage() {
           )}
         </div>
 
-        {!isLoading && heldForReviewPlans.length > 0 ? (
+        {!isPlanListLoading && heldForReviewPlans.length > 0 ? (
           <HeldPlansReviewNotice plans={heldForReviewPlans} />
         ) : null}
 
-        {isLoading ? (
+        {isPlanListLoading ? (
           <div className={`athlete-motion-slot athlete-motion-main ${styles.section}`} aria-busy="true">
             <div className={`${styles.sectionHead} loading-reveal`}>
               <h2 className={styles.sectionTitle}>{t("previousPlans")}</h2>
@@ -391,7 +397,7 @@ export default function PlansPage() {
           </div>
         ) : null}
 
-        {!isLoading ? (
+        {!isPlanListLoading ? (
           <section id="custom-plans" aria-label="Saved plans" className={`athlete-motion-slot athlete-motion-main ${styles.section}`}>
             <div className={styles.sectionHead}>
               <h2 className={styles.sectionTitle}>{t("previousPlans")}</h2>

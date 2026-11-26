@@ -471,13 +471,15 @@
 .calendarToolbar > strong { min-width: 0; text-align: center; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
 .calendarToolbar > div { display: flex; gap: 6px; min-width: 0; }
 .calendarToolbar button, .calendarFooter button { min-height: 44px; padding: 8px 10px; border: 1px solid var(--border-default); border-radius: 8px; background: var(--bg-input); color: var(--text-primary); font: inherit; font-size: 12px; cursor: pointer; }
-.calendarToolbar button[aria-pressed="true"] { background: #84152d; border-color: #bf2446; }
+/* Theme tokens, not fixed dark colours: in the light theme those left dark text on dark red. */
+.calendarToolbar button[aria-pressed="true"] { background: var(--brand-red); border-color: var(--brand-red); color: #fff; }
 .calendarWeekdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; padding-bottom: 8px; }
 .calendarGrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .calendarColumn { font-size: 12px; color: var(--text-secondary); text-align: center; padding-bottom: 6px; }
 .calendarDate { min-width: 0; min-height: 120px; padding: 4px; border: 1px solid var(--border-default); border-radius: 8px; background: var(--bg-input); }
 .calendarGrid[data-view="month"] .calendarDate { min-height: 76px; }
-.calendarDate[data-selected="true"] { border-color: #d82a4b; background: #221319; }
+/* A red tint over the theme's own surface, so the date and its sessions stay readable in both themes. */
+.calendarDate[data-selected="true"] { border-color: var(--brand-red); background: color-mix(in srgb, var(--brand-red) 12%, var(--bg-input)); }
 .calendarDate[data-outside="true"] { background: transparent; }
 .calendarDate[data-outside="true"] .dateSelect { color: var(--text-secondary); }
 .dateSelect { display: grid; gap: 4px; width: 100%; min-height: 44px; padding: 5px; border: 0; background: transparent; color: var(--text-primary); text-align: left; cursor: pointer; }

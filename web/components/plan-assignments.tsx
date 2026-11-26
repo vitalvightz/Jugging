@@ -1,6 +1,6 @@
 "use client";
 import { DiscoveryHint } from "@/components/once-hint";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { CoachPlan } from "@/lib/api-schema.generated";
 import { listPlanAssignments, respondPlanAssignment } from "@/lib/api";
@@ -8,19 +8,44 @@ import { isActivePlanOverlapError, type ActivePlanOverlapAction } from "@/lib/pl
 import { PlanSwitchDialog } from "./plan-switch-dialog";
 import { AssignedPlanPreview } from "./assigned-plan-preview";
 import { formatAppDate } from "@/lib/date-format";
+import { readEpoch, recallView, rememberView } from "@/lib/shared-reads";
 import styles from "./coach-workspace.module.css";
 
-export function PlanAssignments({ token, onActivated }: { token: string; onActivated: () => void }) {
-  const [rows, setRows] = useState<CoachPlan[]>([]);
+/** Remembered key for the coach-assigned plans this session last read. */
+export const PLAN_ASSIGNMENTS_VIEW_KEY = "screen:plan-assignments";
+
+/** The coach-assigned rows this session read moments ago, or null. */
+export function recallPlanAssignments(token: string): CoachPlan[] | null {
+  return recallView<CoachPlan[]>(token, PLAN_ASSIGNMENTS_VIEW_KEY);
+}
+
+export function PlanAssignments({ token, onActivated, onSettled }: {
+  token: string;
+  onActivated: () => void;
+  /** Called once each read finishes, so the page can reveal everything together. */
+  onSettled?: () => void;
+}) {
+  // A revisit shows the rows read last time at once, so the section never
+  // pops in above the plan list and pushes it down.
+  const [rows, setRows] = useState<CoachPlan[]>(() => recallPlanAssignments(token) ?? []);
   const [preview, setPreview] = useState<string | null>(null);
   const [overlap, setOverlap] = useState<CoachPlan | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const onSettledRef = useRef(onSettled);
+  useEffect(() => { onSettledRef.current = onSettled; }, [onSettled]);
   useEffect(() => {
     const controller = new AbortController();
-    listPlanAssignments(token, controller.signal).then(data => { if (!controller.signal.aborted) { setRows(data.filter(plan => plan.assignment_status === "pending" || plan.assignment_status === "active")); setError(""); } })
-      .catch(() => { if (!controller.signal.aborted) setError("Assigned plans unavailable."); });
+    const epoch = readEpoch();
+    listPlanAssignments(token, controller.signal).then(data => {
+      if (controller.signal.aborted) return;
+      const next = data.filter(plan => plan.assignment_status === "pending" || plan.assignment_status === "active");
+      setRows(next); setError("");
+      rememberView(token, PLAN_ASSIGNMENTS_VIEW_KEY, next, epoch);
+    })
+      .catch(() => { if (!controller.signal.aborted) setError("Assigned plans unavailable."); })
+      .finally(() => { if (!controller.signal.aborted) onSettledRef.current?.(); });
     return () => controller.abort();
   }, [token, attempt]);
   async function respond(plan: CoachPlan, action: "activate" | "decline", choice?: ActivePlanOverlapAction) {
