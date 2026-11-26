@@ -11,6 +11,7 @@
 
 export type TimerSound =
   | "bell"
+  | "round_start"
   | "triple_bell"
   | "clapper"
   | "beep"
@@ -105,6 +106,7 @@ const BELL_PARTIALS: Array<[ratio: number, gain: number, decay: number]> = [
 
 const VIBRATION: Partial<Record<TimerSound, number[]>> = {
   bell: [250],
+  round_start: [250],
   triple_bell: [180, 90, 180, 90, 180],
   clapper: [60, 60, 60],
   double_beep: [90, 90, 90],
@@ -206,6 +208,11 @@ class TimerAudio {
         this.tone(t, 1700, 0.035, 0.11, "triangle");
         break;
       case "bell":
+        this.bell(t, 1);
+        break;
+      case "round_start":
+        // UNLXCK's start cue: a low, decisive strike under the ring bell.
+        this.tone(t, 160, 0.14, 0.38, "triangle");
         this.bell(t, 1);
         break;
       case "triple_bell":

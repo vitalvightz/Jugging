@@ -363,9 +363,13 @@ for (const viewport of [{ width: 320, height: 640 }, { width: 844, height: 390 }
     expect(await slice!.evaluate(element => element.isConnected)).toBe(true);
     await slice!.dispose();
     await expect(page.locator(".st-root")).toHaveAttribute("data-tone", "warn", { timeout: 15_000 });
+    await expect(page.locator(".st-board-track")).toHaveAttribute("data-warning", "true");
     expect(await geometry()).toEqual(initial);
     await page.getByRole("button", { name: "End round", exact: true }).click();
     await expect(page.locator(".st-phase")).toHaveText("Rest");
+    const completion = page.locator(".st-round-complete");
+    await expect(completion).toHaveCount(1);
+    await expect(completion).toHaveCSS("animation-name", viewport.width === 320 ? "st-round-land" : "none");
     expect(await geometry()).toEqual(initial);
   });
 }

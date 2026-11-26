@@ -11,7 +11,7 @@ export type RoundAudioTimeline = { cues: RoundAudioCue[]; durationMs: number };
 export type RoundAudioStatus = "idle" | "preparing" | "playing" | "unavailable" | "interrupted";
 
 /** Precompute only the current interval item. Never auto-start another exercise. */
-export function roundAudioTimeline(state: TimerState, now: number, settings: TimerSoundSettings): RoundAudioTimeline | null {
+export function roundAudioTimeline(state: TimerState, now: number, settings: TimerSoundSettings, ringside = false): RoundAudioTimeline | null {
   if (state.items[state.index]?.kind !== "interval" || state.pausedAt !== null ||
       (state.phase !== "work" && state.phase !== "rest")) return null;
   const cues: RoundAudioCue[] = [];
@@ -41,7 +41,7 @@ export function roundAudioTimeline(state: TimerState, now: number, settings: Tim
     }
     const next = advance(current, end);
     if (next.state === current) return null;
-    const sound = soundForEvents(next.events);
+    const sound = soundForEvents(next.events, ringside);
     if (sound) cues.push({ atMs: end - now, sound });
     durationMs = end - now;
     current = next.state;
@@ -113,7 +113,7 @@ export function roundAudioWav(timeline: RoundAudioTimeline, clips: ReadonlyMap<T
 
 let clipBank: Promise<ReadonlyMap<TimerSound, Float32Array>> | null = null;
 function loadClips(): Promise<ReadonlyMap<TimerSound, Float32Array>> {
-  clipBank ??= Promise.all((["bell", "triple_bell", "finish", "clapper", "double_beep", "halfway", "chime", "tick"] as TimerSound[])
+  clipBank ??= Promise.all((["bell", "round_start", "triple_bell", "finish", "clapper", "double_beep", "halfway", "chime", "tick"] as TimerSound[])
     .map(async (sound) => {
       const clip = await renderTimerClip(sound, SAMPLE_RATE);
       // Keep the tick short: four seconds of trailing silence would merge every
@@ -144,6 +144,7 @@ export class RoundAudioTrack {
   constructor(
     private readonly status: (status: RoundAudioStatus) => void,
     private readonly clips: () => Promise<ReadonlyMap<TimerSound, Float32Array>> = loadClips,
+    private readonly ringside = false,
   ) {}
 
   setMediaActions(onPause?: () => void, onPlay?: () => void): void {
@@ -225,7 +226,7 @@ export class RoundAudioTrack {
       this.status("idle");
       return;
     }
-    const timeline = roundAudioTimeline(state, now, settings);
+    const timeline = roundAudioTimeline(state, now, settings, this.ringside);
     if (!timeline || typeof OfflineAudioContext === "undefined" || typeof URL.createObjectURL !== "function") {
       this.status("unavailable");
       return;

@@ -134,3 +134,13 @@ test("optional ticks align to whole seconds, leaving bells and the rest countdow
   const warning = roundAudioTimeline(start({ rounds: 1, workSec: 30 }), 1000, tickSettings)!;
   assert.deepEqual(warning.cues.filter(cue => cue.atMs === 20000), [{ atMs: 20000, sound: "clapper" }]);
 });
+
+test("ringside start sound replaces only the round-start bell, including scheduled playback", () => {
+  const state = start({ rounds: 2, workSec: 5, restSec: 5 }, 5);
+  const normal = roundAudioTimeline(state, 1000, settings)!;
+  const ringside = roundAudioTimeline(state, 1000, settings, true)!;
+  assert.deepEqual(ringside.cues, normal.cues.map(cue =>
+    cue.sound === "bell" ? { ...cue, sound: "round_start" } : cue));
+  assert.equal(ringside.cues.filter(cue => cue.sound === "round_start").length, 2);
+  assert.equal(ringside.durationMs, normal.durationMs);
+});
