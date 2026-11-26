@@ -11,7 +11,7 @@ export type RoundAudioTimeline = { cues: RoundAudioCue[]; durationMs: number };
 export type RoundAudioStatus = "idle" | "preparing" | "playing" | "unavailable" | "interrupted";
 
 /** Precompute only the current interval item. Never auto-start another exercise. */
-export function roundAudioTimeline(state: TimerState, now: number, settings: TimerSoundSettings, ringside = false): RoundAudioTimeline | null {
+export function roundAudioTimeline(state: TimerState, now: number, settings: TimerSoundSettings): RoundAudioTimeline | null {
   if (state.items[state.index]?.kind !== "interval" || state.pausedAt !== null ||
       (state.phase !== "work" && state.phase !== "rest")) return null;
   const cues: RoundAudioCue[] = [];
@@ -41,7 +41,7 @@ export function roundAudioTimeline(state: TimerState, now: number, settings: Tim
     }
     const next = advance(current, end);
     if (next.state === current) return null;
-    const sound = soundForEvents(next.events, ringside);
+    const sound = soundForEvents(next.events);
     if (sound) cues.push({ atMs: end - now, sound });
     durationMs = end - now;
     current = next.state;
@@ -144,7 +144,6 @@ export class RoundAudioTrack {
   constructor(
     private readonly status: (status: RoundAudioStatus) => void,
     private readonly clips: () => Promise<ReadonlyMap<TimerSound, Float32Array>> = loadClips,
-    private readonly ringside = false,
   ) {}
 
   setMediaActions(onPause?: () => void, onPlay?: () => void): void {
@@ -226,7 +225,7 @@ export class RoundAudioTrack {
       this.status("idle");
       return;
     }
-    const timeline = roundAudioTimeline(state, now, settings, this.ringside);
+    const timeline = roundAudioTimeline(state, now, settings);
     if (!timeline || typeof OfflineAudioContext === "undefined" || typeof URL.createObjectURL !== "function") {
       this.status("unavailable");
       return;

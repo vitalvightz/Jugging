@@ -124,7 +124,7 @@ test("returning after several suspended rounds catches up without ringing old be
   try {
     await act(async () => root.render(<Probe />));
     await act(async () => controller.run(startItem));
-    assert.deepEqual(played, ["bell"]);
+    assert.deepEqual(played, ["round_start"]);
     played.length = 0;
     now = 17_000; // Round 3 began at 15,000; round 1/2 bells are stale.
     await act(async () => window.dispatchEvent(new Event("pageshow")));

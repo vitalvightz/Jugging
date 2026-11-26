@@ -313,7 +313,7 @@ test("a 90-minute session keeps its foreground clock without allocating an audio
   await expect(page.locator(".st-clock-digits")).not.toHaveText("3:00");
 });
 for (const viewport of [{ width: 320, height: 640 }, { width: 844, height: 390 }]) {
-  test(`ringside clock fits ${viewport.width}px and pauses in place`, async ({ page }, info) => {
+  test(`round clock fits ${viewport.width}px and pauses in place`, async ({ page }, info) => {
     await page.setViewportSize(viewport);
     await page.emulateMedia({ reducedMotion: viewport.width === 320 ? "no-preference" : "reduce" });
     await page.goto("/timer");
@@ -374,12 +374,21 @@ for (const viewport of [{ width: 320, height: 640 }, { width: 844, height: 390 }
   });
 }
 
-test("ringside scoreboard follows the light and dark app themes", async ({ page }) => {
+test("the timer scoreboard follows the light and dark app themes", async ({ page }) => {
   await page.goto("/timer");
-  const root = page.locator(".st-root[data-ringside]");
+  const root = page.locator(".st-root");
   await expect(root).toBeVisible();
+  // Signed out, the app settles on dark once auth resolves; hold the chosen
+  // theme so that late reset cannot race the colour checks.
   const setTheme = (theme: "light" | "dark") => page.evaluate(value => {
-    document.documentElement.dataset.theme = value;
+    const html = document.documentElement;
+    const held = window as unknown as { __heldTheme?: string; __themeHold?: MutationObserver };
+    held.__heldTheme = value;
+    held.__themeHold ??= new MutationObserver(() => {
+      if (html.dataset.theme !== held.__heldTheme) html.dataset.theme = held.__heldTheme;
+    });
+    held.__themeHold.observe(html, { attributes: true, attributeFilter: ["data-theme"] });
+    html.dataset.theme = value;
   }, theme);
   const lit = root.locator(".st-score-digit i[data-lit]").first();
   const unlit = root.locator(".st-score-digit i:not([data-lit])").first();
