@@ -705,6 +705,7 @@ const ROUND_ALERTS = [
   { key: "warnHalfway", label: "Halfway", aria: "Halfway" },
   { key: "warnThirty", label: "30s", aria: "30 seconds left" },
   { key: "warnTen", label: "10s", aria: "10 seconds left" },
+  { key: "tick", label: "Tick", aria: "Tick every second" },
 ] as const;
 
 function SettingsSheet({ timer, onClose }: { timer: SessionTimerController; onClose: () => void }) {
@@ -755,7 +756,7 @@ function SettingsSheet({ timer, onClose }: { timer: SessionTimerController; onCl
               key={alert.key}
               type="button"
               className="action-choice"
-              aria-pressed={settings[alert.key]}
+              aria-pressed={Boolean(settings[alert.key])}
               aria-label={alert.aria}
               onClick={() => setSettings({ ...settings, [alert.key]: !settings[alert.key] })}
             >
@@ -1068,7 +1069,7 @@ export function SessionTimer({
   /** Closes a timer that was never started, without logging anything. */
   onClose: () => void;
 }) {
-  const timer = useSessionTimer({ items, storageKey, audible: visible, keepFinishedRun: handOffWhenDone });
+  const timer = useSessionTimer({ items, storageKey, audible: visible, ringside, keepFinishedRun: handOffWhenDone });
   const { state, now } = timer;
   const [sheet, setSheet] = useState<"settings" | "adjust" | null>(null);
   const [confirmEnd, setConfirmEnd] = useState(false);
@@ -1298,7 +1299,7 @@ export function SessionTimer({
         </div>
       ) : state.phase === "done" ? (
         <div className="st-main st-done">
-          <div className="st-done-badge" aria-hidden="true">
+          <div className="st-done-badge" data-round-complete={ringside && metPlan(state) || undefined} aria-hidden="true">
             <Icon name="check" />
           </div>
           <p className="st-done-title">{metPlan(state) ? "Session complete" : "Session ended"}</p>
@@ -1371,9 +1372,10 @@ export function SessionTimer({
               >
                 {round ? <>
                   <ScoreboardDigits time={formatClock(clockSeconds)} />
-                  {progress !== null && <span className="st-board-track" aria-hidden="true">
+                  {progress !== null && <span className="st-board-track" data-warning={clockSeconds <= 10 || undefined} aria-hidden="true">
                     <span style={{ transform: `scaleX(${Math.max(0, Math.min(1, 1 - progress))})` }} />
                   </span>}
+                  {done > 0 && <span key={done} className="st-round-complete" aria-hidden="true" />}
                 </> : (
                   <Ring progress={progress}>
                     {digits}

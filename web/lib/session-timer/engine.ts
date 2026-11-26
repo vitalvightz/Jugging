@@ -673,10 +673,11 @@ export function summarizeRun(state: TimerState): string {
  */
 export function soundForEvents(
   events: TimerEvent[],
-): "finish" | "triple_bell" | "bell" | "go" | "chime" | "soft_chime" | null {
+  ringside = false,
+): "finish" | "triple_bell" | "bell" | "round_start" | "go" | "chime" | "soft_chime" | null {
   if (events.includes("session_complete")) return "finish";
   if (events.includes("round_end")) return "triple_bell";
-  if (events.includes("round_start")) return "bell";
+  if (events.includes("round_start")) return ringside ? "round_start" : "bell";
   if (events.includes("rest_end") || events.includes("hold_start")) return "go";
   if (events.includes("hold_end") || events.includes("item_complete")) return "chime";
   if (events.includes("rest_ready")) return "soft_chime";
