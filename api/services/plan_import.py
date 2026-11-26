@@ -31,7 +31,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field, PrivateAttr, ValidationError
 
 from api.contracts.custom_plans import WEEKDAYS, CustomDose, CustomExerciseSnapshot, CustomPlanInput
-from api.services.custom_plans import activity_block_type, dose_optional, session_activity
+from api.services.custom_plans import dose_optional, session_activity
 from api.services.plan_import_check import TIME, SourceCheck, week_heading, written_layout_flags
 from api.structured_plan_models import ExercisePrescription
 from api.services.plan_import_match import LibraryMatcher, linked
@@ -389,7 +389,8 @@ def _exercise(item: ReadExercise, flag) -> dict | None:
     if section and (TIME.search(section) or dose_optional(section)) and not re.search(r"\brounds?\b", section, re.I) \
             and not _written_dose(item) and not _clean(item.prescription):
         item = item.model_copy(update={"prescription": f"Within {section}"[:500]})
-    block_type = EXERCISE_KINDS.get(item.kind or "") or activity_block_type(full_name)
+    # The type the reader stated, or none: never guessed from the exercise name.
+    block_type = EXERCISE_KINDS.get(item.kind or "")
     dose = dose_from(item, (lambda message: None) if session_activity(full_name, block_type) or (dose_optional(full_name, block_type) and not _written_dose(item)) else flag)
     cues, extra_cues = _lines(item.cues)
     stops, extra_stops = _lines(item.stop_rules)
