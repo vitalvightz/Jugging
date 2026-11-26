@@ -317,9 +317,20 @@ for (const viewport of [{ width: 320, height: 640 }, { width: 844, height: 390 }
     await page.setViewportSize(viewport);
     await page.emulateMedia({ reducedMotion: viewport.width === 320 ? "no-preference" : "reduce" });
     await page.goto("/timer");
+    await page.evaluate(() => {
+      localStorage.setItem("unlxck.session-timer.free-format", JSON.stringify({ rounds: 3, workSec: 21, restSec: 10 }));
+      localStorage.setItem("unlxck.session-timer.settings", JSON.stringify({ prepSec: 30, voice: false }));
+    });
+    await page.reload();
+    const nativePlay = await page.evaluateHandle(() => {
+      const play = HTMLMediaElement.prototype.play;
+      HTMLMediaElement.prototype.play = () => Promise.reject(new DOMException("Playback denied for test", "NotAllowedError"));
+      return play;
+    });
     await page.getByRole("button", { name: "Start round 1", exact: true }).click();
     const clock = page.getByRole("timer");
-    await expect(page.locator(".st-board-header")).toContainText("Work");
+    await expect(page.locator(".st-phase")).toHaveText("Get ready");
+    await expect(page.getByRole("button", { name: "Enable round audio" })).toBeVisible();
     await expect(page.locator(".st-board-track")).toBeVisible();
     await expect(page.locator(".st-glow, .st-phase-dot, .st-ring")).toHaveCount(0);
     const box = await clock.boundingBox();
@@ -334,11 +345,24 @@ for (const viewport of [{ width: 320, height: 640 }, { width: 844, height: 390 }
       }),
     }));
     const initial = await geometry();
+    await page.evaluate(play => { HTMLMediaElement.prototype.play = play; }, nativePlay);
+    await nativePlay.dispose();
+    await page.getByRole("button", { name: "Enable round audio" }).click();
+    await expect(page.locator(".st-audio-status")).toContainText("Round audio playing");
+    expect(await geometry()).toEqual(initial);
+    await page.getByRole("button", { name: "Start now", exact: true }).click();
+    await expect(page.locator(".st-board-header")).toContainText("Work");
+    expect(await geometry()).toEqual(initial);
+    const slice = await page.locator(".st-work-slice").elementHandle();
     await page.screenshot({ path: info.outputPath("ringside.png") });
     await page.getByRole("button", { name: "Pause timer", exact: true }).click();
     await expect(page.locator(".st-phase")).toHaveText("Paused");
     expect(await geometry()).toEqual(initial);
     await page.getByRole("button", { name: "Resume timer", exact: true }).click();
+    expect(await geometry()).toEqual(initial);
+    expect(await slice!.evaluate(element => element.isConnected)).toBe(true);
+    await slice!.dispose();
+    await expect(page.locator(".st-root")).toHaveAttribute("data-tone", "warn", { timeout: 15_000 });
     expect(await geometry()).toEqual(initial);
     await page.getByRole("button", { name: "End round", exact: true }).click();
     await expect(page.locator(".st-phase")).toHaveText("Rest");

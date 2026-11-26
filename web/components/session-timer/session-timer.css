@@ -1551,26 +1551,33 @@ html[data-theme="light"] .today-tool-button[data-accent="true"] .today-tool-icon
 [data-ringside] .st-top { grid-template-columns: 44px minmax(0, 1fr) auto; }
 [data-ringside] .st-heading { text-align: left; }
 [data-ringside] .st-main { max-width: 760px; }
-.st-board-header, [data-ringside] .st-clock { width: min(100%, 36rem); }
+[data-ringside] .st-board-header, [data-ringside] .st-clock { width: min(100%, 36rem, 84dvh); }
 .st-board-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  border-top: 1px solid var(--st-ink-soft);
   padding-top: 12px;
+  /* Fit the tallest phase badge at every breakpoint, including while at rest. */
+  height: clamp(32px, 6.3vw, 48px);
+  box-sizing: content-box;
 }
-[data-ringside] .st-phase {
-  padding: 0;
+[data-ringside] .st-board-header .st-phase {
+  margin: 0;
+  padding: 5px 10px;
   border: 0;
   border-radius: 0;
-  background: transparent;
-  font-size: clamp(18px, 4vw, 32px);
-  letter-spacing: .04em;
+  background: var(--st-ink);
+  color: var(--st-base);
+  font-size: clamp(14px, 3vw, 22px);
+  letter-spacing: .1em;
   line-height: 1;
   transition: none;
 }
-[data-ringside] .st-main[data-phase="work"] .st-phase { color: var(--st-red); }
-[data-ringside][data-tone="paused"] .st-phase { color: var(--st-ink-soft); }
+[data-ringside]:is([data-tone="work"], [data-tone="warn"]) .st-main[data-phase="work"] .st-phase {
+  padding: 0;
+  background: transparent;
+  color: white;
+}
 [data-ringside] .st-clock-caption { text-transform: uppercase; letter-spacing: .09em; }
 [data-ringside] .st-clock { position: relative; display: grid; gap: 14px; border-radius: 0; }
 [data-ringside] .st-clock-digits {
@@ -1579,10 +1586,11 @@ html[data-theme="light"] .today-tool-button[data-accent="true"] .today-tool-icon
   line-height: .95;
 }
 [data-ringside][data-tone="warn"] .st-clock-digits { animation: none; color: var(--st-red); }
-.st-board-track { display: block; height: 5px; background: #343435; }
-.st-board-track > span { display: block; height: 100%; background: var(--st-ink); transform-origin: left; }
+.st-board-track { display: block; height: 2px; background: #242427; }
+.st-board-track > span { display: block; height: 100%; background: #68686b; transform-origin: left; }
 [data-ringside] .st-tools { min-height: 44px; }
-[data-ringside] .st-audio-status { min-height: 32px; }
+/* Two lines of status plus the recovery button at narrow widths. */
+[data-ringside] .st-audio-status { min-height: 76px; }
 [data-ringside] .st-audio-info { display: flex; margin-inline: auto; }
 .st-board-format { margin: 0; font-size: 16px; text-transform: uppercase; letter-spacing: .08em; }
 .st-score-face {
@@ -1612,28 +1620,6 @@ html[data-theme="light"] .today-tool-button[data-accent="true"] .today-tool-icon
 .st-score-digit [data-segment="f"] { left: 0; top: 4%; }
 .st-score-colon { width: 3%; display: grid; gap: clamp(12px, 3vw, 36px); }
 .st-score-colon::before, .st-score-colon::after { content: ""; aspect-ratio: 1; background: currentColor; }
-[data-ringside] .st-board-header {
-  border: 0;
-  align-items: center;
-  /* Fit the tallest phase badge at every breakpoint, including while at rest. */
-  height: clamp(32px, 6.3vw, 48px);
-  box-sizing: content-box;
-}
-[data-ringside] .st-board-header .st-phase {
-  margin: 0;
-  padding: 5px 10px; background: var(--st-ink); color: var(--st-base);
-  font-size: clamp(14px, 3vw, 22px); letter-spacing: .1em;
-}
-[data-ringside]:is([data-tone="work"], [data-tone="warn"]) .st-main[data-phase="work"] .st-phase {
-  padding: 0;
-  background: transparent;
-  color: white;
-}
-[data-ringside] .st-board-track { height: 2px; background: #242427; }
-[data-ringside] .st-board-track > span { background: #68686b; }
-[data-ringside] .st-board-header, [data-ringside] .st-clock {
-  width: min(100%, 36rem, 84dvh);
-}
 [data-ringside] .st-primary { border-radius: 8px; box-shadow: none; }
 .st-root[data-ringside][data-tone="ready"] .st-primary { background: #bf1835; box-shadow: none; }
 @media (orientation: landscape) and (max-height: 520px) {
@@ -1648,6 +1634,10 @@ html[data-theme="light"] .today-tool-button[data-accent="true"] .today-tool-icon
   }
   [data-ringside] .st-controls > :not(.st-tools, .st-primary) { grid-column: 1 / -1; }
   [data-ringside] .st-primary { min-height: 44px; }
+}
+@media (orientation: landscape) and (min-width: 700px) {
+  [data-ringside] .st-audio-status { min-height: 44px; }
+  [data-ringside] .st-audio-status .st-link { display: inline-block; margin: 0 0 0 4px; }
 }
 
 .st-work-mark {
@@ -1682,6 +1672,7 @@ html[data-theme="light"] .today-tool-button[data-accent="true"] .today-tool-icon
   clip-path: inset(46% 0 32%);
   visibility: hidden;
 }
+[data-ringside][data-tone="paused"] .st-work-slice { opacity: 0; }
 @media (prefers-reduced-motion: no-preference) {
   .st-work-slice { animation: st-work-split 260ms steps(1, end); }
 }

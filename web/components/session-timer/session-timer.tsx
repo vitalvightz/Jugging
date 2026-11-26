@@ -1053,8 +1053,8 @@ export function SessionTimer({
   storageKey: string;
   sessionTitle: string;
   visible: boolean;
-  /** The done screen's button: logging a planned session, or just closing. */
   ringside?: boolean;
+  /** The done screen's button: logging a planned session, or just closing. */
   finishLabel?: string;
   /**
    * Skip the per-exercise done list: show "Session complete" briefly, then
@@ -1323,10 +1323,10 @@ export function SessionTimer({
           {round && state.phase !== "ready" ? (
             <div className="st-board-header">
               <span className="st-phase" aria-live="polite">
-                {state.phase === "work" && !view.paused ? (
-                  <span key={state.unit} className="st-work-mark">
+                {state.phase === "work" ? (
+                  <span key={state.unit} className={view.paused ? undefined : "st-work-mark"}>
                     {phaseText}
-                    <span aria-hidden="true" className="st-work-slice">{phaseText}</span>
+                    <span aria-hidden="true" className="st-work-slice">{!view.paused && phaseText}</span>
                   </span>
                 ) : phaseText}
               </span>
