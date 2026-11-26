@@ -150,7 +150,7 @@ def test_tactical_watch_survives_stage2_returning_no_watch_prose(camp_brief):
 
     # Stage 2 mentions the days but authors no Tactical Watch content at all.
     source_markdown = "\n".join(
-        f"### D-{dday}\n\n- Strength: Squat 3x5\n" for dday in ddays
+        f"### D-{dday}\n\n- Conditioning: Bike 30 min\n" for dday in ddays
     )
     merged = merge_locked_structured_content(
         _stage2_plan_without_locked_content(ddays), camp_brief
@@ -189,7 +189,7 @@ def test_locked_content_still_fails_when_the_payload_really_lacks_it(camp_brief)
         },
         reverse=True,
     )
-    source_markdown = "\n".join(f"### D-{dday}\n\n- Strength: Squat 3x5\n" for dday in ddays)
+    source_markdown = "\n".join(f"### D-{dday}\n\n- Conditioning: Bike 30 min\n" for dday in ddays)
     unmerged = _stage2_plan_without_locked_content(ddays)
 
     violations = check_structured_faithfulness(unmerged, source_markdown, camp_brief)
