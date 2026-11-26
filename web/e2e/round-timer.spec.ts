@@ -369,3 +369,30 @@ for (const viewport of [{ width: 320, height: 640 }, { width: 844, height: 390 }
     expect(await geometry()).toEqual(initial);
   });
 }
+
+test("ringside scoreboard follows the light and dark app themes", async ({ page }) => {
+  await page.goto("/timer");
+  const root = page.locator(".st-root[data-ringside]");
+  await expect(root).toBeVisible();
+  const setTheme = (theme: "light" | "dark") => page.evaluate(value => {
+    document.documentElement.dataset.theme = value;
+  }, theme);
+  const lit = root.locator(".st-score-digit i[data-lit]").first();
+  const unlit = root.locator(".st-score-digit i:not([data-lit])").first();
+
+  await setTheme("light");
+  await expect(root).toHaveCSS("background-color", "rgb(246, 246, 248)");
+  await expect(lit).toHaveCSS("background-color", "rgb(17, 18, 22)");
+  await expect(unlit).toHaveCSS("background-color", "rgb(226, 226, 230)");
+  await page.getByRole("button", { name: "Start round 1", exact: true }).click();
+  await expect(root.locator(".st-work-mark")).toHaveCSS("color", "rgb(255, 255, 255)");
+  await expect(root.locator(".st-board-track")).toHaveCSS("background-color", "rgb(222, 222, 226)");
+  await page.getByRole("button", { name: "Pause timer", exact: true }).click();
+  await expect(root.locator(".st-phase")).toHaveText("Paused");
+
+  await setTheme("dark");
+  await expect(root).toHaveCSS("background-color", "rgb(11, 11, 12)");
+  await expect(lit).toHaveCSS("background-color", "rgb(246, 247, 249)");
+  await expect(unlit).toHaveCSS("background-color", "rgb(23, 23, 25)");
+  await expect(root.locator(".st-board-track")).toHaveCSS("background-color", "rgb(36, 36, 39)");
+});

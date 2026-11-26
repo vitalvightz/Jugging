@@ -1252,7 +1252,7 @@ html.has-timer-mini .app-content {
 
 /* Light appearance: a bright stage, the same phase colours deepened so the
    pill, ring and glow still read against white in a lit gym. */
-html[data-theme="light"] .st-root:where(:not([data-ringside])) {
+html[data-theme="light"] .st-root {
   --st-base: #f6f6f8;
   --st-accent: #5f6673;
   --st-glow: rgba(95, 102, 115, 0.12);
@@ -1548,6 +1548,14 @@ html[data-theme="light"] .today-tool-button[data-accent="true"] .today-tool-icon
   --st-glow: transparent;
   --st-red: #ff4759;
 }
+html[data-theme="light"] .st-root[data-ringside] {
+  --st-accent: var(--st-ink);
+  --st-glow: transparent;
+  --st-red: #b5122b;
+  --st-ink-faint: rgba(17, 18, 22, 0.68);
+}
+html[data-theme="light"] .st-root[data-ringside] .st-score-digit i:not([data-lit]) { background: #e2e2e6; }
+html[data-theme="light"] .st-root[data-ringside] .st-board-track { background: #dedee2; }
 [data-ringside] .st-top { grid-template-columns: 44px minmax(0, 1fr) auto; }
 [data-ringside] .st-heading { text-align: left; }
 [data-ringside] .st-main { max-width: 760px; }
