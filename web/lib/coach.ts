@@ -180,7 +180,8 @@ export function fighterSummary(fighter: Fighter) {
   const latest = fighter.share_recovery ? fighter.recovery?.[0] : undefined;
   const injuries = fighter.share_injuries ? fighter.injuries : null;
   const stale = latest && latest.day < recent;
-  const tired = latest?.body === "flat" || (latest?.fatigue ?? 0) >= 4;
+  // A single flat day is normal variation; fatigue 4/5+ is a concern.
+  const tired = (latest?.fatigue ?? 0) >= 4;
   const poorSleep = latest?.sleep === "poor";
   const recoveryConcern =
     latest &&
@@ -208,7 +209,7 @@ export function fighterSummary(fighter: Fighter) {
         ? "Contact concern reported"
         : !recoveryConcern
           ? null
-          : poorSleep && latest.body === "flat"
+          : poorSleep && (tired || latest.body === "flat")
             ? "Poor sleep and fatigue reported"
             : poorSleep
               ? "Poor sleep reported"
@@ -274,7 +275,7 @@ export function coachCheckInValues(readings: readonly Recovery[]) {
   return [...values.values()];
 }
 
-export type CoachConcern = { id: string; tone: "concern" | "caution" | "unknown"; category: "weight" | "contact" | "injury" | "recovery" | "adherence"; reason: string; section: string };
+export type CoachConcern = { id: string; tone: "concern" | "caution" | "unknown"; category: "weight" | "contact" | "injury" | "recovery" | "adherence" | "load"; reason: string; section: string };
 
 // A recorded risk and the freshness of its inputs are separate facts. Keep a
 // severe assessment visible even when the underlying weight needs updating.
@@ -288,42 +289,119 @@ export function coachCutStatus(weight: import("./api-schema.generated").CoachFig
   return status ?? { label: "Unknown", tone: "unknown" as const, detail: "Fight date, current weight or target is missing." };
 }
 
-export function coachConcerns(f: Fighter, weight: import("./api-schema.generated").CoachFighterWeight | null, weightFailed = false): CoachConcern[] {
+// When a past date is shown in a concern, say it the way a coach would.
+function ago(day: string, today: string): string {
+  const days = Math.round((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${day}T12:00:00Z`)) / 86_400_000);
+  return days <= 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
+}
+
+// The check-in values that are a concern on their own. Middle values (sleep
+// "okay", 3/5) and a single flat day are normal variation, not an alert.
+const CHECK_IN_ALERTS: Record<string, (value: string | number) => string | null> = {
+  sleep: value => value === "poor" ? "Poor sleep" : null,
+  sleep_quality: value => typeof value === "number" && value <= 2 ? `Sleep ${value}/5` : null,
+  readiness: value => typeof value === "number" && value <= 2 ? `Readiness ${value}/5` : null,
+  fatigue: value => typeof value === "number" && value >= 4 ? `Fatigue ${value}/5` : null,
+};
+export function checkInAlerts(readings: readonly Recovery[]): string[] {
+  const found = new Set<string>();
+  for (const reading of readings) for (const [field, alert] of Object.entries(CHECK_IN_ALERTS)) {
+    const value = reading[field as keyof Recovery];
+    const label = value == null ? null : alert(value as string | number);
+    if (label) found.add(label);
+  }
+  return [...found];
+}
+// A low day for a trend: any alert, or the body reported flat.
+function lowDay(readings: readonly Recovery[]): boolean {
+  return checkInAlerts(readings).length > 0 || readings.some(row => row.body === "flat");
+}
+
+// Sessions that count as training load: completed work, by day.
+function loadSessions(f: Fighter, from: string, to: string): number {
+  return f.sessions.filter(s => completed(s) && s.day >= from && s.day <= to).length;
+}
+
+const FINAL_WEEKS = 28;
+
+export function coachConcerns(f: Fighter, weight: import("./api-schema.generated").CoachFighterWeight | null): CoachConcern[] {
   const concerns: CoachConcern[] = [];
+  const week = dayOffset(f.today, -6);
+  const fightIn = f.fight_date && f.fight_date >= f.today
+    ? Math.round((Date.parse(`${f.fight_date}T12:00:00Z`) - Date.parse(`${f.today}T12:00:00Z`)) / 86_400_000) : null;
+  const finalWeeks = fightIn != null && fightIn <= FINAL_WEEKS;
   const canAssessWeight = f.share_weight && (f.age == null || f.age >= 18);
   const cut = canAssessWeight ? coachCutStatus(weight, f.today) : null;
-  if (canAssessWeight && weightFailed) concerns.push({ id: "weight:unavailable", category: "weight", tone: "unknown", reason: "Weight status unavailable", section: "fight-weight" });
-  if (cut && cut.tone !== "green") concerns.push({ id: "weight", category: "weight", tone: cut.tone === "red" ? "concern" : cut.tone === "amber" ? "caution" : "unknown", reason: cut.tone === "unknown" ? `Weight-cut safety unknown · ${cut.detail}` : `${cut.label}${weight?.cut_assessment?.days_until_fight != null ? ` · ${weight.cut_assessment.days_until_fight} days to fight` : ""}`, section: "fight-weight" });
+  // A failed weight read is a loading problem, not something about the
+  // fighter; the weight section says "Unavailable". Unknown cut safety only
+  // matters in the final weeks before a fight.
+  const daysOut = weight?.cut_assessment?.days_until_fight;
+  if (cut && (cut.tone === "red" || cut.tone === "amber")) {
+    concerns.push({ id: "weight", category: "weight", tone: cut.tone === "red" ? "concern" : "caution", reason: `${cut.label}${daysOut != null ? ` · ${daysOut === 1 ? "1 day" : `${daysOut} days`} to fight` : ""}`, section: "fight-weight" });
+  } else if (cut?.tone === "unknown" && (finalWeeks || (daysOut != null && daysOut <= FINAL_WEEKS))) {
+    concerns.push({ id: "weight", category: "weight", tone: "unknown", reason: "Weight needs updating", section: "fight-weight" });
+  }
   if (f.share_injuries) {
     for (const report of f.sparring_reports ?? []) {
-      if (report.day < dayOffset(f.today, -6) || report.day > f.today || !(report.rocked || report.head_contact === "heavy")) continue;
-      concerns.push({ id: `contact:${report.id}`, category: "contact", tone: "concern", reason: `${report.day} · ${report.rocked ? "Athlete reported being rocked" : "Heavy head contact reported"}`, section: "sparring" });
+      if (report.day < week || report.day > f.today || !(report.rocked || report.head_contact === "heavy")) continue;
+      concerns.push({ id: `contact:${report.id}`, category: "contact", tone: "concern", reason: `${report.rocked ? "Rocked in sparring" : "Heavy head contact"} · ${ago(report.day, f.today)}`, section: "sparring" });
     }
     for (const injury of f.injuries ?? []) {
       if (["resolved", "closed", "healed"].includes(injury.status)) continue;
       const tone = coachRecoveryTone("injury", injury.severity);
-      concerns.push({ id: `injury:${injury.id}`, category: "injury", tone: tone === "good" ? "unknown" : tone, reason: `${humanize(injury.body_area)} · ${humanize(injury.severity)} · ${humanize(injury.status)}`, section: "recovery" });
+      concerns.push({ id: `injury:${injury.id}`, category: "injury", tone: tone === "good" ? "unknown" : tone, reason: [`${humanize(injury.body_area)} injury`, injury.severity ? humanize(injury.severity) : null, injury.status === "monitoring" ? "Monitoring" : null].filter(Boolean).join(" · "), section: "recovery" });
     }
   }
   if (f.share_recovery) {
     const days = groupCoachCheckIns((f.recovery ?? []).filter(row => row.day <= f.today));
-    // Retain recent recorded warnings when a later source/check-in is normal.
-    for (const day of days.filter(row => row.day >= dayOffset(f.today, -6))) for (const value of coachCheckInValues(day.readings)) {
-      if (value.tone === "concern" || value.tone === "caution") concerns.push({ id: `recovery:${day.day}:${value.label}`, category: "recovery", tone: value.tone, reason: `${day.day} · ${value.label}`, section: "recovery" });
+    const recent = days.filter(row => row.day >= week);
+    const low = recent.filter(row => lowDay(row.readings));
+    // A run of low days says more than any one reading, but never hides one.
+    if (low.length >= 3) concerns.push({ id: "recovery:trend", category: "recovery", tone: "concern", reason: `Low recovery · ${low.length} of ${recent.length} check-ins`, section: "recovery" });
+    // Keep a recent alert even when a later check-in is normal.
+    for (const day of recent) {
+      const alerts = checkInAlerts(day.readings);
+      if (alerts.length) concerns.push({ id: `recovery:${day.day}`, category: "recovery", tone: "concern", reason: `${alerts.slice(0, 2).join(", ")} · ${ago(day.day, f.today)}`, section: "recovery" });
     }
-    if (!days.length || days[0].day < dayOffset(f.today, -6)) concerns.push({ id: "recovery:unknown", category: "recovery", tone: "unknown", reason: "Recovery unknown · No recent check-in", section: "recovery" });
+    // Missing check-ins are only worth chasing in the final weeks of a camp.
+    if (!recent.length && finalWeeks) concerns.push({ id: "recovery:unknown", category: "recovery", tone: "unknown", reason: "No check-in this week", section: "recovery" });
   }
-  for (const session of f.sessions) {
-    if (session.status === "skipped" && session.day <= f.today && f.schedule.some(planned => planned.id === session.session_id && planned.day === session.day)) {
-      concerns.push({ id: `adherence:${session.id}`, category: "adherence", tone: "caution", reason: `${session.day} · Scheduled session recorded as skipped`, section: "training-history" });
-    }
+  // Two or more planned sessions skipped in a week is a pattern; one is not.
+  // Only sessions of the active plan count, and when the plan schedule is
+  // loaded (the profile), only ones scheduled on that day.
+  const skipped = f.sessions.filter(s => s.status === "skipped" && s.source !== "external" && s.day >= week && s.day <= f.today
+    && Boolean(s.session_id) && Boolean(f.plan_id) && s.plan_id === f.plan_id
+    && (!f.schedule.length || f.schedule.some(planned => planned.id === s.session_id && planned.day === s.day)));
+  if (skipped.length >= 2) concerns.push({ id: "adherence:week", category: "adherence", tone: "caution", reason: `${skipped.length} planned sessions skipped`, section: "training-history" });
+  // A training frequency spike: this week well above the fighter's usual
+  // week. Needs four weeks of history (35 days in all; the roster read returns
+  // 56) so a new athlete's first week is never a spike.
+  const thisWeek = loadSessions(f, week, f.today);
+  const history = [1, 2, 3, 4].map(n => loadSessions(f, dayOffset(week, -7 * n), dayOffset(week, -7 * n + 6)));
+  const usual = history.reduce((a, b) => a + b, 0) / history.length;
+  if (history.every(n => n > 0) && usual >= 2 && thisWeek >= usual * 1.5 && thisWeek - usual >= 2) {
+    concerns.push({ id: "load:spike", category: "load", tone: "caution", reason: `Training frequency spike · ${thisWeek} vs ${Math.round(usual)} usual`, section: "weekly" });
   }
   return concerns.sort(compareCoachConcerns);
 }
 
+// Which concern leads, for the coach's current view.
+export function compareConcernsForMode(mode: "technical" | "sc") {
+  const order = mode === "technical"
+    ? { contact: 0, injury: 1, weight: 2, recovery: 3, adherence: 4, load: 5 }
+    : { weight: 0, injury: 1, contact: 2, recovery: 3, load: 4, adherence: 5 };
+  const severity = { concern: 0, caution: 1, unknown: 2 };
+  return (a: CoachConcern, b: CoachConcern) => severity[a.tone] - severity[b.tone] || order[a.category] - order[b.category];
+}
+// S&C-only signals (load, skipped sessions) stay off a technical coach's list;
+// safety signals show in both views.
+export function concernsForMode(concerns: readonly CoachConcern[], mode: "technical" | "sc"): CoachConcern[] {
+  return concerns.filter(c => mode === "sc" || (c.category !== "load" && c.category !== "adherence"))
+    .sort(compareConcernsForMode(mode));
+}
 
 export function compareCoachConcerns(a: CoachConcern, b: CoachConcern): number {
   const severity = { concern: 0, caution: 1, unknown: 2 };
-  const category = { weight: 0, contact: 1, injury: 2, recovery: 3, adherence: 4 };
+  const category = { weight: 0, contact: 1, injury: 2, recovery: 3, load: 4, adherence: 5 };
   return severity[a.tone] - severity[b.tone] || category[a.category] - category[b.category];
 }

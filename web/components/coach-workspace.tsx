@@ -42,7 +42,9 @@ import { isSafeAvatarImageUrl } from "@/lib/avatar-image-url";
 import {
   coachRpc,
   coachConcerns,
-  compareCoachConcerns,
+  compareConcernsForMode,
+  concernsForMode,
+  checkInAlerts,
   coachCutStatus,
   groupCoachCheckIns,
   coachCheckInValues,
@@ -549,7 +551,8 @@ function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { to
     return {
       fighter,
       summary: fighterSummary(fighter),
-      concerns: coachConcerns(fighter, result?.weight ?? null, result?.failed ?? false),
+      concerns: concernsForMode(coachConcerns(fighter, result?.weight ?? null), coachMode),
+      weightFailed: Boolean(result?.failed),
       cut: result?.weight ? coachCutStatus(result.weight, fighter.today) : null,
       weightPending: eligible && !result,
     };
@@ -568,7 +571,7 @@ function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { to
     });
     return () => window.cancelAnimationFrame(frame);
   }, [rosterOnly, pending]);
-  const attention = rows.filter(row => row.concerns.length).sort((a, b) => compareCoachConcerns(a.concerns[0], b.concerns[0]));
+  const attention = rows.filter(row => row.concerns.length).sort((a, b) => compareConcernsForMode(coachMode)(a.concerns[0], b.concerns[0]));
   const upcoming = rows
     .filter(
       (row) =>
@@ -619,7 +622,7 @@ function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { to
           </p>
         ) : (
           <ul className={styles.roster}>
-            {visible.map(({ fighter: f, summary: s, concerns, cut, weightPending }) => (
+            {visible.map(({ fighter: f, summary: s, concerns, cut, weightPending, weightFailed }) => (
               <FighterRow
                 key={f.id}
                 fighter={f}
@@ -633,7 +636,7 @@ function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { to
                   <span data-recovery-tone={concerns[0]?.tone} className={!concerns.length && !weightPending && s.recovery === "No concern reported" ? styles.positive : styles.muted}>
                     {concerns.length
                       ? concerns[0].category === "weight" ? cut?.label === "Unknown" ? "Weight unknown" : cut?.label ?? "Weight unavailable" : "Needs attention"
-                      : weightPending ? "Checking weight…" : s.recovery === "No concern reported" ? "Recovery normal" : s.recovery}
+                      : weightPending ? "Checking weight…" : weightFailed ? "Weight unavailable" : s.recovery === "No concern reported" ? "Recovery normal" : s.recovery}
                   </span>
                 }
               />
@@ -882,7 +885,7 @@ function FighterOverview({
     return () => { active = false; };
   }, [token, f, weightKey]);
   const [allConcerns, setAllConcerns] = useState(false);
-  const concerns = coachConcerns(f, weight, Boolean(weightFailed));
+  const concerns = concernsForMode(coachConcerns(f, weight), coachMode);
   const sharingKey = `${f.share_weight}:${f.share_recovery}:${f.share_injuries}:${f.allow_session_logging}`;
   const [allSparring, setAllSparring] = useState(false);
   const [allCheckIns, setAllCheckIns] = useState(false);
@@ -941,7 +944,7 @@ function FighterOverview({
   const recoveryRecent = Boolean(latest && latest.day >= dayOffset(f.today, -6));
   const sleepTone = !recoveryRecent ? "unknown" : coachRecoveryTone(latestSleep?.sleep ? "sleep" : "sleep_quality", latestSleep?.sleep ?? latestSleep?.sleep_quality);
   const bodyTone = !recoveryRecent ? "unknown" : coachRecoveryTone("readiness", latestBody?.body ?? latestBody?.readiness);
-  const warnings = coachCheckInValues(recoveryRecent ? latest?.readings ?? [] : []).filter(value => value.tone === "caution" || value.tone === "concern");
+  const warnings = checkInAlerts(recoveryRecent ? latest?.readings ?? [] : []).map(label => ({ label, tone: "concern" as const }));
   const injuries = f.share_injuries ? f.injuries ?? [] : [];
   const injuryTone = injuries.some(injury => injury.severity === "severe") ? "concern" : injuries.some(injury => ["mild", "moderate"].includes(injury.severity)) ? "caution" : "unknown";
   const [feedbackRevision, setFeedbackRevision] = useState(0);
