@@ -6,6 +6,7 @@ import Image from "next/image";
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
@@ -532,13 +533,14 @@ function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { to
       const result = previous[f.id];
       return result?.token === token && result.connectionId === f.connection_id ? [[f.id, result]] : [];
     })));
-    for (const f of eligible) {
-      void getFighterWeight(token, f.id).then(weight => {
-        if (active) setWeights(previous => ({ ...previous, [f.id]: { token, connectionId: f.connection_id, weight, failed: false } }));
-      }).catch(() => {
-        if (active) setWeights(previous => ({ ...previous, [f.id]: { token, connectionId: f.connection_id, weight: null, failed: true } }));
-      });
-    }
+    void Promise.all(eligible.map(async f => {
+      const result = await getFighterWeight(token, f.id)
+        .then(weight => ({ weight, failed: false }))
+        .catch(() => ({ weight: null, failed: true }));
+      return [f.id, { token, connectionId: f.connection_id, ...result }] as const;
+    })).then(results => {
+      if (active) setWeights(Object.fromEntries(results));
+    });
     return () => { active = false; };
   }, [token, fighters]);
   const rows = fighters.map(fighter => {
@@ -554,6 +556,18 @@ function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { to
   });
   const [calendarFor, setCalendarFor] = useState<string | null>(null);
   const pending = rows.some(row => row.weightPending);
+  useEffect(() => {
+    if (rosterOnly || pending) return;
+    const position = window.history.state?.coachOverviewScroll;
+    if (typeof position !== "number") return;
+    const frame = window.requestAnimationFrame(() => {
+      if (window.scrollY !== position) window.scrollTo({ top: position, behavior: "instant" });
+      const state = { ...window.history.state };
+      delete state.coachOverviewScroll;
+      window.history.replaceState(state, "");
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [rosterOnly, pending]);
   const attention = rows.filter(row => row.concerns.length).sort((a, b) => compareCoachConcerns(a.concerns[0], b.concerns[0]));
   const upcoming = rows
     .filter(
@@ -567,83 +581,8 @@ function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { to
       .toLowerCase()
       .includes(query.toLowerCase()),
   );
-  return (
-    <>
-      {!rosterOnly ? <>
-      {attention.length ? <DiscoveryHint id="coach-attention" text="Fighters who need help show at the top. Tap one to see why." /> : null}
-      <section className={styles.metrics} aria-label="Roster summary">
-        {(
-          [
-            ["Fighters", rows.length],
-            ["Active this week", rows.filter((r) => r.summary.active).length],
-            ["Needs attention", attention.length],
-            ["Fights in 30 days", upcoming.length],
-          ] as const
-        ).map(([label, value]) => (
-          <article className={styles.metric} key={label}>
-            <span>{label}</span>
-            <strong
-              className={
-                label === "Needs attention" && value
-                  ? styles.concern
-                  : undefined
-              }
-            >
-              {label === "Needs attention" && pending ? "—" : value}
-            </strong>
-          </article>
-        ))}
-      </section>
-      {attention.length ? (
-        <section className={styles.panel} aria-label="Needs attention">
-          <h2>Needs attention</h2>
-          <ul className={styles.roster}>
-            {attention.map(({ fighter: f, concerns }) => (
-              <FighterRow
-                key={f.id}
-                fighter={f}
-                lead={<Avatar fighter={f} />}
-                detail={<span data-recovery-tone={concerns[0].tone}>{concerns[0].reason}</span>}
-              />
-            ))}
-          </ul>
-        </section>
-      ) : null}
-      <RosterHighlight fighters={fighters} coachMode={coachMode} />
-      {upcoming.length ? (
-        <section className={styles.panel}>
-          <h2>Upcoming fights</h2>
-          <ul className={styles.roster}>
-            {upcoming.map(({ fighter: f }) => (
-              <FighterRow
-                key={f.id}
-                fighter={f}
-                lead={
-                  <span className={styles.countdown}>
-                    <strong>{daysUntil(f.today, f.fight_date!)}</strong>
-                    <small>days</small>
-                  </span>
-                }
-                detail={`${humanize(f.sport)} · ${formatAppDate(f.fight_date!)}`}
-                below={<div className={styles.fightCalendar}>
-                  <button type="button" className={styles.pill} aria-expanded={calendarFor === f.id}
-                    aria-label={`${calendarFor === f.id ? "Hide" : "Show"} ${f.name || "fighter"}'s calendar`}
-                    onClick={() => setCalendarFor(calendarFor === f.id ? null : f.id)}>
-                    {calendarFor === f.id ? "Hide calendar" : "Calendar"}
-                  </button>
-                  {/* The fighter's own calendar: done, planned and fight day, under the same sharing rules. */}
-                  {calendarFor === f.id ? <TrainingHistory
-                    key={`fight-calendar:${f.id}:${f.connection_id}:${f.plan_id}:${f.today}`}
-                    token={token} athleteId={f.id} today={f.today} fightDate={f.fight_date} sport={f.sport}
-                  /> : null}
-                </div>}
-              />
-            ))}
-          </ul>
-        </section>
-      ) : null}
-      </> : null}
-      <section className={styles.panel}>
+  const roster = (
+    <section className={styles.panel}>
         <div className={styles.sectionHeading}>
           <h2>Your fighters</h2>
           <div className={styles.actions}>
@@ -702,12 +641,97 @@ function CoachDashboard({ token, fighters, rosterOnly = false, coachMode }: { to
           </ul>
         )}
       </section>
+  );
+  if (rosterOnly) return roster;
+  if (pending) return <section className={styles.panel} role="status">
+    <p>Checking roster alerts…</p>
+    <Skeleton height={84} />
+  </section>;
+  const rosterLeads = !attention.length && !upcoming.length;
+  return (
+    <>
+      {attention.length ? (
+        <section className={styles.panel} aria-label="Needs attention">
+          <h2>Needs attention</h2>
+          <ul className={styles.roster}>
+            {attention.map(({ fighter: f, concerns }) => (
+              <FighterRow
+                key={f.id}
+                fighter={f}
+                section={concerns[0].section}
+                extra={concerns.length > 1 ? `+${concerns.length - 1} more ${concerns.length === 2 ? "concern" : "concerns"}` : undefined}
+                lead={<Avatar fighter={f} />}
+                detail={<span data-recovery-tone={concerns[0].tone}>{concerns[0].reason}</span>}
+              />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {upcoming.length ? (
+        <section className={styles.panel}>
+          <h2>Upcoming fights</h2>
+          <ul className={styles.roster}>
+            {upcoming.map(({ fighter: f }) => (
+              <FighterRow
+                key={f.id}
+                fighter={f}
+                lead={
+                  <span className={styles.countdown}>
+                    <strong>{daysUntil(f.today, f.fight_date!)}</strong>
+                    <small>days</small>
+                  </span>
+                }
+                detail={`${humanize(f.sport)} · ${formatAppDate(f.fight_date!)}`}
+                below={<div className={styles.fightCalendar}>
+                  <button type="button" className={styles.pill} aria-expanded={calendarFor === f.id}
+                    aria-label={`${calendarFor === f.id ? "Hide" : "Show"} ${f.name || "fighter"}'s calendar`}
+                    onClick={() => setCalendarFor(calendarFor === f.id ? null : f.id)}>
+                    {calendarFor === f.id ? "Hide calendar" : "Calendar"}
+                  </button>
+                  {/* The fighter's own calendar: done, planned and fight day, under the same sharing rules. */}
+                  {calendarFor === f.id ? <TrainingHistory
+                    key={`fight-calendar:${f.id}:${f.connection_id}:${f.plan_id}:${f.today}`}
+                    token={token} athleteId={f.id} today={f.today} fightDate={f.fight_date} sport={f.sport}
+                  /> : null}
+                </div>}
+              />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {rosterLeads ? roster : null}
+      <section className={styles.metrics} aria-label="Roster summary">
+        {(
+          [
+            ["Fighters", rows.length],
+            ["Active this week", rows.filter((r) => r.summary.active).length],
+            ["Needs attention", attention.length],
+            ["Fights in 30 days", upcoming.length],
+          ] as const
+        ).map(([label, value]) => (
+          <article className={styles.metric} key={label}>
+            <span>{label}</span>
+            <strong
+              className={
+                label === "Needs attention" && value
+                  ? styles.concern
+                  : undefined
+              }
+            >
+              {label === "Needs attention" && pending ? "—" : value}
+            </strong>
+          </article>
+        ))}
+      </section>
+      <RosterHighlight fighters={fighters} coachMode={coachMode} />
+      {rosterLeads ? null : roster}
     </>
   );
 }
 
 function FighterRow({
   fighter: f,
+  section,
   lead,
   detail,
   extra,
@@ -715,6 +739,7 @@ function FighterRow({
   below,
 }: {
   fighter: Fighter;
+  section?: string;
   lead: ReactNode;
   detail: ReactNode;
   extra?: ReactNode;
@@ -724,7 +749,10 @@ function FighterRow({
 }) {
   return (
     <li>
-      <Link href={`/coach/fighters/${f.id}`} className={styles.rowLink}>
+      <Link href={`/coach/fighters/${f.id}${section ? `#${section}` : ""}`} className={styles.rowLink}
+        onNavigate={section ? () => {
+          window.history.replaceState({ ...window.history.state, coachOverviewScroll: window.scrollY }, "");
+        } : undefined}>
         {lead}
         <span className={styles.rowCopy}>
           <strong>{f.name || "Fighter"}</strong>
@@ -859,6 +887,28 @@ function FighterOverview({
   const [allSparring, setAllSparring] = useState(false);
   const [allCheckIns, setAllCheckIns] = useState(false);
   const [week, setWeek] = useState(weekStart(f.today));
+  // The profile mounts after access and roster data resolve, so the router's
+  // first attempt to scroll to a fragment can precede the section itself.
+  const openLinkedSection = useEffectEvent(() => {
+    const section = window.location.hash.slice(1);
+    if (!section) return;
+    const target = document.getElementById(section);
+    const fold = target?.querySelector(":scope > details");
+    if (!(fold instanceof HTMLDetailsElement) || !target) return;
+    if (section === "recovery") setAllCheckIns(true);
+    if (section === "sparring") {
+      const report = f.sparring_reports?.find(row => `contact:${row.id}` === concerns.find(c => c.section === section)?.id);
+      if (report) { setWeek(weekStart(report.day)); setAllSparring(true); }
+    }
+    fold.open = true;
+    const frame = window.requestAnimationFrame(() => {
+      target.scrollIntoView({ block: "start", behavior: "instant" });
+      fold.querySelector("summary")?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  });
+  useEffect(() => openLinkedSection(), [f.id]);
+
   const end = dayOffset(week, 6);
   const weekly = f.sessions.filter((s) => s.day >= week && s.day <= end);
   const done = weekly.filter(completed);

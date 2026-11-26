@@ -52,8 +52,9 @@ test("the ready screen shows the first exercise, its adjustable rounds and what 
   assert.match(html, /Up next/);
   assert.match(html, /Hard sparring/);
   assert.match(html, /Start round 1/);
-  // One summary line; the steppers live behind the Adjust icon.
-  assert.match(html, /<span>6<\/span> × <span>3:00<\/span>/);
+  // The count sits beside the phase; one summary line; the steppers live behind the Adjust icon.
+  assert.match(html, /<span class="st-phase">Up next<\/span><p class="st-board-format">6 rounds<\/p>/);
+  assert.match(html, /<span>3:00<\/span> work · <span>1:00<\/span> rest/);
   assert.match(html, /aria-label="Adjust timer"/);
   assert.doesNotMatch(html, /aria-label="Increase rounds"/);
   assert.match(html, /Next<\/span><span class="st-next-title">Back squat<\/span>/);
@@ -153,7 +154,8 @@ test("a single timed block reads as its length, not 1 × length", () => {
   const html = render([
     { kind: "interval", id: "bike", title: "Bike", detail: null, stats: [], blockType: "conditioning", rounds: 1, workSec: 1200, restSec: 0, sparring: false, needsSetup: false },
   ]);
-  assert.match(html, /aria-label="Edit rounds and timing"><span>20:00<\/span><\/button>/);
+  assert.match(html, /aria-label="Edit rounds and timing"><span>20:00<\/span> work<\/button>/);
+  assert.doesNotMatch(html, /st-board-format/);
 });
 
 test("the next-exercise line keeps every per-set target, not just the first", () => {

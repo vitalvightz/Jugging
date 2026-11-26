@@ -1,12 +1,21 @@
-/* Session timer. A near-black stage lit by the phase colour: red = work,
-   green = rest, amber = final ten seconds, slate = paused. The glow and the
-   ring carry the phase so it still reads from across the gym, without a
-   flat full-screen fill. */
+/* Session timer. One gym clock for every timer: the standalone round timer,
+   contact rounds and every exercise in a session (rounds, holds, sets, rest
+   and manual work). A near-black stage, white seven-segment digits, and red
+   only for work and the final ten seconds. Phase and count sit on one line
+   above the clock, and nothing moves when the timer pauses or rests. */
 
 .st-root {
-  --st-base: #09090b;
-  --st-accent: #8b93a1;
-  --st-glow: rgba(139, 147, 161, 0.14);
+  --st-base: #0b0b0c;
+  --st-accent: #f5f5f5;
+  --st-glow: transparent;
+  --st-red: #ff4759;
+  /* Rest reads green from across the gym: the bar, the badge and a tint on the digits. */
+  --st-green: #34d57f;
+  --st-rest-ink: #c9f5dc;
+  /* Width of the board header and clock; the digits scale from it. */
+  --st-board: min(100%, 36rem, 84dvh);
+  /* The digits never grow taller than this, however wide the board. */
+  --st-clock-max-h: 34dvh;
   --st-ink: #f6f7f9;
   --st-ink-soft: rgba(246, 247, 249, 0.64);
   --st-ink-faint: rgba(246, 247, 249, 0.38);
@@ -41,30 +50,10 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.st-root[data-tone="work"] { --st-accent: #ff3b55; --st-glow: rgba(214, 22, 52, 0.42); }
-.st-root[data-tone="open"] { --st-accent: #ff5a6e; --st-glow: rgba(181, 18, 43, 0.26); }
-.st-root[data-tone="rest"] { --st-accent: #34d57f; --st-glow: rgba(22, 163, 88, 0.36); }
-.st-root[data-tone="warn"] { --st-accent: #ffb020; --st-glow: rgba(230, 150, 0, 0.44); }
-.st-root[data-tone="paused"] { --st-accent: #9aa3b2; --st-glow: rgba(120, 130, 150, 0.16); }
-.st-root[data-tone="ready"] { --st-accent: #ff3b55; --st-glow: rgba(181, 18, 43, 0.16); }
-.st-root[data-tone="done"] { --st-accent: #34d57f; --st-glow: rgba(22, 163, 88, 0.2); }
-
-/* The light: a wide bloom from the top plus a floor wash. */
-.st-glow {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(120% 70% at 50% -10%, var(--st-glow), transparent 62%),
-    radial-gradient(90% 50% at 50% 115%, var(--st-glow), transparent 70%);
-  transition: background 420ms ease;
-}
-
 .st-top {
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: 96px minmax(0, 1fr) 96px;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
 }
@@ -82,7 +71,7 @@
 
 .st-heading {
   min-width: 0;
-  text-align: center;
+  text-align: left;
 }
 
 .st-session,
@@ -160,7 +149,7 @@
   justify-content: center;
   gap: 8px;
   width: 100%;
-  max-width: 560px;
+  max-width: 760px;
   margin: 0 auto;
   padding: 16px 0 12px;
   text-align: center;
@@ -169,35 +158,17 @@
 .st-phase {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  margin: 0 0 4px;
-  padding: 6px 12px 6px 10px;
-  border: 1px solid color-mix(in srgb, var(--st-accent) 40%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--st-accent) 12%, transparent);
-  color: var(--st-accent);
-  font-size: 12px;
+  flex: none;
+  margin: 0;
+  padding: 0.24em 0.45em;
+  background: var(--st-ink);
+  color: var(--st-base);
+  font-size: clamp(19px, 5.2vw, 40px);
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.1em;
+  line-height: 1;
   text-transform: uppercase;
-  transition: color 300ms ease, background 300ms ease, border-color 300ms ease;
-}
-
-.st-phase-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: currentColor;
-  box-shadow: 0 0 10px currentColor;
-}
-
-.st-main[data-phase="work"] .st-phase-dot,
-.st-main[data-phase="rest"] .st-phase-dot {
-  animation: st-breathe 1.6s ease-in-out infinite;
-}
-
-@keyframes st-breathe {
-  50% { opacity: 0.35; }
+  white-space: nowrap;
 }
 
 .st-title {
@@ -286,9 +257,12 @@
   color: var(--st-ink-soft);
 }
 
-/* Clock inside a progress ring. Tabular Space Grotesk: fixed-width digits
-   (no jitter as they change) and a plain, undotted zero. */
+/* The clock: seven-segment digits over a hairline track. Tapping it pauses. */
 .st-clock {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  width: var(--st-board);
   margin: 10px 0 4px;
   padding: 0;
   border: 0;
@@ -296,119 +270,33 @@
   color: inherit;
   font: inherit;
   cursor: pointer;
-  border-radius: 999px;
-}
-
-.st-ring {
-  --st-ring: min(76vw, 42vh, 340px);
-  position: relative;
-  width: var(--st-ring);
-  height: var(--st-ring);
-}
-
-.st-ring svg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-}
-
-/* The track is a faint, lit-from-above dish: a soft accent wash inside, so the ring reads as an object rather
-   than a flat outline. */
-.st-ring::before {
-  content: "";
-  position: absolute;
-  inset: 4%;
-  border-radius: 999px;
-  background: radial-gradient(
-    circle at 50% 0%,
-    color-mix(in srgb, var(--st-accent) 9%, transparent),
-    transparent 70%
-  );
-  transition: background 420ms ease;
-}
-
-.st-ring-track {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.07);
-  stroke-width: 4;
-}
-
-.st-ring-fill {
-  fill: none;
-  stroke: var(--st-accent);
-  stroke-width: 4;
-  stroke-linecap: round;
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--st-accent) 60%, transparent));
-  transition: stroke-dashoffset 120ms linear, stroke 300ms ease;
-}
-
-.st-ring-head {
-  transform-origin: 60px 60px;
-  transform-box: view-box;
-  transition: transform 120ms linear;
-}
-
-.st-ring-head circle {
-  fill: #fff;
-  filter: drop-shadow(0 0 5px var(--st-accent)) drop-shadow(0 0 2px var(--st-accent));
-}
-
-.st-ring[data-timed="false"] .st-ring-fill {
-  opacity: 0.28;
-  filter: none;
-}
-
-.st-ring-inner {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
 }
 
 .st-clock-digits {
   font-family: var(--st-digits);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1, "zero" 0;
-  font-weight: 600;
-  font-size: calc(var(--st-ring) * 0.29);
-  line-height: 1;
+  font-weight: 700;
+  font-size: clamp(68px, min(32vw, 32dvh), 176px);
+  line-height: 0.95;
   letter-spacing: -0.045em;
 }
 
+/* The count beside the phase. One line: it shortens rather than wraps. */
 .st-clock-caption {
-  max-width: 80%;
-  font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: clamp(13px, 2.2vw, 20px);
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.09em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
   color: var(--st-ink-soft);
   font-variant-numeric: tabular-nums;
 }
 
-.st-root[data-tone="warn"] .st-clock-digits {
-  animation: st-pulse 1s ease-in-out infinite;
-}
-
-@keyframes st-pulse {
-  50% { opacity: 0.6; }
-}
-
-@media (orientation: landscape) and (max-height: 520px) {
-  .st-ring { --st-ring: min(62vh, 300px); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .st-glow,
-  .st-ring-fill,
-  .st-ring-head,
-  .st-phase { transition: none; }
-  .st-root[data-tone="warn"] .st-clock-digits,
-  .st-main .st-phase-dot { animation: none; }
-}
+.st-root[data-tone="warn"] .st-clock-digits { color: var(--st-red); }
 
 .st-note,
 .st-setup-note {
@@ -426,34 +314,6 @@
   background: rgba(214, 175, 106, 0.08);
   color: var(--st-note-ink);
 }
-
-/* Rounds / sets: slim segments; dashed = optional sets above the minimum. */
-.st-segments {
-  display: flex;
-  justify-content: center;
-  gap: 5px;
-  width: min(100%, 320px);
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.st-segments li {
-  flex: 1;
-  max-width: 44px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--st-line);
-  transition: background 300ms ease;
-}
-
-.st-segments li[data-optional="true"] {
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--st-line);
-}
-
-.st-segments li[data-state="done"] { background: var(--st-ink); box-shadow: none; }
-.st-segments li[data-state="current"] { background: var(--st-accent); box-shadow: none; }
 
 /* Ready screen */
 .st-setup {
@@ -700,7 +560,7 @@
 .st-primary {
   min-height: 64px;
   border: 0;
-  border-radius: 20px;
+  border-radius: 8px;
   background: var(--st-ink);
   color: var(--st-on-ink);
   font: inherit;
@@ -708,7 +568,6 @@
   font-weight: 700;
   letter-spacing: 0.01em;
   cursor: pointer;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   transition: transform 120ms ease, filter 160ms ease;
 }
 
@@ -730,9 +589,8 @@
 
 .st-root[data-tone="ready"] .st-primary,
 .st-done .st-primary {
-  background: linear-gradient(180deg, #d4163a, #a90f28);
+  background: #bf1835;
   color: #fff;
-  box-shadow: 0 12px 32px rgba(181, 18, 43, 0.35);
 }
 
 /* Next exercise: one quiet line that also moves on to it. */
@@ -1250,15 +1108,17 @@ html.has-timer-mini .app-content {
   }
 }
 
-/* Light appearance: a bright stage, the same phase colours deepened so the
-   pill, ring and glow still read against white in a lit gym. */
+/* Light appearance: a bright stage for a lit gym, the same clock in ink. */
 html[data-theme="light"] .st-root {
   --st-base: #f6f6f8;
-  --st-accent: #5f6673;
-  --st-glow: rgba(95, 102, 115, 0.12);
+  --st-accent: var(--st-ink);
+  --st-glow: transparent;
+  --st-red: #b5122b;
+  --st-green: #0e9f53;
+  --st-rest-ink: #0b6b39;
   --st-ink: #111216;
   --st-ink-soft: rgba(17, 18, 22, 0.66);
-  --st-ink-faint: rgba(17, 18, 22, 0.44);
+  --st-ink-faint: rgba(17, 18, 22, 0.68);
   --st-line: rgba(17, 18, 22, 0.12);
   --st-surface: rgba(17, 18, 22, 0.045);
   --st-surface-strong: rgba(17, 18, 22, 0.09);
@@ -1269,14 +1129,6 @@ html[data-theme="light"] .st-root {
   --st-note-ink: #7a5a12;
   color-scheme: light;
 }
-
-html[data-theme="light"] .st-root[data-tone="work"] { --st-accent: #d4163a; --st-glow: rgba(214, 22, 58, 0.2); }
-html[data-theme="light"] .st-root[data-tone="open"] { --st-accent: #d4163a; --st-glow: rgba(214, 22, 58, 0.14); }
-html[data-theme="light"] .st-root[data-tone="rest"] { --st-accent: #0e9f53; --st-glow: rgba(14, 159, 83, 0.2); }
-html[data-theme="light"] .st-root[data-tone="warn"] { --st-accent: #c26b00; --st-glow: rgba(230, 140, 0, 0.26); }
-html[data-theme="light"] .st-root[data-tone="paused"] { --st-accent: #5f6673; --st-glow: rgba(95, 102, 115, 0.12); }
-html[data-theme="light"] .st-root[data-tone="ready"] { --st-accent: #d4163a; --st-glow: rgba(214, 22, 58, 0.1); }
-html[data-theme="light"] .st-root[data-tone="done"] { --st-accent: #0e9f53; --st-glow: rgba(14, 159, 83, 0.14); }
 
 html[data-theme="light"] .st-mini {
   --st-accent: #5f6673;
@@ -1438,7 +1290,7 @@ html[data-theme="light"] .today-tool-button[data-accent="true"] .today-tool-icon
 .st-root[data-strength-logging="true"] .st-controls { gap: 6px; }
 .st-root[data-strength-logging="true"] .st-link { color: var(--st-ink-soft); }
 .st-root[data-strength-logging="true"] .st-primary { min-height: 52px; border-radius: 18px; }
-.st-root[data-rest-log] .st-ring { --st-ring: min(54vw, 24vh, 210px); }
+.st-root[data-rest-log] { --st-board: min(100%, 16rem); --st-clock-max-h: 16dvh; }
 .st-root[data-rest-log="open"] .st-tools, .st-root[data-rest-log="open"] .st-next,
 .st-root[data-rest-log="open"] .st-stats { display: none; }
 .st-rest-sheet { flex-shrink: 0; padding: 14px; border: 1px solid var(--st-line); border-radius: 24px; background: var(--st-sheet); animation: st-log-rise 180ms ease-out; }
@@ -1468,10 +1320,9 @@ html[data-theme="light"] .today-tool-button[data-accent="true"] .today-tool-icon
 @keyframes st-log-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-height: 700px) {
   .st-root[data-strength-logging="true"] .st-main { gap: 4px; padding: 8px 0; }
-  .st-root[data-strength-logging="true"] .st-ring { --st-ring: 110px; }
+  .st-root[data-strength-logging="true"] { --st-board: min(100%, 15rem); --st-clock-max-h: 22dvh; }
   .st-root[data-strength-logging="true"] .st-clock { margin: 2px 0; }
   .st-root[data-strength-logging="true"] .st-next { display: none; }
-  .st-root[data-strength-logging="true"] .st-phase { margin-bottom: 0; padding: 4px 10px; }
   .st-root[data-rest-log="open"] .st-steps { margin-top: 6px; }
   .st-rest-sheet { padding: 12px; border-radius: 20px; }
   .st-rest-sheet-head { margin-bottom: 8px; }
@@ -1481,8 +1332,7 @@ html[data-theme="light"] .today-tool-button[data-accent="true"] .today-tool-icon
   .st-root[data-rest-log="open"] .st-confirm-set { min-height: 44px; }
   .st-root[data-rest-log="open"] .st-main { padding: 4px 0; }
   .st-root[data-rest-log="open"] .st-clock-caption { font-size: 10px; white-space: nowrap; letter-spacing: 0; }
-  .st-root[data-rest-log="open"] .st-ring { --st-ring: 100px; }
-  .st-root[data-rest-log="open"] .st-segments { margin-top: 4px; }
+  .st-root[data-rest-log="open"] { --st-board: min(100%, 12rem); --st-clock-max-h: 12dvh; }
   .st-confirm-set { margin-top: 8px; }
   .st-rest-help { margin-top: 6px; }
 }
@@ -1502,10 +1352,10 @@ html[data-theme="light"] .today-tool-button[data-accent="true"] .today-tool-icon
 .st-root[data-rest-log="open"] .st-confirm { grid-column: 1 / -1; }
 .st-log-confirmed { border: 0; background: transparent; padding: 0 4px; }
 .st-root[data-rest-log="confirmed"] .st-controls > .st-primary { background: var(--st-ink); color: var(--st-on-ink); box-shadow: none; }
-.st-root[data-rest-log="confirmed"] .st-ring { --st-ring: min(70vw, 36vh, 300px); }
+.st-root[data-rest-log="confirmed"] { --st-board: min(100%, 26rem); }
 @media (max-height: 700px) {
-  .st-root[data-rest-log="open"] .st-ring { --st-ring: 130px; }
-  .st-root[data-rest-log="confirmed"] .st-ring { --st-ring: 180px; }
+  .st-root[data-rest-log="open"] { --st-board: min(100%, 13rem); }
+  .st-root[data-rest-log="confirmed"] { --st-board: min(100%, 18rem); }
   .st-root[data-rest-log="open"] .st-clock-caption { font-size: 11px; }
 }
 
@@ -1540,3 +1390,145 @@ html[data-theme="light"] .today-tool-button[data-accent="true"] .today-tool-icon
 .st-component-label { color: #999; }
 .st-components strong { display: block; font-size: 1rem; }
 .st-components small { display: block; color: #999; margin-top: 0.25rem; }
+
+html[data-theme="light"] .st-root .st-score-digit i:not([data-lit]) { background: #e2e2e6; }
+html[data-theme="light"] .st-root .st-board-track { background: #dedee2; }
+.st-board-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: var(--st-board);
+  padding-top: 12px;
+  /* Fit the tallest phase badge at every breakpoint, including while at rest. */
+  height: clamp(44px, 10.5vw, 76px);
+  box-sizing: content-box;
+}
+/* Every kind of work (rounds, holds, lifts, untimed work) wears the same red mark. */
+.st-main[data-phase="work"] .st-phase:has(> .st-work-mark) {
+  padding: 0;
+  background: transparent;
+  color: white;
+}
+/* A thick phase bar: red while working, green while resting, grey when paused. */
+.st-board-track { display: block; height: 8px; background: #242427; }
+.st-board-track > span { display: block; height: 100%; background: #68686b; transform-origin: left; }
+.st-root:is([data-tone="work"], [data-tone="warn"]) .st-board-track > span,
+.st-board-track[data-warning] > span { background: var(--st-red); }
+.st-root[data-tone="rest"] .st-board-track > span { background: var(--st-green); }
+.st-root[data-tone="rest"] .st-clock { color: var(--st-rest-ink); }
+.st-root[data-tone="rest"] .st-main[data-phase="rest"] .st-phase { background: var(--st-green); color: #04140b; }
+.st-round-complete {
+  position: absolute;
+  inset: -6px;
+  border: 2px solid var(--st-ink);
+  opacity: 0;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .st-round-complete { animation: st-round-land 420ms ease-out; }
+  .st-done-badge[data-round-complete] { animation: st-badge-land 420ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+}
+@keyframes st-round-land {
+  from { opacity: .7; }
+  to { opacity: 0; }
+}
+.st-tools { min-height: 44px; }
+/* Two lines of status plus the recovery button at narrow widths. */
+.st-audio-status { min-height: 76px; }
+.st-audio-status .st-audio-info { display: flex; margin-inline: auto; }
+.st-board-format { margin: 0; font-size: 16px; text-transform: uppercase; letter-spacing: .08em; }
+.st-score-face {
+  display: flex;
+  align-items: center;
+  gap: 2.4%;
+  width: min(100%, calc(var(--st-clock-max-h) * var(--st-face-ratio, 2.7)));
+  margin: 0 auto;
+}
+.st-score-digit { position: relative; flex: 1; aspect-ratio: .59; }
+.st-score-digit i { position: absolute; background: #171719; }
+.st-score-digit i[data-lit] { background: currentColor; }
+.st-score-digit :is([data-segment="a"], [data-segment="d"], [data-segment="g"]) {
+  left: 4%; width: 92%; height: 10%;
+  clip-path: polygon(0 50%, 9% 0, 91% 0, 100% 50%, 90% 100%, 10% 100%);
+}
+.st-score-digit [data-segment="a"] { top: 0; }
+.st-score-digit [data-segment="g"] { top: 45%; }
+.st-score-digit [data-segment="d"] { bottom: 0; }
+.st-score-digit :is([data-segment="b"], [data-segment="c"], [data-segment="e"], [data-segment="f"]) {
+  width: 17%; height: 45%;
+  clip-path: polygon(50% 0, 100% 10%, 100% 89%, 50% 100%, 0 89%, 0 10%);
+}
+.st-score-digit [data-segment="b"] { right: 0; top: 4%; }
+.st-score-digit [data-segment="c"] { right: 0; bottom: 4%; }
+.st-score-digit [data-segment="e"] { left: 0; bottom: 4%; }
+.st-score-digit [data-segment="f"] { left: 0; top: 4%; }
+.st-score-colon { width: 3%; display: grid; gap: clamp(12px, 3vw, 36px); }
+.st-score-colon::before, .st-score-colon::after { content: ""; aspect-ratio: 1; background: currentColor; }
+@media (orientation: landscape) and (max-height: 520px) {
+  .st-root .st-main { padding-block: 4px; gap: 2px; }
+  .st-root .st-board-header { padding-top: 5px; }
+  .st-root .st-clock { margin-block: 2px; gap: 6px; }
+  .st-root .st-controls:has(.st-tools) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(120px, .5fr);
+    align-items: center;
+    gap: 2px 16px;
+  }
+  .st-root .st-controls > :not(.st-tools, .st-primary) { grid-column: 1 / -1; }
+  .st-root .st-primary { min-height: 44px; }
+}
+@media (orientation: landscape) and (min-width: 700px) {
+  .st-root .st-audio-status { min-height: 44px; }
+  .st-root .st-audio-status .st-link { display: inline-block; margin: 0 0 0 4px; }
+}
+
+.st-work-mark {
+  --work-cut: .36em;
+  position: relative;
+  isolation: isolate;
+  display: inline-block;
+  padding: .28em 1.05em .27em .5em;
+  background: #bc1934;
+  clip-path: polygon(var(--work-cut) 0, 100% 0, calc(100% - var(--work-cut)) 100%, 0 100%, 0 var(--work-cut));
+  font-size: clamp(24px, 6.4vw, 50px);
+  font-weight: 850;
+  font-style: italic;
+  letter-spacing: -.035em;
+}
+.st-work-mark::after {
+  content: "";
+  position: absolute;
+  right: .31em;
+  top: 0;
+  bottom: 0;
+  width: .18em;
+  border-inline: .09em solid var(--st-base);
+  box-sizing: content-box;
+  transform: skewX(-14deg);
+}
+.st-work-slice {
+  position: absolute;
+  inset: 0;
+  padding: inherit;
+  background: inherit;
+  clip-path: inset(46% 0 32%);
+  visibility: hidden;
+}
+.st-root[data-tone="paused"] .st-work-slice { opacity: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .st-work-slice { animation: st-work-split 260ms steps(1, end); }
+}
+@keyframes st-work-split {
+  0%, 42% { visibility: visible; transform: translateX(.16em); }
+  20% { visibility: visible; transform: translateX(-.1em); }
+  65%, 100% { visibility: hidden; transform: translateX(0); }
+}
+html[data-theme="light"] .st-root[data-tone="rest"] .st-main[data-phase="rest"] .st-phase { color: #fff; }
+/* The ready screen also carries the format line and presets: a slightly shorter clock. */
+.st-main[data-phase="ready"] { --st-clock-max-h: 24dvh; }
+/* While logging a set the clock is small; its phase line keeps a readable width. */
+.st-root[data-rest-log] .st-board-header { width: min(100%, 26rem); height: clamp(36px, 8vw, 56px); }
+.st-root[data-rest-log] .st-phase { font-size: clamp(16px, 4.4vw, 28px); }
+/* Ready never shifts mid-round, so it needs no room reserved for audio messages. */
+.st-main[data-phase="ready"] .st-audio-status { min-height: 0; }

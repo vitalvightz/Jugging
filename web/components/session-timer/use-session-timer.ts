@@ -38,7 +38,7 @@ const RUN_VERSION = 2;
 const TICK_MS = 100;
 const MAX_CUE_DELAY_MS = 1500;
 /** The fight-ring bells still ring while the timer is minimised. */
-const MINIMIZED_SOUNDS: ReadonlySet<TimerSound> = new Set(["bell", "triple_bell", "finish"]);
+const MINIMIZED_SOUNDS: ReadonlySet<TimerSound> = new Set(["bell", "round_start", "triple_bell", "finish"]);
 
 type SavedRun = { version: number; key: string; itemIds: string[]; state: TimerState };
 
@@ -377,6 +377,15 @@ export function useSessionTimer({
           }
         }
         if (callout) audio.say(callout);
+        // The media track normally carries the ticks. If it is unavailable,
+        // play only the current second, never a burst of missed ticks.
+        if (settingsRef.current.tick && roundAudioStatus === "unavailable" &&
+            current.items[current.index]?.kind === "interval" && !delayed && !sounds.length &&
+            previous !== null && remaining !== null && remaining > 0 &&
+            (current.phase !== "rest" || remaining > 3000) &&
+            Math.ceil(previous / 1000) - Math.ceil(remaining / 1000) === 1) {
+          audio.play("tick");
+        }
       }
       setNow(at);
     };
@@ -390,7 +399,7 @@ export function useSessionTimer({
       document.removeEventListener("visibilitychange", tick);
       window.removeEventListener("pageshow", tick);
     };
-  }, [running, announce, commit, roundAudio]);
+  }, [running, announce, commit, roundAudio, roundAudioStatus]);
 
   // In-app minimising must not let a running round's screen go to sleep.
   useWakeLock(running || (audible && state.phase !== "done"));

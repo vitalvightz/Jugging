@@ -2,8 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { getPushOptInState, subscribeToPushNotifications } from "./push";
+import { sendQueuedProductEvents } from "./api";
 
-const GLOBAL_KEYS = ["window", "navigator", "Notification", "fetch"] as const;
+const GLOBAL_KEYS = ["window", "document", "navigator", "Notification", "fetch"] as const;
 
 type GlobalKey = (typeof GLOBAL_KEYS)[number];
 
@@ -31,15 +32,19 @@ function installPushEnvironment(environment: PushEnvironment): () => void {
     permission: "granted",
     requestPermission: async () => "granted",
   };
-  const browserWindow = {
+  const browserWindow = Object.assign(new EventTarget(), {
     PushManager: function PushManager() {},
     Notification: notification,
     atob: (value: string) => Buffer.from(value, "base64").toString("binary"),
-  };
+  });
 
   Object.defineProperty(globalThis, "window", {
     configurable: true,
     value: browserWindow,
+  });
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: new EventTarget(),
   });
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,
@@ -67,11 +72,19 @@ function installPushEnvironment(environment: PushEnvironment): () => void {
         environment.onSave?.(JSON.parse(String(init.body ?? "{}")));
         return new Response(null, { status: 204 });
       }
+      if (url === "/api/analytics/events/batch") {
+        const { events } = JSON.parse(String(init?.body)) as { events: unknown[] };
+        return new Response(JSON.stringify({ accepted: events.map(() => true) }), { status: 202 });
+      }
+      if (url === "/api/analytics/events") {
+        return new Response(JSON.stringify({ accepted: true }), { status: 202 });
+      }
       throw new Error(`unexpected fetch: ${url}`);
     },
   });
 
   return () => {
+    sendQueuedProductEvents();
     for (const key of GLOBAL_KEYS) {
       const descriptor = descriptors.get(key);
       if (descriptor) {

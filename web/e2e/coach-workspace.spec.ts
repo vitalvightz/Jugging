@@ -1214,6 +1214,11 @@ for (const width of [320, 1280]) {
     const attention = page.getByRole("region", { name: "Needs attention" });
     await expect(attention.getByRole("listitem")).toHaveCount(2);
     await expect(attention.getByRole("listitem").first()).toContainText("Jay");
+    const cutAlert = attention.getByRole("link").first();
+    await expect(cutAlert).toHaveAttribute("href", `/coach/fighters/${jayId}#fight-weight`);
+    await cutAlert.click();
+    await expect(page.locator("#fight-weight details[open] > summary")).toBeInViewport();
+    await page.goBack();
     await expect(attention.getByRole("listitem").first()).toContainText("Cut too aggressive");
     await expect(page.getByRole("region", { name: "Roster summary" }).locator("article").filter({ hasText: "Needs attention" }).locator("strong")).toHaveText("2");
     const roster = page.locator("section").filter({ has: page.getByRole("heading", { name: "Your fighters", exact: true }) });
@@ -1226,6 +1231,46 @@ for (const width of [320, 1280]) {
     await expect(page.getByRole("region", { name: "Needs attention" })).toContainText("Cut too aggressive · 16 days to fight");
   });
 }
+
+for (const mode of ["Technical", "S&C"]) {
+  test(`coach attention opens the matching section and returns to overview in ${mode}`, async ({ page, baseURL }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await fixture(page, baseURL!, "coach", false, {}, [fighter], false);
+    await page.goto("/coach");
+    await page.getByRole("button", { name: mode, exact: true }).click();
+    const alert = page.getByRole("region", { name: "Needs attention" }).getByRole("link").first();
+    await expect(alert).toBeInViewport({ ratio: 1 });
+    await expect(alert).toHaveAttribute("href", `/coach/fighters/${fighterId}#recovery`);
+    await page.evaluate(() => window.scrollTo(0, 64));
+    const before = await page.evaluate(() => window.scrollY);
+    await alert.click();
+    const section = page.locator("#recovery details[open] > summary");
+    await expect(section).toBeInViewport({ ratio: 1 });
+    await page.goBack();
+    await expect(alert).toBeInViewport({ ratio: 1 });
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(before);
+  });
+
+  for (const upcoming of [true, false]) {
+    test(`quiet coach overview leads with ${upcoming ? "fights" : "roster"} in ${mode}`, async ({ page, baseURL }) => {
+      await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, share_weight: false, share_recovery: false, fight_date: upcoming ? fighter.fight_date : null }]);
+      await page.goto("/coach");
+      await page.getByRole("button", { name: mode, exact: true }).click();
+      await expect(page.locator("main h2").first()).toHaveText(upcoming ? "Upcoming fights" : "Your fighters");
+    });
+  }
+}
+
+test("a sparring alert opens the report week and shows additional concerns", async ({ page, baseURL }) => {
+  const report = { id: "prior-week", round_seconds: 180, day: "2026-11-14", rounds: 3, intensity: "technical", head_contact: "heavy", rocked: true };
+  await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, today: "2026-11-16", share_weight: false, share_injuries: true, sparring_reports: [report] }], false);
+  await page.goto("/coach");
+  const alert = page.getByRole("region", { name: "Needs attention" }).getByRole("link");
+  await expect(alert).toContainText(/\+\d+ more concerns?/);
+  await alert.click();
+  await expect(page.locator("#sparring details[open] > summary")).toBeInViewport();
+  await expect(page.locator("#sparring-report-prior-week")).toBeVisible();
+});
 
 test("team weight checks show pending and unavailable states, and never request unshared or minor assessments", async ({ page, baseURL }) => {
   const base = { ...fighter, share_recovery: false, share_injuries: false, age: 25 };
@@ -1243,8 +1288,8 @@ test("team weight checks show pending and unavailable states, and never request 
   });
   await page.goto("/coach");
   const metric = page.getByRole("region", { name: "Roster summary" }).locator("article").filter({ hasText: "Needs attention" }).locator("strong");
-  await expect(metric).toHaveText("—");
-  await expect(page.getByText("Checking weight…", { exact: true })).toBeVisible();
+  await expect(page.getByText("Checking roster alerts…")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your fighters" })).toHaveCount(0);
   release();
   await expect(metric).toHaveText("1");
   await expect(page.getByRole("region", { name: "Needs attention" }).getByText("Weight status unavailable", { exact: true })).toHaveAttribute("data-recovery-tone", "unknown");
@@ -1287,7 +1332,7 @@ for (const width of [390, 1440]) {
     });
     await page.goto('/coach/plans');
     await page.getByRole('button', { name: 'Create New Plan', exact: true }).click();
-    await page.getByRole("group", { name: "Plan view" }).getByRole("button", { name: "Week", exact: true }).click();
+    await page.getByRole("group", { name: "Plan schedule" }).getByRole("button", { name: "Repeating week", exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'Fighter', exact: true })).toBeDisabled();
     await page.getByLabel('Plan name', { exact: true }).fill('Coach technical week');
     await page.getByRole('button', { name: /^Monday,/ }).click();
@@ -1758,7 +1803,7 @@ test("changing mode in a second tab preserves the builder draft and log selectio
   await fixture(controls, baseURL!);
   await controls.goto("/coach/fighters");
   await page.getByRole("button", { name: "Create New Plan", exact: true }).click();
-  await page.getByRole("group", { name: "Plan view" }).getByRole("button", { name: "Week" }).click();
+  await page.getByRole("group", { name: "Plan schedule" }).getByRole("button", { name: "Repeating week" }).click();
   await page.getByRole("button", { name: /^Monday,/ }).click();
   await page.getByRole("button", { name: "Add session on Monday" }).click();
   const sheet = page.getByRole("dialog", { name: "New session" });

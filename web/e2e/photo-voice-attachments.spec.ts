@@ -129,6 +129,13 @@ for (const width of [320, 390, 1280]) {
     expect((await new AxeBuilder({ page }).include("dialog[aria-label='Photo 1 of 2']").analyze()).violations
       .filter(v => ["serious", "critical"].includes(v.impact ?? ""))).toEqual([]);
 
+    await page.route(url => url.searchParams.get("download") === "UNLXCK-photo.jpg", route =>
+      route.fulfill({ contentType: "image/jpeg", headers: { "Content-Disposition": 'attachment; filename="UNLXCK-photo.jpg"' }, body: "fixture" }));
+    const downloaded = page.waitForEvent("download");
+    await viewer.getByRole("button", { name: "Save photo" }).click();
+    expect((await downloaded).suggestedFilename()).toBe("UNLXCK-photo.jpg");
+    expect(calls.filter(call => call.endsWith("/p1/play"))).toHaveLength(2);
+
     // Next photo by arrow key (buttons on desktop, swipe on phones); Escape closes only the viewer.
     await page.keyboard.press("ArrowRight");
     await expect(page.getByRole("dialog", { name: "Photo 2 of 2" }).getByRole("img", { name: "Photo 2 for Boxing" })).toBeVisible();

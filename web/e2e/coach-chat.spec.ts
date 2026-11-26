@@ -119,6 +119,11 @@ for (const width of [390, 1440]) {
     await expect(thread.getByText("Sparring", { exact: true })).toBeVisible();
     await expect(thread.getByText("Fight in 19 days")).toBeVisible();
     await expect(thread.getByRole("img", { name: "Photo" })).toBeVisible();
+    await thread.getByRole("button", { name: "Open photo" }).click();
+    const viewer = page.getByRole("dialog", { name: "Photo 1 of 1" });
+    await expect(viewer.getByRole("img", { name: /Photo 1 for/ })).toBeVisible();
+    await viewer.getByRole("button", { name: "Close photo" }).click();
+    await expect(thread.getByRole("button", { name: "Open photo" })).toBeFocused();
     // Voice notes use the training attachments' waveform player, not the browser's audio bar.
     await expect(thread.locator("audio")).toHaveCount(0);
     const note = thread.getByRole("slider", { name: "Voice note position" }).locator("..");

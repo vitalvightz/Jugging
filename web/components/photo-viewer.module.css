@@ -13,6 +13,7 @@
   border: 0;
   overflow: hidden;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   background: rgba(6, 6, 8, 0.96);
   color: #fff;
@@ -24,7 +25,8 @@
 .top {
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
   padding: max(12px, env(safe-area-inset-top)) 12px 8px 20px;
 }
 .counter { flex: 1 1 auto; min-width: 0; overflow: hidden; color: rgba(255, 255, 255, 0.72); font-size: 14px;

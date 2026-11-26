@@ -16,12 +16,12 @@ const start = (overrides: Partial<IntervalItem> = {}, prepSec = 0) =>
 
 test("whole round/rest/prep schedule includes every bell and finishes without a final rest", () => {
   const track = roundAudioTimeline(start({}, 10), 1000, settings)!;
-  assert.deepEqual(track.cues.filter((cue) => ["bell", "triple_bell", "finish"].includes(cue.sound)), [
-    { atMs: 10_000, sound: "bell" },
+  assert.deepEqual(track.cues.filter((cue) => ["round_start", "triple_bell", "finish"].includes(cue.sound)), [
+    { atMs: 10_000, sound: "round_start" },
     { atMs: 190_000, sound: "triple_bell" },
-    { atMs: 250_000, sound: "bell" },
+    { atMs: 250_000, sound: "round_start" },
     { atMs: 430_000, sound: "triple_bell" },
-    { atMs: 490_000, sound: "bell" },
+    { atMs: 490_000, sound: "round_start" },
     { atMs: 670_000, sound: "finish" },
   ]);
   assert.equal(track.durationMs, 674_000);
@@ -38,7 +38,7 @@ test("restoring after suspension starts at the current round, never replays old 
   const track = roundAudioTimeline(start(), 251_000, settings)!;
   assert.deepEqual(track.cues, [
     { atMs: 160_000, sound: "clapper" }, { atMs: 170_000, sound: "triple_bell" },
-    { atMs: 230_000, sound: "bell" }, { atMs: 400_000, sound: "clapper" },
+    { atMs: 230_000, sound: "round_start" }, { atMs: 400_000, sound: "clapper" },
     { atMs: 410_000, sound: "finish" },
   ]);
   assert.equal(roundAudioTimeline(start(), 1_000_000, settings), null);
@@ -117,4 +117,26 @@ test("a scheduled bell belongs to playing media even when Safari's playhead drif
   assert.equal(track.coversCue("bell", 6000), false);
   media.paused = true;
   assert.equal(track.coversCue("triple_bell", 6000), false);
+});
+
+test("optional ticks align to whole seconds, leaving bells and the rest countdown clear", () => {
+  const tickSettings = { ...settings, tick: true };
+  const state = start({ rounds: 2, workSec: 5, restSec: 5 });
+  const track = roundAudioTimeline(state, 1000, tickSettings)!;
+  assert.deepEqual(track.cues.filter(cue => cue.sound === "tick").map(cue => cue.atMs),
+    [1000, 2000, 3000, 4000, 6000, 11000, 12000, 13000, 14000]);
+  assert.deepEqual(track.cues.filter(cue => cue.sound !== "tick"),
+    roundAudioTimeline(state, 1000, settings)!.cues);
+  assert.equal(roundAudioTimeline(pause(state, 2500), 2500, tickSettings), null);
+  const resumed = resume(pause(state, 2500), 3500);
+  assert.deepEqual(roundAudioTimeline(resumed, 3500, tickSettings)!.cues.filter(cue => cue.sound === "tick").slice(0, 3).map(cue => cue.atMs),
+    [500, 1500, 2500]);
+  const warning = roundAudioTimeline(start({ rounds: 1, workSec: 30 }), 1000, tickSettings)!;
+  assert.deepEqual(warning.cues.filter(cue => cue.atMs === 20000), [{ atMs: 20000, sound: "clapper" }]);
+});
+
+test("every round timer starts rounds with the same cue, including scheduled playback", () => {
+  const cues = roundAudioTimeline(start({ rounds: 2, workSec: 5, restSec: 5 }, 5), 1000, settings)!.cues;
+  assert.equal(cues.filter(cue => cue.sound === "round_start").length, 2);
+  assert.equal(cues.filter(cue => cue.sound === "bell").length, 0);
 });

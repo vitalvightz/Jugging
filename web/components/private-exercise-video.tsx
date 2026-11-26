@@ -78,9 +78,39 @@ export function PrivateVideoPlayer({ media, name, visibility = "private", kind =
   const video = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false), [slow, setSlow] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [fullscreenFailed, setFullscreenFailed] = useState(false);
   // Uploads without a stored orientation are read from the file itself.
   const [measured, setMeasured] = useState<"portrait" | "landscape">();
   const orientation = media.orientation ?? measured;
+  useEffect(() => {
+    const element = video.current;
+    if (!element) return;
+    const updateControls = () => { element.controls = document.fullscreenElement === element; };
+    document.addEventListener("fullscreenchange", updateControls);
+    return () => document.removeEventListener("fullscreenchange", updateControls);
+  }, [media.url]);
+  async function expand() {
+    const element = video.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
+    if (!element) return;
+    setFullscreenFailed(false);
+    if (element.requestFullscreen) {
+      try {
+        await element.requestFullscreen();
+        return;
+      } catch {
+        // Some Safari versions only allow full-screen video through WebKit.
+      }
+    }
+    if (element.webkitEnterFullscreen) {
+      try {
+        await element.webkitEnterFullscreen();
+        return;
+      } catch {
+        // Continue playing inline when the browser denies both requests.
+      }
+    }
+    setFullscreenFailed(true);
+  }
   if (media.provider === "youtube" && media.video_id) return (
     <ExerciseDemo key={`${media.video_id}:${media.start_s}:${media.end_s}`} exerciseName={name} preview media={{
       provider: "youtube", video_id: media.video_id, start_s: media.start_s, end_s: media.end_s,
@@ -98,6 +128,7 @@ export function PrivateVideoPlayer({ media, name, visibility = "private", kind =
             if (videoWidth && videoHeight) setMeasured(videoHeight > videoWidth ? "portrait" : "landscape");
           }}
           onError={() => setFailed(true)} />
+        <button type="button" className={layout.expandFrame} aria-label={`Open ${name} video full screen`} onClick={expand} />
       </div>
       <div className="ex-demo-caption"><span className="ex-demo-meta">{kind} · {visibility === "community" ? "Community" : "Private"}</span></div>
       <div className="ex-demo-controls" role="group" aria-label="Demo controls">
@@ -111,13 +142,9 @@ export function PrivateVideoPlayer({ media, name, visibility = "private", kind =
           if (video.current) video.current.playbackRate = slow ? 1 : 0.5;
           setSlow(!slow);
         }}>0.5×</button>
-        <button type="button" className="ex-demo-control" onClick={() => {
-          const element = video.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
-          // iPhone Safari only fullscreens a <video> through its own API.
-          if (element?.requestFullscreen) void element.requestFullscreen().catch(() => element.webkitEnterFullscreen?.());
-          else element?.webkitEnterFullscreen?.();
-        }}>Full screen</button>
+        <button type="button" className="ex-demo-control" onClick={expand}>Full screen</button>
       </div>
+      {fullscreenFailed && <p role="status">Full screen is unavailable. You can keep watching here.</p>}
       {/* Renditions intentionally strip audio and all embedded metadata. */}
     </div>
   );

@@ -87,6 +87,13 @@ function TryRoundTimer() {
   );
 }
 
+/** The timer screen is loaded on demand (React.lazy): wait for it to mount. */
+async function untilTimerMounts() {
+  for (let attempt = 0; attempt < 40 && !document.querySelector('.st-root[role="dialog"]'); attempt += 1) {
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 25)));
+  }
+}
+
 function ShownFlag() {
   return <p data-testid="flag">{useRoundTimer().shown ? "shown" : "hidden"}</p>;
 }
@@ -105,6 +112,7 @@ test("the timer page opens straight into the round timer, which minimises to its
     );
   });
 
+  await untilTimerMounts();
   // No tap: the timer is up on its setup, ready for Start round 1.
   const flag = () => container.querySelector('[data-testid="flag"]')?.textContent;
   assert.equal(flag(), "shown");
@@ -157,7 +165,8 @@ test("the timer page opens on the athlete's last round setup", async () => {
     );
   });
   const summary = document.querySelector(".st-plan-summary");
-  assert.equal(summary?.textContent, "6 × 2:00 · 0:30 rest");
+  assert.equal(document.querySelector(".st-board-format")?.textContent, "6 rounds");
+  assert.equal(summary?.textContent, "2:00 work · 0:30 rest");
 
   await act(async () => root.unmount());
   container.remove();

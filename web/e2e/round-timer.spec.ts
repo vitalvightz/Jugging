@@ -312,3 +312,100 @@ test("a 90-minute session keeps its foreground clock without allocating an audio
   expect(await page.evaluate(() => (window as unknown as { __roundTimerAudioBlobs: Map<string, Blob> }).__roundTimerAudioBlobs.size)).toBe(0);
   await expect(page.locator(".st-clock-digits")).not.toHaveText("3:00");
 });
+for (const viewport of [{ width: 320, height: 640 }, { width: 844, height: 390 }]) {
+  test(`round clock fits ${viewport.width}px and pauses in place`, async ({ page }, info) => {
+    await page.setViewportSize(viewport);
+    await page.emulateMedia({ reducedMotion: viewport.width === 320 ? "no-preference" : "reduce" });
+    await page.goto("/timer");
+    await page.evaluate(() => {
+      localStorage.setItem("unlxck.session-timer.free-format", JSON.stringify({ rounds: 3, workSec: 21, restSec: 10 }));
+      localStorage.setItem("unlxck.session-timer.settings", JSON.stringify({ prepSec: 30, voice: false }));
+    });
+    await page.reload();
+    const nativePlay = await page.evaluateHandle(() => {
+      const play = HTMLMediaElement.prototype.play;
+      HTMLMediaElement.prototype.play = () => Promise.reject(new DOMException("Playback denied for test", "NotAllowedError"));
+      return play;
+    });
+    await page.getByRole("button", { name: "Start round 1", exact: true }).click();
+    const clock = page.getByRole("timer");
+    await expect(page.locator(".st-phase")).toHaveText("Get ready");
+    await expect(page.getByRole("button", { name: "Enable round audio" })).toBeVisible();
+    await expect(page.locator(".st-board-track")).toBeVisible();
+    await expect(page.locator(".st-glow, .st-phase-dot, .st-ring")).toHaveCount(0);
+    const box = await clock.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
+    const geometry = () => page.locator(".st-root").evaluate(root => ({
+      height: root.scrollHeight,
+      boxes: [".st-board-header", ".st-clock", ".st-board-track", ".st-tools", ".st-primary"].map(selector => {
+        const { x, y, width, height } = root.querySelector(selector)!.getBoundingClientRect();
+        return [x, y, width, height];
+      }),
+    }));
+    const initial = await geometry();
+    await page.evaluate(play => { HTMLMediaElement.prototype.play = play; }, nativePlay);
+    await nativePlay.dispose();
+    await page.getByRole("button", { name: "Enable round audio" }).click();
+    await expect(page.locator(".st-audio-status")).toContainText("Round audio playing");
+    expect(await geometry()).toEqual(initial);
+    await page.getByRole("button", { name: "Start now", exact: true }).click();
+    await expect(page.locator(".st-board-header")).toContainText("Work");
+    expect(await geometry()).toEqual(initial);
+    const slice = await page.locator(".st-work-slice").elementHandle();
+    await page.screenshot({ path: info.outputPath("ringside.png") });
+    await page.getByRole("button", { name: "Pause timer", exact: true }).click();
+    await expect(page.locator(".st-phase")).toHaveText("Paused");
+    expect(await geometry()).toEqual(initial);
+    await page.getByRole("button", { name: "Resume timer", exact: true }).click();
+    expect(await geometry()).toEqual(initial);
+    expect(await slice!.evaluate(element => element.isConnected)).toBe(true);
+    await slice!.dispose();
+    await expect(page.locator(".st-root")).toHaveAttribute("data-tone", "warn", { timeout: 15_000 });
+    await expect(page.locator(".st-board-track")).toHaveAttribute("data-warning", "true");
+    expect(await geometry()).toEqual(initial);
+    await page.getByRole("button", { name: "End round", exact: true }).click();
+    await expect(page.locator(".st-phase")).toHaveText("Rest");
+    const completion = page.locator(".st-round-complete");
+    await expect(completion).toHaveCount(1);
+    await expect(completion).toHaveCSS("animation-name", viewport.width === 320 ? "st-round-land" : "none");
+    expect(await geometry()).toEqual(initial);
+  });
+}
+
+test("the timer scoreboard follows the light and dark app themes", async ({ page }) => {
+  await page.goto("/timer");
+  const root = page.locator(".st-root");
+  await expect(root).toBeVisible();
+  // Signed out, the app settles on dark once auth resolves; hold the chosen
+  // theme so that late reset cannot race the colour checks.
+  const setTheme = (theme: "light" | "dark") => page.evaluate(value => {
+    const html = document.documentElement;
+    const held = window as unknown as { __heldTheme?: string; __themeHold?: MutationObserver };
+    held.__heldTheme = value;
+    held.__themeHold ??= new MutationObserver(() => {
+      if (html.dataset.theme !== held.__heldTheme) html.dataset.theme = held.__heldTheme;
+    });
+    held.__themeHold.observe(html, { attributes: true, attributeFilter: ["data-theme"] });
+    html.dataset.theme = value;
+  }, theme);
+  const lit = root.locator(".st-score-digit i[data-lit]").first();
+  const unlit = root.locator(".st-score-digit i:not([data-lit])").first();
+
+  await setTheme("light");
+  await expect(root).toHaveCSS("background-color", "rgb(246, 246, 248)");
+  await expect(lit).toHaveCSS("background-color", "rgb(17, 18, 22)");
+  await expect(unlit).toHaveCSS("background-color", "rgb(226, 226, 230)");
+  await page.getByRole("button", { name: "Start round 1", exact: true }).click();
+  await expect(root.locator(".st-work-mark")).toHaveCSS("color", "rgb(255, 255, 255)");
+  await expect(root.locator(".st-board-track")).toHaveCSS("background-color", "rgb(222, 222, 226)");
+  await page.getByRole("button", { name: "Pause timer", exact: true }).click();
+  await expect(root.locator(".st-phase")).toHaveText("Paused");
+
+  await setTheme("dark");
+  await expect(root).toHaveCSS("background-color", "rgb(11, 11, 12)");
+  await expect(lit).toHaveCSS("background-color", "rgb(246, 247, 249)");
+  await expect(unlit).toHaveCSS("background-color", "rgb(23, 23, 25)");
+  await expect(root.locator(".st-board-track")).toHaveCSS("background-color", "rgb(36, 36, 39)");
+});

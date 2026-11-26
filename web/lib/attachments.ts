@@ -6,9 +6,8 @@
  */
 // Matches the server rebuild limit (supabase/functions/process-attachment/sanitize.ts).
 export const PHOTO_MAX_SIDE = 1280;
-// Plenty for a phone screen; the server rebuilds at the same level, so a
-// typical photo ends up around 150-250 KB instead of 300-500 KB.
-export const PHOTO_QUALITY = 0.8;
+// Preserve detail through the second JPEG encode in the isolated rebuild.
+export const PHOTO_QUALITY = 0.94;
 export const PHOTO_MAX_INPUT_BYTES = 25 * 1024 * 1024;
 export const VOICE_RATE = 16_000;
 export const VOICE_MAX_SECONDS = 60;
@@ -43,6 +42,7 @@ export async function preparePhoto(file: Blob, { maxSide = PHOTO_MAX_SIDE, quali
     if (!context) throw new Error("This photo can't be opened here. Try a JPG or PNG.");
     context.fillStyle = "#fff";
     context.fillRect(0, 0, size.width, size.height);
+    context.imageSmoothingQuality = "high";
     context.drawImage(bitmap, 0, 0, size.width, size.height);
     const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/jpeg", quality));
     if (!blob) throw new Error("This photo can't be opened here. Try a JPG or PNG.");

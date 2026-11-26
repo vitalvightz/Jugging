@@ -23,6 +23,7 @@ export function roundAudioTimeline(state: TimerState, now: number, settings: Tim
     if (end === null || current.index !== index || current.phase === "ready" || current.phase === "done") break;
     if (!Number.isFinite(end) || end <= now || end - now > MAX_ROUND_TRACK_MS) return null;
     // Match the engine's warning rules, including coincident halfway/30s cues.
+    const firstCue = cues.length;
     const marks = [...new Set([current.phaseMs! / 2, 30_000, 10_000])];
     for (const mark of marks) {
       const at = end - mark;
@@ -30,6 +31,13 @@ export function roundAudioTimeline(state: TimerState, now: number, settings: Tim
       const crossed = crossedCues(current.phase, current.phaseMs, mark + 1, mark,
         { ten: settings.warnTen, thirty: settings.warnThirty, halfway: settings.warnHalfway }, warningLengthMs(current));
       for (const sound of cueSounds(crossed, false).sounds) cues.push({ atMs: at - now, sound });
+    }
+    if (settings.tick) {
+      const warnings = cues.slice(firstCue).map(cue => cue.atMs);
+      // Align to displayed seconds. Bells and the rest countdown take priority.
+      for (let at = end - (current.phase === "rest" ? 4000 : 1000); at > Math.max(now, current.phaseStartedAt!); at -= 1000) {
+        if (!warnings.includes(at - now)) cues.push({ atMs: at - now, sound: "tick" });
+      }
     }
     const next = advance(current, end);
     if (next.state === current) return null;
@@ -105,8 +113,13 @@ export function roundAudioWav(timeline: RoundAudioTimeline, clips: ReadonlyMap<T
 
 let clipBank: Promise<ReadonlyMap<TimerSound, Float32Array>> | null = null;
 function loadClips(): Promise<ReadonlyMap<TimerSound, Float32Array>> {
-  clipBank ??= Promise.all((["bell", "triple_bell", "finish", "clapper", "double_beep", "halfway", "chime"] as TimerSound[])
-    .map(async (sound) => [sound, await renderTimerClip(sound, SAMPLE_RATE)] as const))
+  clipBank ??= Promise.all((["bell", "round_start", "triple_bell", "finish", "clapper", "double_beep", "halfway", "chime", "tick"] as TimerSound[])
+    .map(async (sound) => {
+      const clip = await renderTimerClip(sound, SAMPLE_RATE);
+      // Keep the tick short: four seconds of trailing silence would merge every
+      // tick into one workout-sized temporary PCM allocation.
+      return [sound, sound === "tick" ? clip.slice(0, SAMPLE_RATE / 10) : clip] as const;
+    }))
     .then((entries) => new Map(entries)).catch((error: unknown) => { clipBank = null; throw error; });
   return clipBank;
 }
