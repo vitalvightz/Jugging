@@ -79,6 +79,28 @@ test("nothing loads until a video is asked for; then one short link for that vid
   } finally { ui.close(); }
 });
 
+test("fullscreen failures keep the inline player available and a successful retry clears the message", async () => {
+  const ui = await mount(token => <TrainingVideos token={token} label="Back squat" target={{ source: "external", target_id: "session" }} />);
+  try {
+    await act(async () => ui.button("Play video 1 for Back squat")!.click());
+    const player = ui.host.querySelector("video")!;
+    player.requestFullscreen = async () => { throw new Error("Denied"); };
+    const expand = async (label: string) => act(async () => ui.button(label)!.click());
+    await expand("Open Back squat video full screen");
+    assert.match(ui.host.textContent ?? "", /Full screen is unavailable/);
+
+    Object.assign(player, { webkitEnterFullscreen() { throw new Error("Unavailable"); } });
+    await expand("Full screen");
+    assert.match(ui.host.textContent ?? "", /Full screen is unavailable/);
+    assert.equal(ui.host.querySelector("video"), player);
+    assert.ok(ui.button("Play"));
+
+    Object.assign(player, { webkitEnterFullscreen() {} });
+    await expand("Full screen");
+    assert.doesNotMatch(ui.host.textContent ?? "", /Full screen is unavailable/);
+  } finally { ui.close(); }
+});
+
 test("a coach watches through the consented coach route and gets no attach or remove controls", async () => {
   const ui = await mount(token => <TrainingVideos token={token} viewer="coach" athleteId="fighter" label="Sparring"
     target={{ source: "sparring", target_id: "report" }} />, { rows: [video("a", false), video("b", false)] });

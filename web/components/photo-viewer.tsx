@@ -2,9 +2,11 @@
 
 import { type TouchEvent, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { TrainingAttachment } from "@/lib/api-schema.generated";
 import { useTopModal } from "@/lib/use-top-modal";
+import { SaveMediaButton } from "./save-media-button";
 import styles from "./photo-viewer.module.css";
+
+type Photo = { id: string; removable?: boolean; file: { width: number | null; height: number | null; thumb_url: string | null } | null };
 
 /**
  * Full-screen photos: the preview shows at once and the full photo fades in
@@ -12,16 +14,17 @@ import styles from "./photo-viewer.module.css";
  * Escape, the close button or tapping outside the photo closes it. Each full
  * photo is fetched through its own short-lived link only when shown.
  */
-export function PhotoViewer({ photos, startId, label, load, onRemove, onClose }: {
-  photos: TrainingAttachment[];
+export function PhotoViewer<T extends Photo>({ photos, startId, label, load, onRemove, onClose, note }: {
+  note?: string;
+  photos: T[];
   startId: string;
   label: string;
-  load: (photo: TrainingAttachment) => Promise<string>;
-  onRemove?: (photo: TrainingAttachment) => Promise<void> | void;
+  load: (photo: T) => Promise<string>;
+  onRemove?: (photo: T) => Promise<void> | void;
   onClose: () => void;
 }) {
   const [index, setIndex] = useState(() => Math.max(0, photos.findIndex(photo => photo.id === startId)));
-  const [urls, setUrls] = useState<Record<string, string>>({});
+  const [full, setFull] = useState<{ id: string; url: string }>();
   const [failed, setFailed] = useState<string | null>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
@@ -33,9 +36,11 @@ export function PhotoViewer({ photos, startId, label, load, onRemove, onClose }:
   useEffect(() => { closeButton.current?.focus(); }, []);
 
   useEffect(() => {
-    if (!photo || urls[photo.id]) return;
+    if (!photo) return;
+    setFull(undefined);
+    setFailed(null);
     let active = true;
-    load(photo).then(url => { if (active) setUrls(current => ({ ...current, [photo.id]: url })); })
+    load(photo).then(url => { if (active) setFull({ id: photo.id, url }); })
       .catch(() => { if (active) setFailed(photo.id); });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -68,6 +73,7 @@ export function PhotoViewer({ photos, startId, label, load, onRemove, onClose }:
     onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => { if (event.target === event.currentTarget) onClose(); }} onTouchStart={touchStart} onTouchEnd={touchEnd}>
     <div className={styles.top}>
       <span className={styles.counter}>{count > 1 ? `${index + 1} / ${count}` : label}</span>
+      <SaveMediaButton key={photo.id} kind="photo" className={styles.action} load={() => load(photo)} />
       {onRemove && photo.removable ? <button type="button" className={styles.action} onClick={() => void onRemove(photo)}>
         Remove photo</button> : null}
       <button ref={closeButton} type="button" className={styles.close} onClick={onClose} aria-label="Close photo">
@@ -75,7 +81,7 @@ export function PhotoViewer({ photos, startId, label, load, onRemove, onClose }:
       </button>
     </div>
     <div className={styles.stage} onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
-      <PhotoFrame key={photo.id} file={photo.file} url={urls[photo.id] ?? null} alt={`Photo ${index + 1} for ${label}`}
+      <PhotoFrame key={photo.id} file={photo.file} url={full?.id === photo.id ? full.url : null} alt={`Photo ${index + 1} for ${label}`}
         failed={failed === photo.id} />
     </div>
     {count > 1 ? <>
@@ -88,7 +94,7 @@ export function PhotoViewer({ photos, startId, label, load, onRemove, onClose }:
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
       </button>
     </> : null}
-    <p className={styles.note}>Only you and coaches you share photos with can see this.</p>
+    <p className={styles.note}>{note ?? "Only you and coaches you share photos with can see this."}</p>
   </dialog>, document.body);
 }
 
@@ -97,11 +103,13 @@ export function PhotoViewer({ photos, startId, label, load, onRemove, onClose }:
  * photo fading in. It never grows past the screen or past its real size.
  */
 export function PhotoFrame({ file, url, alt, failed = false }: {
-  file: TrainingAttachment["file"]; url: string | null; alt: string; failed?: boolean;
+  file: Photo["file"]; url: string | null; alt: string; failed?: boolean;
 }) {
   const [loaded, setLoaded] = useState(false);
-  const width = file?.width || 4;
-  const height = file?.height || 3;
+  const [dimensions, setDimensions] = useState<{ width: number; height: number }>();
+  const [imageFailed, setImageFailed] = useState(false);
+  const width = dimensions?.width || file?.width || 1200;
+  const height = dimensions?.height || file?.height || 900;
   return <div className={styles.frame} data-loaded={loaded || undefined}
     style={{ aspectRatio: `${width} / ${height}`, ["--ratio" as string]: width / height, ["--natural" as string]: `${width}px` }}>
     {/* Plain <img>s: next/image would route the private, short-lived links through the image optimizer. */}
@@ -110,8 +118,11 @@ export function PhotoFrame({ file, url, alt, failed = false }: {
       referrerPolicy="no-referrer" draggable={false} /> : null}
     {/* eslint-disable-next-line @next/next/no-img-element */}
     {url ? <img className={styles.full} src={url} alt={alt} decoding="async" referrerPolicy="no-referrer"
-      draggable={false} onLoad={() => setLoaded(true)} /> : null}
-    {failed ? <span className={styles.status} role="alert">Photo unavailable. Close and try again.</span>
+      draggable={false} onError={() => setImageFailed(true)} onLoad={({ currentTarget }) => {
+        setDimensions({ width: currentTarget.naturalWidth, height: currentTarget.naturalHeight });
+        setLoaded(true);
+      }} /> : null}
+    {failed || imageFailed ? <span className={styles.status} role="alert">Photo unavailable. Close and try again.</span>
       : !loaded ? <span className={styles.status} role="status">Loading photo…</span> : null}
   </div>;
 }

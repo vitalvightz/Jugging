@@ -74,8 +74,8 @@ def process(source, target):
     run([
         "ffmpeg", "-v", "error", "-xerror", "-nostdin", "-protocol_whitelist", "file", "-i", str(source),
         "-map", "0:v:0", "-an", "-sn", "-dn", "-map_metadata", "-1", "-map_chapters", "-1",
-        "-vf", "scale=1920:1920:force_original_aspect_ratio=decrease:force_divisible_by=2", "-r", "30",
-        "-c:v", "libx264", "-preset", "fast", "-crf", "26", "-pix_fmt", "yuv420p", "-threads", "1",
+        "-vf", "scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2", "-r", "30",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "22", "-maxrate", "4800k", "-bufsize", "4800k", "-pix_fmt", "yuv420p", "-threads", "1",
         "-movflags", "+faststart", "-y", str(target),
     ], timeout=90)
     result = inspect_video(target, rendition=True)

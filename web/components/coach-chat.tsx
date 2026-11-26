@@ -6,6 +6,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { createPortal } from "react-dom";
 import { RequireAuth } from "@/components/auth-guard";
 import { useAppSession } from "@/components/auth-provider";
+import { PhotoViewer } from "./photo-viewer";
 import { Skeleton } from "@/components/skeleton";
 import { VoicePlaceholder, VoicePlayer } from "@/components/voice-note";
 import { getChatFiles, notifyChatMessage, processFileUpload, reserveFileUpload } from "@/lib/api";
@@ -392,6 +393,7 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
   const [text, setText] = useState("");
   const [quote, setQuote] = useState<QuoteRef | null>(row.active ? initialQuote : null);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+  const [photoId, setPhotoId] = useState<number | null>(null);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [reporting, setReporting] = useState<ChatMessage | null>(null);
   const [stage, setStage] = useState("");
@@ -752,6 +754,14 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
 
   return (
     <>
+      {photoId !== null && <PhotoViewer key={photoId} startId={String(photoId)} label={row.name}
+        photos={[{ id: String(photoId), file: files[photoId] ?? null }]} note="Private chat photo"
+        load={async () => {
+          const links = await getChatFiles(token, [photoId]);
+          const photo = links.find(link => link.message_id === photoId && link.kind === "photo");
+          if (!photo) throw new Error("Photo unavailable");
+          return photo.url;
+        }} onClose={() => setPhotoId(null)} />}
       <header className={styles.threadHeader}>
         <button type="button" className={styles.back} onClick={onBack} aria-label="Back to chats">
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor"
@@ -815,14 +825,15 @@ function ChatThread({ token, me, role, row, initialQuote, onBack, onRow }: {
                   {message.quote ? <TrainingCard quote={message.quote} /> : null}
                   {message.kind === "photo" && box ? (
                     // The frame has the photo's final size from the start; a prefetched photo is there at once.
-                    <span className={styles.photoFrame} style={{ width: box.width, height: box.height }}>
+                    <button type="button" aria-label="Open photo" disabled={message.id <= 0} onClick={() => setPhotoId(message.id)}
+                      className={styles.photoFrame} style={{ width: box.width, height: box.height }}>
                       {file ? (
                         // eslint-disable-next-line @next/next/no-img-element -- short-lived signed link
                         <img className={styles.photo} src={file.thumb_url ?? file.url} alt="Photo"
                           width={box.width} height={box.height}
                           onError={() => dropLink(message.id)} />
                       ) : <span className="sr-only">Photo loading</span>}
-                    </span>
+                    </button>
                   ) : null}
                   {message.kind === "voice" ? (
                     // The same player as voice notes on training: a waveform, not the browser's bar.
