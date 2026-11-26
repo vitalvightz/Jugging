@@ -1214,6 +1214,11 @@ for (const width of [320, 1280]) {
     const attention = page.getByRole("region", { name: "Needs attention" });
     await expect(attention.getByRole("listitem")).toHaveCount(2);
     await expect(attention.getByRole("listitem").first()).toContainText("Jay");
+    const cutAlert = attention.getByRole("link").first();
+    await expect(cutAlert).toHaveAttribute("href", `/coach/fighters/${jayId}#fight-weight`);
+    await cutAlert.click();
+    await expect(page.locator("#fight-weight details[open] > summary")).toBeInViewport();
+    await page.goBack();
     await expect(attention.getByRole("listitem").first()).toContainText("Cut too aggressive");
     await expect(page.getByRole("region", { name: "Roster summary" }).locator("article").filter({ hasText: "Needs attention" }).locator("strong")).toHaveText("2");
     const roster = page.locator("section").filter({ has: page.getByRole("heading", { name: "Your fighters", exact: true }) });
@@ -1225,6 +1230,35 @@ for (const width of [320, 1280]) {
     await jay.click();
     await expect(page.getByRole("region", { name: "Needs attention" })).toContainText("Cut too aggressive · 16 days to fight");
   });
+}
+
+for (const mode of ["Technical", "S&C"]) {
+  test(`coach attention opens the matching section and returns to overview in ${mode}`, async ({ page, baseURL }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await fixture(page, baseURL!, "coach", false, {}, [fighter], false);
+    await page.goto("/coach");
+    await page.getByRole("button", { name: mode, exact: true }).click();
+    const alert = page.getByRole("region", { name: "Needs attention" }).getByRole("link").first();
+    await expect(alert).toBeInViewport({ ratio: 1 });
+    await expect(alert).toHaveAttribute("href", `/coach/fighters/${fighterId}#recovery`);
+    await page.evaluate(() => window.scrollTo(0, 64));
+    const before = await page.evaluate(() => window.scrollY);
+    await alert.click();
+    const section = page.locator("#recovery details[open] > summary");
+    await expect(section).toBeInViewport({ ratio: 1 });
+    await page.goBack();
+    await expect(alert).toBeInViewport({ ratio: 1 });
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(before);
+  });
+
+  for (const upcoming of [true, false]) {
+    test(`quiet coach overview leads with ${upcoming ? "fights" : "roster"} in ${mode}`, async ({ page, baseURL }) => {
+      await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, share_weight: false, share_recovery: false, fight_date: upcoming ? fighter.fight_date : null }]);
+      await page.goto("/coach");
+      await page.getByRole("button", { name: mode, exact: true }).click();
+      await expect(page.locator("main h2").first()).toHaveText(upcoming ? "Upcoming fights" : "Your fighters");
+    });
+  }
 }
 
 test("team weight checks show pending and unavailable states, and never request unshared or minor assessments", async ({ page, baseURL }) => {
