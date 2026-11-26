@@ -19,7 +19,8 @@ export type TimerSound =
   | "go"
   | "chime"
   | "soft_chime"
-  | "finish";
+  | "finish"
+  | "tick";
 
 export type TimerSoundSettings = {
   sound: boolean;
@@ -31,6 +32,8 @@ export type TimerSoundSettings = {
   warnTen: boolean;
   warnThirty: boolean;
   warnHalfway: boolean;
+  /** Optional quiet one-second clock pulse. */
+  tick?: boolean;
   /** Countdown before round 1, so the athlete can put the phone down and get set. */
   prepSec: PrepSeconds;
 };
@@ -46,6 +49,7 @@ export const DEFAULT_SOUND_SETTINGS: TimerSoundSettings = {
   warnTen: true,
   warnThirty: false,
   warnHalfway: false,
+  tick: false,
   prepSec: 10,
 };
 
@@ -71,6 +75,7 @@ export function loadSoundSettings(): TimerSoundSettings {
       warnTen: flag(parsed.warnTen, DEFAULT_SOUND_SETTINGS.warnTen),
       warnThirty: flag(parsed.warnThirty, DEFAULT_SOUND_SETTINGS.warnThirty),
       warnHalfway: flag(parsed.warnHalfway, DEFAULT_SOUND_SETTINGS.warnHalfway),
+      tick: flag(parsed.tick, false),
       prepSec: PREP_OPTIONS.includes(parsed.prepSec as PrepSeconds)
         ? (parsed.prepSec as PrepSeconds)
         : DEFAULT_SOUND_SETTINGS.prepSec,
@@ -197,6 +202,9 @@ class TimerAudio {
 
   private soundAt(sound: TimerSound, t: number): void {
     switch (sound) {
+      case "tick":
+        this.tone(t, 1700, 0.035, 0.11, "triangle");
+        break;
       case "bell":
         this.bell(t, 1);
         break;

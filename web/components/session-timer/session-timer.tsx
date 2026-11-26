@@ -705,6 +705,7 @@ const ROUND_ALERTS = [
   { key: "warnHalfway", label: "Halfway", aria: "Halfway" },
   { key: "warnThirty", label: "30s", aria: "30 seconds left" },
   { key: "warnTen", label: "10s", aria: "10 seconds left" },
+  { key: "tick", label: "Tick", aria: "Tick every second" },
 ] as const;
 
 function SettingsSheet({ timer, onClose }: { timer: SessionTimerController; onClose: () => void }) {
@@ -755,7 +756,7 @@ function SettingsSheet({ timer, onClose }: { timer: SessionTimerController; onCl
               key={alert.key}
               type="button"
               className="action-choice"
-              aria-pressed={settings[alert.key]}
+              aria-pressed={Boolean(settings[alert.key])}
               aria-label={alert.aria}
               onClick={() => setSettings({ ...settings, [alert.key]: !settings[alert.key] })}
             >

@@ -118,3 +118,19 @@ test("a scheduled bell belongs to playing media even when Safari's playhead drif
   media.paused = true;
   assert.equal(track.coversCue("triple_bell", 6000), false);
 });
+
+test("optional ticks align to whole seconds, leaving bells and the rest countdown clear", () => {
+  const tickSettings = { ...settings, tick: true };
+  const state = start({ rounds: 2, workSec: 5, restSec: 5 });
+  const track = roundAudioTimeline(state, 1000, tickSettings)!;
+  assert.deepEqual(track.cues.filter(cue => cue.sound === "tick").map(cue => cue.atMs),
+    [1000, 2000, 3000, 4000, 6000, 11000, 12000, 13000, 14000]);
+  assert.deepEqual(track.cues.filter(cue => cue.sound !== "tick"),
+    roundAudioTimeline(state, 1000, settings)!.cues);
+  assert.equal(roundAudioTimeline(pause(state, 2500), 2500, tickSettings), null);
+  const resumed = resume(pause(state, 2500), 3500);
+  assert.deepEqual(roundAudioTimeline(resumed, 3500, tickSettings)!.cues.filter(cue => cue.sound === "tick").slice(0, 3).map(cue => cue.atMs),
+    [500, 1500, 2500]);
+  const warning = roundAudioTimeline(start({ rounds: 1, workSec: 30 }), 1000, tickSettings)!;
+  assert.deepEqual(warning.cues.filter(cue => cue.atMs === 20000), [{ atMs: 20000, sound: "clapper" }]);
+});
