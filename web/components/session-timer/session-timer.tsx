@@ -4,6 +4,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -247,11 +248,22 @@ function ringProgress(state: TimerState, item: TimerItem | null, view: TimerView
 // Seven-segment face shared by every timer. Assistive technology reads the time once.
 const DIGIT_SEGMENTS = ["abcdef", "bc", "abdeg", "abcdg", "bcfg", "acdfg", "acdefg", "abc", "abcdefg", "abcdfg"];
 
-function ScoreboardDigits({ time }: { time: string }) {
+/**
+ * No leading zero ("2:20", not "02:20"): three cells instead of four make
+ * each digit about a third bigger. A clock that runs 10 minutes or more keeps
+ * four cells for its whole phase, so it never changes size mid-countdown.
+ */
+function ScoreboardDigits({ time, wide = false }: { time: string; wide?: boolean }) {
+  const shown = wide ? time.padStart(5, "0") : time;
+  const digits = shown.replace(/:/g, "").length;
+  const colons = shown.length - digits;
+  // Face width per unit of height, so the clock can be capped by height too.
+  const ratio = (0.59 * digits) / (1 - 0.03 * colons - 0.024 * (shown.length - 1));
   return <span className="st-clock-digits st-score-digits" role="timer">
     <span className="sr-only">{time}</span>
-    <span className="st-score-face" aria-hidden="true">
-      {Array.from(time.padStart(5, "0"), (char, index) => char === ":" ? (
+    <span className="st-score-face" aria-hidden="true" data-cells={digits}
+      style={{ "--st-face-ratio": ratio.toFixed(3) } as CSSProperties}>
+      {Array.from(shown, (char, index) => char === ":" ? (
         <span key={index} className="st-score-colon" />
       ) : (
         <span key={index} className="st-score-digit">
@@ -1285,7 +1297,7 @@ export function SessionTimer({
           </div>
           {state.phase === "ready" && round ? (
             <button type="button" className="st-clock" aria-label="Edit work duration" onClick={toggleAdjust}>
-              <ScoreboardDigits time={formatClock(round.workSec)} />
+              <ScoreboardDigits time={formatClock(round.workSec)} wide={round.workSec >= 600} />
             </button>
           ) : null}
 
@@ -1306,7 +1318,7 @@ export function SessionTimer({
                 onClick={togglePause}
                 aria-label={view.paused ? "Resume timer" : "Pause timer"}
               >
-                <ScoreboardDigits time={formatClock(clockSeconds)} />
+                <ScoreboardDigits time={formatClock(clockSeconds)} wide={clockSeconds >= 600 || (state.phaseMs ?? 0) >= 600_000} />
                 {progress !== null && <span className="st-board-track" data-warning={clockSeconds <= 10 || undefined} aria-hidden="true">
                   <span style={{ transform: `scaleX(${Math.max(0, Math.min(1, 1 - progress))})` }} />
                 </span>}

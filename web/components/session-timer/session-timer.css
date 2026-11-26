@@ -9,8 +9,13 @@
   --st-accent: #f5f5f5;
   --st-glow: transparent;
   --st-red: #ff4759;
+  /* Rest reads green from across the gym: the bar, the badge and a tint on the digits. */
+  --st-green: #34d57f;
+  --st-rest-ink: #c9f5dc;
   /* Width of the board header and clock; the digits scale from it. */
   --st-board: min(100%, 36rem, 84dvh);
+  /* The digits never grow taller than this, however wide the board. */
+  --st-clock-max-h: 34dvh;
   --st-ink: #f6f7f9;
   --st-ink-soft: rgba(246, 247, 249, 0.64);
   --st-ink-faint: rgba(246, 247, 249, 0.38);
@@ -155,10 +160,10 @@
   align-items: center;
   flex: none;
   margin: 0;
-  padding: 5px 10px;
+  padding: 0.24em 0.45em;
   background: var(--st-ink);
   color: var(--st-base);
-  font-size: clamp(14px, 3vw, 22px);
+  font-size: clamp(19px, 5.2vw, 40px);
   font-weight: 700;
   letter-spacing: 0.1em;
   line-height: 1;
@@ -281,7 +286,7 @@
 .st-clock-caption {
   min-width: 0;
   overflow: hidden;
-  font-size: 13px;
+  font-size: clamp(13px, 2.2vw, 20px);
   font-weight: 600;
   letter-spacing: 0.09em;
   text-overflow: ellipsis;
@@ -1109,6 +1114,8 @@ html[data-theme="light"] .st-root {
   --st-accent: var(--st-ink);
   --st-glow: transparent;
   --st-red: #b5122b;
+  --st-green: #0e9f53;
+  --st-rest-ink: #0b6b39;
   --st-ink: #111216;
   --st-ink-soft: rgba(17, 18, 22, 0.66);
   --st-ink-faint: rgba(17, 18, 22, 0.68);
@@ -1283,7 +1290,7 @@ html[data-theme="light"] .today-tool-button[data-accent="true"] .today-tool-icon
 .st-root[data-strength-logging="true"] .st-controls { gap: 6px; }
 .st-root[data-strength-logging="true"] .st-link { color: var(--st-ink-soft); }
 .st-root[data-strength-logging="true"] .st-primary { min-height: 52px; border-radius: 18px; }
-.st-root[data-rest-log] { --st-board: min(100%, 16rem); }
+.st-root[data-rest-log] { --st-board: min(100%, 16rem); --st-clock-max-h: 16dvh; }
 .st-root[data-rest-log="open"] .st-tools, .st-root[data-rest-log="open"] .st-next,
 .st-root[data-rest-log="open"] .st-stats { display: none; }
 .st-rest-sheet { flex-shrink: 0; padding: 14px; border: 1px solid var(--st-line); border-radius: 24px; background: var(--st-sheet); animation: st-log-rise 180ms ease-out; }
@@ -1313,7 +1320,7 @@ html[data-theme="light"] .today-tool-button[data-accent="true"] .today-tool-icon
 @keyframes st-log-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-height: 700px) {
   .st-root[data-strength-logging="true"] .st-main { gap: 4px; padding: 8px 0; }
-  .st-root[data-strength-logging="true"] { --st-board: min(100%, 15rem); }
+  .st-root[data-strength-logging="true"] { --st-board: min(100%, 15rem); --st-clock-max-h: 22dvh; }
   .st-root[data-strength-logging="true"] .st-clock { margin: 2px 0; }
   .st-root[data-strength-logging="true"] .st-next { display: none; }
   .st-root[data-rest-log="open"] .st-steps { margin-top: 6px; }
@@ -1325,7 +1332,7 @@ html[data-theme="light"] .today-tool-button[data-accent="true"] .today-tool-icon
   .st-root[data-rest-log="open"] .st-confirm-set { min-height: 44px; }
   .st-root[data-rest-log="open"] .st-main { padding: 4px 0; }
   .st-root[data-rest-log="open"] .st-clock-caption { font-size: 10px; white-space: nowrap; letter-spacing: 0; }
-  .st-root[data-rest-log="open"] { --st-board: min(100%, 12rem); }
+  .st-root[data-rest-log="open"] { --st-board: min(100%, 12rem); --st-clock-max-h: 12dvh; }
   .st-confirm-set { margin-top: 8px; }
   .st-rest-help { margin-top: 6px; }
 }
@@ -1394,7 +1401,7 @@ html[data-theme="light"] .st-root .st-board-track { background: #dedee2; }
   width: var(--st-board);
   padding-top: 12px;
   /* Fit the tallest phase badge at every breakpoint, including while at rest. */
-  height: clamp(32px, 6.3vw, 48px);
+  height: clamp(44px, 10.5vw, 76px);
   box-sizing: content-box;
 }
 /* Every kind of work (rounds, holds, lifts, untimed work) wears the same red mark. */
@@ -1403,9 +1410,14 @@ html[data-theme="light"] .st-root .st-board-track { background: #dedee2; }
   background: transparent;
   color: white;
 }
-.st-board-track { display: block; height: 2px; background: #242427; }
+/* A thick phase bar: red while working, green while resting, grey when paused. */
+.st-board-track { display: block; height: 8px; background: #242427; }
 .st-board-track > span { display: block; height: 100%; background: #68686b; transform-origin: left; }
+.st-root:is([data-tone="work"], [data-tone="warn"]) .st-board-track > span,
 .st-board-track[data-warning] > span { background: var(--st-red); }
+.st-root[data-tone="rest"] .st-board-track > span { background: var(--st-green); }
+.st-root[data-tone="rest"] .st-clock { color: var(--st-rest-ink); }
+.st-root[data-tone="rest"] .st-main[data-phase="rest"] .st-phase { background: var(--st-green); color: #04140b; }
 .st-round-complete {
   position: absolute;
   inset: -6px;
@@ -1430,7 +1442,7 @@ html[data-theme="light"] .st-root .st-board-track { background: #dedee2; }
   display: flex;
   align-items: center;
   gap: 2.4%;
-  width: 100%;
+  width: min(100%, calc(var(--st-clock-max-h) * var(--st-face-ratio, 2.7)));
   margin: 0 auto;
 }
 .st-score-digit { position: relative; flex: 1; aspect-ratio: .59; }
@@ -1479,7 +1491,7 @@ html[data-theme="light"] .st-root .st-board-track { background: #dedee2; }
   padding: .28em 1.05em .27em .5em;
   background: #bc1934;
   clip-path: polygon(var(--work-cut) 0, 100% 0, calc(100% - var(--work-cut)) 100%, 0 100%, 0 var(--work-cut));
-  font-size: clamp(20px, 4vw, 30px);
+  font-size: clamp(24px, 6.4vw, 50px);
   font-weight: 850;
   font-style: italic;
   letter-spacing: -.035em;
@@ -1512,3 +1524,11 @@ html[data-theme="light"] .st-root .st-board-track { background: #dedee2; }
   20% { visibility: visible; transform: translateX(-.1em); }
   65%, 100% { visibility: hidden; transform: translateX(0); }
 }
+html[data-theme="light"] .st-root[data-tone="rest"] .st-main[data-phase="rest"] .st-phase { color: #fff; }
+/* The ready screen also carries the format line and presets: a slightly shorter clock. */
+.st-main[data-phase="ready"] { --st-clock-max-h: 24dvh; }
+/* While logging a set the clock is small; its phase line keeps a readable width. */
+.st-root[data-rest-log] .st-board-header { width: min(100%, 26rem); height: clamp(36px, 8vw, 56px); }
+.st-root[data-rest-log] .st-phase { font-size: clamp(16px, 4.4vw, 28px); }
+/* Ready never shifts mid-round, so it needs no room reserved for audio messages. */
+.st-main[data-phase="ready"] .st-audio-status { min-height: 0; }
