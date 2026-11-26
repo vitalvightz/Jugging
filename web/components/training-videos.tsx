@@ -14,6 +14,7 @@ import { formatAppDate } from "@/lib/date-format";
 import { formatBytes, pdfProblem, renderPdfPages } from "@/lib/pdf-pages";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { PdfViewer } from "./pdf-viewer";
+import { SaveMediaButton } from "./save-media-button";
 import { PhotoViewer } from "./photo-viewer";
 import { VoicePlayer } from "./voice-note";
 import { SLIDE_TO_CANCEL_PX, useHoldToRecord } from "@/lib/use-hold-to-record";
@@ -507,6 +508,13 @@ export function TrainingVideos({ token, target, viewer = "athlete", athleteId, l
       <div className={styles.playerSide}>
         {athlete ? <p className={styles.who}>Only you and coaches you share photos and voice notes with can see this.</p> : null}
         <div className={styles.playerActions}>
+          {visualOpen.media?.provider === "uploaded" && <SaveMediaButton key={visualOpen.id} kind="video" className={styles.textAction}
+            load={async () => {
+              const fresh = athlete ? await playTrainingAttachment(token, visualOpen.id)
+                : await playFighterTrainingAttachment(token, athleteId ?? "", visualOpen.id);
+              if (!fresh.media?.url) throw new Error("Video unavailable");
+              return fresh.media.url;
+            }} />}
           {visualOpen.removable ? <button type="button" className={styles.textAction} onClick={() => void remove(visualOpen)}>
             Remove {NOUN[kindOf(visualOpen)].toLowerCase()}</button> : null}
           <button type="button" className={styles.textAction} onClick={() => { opening.current = null; setOpened(null); }}>Close</button>

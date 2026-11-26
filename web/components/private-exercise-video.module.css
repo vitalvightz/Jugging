@@ -8,3 +8,13 @@
   .dialog:global(.injury-sheet) { width: min(100%, 720px); }
   .content[data-preview="true"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 20px; }
 }
+
+.expandFrame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+.expandFrame:focus-visible { outline: 2px solid white; outline-offset: -3px; }

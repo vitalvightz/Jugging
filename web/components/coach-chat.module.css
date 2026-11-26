@@ -516,6 +516,9 @@
 
 /* Sized from the photo's known shape, so the bubble never resizes as it loads. */
 .photoFrame {
+  padding: 0;
+  border: 0;
+  cursor: zoom-in;
   display: block;
   max-width: 100%;
   overflow: hidden;

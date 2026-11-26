@@ -10,7 +10,7 @@ export const LIMITS = {
   // Sized so a worst-case (high-entropy) photo rebuilds well inside the Edge
   // Function limits (2 s CPU, 256 MB): about 0.6 s and 120 MB measured with jpeg-js.
   photoMaxSide: 1280,
-  photoQuality: 80,
+  photoQuality: 88,
   // A small preview of the rebuilt photo, made from the same clean pixels, so
   // lists can show real thumbnails (about 15-30 KB) instead of grey boxes.
   thumbMaxSide: 360,
