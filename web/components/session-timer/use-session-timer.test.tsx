@@ -143,10 +143,16 @@ test("returning after several suspended rounds catches up without ringing old be
 // not the free-round-timer event stream.
 test("free timer transitions are measured automatically in beta; planned timer transitions stay separate", async () => {
   const { AppSessionContext } = await import("../auth-provider");
+  const { sendQueuedProductEvents } = await import("@/lib/api");
   const original = globalThis.fetch;
   const events: { event_name: string; feature: string; flow_id: string }[] = [];
   globalThis.fetch = async (input, init) => {
     const path = String(input);
+    if (path.endsWith("/events/batch")) {
+      const batch = JSON.parse(String(init?.body)).events as typeof events;
+      events.push(...batch);
+      return new Response(JSON.stringify({ accepted: batch.map(() => true) }), { status: 200 });
+    }
     if (path.endsWith("/events")) events.push(JSON.parse(String(init?.body)));
     return new Response(JSON.stringify({ accepted: true }), { status: 200 });
   };
@@ -164,12 +170,14 @@ test("free timer transitions are measured automatically in beta; planned timer t
       await act(async () => { controller.run(startItem); await new Promise(resolve => setTimeout(resolve, 30)); });
       await act(async () => { controller.update(endSession); await new Promise(resolve => setTimeout(resolve, 30)); });
     }
+    sendQueuedProductEvents();
     assert.deepEqual(events.map(e => e.event_name), ["timer_started", "timer_exited"]);
     assert.equal(events[0].flow_id, events[1].flow_id);
     assert.equal(events[0].feature, "timer");
   } finally {
     await act(async () => root.unmount());
     window.localStorage.clear();
+    sendQueuedProductEvents();
     globalThis.fetch = original;
   }
 });

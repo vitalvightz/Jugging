@@ -850,6 +850,14 @@ export type Event = {
   flow_id?: string | null;
 };
 
+/**
+ * Events the app queued within a moment of each other (a page view and the
+ * screen's own event), sent as one request instead of one each.
+ */
+export type EventBatch = {
+  events: Event[];
+};
+
 /** The event the plan counts down to (Section D). */
 export type EventContext = {
   fight_date: string | null;
