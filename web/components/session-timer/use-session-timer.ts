@@ -159,14 +159,12 @@ export function useSessionTimer({
   items,
   storageKey,
   audible,
-  ringside = false,
   keepFinishedRun = false,
 }: {
   items: TimerItem[];
   storageKey: string;
   /** False while the timer is minimised: the clock keeps running, and only the round bells, warnings and voice sound. */
   audible: boolean;
-  ringside?: boolean;
   /**
    * Keep a finished run saved until its owner clears it (after logging what it
    * counted), so closing the app in between never loses the work.
@@ -181,7 +179,7 @@ export function useSessionTimer({
   const [now, setNow] = useState(() => Date.now());
   const [settings, setSettingsState] = useState<TimerSoundSettings>(() => loadSoundSettings());
   const [roundAudioStatus, setRoundAudioStatus] = useState<RoundAudioStatus>("idle");
-  const [roundAudio] = useState(() => new RoundAudioTrack(setRoundAudioStatus, undefined, ringside));
+  const [roundAudio] = useState(() => new RoundAudioTrack(setRoundAudioStatus));
   const stateRef = useRef(state);
   const audibleRef = useRef(audible);
   const settingsRef = useRef(settings);
@@ -204,7 +202,7 @@ export function useSessionTimer({
 
   const announce = useCallback((events: TimerEvent[], next: TimerState, scheduled = false) => {
     if (events.length === 0) return;
-    const sound = soundForEvents(events, ringside);
+    const sound = soundForEvents(events);
     // Minimised, the round bells still ring and the voice (when it is on)
     // still calls the rounds, so the athlete never has to look; the other
     // beeps and chimes stay quiet.
@@ -219,7 +217,7 @@ export function useSessionTimer({
     }
     const callout = calloutForEvents(events, next);
     if (callout) timerAudio().say(callout);
-  }, [roundAudio, ringside]);
+  }, [roundAudio]);
 
   const commit = useCallback(
     (next: TimerState) => {

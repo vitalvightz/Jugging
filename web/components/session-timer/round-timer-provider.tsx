@@ -156,7 +156,6 @@ export function RoundTimerProvider({ children }: { children: ReactNode }) {
         <Suspense fallback={<div className="st-root" role="status">Opening timer…</div>}>
           <SessionTimer
             items={items}
-            ringside
             storageKey={ROUND_TIMER_STORAGE_KEY}
             sessionTitle="Round timer"
             visible={shownMode === "open"}
