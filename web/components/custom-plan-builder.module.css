@@ -450,6 +450,8 @@
 .historyToolbar > span { margin-left: auto; color: var(--text-secondary); font-size: 12px; }
 .scheduleSettings { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
 .scheduleSettings:empty { display: none; }
+.scheduleChoice { display: grid; gap: 6px; }
+.scheduleChoice > span { color: var(--text-secondary); font-size: 0.875rem; }
 .viewToggle { display: inline-flex; justify-self: start; padding: 3px; gap: 3px; background: var(--bg-input); border: 1px solid var(--border-default); border-radius: var(--radius-btn); }
 .viewToggle button { min-height: 40px; padding: 0 18px; color: var(--text-secondary, inherit); background: transparent; border: 0; border-radius: calc(var(--radius-btn) - 3px); font: inherit; font-weight: 600; cursor: pointer; }
 .viewToggle button[aria-pressed="true"] { color: #fff; background: var(--brand-red); }

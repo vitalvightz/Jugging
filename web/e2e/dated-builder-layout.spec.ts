@@ -31,14 +31,14 @@ for (const width of [320, 390, 430, 768, 1024, 1280, 1600]) {
     await page.route('**/api/coach/fighters/*/plans**', route => route.fulfill({ json: new URL(route.request().url()).pathname.endsWith('/plans') ? [plan] : plan }));
     await page.goto('/coach/plans');
     await page.getByRole('button', { name: 'Create New Plan', exact: true }).click();
-    await expect(page.getByRole("button", { name: "Calendar", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: "Specific dates", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole('region', { name: 'Plan calendar', exact: true })).toBeVisible();
     await expect(page.getByRole('group', { name: 'Weekly training calendar', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '← Saved plans', exact: true }).click();
     await page.getByRole('button', { name: 'Edit draft', exact: true }).click();
     const builder = page.getByRole('region', { name: 'Custom training plan builder', exact: true });
     const calendar = page.getByRole('region', { name: 'Plan calendar', exact: true });
-    await expect(page.getByRole("button", { name: "Calendar", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: "Specific dates", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(builder.getByRole('status').filter({ hasText: '8 prescriptions incomplete' })).toBeVisible();
     for (const view of ['Week', 'Month']) {
       await calendar.getByRole('button', { name: view, exact: true }).click();

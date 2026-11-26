@@ -244,7 +244,7 @@ test(`S&C screenshot import keeps seven exercises through stage editing, save an
   await page.getByRole("combobox", { name: "Day 1 (Total)", exact: true }).selectOption("Wednesday");
   await page.getByRole("button", { name: "Review and edit" }).click();
   await expect(page).toHaveURL(/imported=1/);
-  await page.getByRole("group", { name: "Plan view", exact: true }).getByRole("button", { name: "Week", exact: true }).click();
+  await page.getByRole("group", { name: "Plan schedule", exact: true }).getByRole("button", { name: "Repeating week", exact: true }).click();
   await page.getByRole("group", { name: "Weekly training calendar", exact: true }).getByRole("button", { name: "Wednesday, Day 1 (Total)", exact: true }).click();
   await expect(page.locator(".ex-row-title")).toHaveCount(7);
   for (const name of ["A1 — Clean", "A2 — Back Extension Iso", "B1 — Back Squat", "B2 — Ankle PAIL&RAIL", "C1 — S.A. DB High Incline Bench", "C2 — Lat Pull Down", "D1 — Barbell RDL"]) {
@@ -276,7 +276,7 @@ test(`S&C screenshot import keeps seven exercises through stage editing, save an
   expect(session.exercises.map(e => e.dose.prescribed_sets?.length)).toEqual([8, 1, 6, 1, 3, 1, 1]);
   expect(session.exercises[0].dose.prescribed_sets?.at(-1)?.source_text).toBe("WT: 230");
   await page.reload();
-  await page.getByRole("group", { name: "Plan view", exact: true }).getByRole("button", { name: "Week", exact: true }).click();
+  await page.getByRole("group", { name: "Plan schedule", exact: true }).getByRole("button", { name: "Repeating week", exact: true }).click();
   await page.getByRole("group", { name: "Weekly training calendar", exact: true }).getByRole("button", { name: "Wednesday, Day 1 (Total)", exact: true }).click();
   await expect(page.locator(".ex-row-title")).toHaveCount(7);
   await page.getByRole("button", { name: "Quick dose for Clean", exact: true }).click();

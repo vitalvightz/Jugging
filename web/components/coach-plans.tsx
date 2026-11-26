@@ -88,10 +88,10 @@ function FighterPlans({ coachMode, token, fighter, others, refresh, editing, set
   }, [token, fighter, attempt, refresh]);
   if (editing === "import") return <PlanImport accessToken={token} timezone={fighter.timezone} forFighter={fighter.name}
     onCancel={() => setEditing(null)} onReview={next => { setImported(next); setEditing("imported"); }} />;
-  if (editing === "imported" && imported) return <CustomPlanBuilder coachMode={coachMode} accessToken={token} coachFighterId={fighter.id}
+  if (editing === "imported" && imported) return <CustomPlanBuilder coachMode={coachMode} accessToken={token} coachFighterId={fighter.id} coachFighterName={fighter.name}
     athleteTimezone={fighter.timezone} fightDate={fighter.fight_date} importedDraft={imported}
     onCoachClose={() => { setImported(null); setEditing(null); setAttempt(n => n + 1); }} />;
-  if (editing !== null) return <CustomPlanBuilder coachMode={coachMode} accessToken={token} coachFighterId={fighter.id} athleteTimezone={fighter.timezone} fightDate={fighter.fight_date} initialPlan={editing.startsWith("revision:") ? plans?.find(plan => plan.id === editing.slice(9)) : undefined} planId={editing.startsWith("revision:") ? undefined : editing || undefined} onCoachClose={() => { setEditing(null); setAttempt(n => n + 1); }} />;
+  if (editing !== null) return <CustomPlanBuilder coachMode={coachMode} accessToken={token} coachFighterId={fighter.id} coachFighterName={fighter.name} athleteTimezone={fighter.timezone} fightDate={fighter.fight_date} initialPlan={editing.startsWith("revision:") ? plans?.find(plan => plan.id === editing.slice(9)) : undefined} planId={editing.startsWith("revision:") ? undefined : editing || undefined} onCoachClose={() => { setEditing(null); setAttempt(n => n + 1); }} />;
   // Put the current prescription first, retaining the saved order of other plans.
   const ordered = plans?.toSorted((a, b) => Number(b.assignment_status === "active") - Number(a.assignment_status === "active"));
   const past = (row: CoachPlan) => ["declined", "superseded"].includes(row.assignment_status);

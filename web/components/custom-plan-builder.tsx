@@ -138,7 +138,7 @@ function PencilIcon() {
     </svg>
   );
 }
-export function CustomPlanBuilder({ coachMode, accessToken, planId, addSessionDay, addSessionDate, onboarding = null, coachFighterId, onCoachClose, initialPlan, importedDraft, athleteTimezone, fightDate }: { coachMode?: CoachMode; importedDraft?: ImportedPlan; fightDate?: string | null; athleteTimezone?: string; initialPlan?: CustomPlan; onCoachClose?: () => void; coachFighterId?: string; accessToken: string; planId?: string; addSessionDay?: string | null; addSessionDate?: string | null; onboarding?: MeResponse | null }) {
+export function CustomPlanBuilder({ coachMode, accessToken, planId, addSessionDay, addSessionDate, onboarding = null, coachFighterId, coachFighterName, onCoachClose, initialPlan, importedDraft, athleteTimezone, fightDate }: { coachMode?: CoachMode; importedDraft?: ImportedPlan; fightDate?: string | null; athleteTimezone?: string; initialPlan?: CustomPlan; onCoachClose?: () => void; coachFighterId?: string; coachFighterName?: string | null; accessToken: string; planId?: string; addSessionDay?: string | null; addSessionDate?: string | null; onboarding?: MeResponse | null }) {
   const router = useRouter();
   const requestId = useRef(crypto.randomUUID());
   const savedPlansHref = coachFighterId ? "/coach/plans" : "/plans#custom-plans";
@@ -414,7 +414,7 @@ export function CustomPlanBuilder({ coachMode, accessToken, planId, addSessionDa
   function selectScheduleMode(mode: 'weekly' | 'dated') {
     if (mode === draft.schedule_mode) return;
     if (mode === 'weekly') {
-      if (draft.sessions.length && !window.confirm('Create a repeating copy using only the first week? This does not change any saved plan.')) return;
+      if (draft.sessions.length && !window.confirm('Create a repeating week from the first seven days? Sessions after day seven are excluded from the copy.')) return;
       requestId.current = crypto.randomUUID();
       const first = draft.start_date ?? selectedDate;
       change(current => ({ ...current, id: undefined, schedule_mode: 'weekly', start_date: null, end_date: null,
@@ -830,13 +830,14 @@ export function CustomPlanBuilder({ coachMode, accessToken, planId, addSessionDa
     <section className={styles.builder} aria-label="Custom training plan builder">
       <header className={styles.header}>
         {onCoachClose ? <button type="button" className="ghost-button" onClick={() => void closeCoach()}>← Saved plans</button> : <Link href={savedPlansHref}>← Saved plans</Link>}
+        {coachFighterName && <p className="muted">Plan for {coachFighterName}</p>}
         <div className={styles.row}>
           <h1 ref={heading} tabIndex={-1}>
             {draft.name}
           </h1>
           <span className={styles.badge}>{dirty ? "Unsaved" : draft.id ? "Saved" : "New"}</span>
         </div>
-        <p className={`muted ${styles.scheduleHint}`}>{isDated ? 'Each date has its own workout.' : 'Repeats every week. Switch to Calendar to vary weeks.'}</p>
+        <p className={`muted ${styles.scheduleHint}`}>{isDated ? 'Each date has its own workout.' : 'Repeats every week. Choose Specific dates to vary weeks.'}</p>
         <div className={styles.historyToolbar} data-version={historyVersion}>
           <button type="button" className="ghost-button" disabled={pending || sheetDirty || !undoStack.current.length} onClick={() => travelHistory('undo')} aria-label="Undo" title="Undo last plan change"><span aria-hidden="true">↶</span><span className={styles.historyLabel}> Undo</span></button>
           <button type="button" className="ghost-button" disabled={pending || sheetDirty || !redoStack.current.length} onClick={() => travelHistory('redo')} aria-label="Redo" title="Redo last plan change"><span aria-hidden="true">↷</span><span className={styles.historyLabel}> Redo</span></button>
@@ -875,9 +876,12 @@ export function CustomPlanBuilder({ coachMode, accessToken, planId, addSessionDa
               onChange={(e) => { const name = e.target.value; change(current => ({ ...current, name })); }}
             />
           </label>
-          <div className={styles.viewToggle} role="group" aria-label="Plan view">
-            <button type="button" aria-pressed={isDated} onClick={() => selectScheduleMode('dated')}>Calendar</button>
-            <button type="button" aria-pressed={!isDated} onClick={() => selectScheduleMode('weekly')}>Week</button>
+          <div className={styles.scheduleChoice}>
+            <span>Plan schedule</span>
+            <div className={styles.viewToggle} role="group" aria-label="Plan schedule">
+              <button type="button" aria-pressed={isDated} onClick={() => selectScheduleMode('dated')}>Specific dates</button>
+              <button type="button" aria-pressed={!isDated} onClick={() => selectScheduleMode('weekly')}>Repeating week</button>
+            </div>
           </div>
           <div className={styles.scheduleSettings}>
             {isDated ? <><label>Start date<input type="date" value={startInput ?? draft.start_date!} onChange={event => setStartInput(event.target.value)} onBlur={() => { const next = startInput; setStartInput(undefined); if (next && next !== draft.start_date) resizeDates(next, Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!) + 86400000) / 604800000)); }} /></label><label>Weeks<input aria-label="Plan duration in weeks" type="number" min={1} max={12} value={Math.ceil((Date.parse(draft.end_date!) - Date.parse(draft.start_date!) + 86400000) / 604800000)} onChange={event => resizeDates(draft.start_date!, Number(event.target.value))} /></label></> : null}
