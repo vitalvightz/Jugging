@@ -200,7 +200,7 @@ test("conflicting readings on one date retain their order and are clearly labell
   assert.deepEqual(coachCheckInValues(day.readings).map(value => value.label), ["Sleep: Okay", "Body: Normal", "Earlier sleep: Good"]);
 });
 
-import { coachConcerns, coachCutStatus } from "./coach";
+import { coachConcerns, coachCutStatus, concernsForMode, dayOffset } from "./coach";
 import type { CoachFighterWeight } from "./api-schema.generated";
 const riskWeight: CoachFighterWeight = { shared: true, entries: [], current_weight_kg: 80, target_weight_kg: 70, current_weight_recorded_at: "2026-11-15", rolling_7_day_average_weight: null, weekly_pace_kg: null,
   cut_assessment: { weight_cut_status: "too_aggressive", weight_cut_risk_band: "severe", kg_to_target: 10, weight_cut_behind_kg: null, days_until_fight: 3 } };
@@ -222,23 +222,68 @@ test("concerns sort severity first then weight, contact, injury and recovery", (
     recovery: [{ day: blank.today, source: "today", sleep: "good", body: "normal" }, { day: "2026-11-12", source: "today", sleep: "poor" }] };
   const concerns = coachConcerns(f, riskWeight);
   assert.deepEqual(concerns.map(c => [c.category, c.tone]), [["weight", "concern"], ["contact", "concern"], ["injury", "concern"], ["recovery", "concern"], ["injury", "caution"]]);
-  assert.ok(concerns.every(c => c.reason && c.section));
+  assert.deepEqual(concerns.map(c => c.reason), ["Cut too aggressive · 3 days to fight", "Rocked in sparring · 3 days ago", "Leg injury · Severe", "Poor sleep · 3 days ago", "Arm injury · Mild"]);
   assert.deepEqual(coachConcerns({ ...f, share_weight: false, share_injuries: false, share_recovery: false }, riskWeight), []);
+});
+test("neutral check-in values are never a concern", () => {
+  const f: Fighter = { ...blank, share_recovery: true, recovery: [
+    { day: blank.today, source: "today", sleep: "okay", body: "flat" },
+    { day: "2026-11-13", source: "daily", readiness: 3, fatigue: 3, sleep_quality: 3 },
+  ] };
+  assert.deepEqual(coachConcerns(f, null), []);
+  // Each concern-level value on its own is flagged, with a relative day.
+  for (const [reading, reason] of [
+    [{ sleep: "poor" }, "Poor sleep · yesterday"],
+    [{ sleep_quality: 2 }, "Sleep 2/5 · yesterday"],
+    [{ readiness: 1 }, "Readiness 1/5 · yesterday"],
+    [{ fatigue: 4 }, "Fatigue 4/5 · yesterday"],
+  ] as const) {
+    assert.deepEqual(coachConcerns({ ...f, recovery: [{ day: "2026-11-14", source: "today", ...reading }] }, null).map(c => c.reason), [reason]);
+  }
+});
+test("three low check-ins in a week become one trend concern", () => {
+  const f: Fighter = { ...blank, share_recovery: true, recovery: [
+    { day: blank.today, source: "today", sleep: "okay", body: "flat" },
+    { day: "2026-11-14", source: "today", sleep: "poor", body: "normal" },
+    { day: "2026-11-13", source: "today", sleep: "good", body: "flat" },
+    { day: "2026-11-12", source: "today", sleep: "good", body: "normal" },
+  ] };
+  assert.deepEqual(coachConcerns(f, null).map(c => [c.id, c.reason]), [["recovery:trend", "Low recovery · 3 of 4 check-ins"]]);
+});
+test("no recent check-in matters only in the final weeks before a fight", () => {
+  const f: Fighter = { ...blank, share_recovery: true, share_injuries: true, recovery: [] };
+  assert.deepEqual(coachConcerns(f, null), []);
+  assert.deepEqual(coachConcerns({ ...f, fight_date: "2026-12-20" }, null), []);
+  assert.deepEqual(coachConcerns({ ...f, fight_date: "2026-12-01" }, null).map(c => [c.reason, c.tone]), [["No check-in this week", "unknown"]]);
 });
 test("hard intensity alone is not a contact warning and normal data hides attention", () => {
   const f: Fighter = { ...blank, share_recovery: true, share_injuries: true, recovery: [{ day: blank.today, sleep: "good", body: "normal", source: "today" }], sparring_reports: [{ id: "hard", day: blank.today, rounds: 3, intensity: "hard", round_seconds: 180, head_contact: "none", rocked: false }] };
   assert.deepEqual(coachConcerns(f, null), []);
-  assert.equal(coachConcerns({ ...f, recovery: [] }, null)[0].tone, "unknown");
 });
-test("severity outranks category and adherence requires an explicitly skipped planned session", () => {
+const session = (id: string, day: string, status = "done") => ({ id, day, session_id: id, plan_id: "plan", source: "unlxck", type: "strength_power", status, recorded_at: day });
+test("one skipped session is not a concern; two in a week are, for S&C only", () => {
+  const f: Fighter = { ...blank, sessions: [session("a", "2026-11-14", "skipped")] };
+  assert.deepEqual(coachConcerns(f, null), []);
+  const two = coachConcerns({ ...f, sessions: [...f.sessions, session("b", "2026-11-10", "skipped"), session("old", "2026-11-08", "skipped")] }, null);
+  assert.deepEqual(two.map(c => [c.category, c.reason]), [["adherence", "2 planned sessions skipped"]]);
+  assert.deepEqual(concernsForMode(two, "technical"), []);
+  assert.equal(concernsForMode(two, "sc").length, 1);
+});
+test("a load spike needs four weeks of history and a clear jump", () => {
+  const usual = (n: number) => [1, 2, 3, 4].flatMap(w => Array.from({ length: n }, (_, i) => session(`w${w}-${i}`, dayOffset("2026-11-09", -7 * w + i))));
+  const thisWeek = (n: number) => Array.from({ length: n }, (_, i) => session(`now-${i}`, dayOffset("2026-11-09", i)));
+  assert.deepEqual(coachConcerns({ ...blank, sessions: [...usual(3), ...thisWeek(6)] }, null).map(c => c.reason), ["Load spike · 6 sessions, usually 3"]);
+  assert.deepEqual(coachConcerns({ ...blank, sessions: [...usual(3), ...thisWeek(4)] }, null), []);
+  assert.deepEqual(coachConcerns({ ...blank, sessions: thisWeek(6) }, null), []);
+  assert.deepEqual(coachConcerns({ ...blank, sessions: [...usual(1), ...thisWeek(4)] }, null), []);
+});
+test("each view leads with its own concerns", () => {
   const f: Fighter = { ...blank, share_weight: true, share_injuries: true,
-    schedule: [{ id: "scheduled", day: "2026-11-14", type: "strength_power", title: "Strength" }],
-    sessions: [{ id: "skipped", day: "2026-11-14", session_id: "scheduled", plan_id: "plan", source: "unlxck", type: "strength_power", status: "skipped", recorded_at: "2026-11-14" }],
-    sparring_reports: [{ id: "contact", day: blank.today, rounds: 3, intensity: "light", round_seconds: 180, head_contact: "heavy", rocked: false }],
-  };
-  const amber = { ...riskWeight, cut_assessment: { ...riskWeight.cut_assessment!, weight_cut_status: "behind" as const } };
-  assert.deepEqual(coachConcerns(f, amber).map(c => c.category), ["contact", "weight", "adherence"]);
-  assert.ok(!coachConcerns({ ...f, sessions: [] }, amber).some(c => c.category === "adherence"));
+    sparring_reports: [{ id: "contact", day: blank.today, rounds: 3, intensity: "light", round_seconds: 180, head_contact: "heavy", rocked: false }] };
+  const all = coachConcerns(f, riskWeight);
+  assert.deepEqual(concernsForMode(all, "sc").map(c => c.category), ["weight", "contact"]);
+  assert.deepEqual(concernsForMode(all, "technical").map(c => c.category), ["contact", "weight"]);
+  assert.deepEqual(coachConcerns(f, riskWeight).find(c => c.category === "contact")?.reason, "Heavy head contact · today");
 });
 
 test("current contact alerts use the existing seven-day window without hiding a recent warning behind a normal report", () => {
@@ -253,15 +298,14 @@ test("current contact alerts use the existing seven-day window without hiding a 
   assert.equal(f.sparring_reports?.length, 4); // Keep all reports available to History.
 });
 
-test("failed authorised weight reads produce a grey linked status, but loading and unshared/minor data do not", () => {
+test("weight: a failed read is not a fighter concern, and unknown cut safety only counts near a fight", () => {
   const f: Fighter = { ...blank, age: 25, share_weight: true };
-  assert.deepEqual(coachConcerns(f, null, true), [{ id: "weight:unavailable", category: "weight", tone: "unknown", reason: "Weight status unavailable", section: "fight-weight" }]);
   assert.deepEqual(coachConcerns(f, null), []);
-  assert.deepEqual(coachConcerns({ ...f, share_weight: false }, null, true), []);
-  assert.deepEqual(coachConcerns({ ...f, age: 17 }, null, true), []);
   assert.deepEqual(coachConcerns({ ...f, age: 17 }, riskWeight), []);
-  assert.equal(coachConcerns({ ...f, age: 18 }, null, true)[0]?.tone, "unknown");
-  assert.equal(coachConcerns({ ...f, age: undefined }, null, true)[0]?.reason, "Weight status unavailable");
+  const stale = { ...riskWeight, current_weight_recorded_at: "2026-10-01", cut_assessment: { ...riskWeight.cut_assessment!, weight_cut_status: "on_track" as const, days_until_fight: 40 } };
+  assert.deepEqual(coachConcerns(f, stale), []);
+  const near = { ...stale, cut_assessment: { ...stale.cut_assessment, days_until_fight: 12 } };
+  assert.deepEqual(coachConcerns(f, near).map(c => [c.reason, c.tone]), [["Weight needs updating", "unknown"]]);
 });
 
 test("an invite share names the invited email and links to the accept screen", () => {
@@ -271,4 +315,9 @@ test("an invite share names the invited email and links to the accept screen", (
   assert.match(share.text, /Sign in with ari@example\.com and tap Accept: https:\/\/app\.example\/settings\/coach-access$/);
   assert.equal(share.whatsapp, `https://wa.me/?text=${encodeURIComponent(share.text)}`);
   assert.match(coachInviteShare({ coach_name: " ", invited_email: "a@b.co" }, "https://x.y").text, /^Your coach invited you/);
+});
+test("a flat day or okay sleep alone does not flag the fighter summary", () => {
+  const f = { ...blank, share_recovery: true };
+  assert.equal(fighterSummary({ ...f, recovery: [{ day: blank.today, sleep: "okay", body: "flat", source: "today" }] }).attention, null);
+  assert.equal(fighterSummary({ ...f, recovery: [{ day: blank.today, sleep: "poor", body: "flat", source: "today" }] }).attention, "Poor sleep and fatigue reported");
 });

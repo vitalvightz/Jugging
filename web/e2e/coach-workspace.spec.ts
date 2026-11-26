@@ -1108,7 +1108,7 @@ for (const width of [390, 1280]) {
     const attention = page.getByRole("region", { name: "Needs attention" });
     await expect(attention.getByRole("listitem")).toHaveCount(3);
     await expect(attention.getByRole("listitem").first()).toContainText("Cut too aggressive");
-    await expect(attention.getByRole("listitem").nth(1)).toContainText("rocked");
+    await expect(attention.getByRole("listitem").nth(1)).toContainText("Rocked in sparring");
     await attention.getByRole("button", { name: "View all", exact: true }).click();
     expect(await attention.getByRole("listitem").count()).toBeGreaterThan(3);
     await expect(attention.getByText(/Left bicep/)).toBeVisible();
@@ -1161,21 +1161,14 @@ test("mobile weight keeps recent weigh-ins compact with full history available",
 });
 
 for (const age of [25, 17]) {
-  test(`failed weight request shows authorised availability without a minor cut alert at age ${age}`, async ({ page, baseURL }) => {
+  test(`a failed weight request is a loading state, not a fighter concern, at age ${age}`, async ({ page, baseURL }) => {
     await fixture(page, baseURL!, "coach", false, {}, [{ ...fighter, age, share_recovery: false, share_injuries: false }]);
     await page.route("**/api/coach/fighters/*/weight", route => route.fulfill({ status: 503, json: { detail: "Unavailable" } }));
     await page.setViewportSize({ width: 390, height: 900 });
     await page.goto(`/coach/fighters/${fighterId}`);
     await expect(page.locator('#fight-weight').getByText("Unable to load weight.", { exact: true })).toBeVisible();
     const attention = page.getByRole("region", { name: "Needs attention" });
-    if (age < 18) {
-      await expect(attention).toHaveCount(0);
-    } else {
-      await expect(attention.getByRole("listitem")).toHaveAttribute("data-recovery-tone", "unknown");
-      await page.locator('#fight-weight > details > summary').click();
-      await attention.getByRole("link", { name: /Weight status unavailable/ }).click();
-      await expect(page.locator('#fight-weight > details')).toHaveAttribute("open", "");
-    }
+    await expect(attention).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 }
@@ -1188,7 +1181,7 @@ test("old contact reports stay in sparring history while only recent concerns ne
   await page.goto(`/coach/fighters/${fighterId}`);
   const attention = page.getByRole("region", { name: "Needs attention" });
   await expect(attention.getByRole("listitem")).toHaveCount(1);
-  await expect(attention).toContainText("2026-11-14");
+  await expect(attention).toContainText("Rocked in sparring · yesterday");
   await expect(attention).not.toContainText("2026-11-01");
   await page.getByRole("button", { name: "Previous week", exact: true }).click();
   await page.getByRole("button", { name: "Previous week", exact: true }).click();
@@ -1291,8 +1284,8 @@ test("team weight checks show pending and unavailable states, and never request 
   await expect(page.getByText("Checking roster alerts…")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Your fighters" })).toHaveCount(0);
   release();
-  await expect(metric).toHaveText("1");
-  await expect(page.getByRole("region", { name: "Needs attention" }).getByText("Weight status unavailable", { exact: true })).toHaveAttribute("data-recovery-tone", "unknown");
+  await expect(metric).toHaveText("0");
+  await expect(page.getByRole("link", { name: /Test Fighter/ }).getByText("Weight unavailable", { exact: true })).toBeVisible();
   expect(requests).toEqual([`/api/coach/fighters/${fighterId}/weight`]);
 });
 
@@ -2019,3 +2012,47 @@ test("on a phone the auto-opened section never shifts the layout, even when data
   // As the open section's content settles (off the first screen), nothing on screen moves.
   expect(shift).toBeLessThan(0.01);
 });
+
+for (const width of [320, 390]) {
+  test(`needs attention leaves out neutral check-ins and shows S&C signals only in S&C at ${width}px`, async ({ page, baseURL }) => {
+    const done = (id: string, day: string, status = "done") => ({ id, day, session_id: id, plan_id: "test-plan", type: "strength_power", source: "unlxck", status, rpe: 7, recorded_at: `${day}T12:00:00Z` });
+    // Three sessions a week for four weeks, then six this week (two planned sessions skipped too).
+    const usual = [1, 2, 3, 4].flatMap(w => [0, 2, 4].map(d => { const day = new Date(Date.UTC(2026, 10, 9 - 7 * w + d)).toISOString().slice(0, 10); return done(`w${w}d${d}`, day); }));
+    const thisWeek = [9, 10, 11, 12, 13, 14].map(d => done(`now${d}`, `2026-11-${String(d).padStart(2, "0")}`));
+    await fixture(page, baseURL!, "coach", false, {}, [
+      { ...fighter, id: "00000000-0000-4000-8000-000000000007", connection_id: "james", name: "James Mcdonald", fight_date: null, share_weight: false, sparring_reports: [],
+        recovery: [{ day: "2026-11-14", source: "today", sleep: "okay", body: "normal" }, { day: "2026-11-12", source: "daily", readiness: 3, fatigue: 3, sleep_quality: 3 }] },
+      { ...fighter, id: "00000000-0000-4000-8000-000000000008", connection_id: "sam", name: "Sam", fight_date: null, share_weight: false, sparring_reports: [],
+        recovery: [{ day: "2026-11-15", source: "today", sleep: "good", body: "normal" }],
+        sessions: [...usual, ...thisWeek, done("skip1", "2026-11-13", "skipped"), done("skip2", "2026-11-15", "skipped")] },
+      { ...fighter, id: "00000000-0000-4000-8000-000000000009", connection_id: "ali", name: "Ali", fight_date: null, share_weight: false, sparring_reports: [],
+        recovery: [{ day: "2026-11-15", source: "today", sleep: "okay", body: "flat" }, { day: "2026-11-14", source: "today", sleep: "poor", body: "normal" }, { day: "2026-11-13", source: "today", sleep: "okay", body: "flat" }] },
+      { ...fighter, id: "00000000-0000-4000-8000-000000000004", connection_id: "jay", name: "Jay", age: 25, sparring_reports: [],
+        recovery: [{ day: fighter.today, source: "today", sleep: "good", body: "normal" }] },
+    ]);
+    await page.route("**/api/coach/fighters/*/weight", route => route.fulfill({ json: route.request().url().includes("000000000004") ? { ...weight,
+      cut_assessment: { ...weight.cut_assessment, weight_cut_status: "too_aggressive", weight_cut_risk_band: "severe", days_until_fight: 6 } } : { ...weight, shared: false } }));
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/coach");
+    await page.getByRole("button", { name: "S&C", exact: true }).click();
+    const attention = page.getByRole("region", { name: "Needs attention" });
+    await expect(attention.getByRole("listitem")).toHaveCount(3);
+    await expect(attention).not.toContainText("James");
+    await expect(attention).not.toContainText("Okay");
+    await expect(attention.getByRole("listitem").nth(0)).toContainText("Cut too aggressive · 6 days to fight");
+    await expect(attention.getByRole("listitem").nth(1)).toContainText("Low recovery · 3 of 3 check-ins");
+    await expect(attention.getByRole("listitem").nth(2)).toContainText("Load spike · 6 sessions, usually 3");
+    await expect(attention.getByRole("listitem").nth(2)).toContainText("+1 more concern");
+    // Each concern fits on one line.
+    for (const reason of await attention.locator("[data-recovery-tone]").all()) {
+      const box = await reason.boundingBox();
+      expect(box!.height).toBeLessThan(30);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await attention.screenshot({ path: `/tmp/coach-attention-sc-${width}.png` });
+    await page.getByRole("button", { name: "Technical", exact: true }).click();
+    await expect(attention.getByRole("listitem")).toHaveCount(2);
+    await expect(attention).not.toContainText("Sam");
+    await attention.screenshot({ path: `/tmp/coach-attention-technical-${width}.png` });
+  });
+}
