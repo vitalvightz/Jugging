@@ -96,7 +96,8 @@ def test_session_activities_need_no_prescription(name, label):
     reading = ReadPlan(weeks=[ReadWeek(sessions=[ReadSession(name="Mixed", days=["Monday"], exercises=[ReadExercise(name=name)])])])
     draft = build_draft(reading, date(2026, 11, 23), name)
     assert not [f for f in draft.flags if "dose" in f.message.lower()]
-    assert draft.plan["sessions"][0]["exercises"][0]["block_type"] in {"skill", "sparring", "conditioning"}
+    # Exempt from a dose, but never typed from its name: no stated kind, no type.
+    assert draft.plan["sessions"][0]["exercises"][0]["block_type"] is None
 
 
 def test_a_lift_in_a_boxing_day_still_needs_its_dose():

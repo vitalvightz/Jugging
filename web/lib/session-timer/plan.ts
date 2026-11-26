@@ -74,7 +74,8 @@ export type IntervalItem = TimerItemBase & {
 /**
  * Sets with rest between them. `sets` null means the plan gave no usable set
  * count, so the athlete decides when the exercise is finished. `holdSec` turns
- * each set into a timed hold; otherwise the athlete taps "Set done". `restSec`
+ * each set into a timed set (from the plan's time fields, never the exercise
+ * name); otherwise the athlete taps "Set done". `restSec`
  * null means no usable rest, so rest is picked from presets.
  */
 export type SetsItem = TimerItemBase & {
@@ -101,6 +102,18 @@ export type TimerItem = IntervalItem | SetsItem | TaskItem;
 /** What one tapped unit of a sets item is called. */
 export function countNoun(item: SetsItem): "set" | "round" {
   return item.unit === "round" ? "round" : "set";
+}
+
+/**
+ * The word shown while an item is being worked. A specific word appears only
+ * when the plan's structure states it: "Spar" for a sparring block, "Work" for
+ * timed or counted rounds. Nothing structured says an exercise is a lift or a
+ * hold, so every other item, including any of unknown type, is "Exercise".
+ */
+export function workPhaseLabel(item: TimerItem): "Spar" | "Work" | "Exercise" {
+  if (item.kind === "interval") return item.sparring ? "Spar" : "Work";
+  if (item.kind === "sets" && countNoun(item) === "round") return "Work";
+  return "Exercise";
 }
 
 /** Blocks the timer never runs: they are guidance, not executable work. */
@@ -269,10 +282,6 @@ export function plannedSparringIntensity(block: StructuredBlock): SparringPlanne
   return PLANNED_INTENSITY_BY_FIELD[value] ?? null;
 }
 
-function isHoldName(name: string): boolean {
-  return /\b(hold|isometric|plank|carry)\b/i.test(name);
-}
-
 /**
  * Convert one structured block into a timer item, or null for guidance-only
  * blocks. Never invents a dose: a range stays a range, and a missing count or
@@ -382,10 +391,13 @@ export function blockToTimerItem(
   const setRange = parseCountRange(source.sets) ?? (sets ? { min: sets, max: sets } : null);
 
   if (setRange || countReps) {
+    // A set is timed only when the plan's own fields say so: reps written as a
+    // time ("30 s"), or a duration with no reps or with exactly one rep (one
+    // effort that lasts that long). The exercise name is never read.
     let holdSec: number | null = null;
     if (repsAsTime) {
       holdSec = repsAsTime.min;
-    } else if (duration && (!reps || (reps === "1" && isHoldName(title)))) {
+    } else if (duration && (!reps || reps === "1")) {
       holdSec = duration;
     }
     return {

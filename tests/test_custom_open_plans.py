@@ -114,7 +114,7 @@ def test_publication_validates_exact_doses_and_uses_shared_detail(api):
     assert len(detail["outputs"]["structured_plan"]["weeks"]) == 4
 
 
-def test_session_activities_publish_without_doses_and_keep_their_kinds(api):
+def test_session_activities_publish_without_doses_and_take_their_type_from_structure(api):
     client, store = api
     prescription = body()
     names = ["Boxing session", "Technical/pads session", "Light technical", "Sparring", "Roadwork", "Hard sparring with pads", "Pads"]
@@ -127,8 +127,16 @@ def test_session_activities_publish_without_doses_and_keep_their_kinds(api):
     draft, plan_id = publish(client, prescription)
     assert not draft["incomplete"]
     blocks = store.plans[plan_id]["structured_plan"]["weeks"][0]["days"][0]["sessions"][0]["blocks"]
-    assert [b["block_type"] for b in blocks] == ["skill", "skill", "skill", "sparring", "conditioning", "sparring", "sparring"]
+    # The name never picks the type: only the explicit "sparring" exercise is
+    # sparring; the rest are unknown, so they are plain exercises.
+    assert [b["block_type"] for b in blocks] == ["exercise"] * 6 + ["sparring"]
     assert [b["display_name"] for b in blocks] == names
+    # Contact safety never relied on the type: the injury guards still read the
+    # published sparring blocks as contact, and pads/roadwork as not.
+    from api.contracts.readiness_message import _session_has_contact
+    contact = {b["display_name"]: _session_has_contact(b) for b in blocks}
+    assert contact["Sparring"] and contact["Hard sparring with pads"] and contact["Pads"]
+    assert not contact["Roadwork"] and not contact["Technical/pads session"]
 
 
 def test_publishing_first_custom_plan_activates_it_via_route(api):

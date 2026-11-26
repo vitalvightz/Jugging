@@ -13,6 +13,7 @@ import {
   dayTimerItems,
   timerSessionFor,
   withoutSparringItems,
+  workPhaseLabel,
   type TimerItem,
 } from "./plan.ts";
 import { advance, completeSet, createTimerState, startItem } from "./engine.ts";
@@ -120,7 +121,7 @@ test("missing sets and rest stay unknown rather than invented", () => {
   assert.equal(item.restSec, null);
 });
 
-test("rehab holds become timed sets", () => {
+test("timed sets come from the plan's time fields, not the exercise name", () => {
   const fromDuration = blockToTimerItem(
     {
       block_type: "rehab",
@@ -428,4 +429,110 @@ test("contrast clusters are tapped rounds with movement prescriptions and betwee
   assert.equal(noCount.restSec, null);
   const sparring = blockToTimerItem({ ...block, block_type: "sparring" }, 0);
   assert.equal(sparring?.kind, "interval");
+});
+
+// Every block type the planners, builders and importers write, plus unknown,
+// empty and missing ones. Coach-created, AI-generated, imported and manual
+// programmes all reach the timer through blockToTimerItem.
+const EVERY_BLOCK_TYPE: Array<string | null | undefined> = [
+  "strength", "strength_speed", "plyometric_power", "speed", "accessory", "conditioning",
+  "rehab", "preparation", "mobility_activation", "cooldown_recovery", "skill", "sparring",
+  "exercise", "training", "power", "not_a_real_type", "", null, undefined,
+];
+const EVERY_EXERCISE_TYPE = ["strength", "bodyweight", "power", "other", null, undefined] as const;
+// Names that the old keyword rules read as holds, lifts, rounds or activities.
+const KEYWORD_NAMES = [
+  "Copenhagen plank hold", "Farmer carry", "Isometric mid-thigh pull", "Deadlift", "Power clean",
+  "Hard sparring rounds", "Pad work", "Shadow boxing 3 x 3 min", "Bike sprint 6 x 30s", "Roadwork 5 km",
+  "Bear crawl", "",
+];
+const DOSES: Array<{ name: string; dose: Partial<StructuredBlock> }> = [
+  { name: "sets of reps", dose: { sets: 3, reps: 5, rest: { value: 90, unit: "seconds" } } },
+  { name: "sets of a duration", dose: { sets: 3, duration: { value: 30, unit: "seconds" } } },
+  { name: "one rep with a duration", dose: { sets: 3, reps: 1, duration: { value: 20, unit: "seconds" } } },
+  { name: "reps with a duration", dose: { sets: 2, reps: 8, duration: { value: 40, unit: "seconds" } } },
+  { name: "reps written as time", dose: { sets: 2, reps: "45s" } },
+  { name: "rounds of work", dose: { rounds: 4, work: { value: 2, unit: "min" }, rest: { value: 1, unit: "min" } } },
+  { name: "rounds of a distance", dose: { rounds: 6, distance: { value: 200, unit: "m" } } },
+  { name: "a duration alone", dose: { duration: { value: 10, unit: "min" } } },
+  { name: "no dose", dose: {} },
+];
+
+function withoutTitle(item: TimerItem | null) {
+  if (!item) return item;
+  const { title: _title, ...rest } = item;
+  return rest;
+}
+
+test("every exercise type: the name never changes the timer, and is kept as written", () => {
+  for (const block_type of EVERY_BLOCK_TYPE) {
+    for (const exercise_type of EVERY_EXERCISE_TYPE) {
+      for (const { name: doseName, dose } of DOSES) {
+        const base = { block_id: "b", block_type, exercise_type, ...dose } as StructuredBlock;
+        const neutral = blockToTimerItem({ ...base, display_name: "Exercise A" }, 0);
+        for (const display_name of KEYWORD_NAMES) {
+          const item = blockToTimerItem({ ...base, display_name }, 0);
+          const where = `${String(block_type)} / ${String(exercise_type)} / ${doseName} / "${display_name}"`;
+          assert.deepEqual(withoutTitle(item), withoutTitle(neutral), where);
+          if (!item) continue;
+          // The original name, untouched; only a missing one gets the placeholder.
+          assert.equal(item.title, display_name || "Block", where);
+          assert.ok(["Spar", "Work", "Exercise"].includes(workPhaseLabel(item)), where);
+        }
+      }
+    }
+  }
+});
+
+test("every exercise type: specific timer words only from structure, Exercise otherwise", () => {
+  for (const block_type of EVERY_BLOCK_TYPE) {
+    const where = String(block_type);
+    const lift = blockToTimerItem({ block_type, display_name: "Deadlift", sets: 3, reps: 5 }, 0);
+    // Sets of reps are never called a lift, whatever the block type.
+    assert.equal(workPhaseLabel(lift!), "Exercise", where);
+    const hold = blockToTimerItem({ block_type, display_name: "Plank hold", sets: 3, duration: { value: 30, unit: "s" } }, 0);
+    if (block_type === "sparring") assert.equal(workPhaseLabel(hold!), "Spar", where);
+    else if (["conditioning", "skill"].includes(block_type ?? "")) assert.equal(workPhaseLabel(hold!), "Work", where);
+    else assert.equal(workPhaseLabel(hold!), "Exercise", where);
+    const rounds = blockToTimerItem({ block_type, display_name: "Pad work", rounds: 4, work: { value: 2, unit: "min" } }, 0);
+    assert.equal(workPhaseLabel(rounds!), block_type === "sparring" ? "Spar" : "Work", where);
+    const untimed = blockToTimerItem({ block_type, display_name: "Hard sparring" }, 0);
+    if (untimed) {
+      assert.equal(workPhaseLabel(untimed), block_type === "sparring" ? "Spar" : "Exercise", where);
+    }
+  }
+});
+
+test("no dose in the plan: nothing is read from the name, and nothing is invented", () => {
+  for (const block_type of EVERY_BLOCK_TYPE) {
+    for (const display_name of KEYWORD_NAMES) {
+      const item = blockToTimerItem({ block_type, display_name }, 0);
+      const where = `${String(block_type)} / "${display_name}"`;
+      if (!item) continue;
+      if (item.kind === "interval") {
+        // Only a sparring block is a round clock without a dose, and it asks for the length.
+        assert.equal(block_type, "sparring", where);
+        assert.equal(item.needsSetup, true, where);
+        assert.equal(item.planned?.min, 1, where);
+      } else {
+        assert.equal(item.kind, "task", where);
+        assert.deepEqual(item.stats, [], where);
+        assert.equal(item.planned, null, where);
+      }
+    }
+  }
+});
+
+test("a one-rep set with a duration is timed by its fields alone, and never called a hold", () => {
+  for (const display_name of ["Copenhagen plank hold", "Sled push", "Single-rep strength drill"]) {
+    const item = blockToTimerItem({ block_type: "rehab", display_name, sets: 3, reps: 1, duration: { value: 20, unit: "seconds" } }, 0);
+    assert.ok(item?.kind === "sets");
+    assert.equal(item.holdSec, 20, display_name);
+    assert.equal(workPhaseLabel(item), "Exercise", display_name);
+  }
+  // More than one rep: a counted set, with the duration kept as a stat.
+  const counted = blockToTimerItem({ display_name: "Plank hold", sets: 3, reps: 8, duration: { value: 20, unit: "seconds" } }, 0);
+  assert.ok(counted?.kind === "sets");
+  assert.equal(counted.holdSec, null);
+  assert.deepEqual(counted.stats, [{ kind: "target", value: "8 reps" }, { kind: "target", value: "20 s" }]);
 });

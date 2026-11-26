@@ -58,11 +58,6 @@ def session_activity(name, block_type=None) -> str | None:
     return None
 
 
-def activity_block_type(name) -> str | None:
-    label = session_activity(name)
-    return "conditioning" if label == "Roadwork" else "sparring" if label == "Sparring" else "skill" if label else None
-
-
 def exercise_name(exercise: dict) -> str:
     return exercise.get("name") or (exercise.get("snapshot") or {}).get("name") or ""
 
@@ -158,12 +153,16 @@ def custom_open_plan_result(draft: dict, profile, *, training_day: str) -> dict:
                 content_type = snapshot.get("content_type") or {
                     "strength": "strength", "bodyweight": "strength", "power": "power",
                 }.get(exercise.get("exercise_type"))
-                block_type = exercise.get("block_type") or activity_block_type(exercise_name(exercise)) or {"conditioning": "conditioning", "skill": "skill",
+                # Structured fields only, never the exercise name: the exercise's
+                # own type, its catalogue content type, then its session's type.
+                # Contact safety does not rest on this: the injury guards read
+                # contact from the block itself whatever its type.
+                block_type = exercise.get("block_type") or {"conditioning": "conditioning", "skill": "skill",
                               "strength": "strength", "power": "plyometric_power",
                               "speed": "speed"}.get(content_type) or {
                                   "strength_power": "strength", "conditioning": "conditioning",
                                   "skill": "skill", "sparring": "sparring", "recovery": "cooldown_recovery",
-                              }.get(session.get("session_type"), "accessory")
+                              }.get(session.get("session_type"), "exercise")
                 # A manual exercise has unknown mechanical demand. Missing
                 # metadata must stay unknown for the shared injury guards.
                 block = {

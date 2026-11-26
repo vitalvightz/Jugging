@@ -118,6 +118,9 @@ BlockType = Literal[
     "nutrition",
     "mindset",
     "rehab",
+    # Unknown or unstated: an exercise nothing structured classifies. Never a
+    # guess from its name; it is labelled plainly "Exercise".
+    "exercise",
 ]
 LoadMethod = Literal[
     "percentage",

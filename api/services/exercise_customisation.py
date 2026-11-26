@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 # Blocks an athlete may swap or remove. Coach-led combat work, skill, sparring,
 # rehab, nutrition and mindset content stay as prescribed.
 EDITABLE_BLOCK_TYPES = frozenset({
-    "strength", "strength_speed", "plyometric_power", "speed", "accessory", "conditioning",
+    "strength", "strength_speed", "plyometric_power", "speed", "accessory", "conditioning", "exercise",
 })
 # Sessions an athlete may add an exercise to. Coach-led sparring, rehab and
 # recovery sessions stay as prescribed.
@@ -61,6 +61,8 @@ _SOURCES_BY_BLOCK_TYPE = {
     "strength": _STRENGTH_SOURCES, "strength_speed": _STRENGTH_SOURCES, "accessory": _STRENGTH_SOURCES,
     "plyometric_power": _STRENGTH_SOURCES, "speed": _STRENGTH_SOURCES,
     "conditioning": _CONDITIONING_SOURCES,
+    # Unknown type: search both banks rather than assume it is strength work.
+    "exercise": _STRENGTH_SOURCES + _CONDITIONING_SOURCES,
 }
 _SOURCES_BY_SESSION_TYPE = {
     "strength_power": _STRENGTH_SOURCES, "conditioning": _CONDITIONING_SOURCES,
@@ -667,7 +669,7 @@ class Candidate:
             "prescription": None if self.dose_required else prescription_summary(self.fields),
             "dose_required": self.dose_required, "dose_mode": self.dose_mode,
             "suggested_dose": self.suggested_dose,
-            **progression_context({**_base_block(self.record, block_type=self.block_type or "accessory"),
+            **progression_context({**_base_block(self.record, block_type=self.block_type or "exercise"),
                                    "prescription_source": "athlete"},
                                   None, None, phase="", d_day=None, athlete={}),
         }
@@ -931,7 +933,7 @@ def _added_block_type(record: Mapping[str, Any]) -> str:
         return "plyometric_power"
     if family == "strength":
         return "strength" if "compound" in _tags(entry["raw"]) else "accessory"
-    return "skill" if entry.get("content_class") == "technical_coordination" else "accessory"
+    return "skill" if entry.get("content_class") == "technical_coordination" else "exercise"
 
 
 def _library_candidate(
@@ -1272,7 +1274,7 @@ def apply_change(
         elif chosen.dose_required:
             raise HTTPException(422, "Set a dose for this exercise first.")
         block_type = (_clean((occurrence.block or {}).get("block_type")) if action == "swap"
-                      else chosen.block_type or "accessory")
+                      else chosen.block_type or "exercise")
         new_block = {**_base_block(chosen.record, block_type=block_type), **deepcopy(fields)}
         if is_custom_plan(plan_row):
             new_block["prescription_source"] = "athlete"

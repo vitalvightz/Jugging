@@ -288,16 +288,15 @@ export function selectBlockMetric(block: StructuredBlock | null | undefined): Bl
   // The set multiplier must be a finite positive number, or it is omitted.
   const sets = finitePositiveNumber(block.sets) ? (block.sets as number) : null;
   const modeLikeReps = repsText ? isModeLikeReps(repsText) : false;
-  const timedHold =
-    repsText === "1" && /\b(hold|isometric)\b/i.test(cleanText(block.display_name) ?? "");
 
   // Whether a metric row already prints the set multiplier. A set count that no
   // row carries is a lost prescription ("2 x 5 sec" rendering as "5 seconds"),
   // so the work/distance rows below pick it up when nothing else did.
   let setsShown = false;
-  if ((!repsText || isTimeLikeReps(repsText) || modeLikeReps || timedHold) && duration) {
-    // A single hold per set is timed work, not an informative "3 × 1" rep
-    // count. Keep its set count alongside the measured, unit-bearing hold.
+  // The exercise name never decides this: "3 × 1" with a duration shows both,
+  // as written, whatever the exercise is called.
+  if ((!repsText || isTimeLikeReps(repsText) || modeLikeReps) && duration) {
+    // No count to show: the duration is the per-set work. Keep its set count.
     metrics.push({ label: "Duration", value: sets && sets > 1 ? `${sets} × ${duration}` : duration });
     setsShown = true;
   } else if (repsText && isTimeLikeReps(repsText)) {
@@ -965,8 +964,11 @@ export function isRehabOrMobilityBlock(block: StructuredBlock | null | undefined
   if (!isObject(block)) {
     return false;
   }
-  return [block.block_type, block.category, block.display_name]
-    .map((value) => cleanText(value))
+  // Structured type fields only: an exercise named "isometric" or "opener" is
+  // not rehab or mobility work unless its block says so. Underscores read as
+  // word breaks, so the enum "mobility_activation" is mobility work.
+  return [block.block_type, block.category]
+    .map((value) => cleanText(value)?.replace(/_/g, " "))
     .some((value) => Boolean(value && REHAB_BLOCK_RE.test(value)));
 }
 

@@ -140,7 +140,7 @@ def recover_selected_coaching(plan: dict[str, Any], brief: dict[str, Any],
                     )
                     match = _matching_assignment(candidates or [], session, offset)
                     if match is None:
-                        if block.get("block_type") in {"strength", "strength_speed", "plyometric_power", "speed", "accessory", "conditioning", "rehab"}:
+                        if block.get("block_type") in {"strength", "strength_speed", "plyometric_power", "speed", "accessory", "conditioning", "rehab", "exercise"}:
                             if progress_rejection(str(block.get("progression_rule") or ""), None) or clinical_coaching_rejection(str(block.get("progression_rule") or ""), brief):
                                 block.pop("progression_rule", None)
                             if block.get("regression_options"):

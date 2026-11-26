@@ -17,16 +17,22 @@ import {
 import { openBlockWeekIntent } from "@/lib/open-block";
 import { formatPlanLabel } from "@/lib/plan-labels";
 
-test("session activities show their actual label on exercise rows", () => {
-  for (const [display_name, label] of [["Boxing session", "Boxing"], ["Technical/pads session", "Pads"],
-    ["Light technical", "Light technical"], ["Sparring", "Sparring"], ["Roadwork", "Roadwork"],
-    ["Hard sparring with pads", "Sparring"], ["Hard sparring + technical rounds", "Sparring"]]) {
+test("an exercise row's tag comes from its block type, never its name, and the name is kept", () => {
+  for (const display_name of ["Boxing session", "Technical/pads session", "Light technical", "Sparring",
+    "Roadwork", "Hard sparring with pads", "Plank hold", "Deadlift"]) {
     const html = renderToStaticMarkup(<ExerciseRow open={false} onToggle={() => {}} block={{ display_name, block_type: "accessory" }} />);
-    assert.match(html, new RegExp(`>${label}<`));
+    assert.match(html, /class="ex-row-type">Accessory</, display_name);
+    assert.ok(html.includes(display_name), `name kept: ${display_name}`);
+    for (const label of ["Boxing", "Pads", "Light technical", "Roadwork", "Hold", "Lift"]) {
+      assert.doesNotMatch(html, new RegExp(`class="ex-row-type">${label}<`), `${display_name} is not tagged ${label}`);
+    }
   }
   const html = renderToStaticMarkup(<ExerciseRow open={false} onToggle={() => {}} block={{ display_name: "Pads", block_type: "sparring" }} />);
-  assert.match(html, />Sparring</);
-  assert.doesNotMatch(html, /class="ex-row-type">Pads</);
+  assert.match(html, /class="ex-row-type">Sparring</);
+  // No structured type: no tag is invented.
+  const untyped = renderToStaticMarkup(<ExerciseRow open={false} onToggle={() => {}} block={{ display_name: "Hard sparring" }} />);
+  assert.doesNotMatch(untyped, /class="ex-row-type"/);
+  assert.match(untyped, /Hard sparring/);
 });
 import type {
   PlanScheduleContext,

@@ -69,6 +69,7 @@ _EXERCISE_BLOCK_TYPES = {
     "accessory",
     "conditioning",
     "rehab",
+    "exercise",
 }
 
 # Tokens too generic to identify a specific exercise or prove day placement.

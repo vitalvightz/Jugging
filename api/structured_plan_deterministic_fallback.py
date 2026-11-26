@@ -174,7 +174,7 @@ def _block_type(role: dict[str, Any]) -> str:
         support = _support_semantics(role, _BLOCK_TYPE_BY_SUPPORT_CATEGORY)
         if support:
             return support
-    return _BLOCK_TYPE_BY_CATEGORY.get(category, "accessory")
+    return _BLOCK_TYPE_BY_CATEGORY.get(category, "exercise")
 
 
 def _dday(role: dict[str, Any]) -> int | None:
@@ -671,7 +671,7 @@ def _microdose_block(role: dict[str, Any], d_day: int, role_key: str,
                 coaching[key] = source[key]
     return {
         "block_id": f"deterministic-{d_day}-{role_key}-{role.get('session_index', 0)}-microdose",
-        "block_type": _MICRODOSE_BLOCK_TYPE_BY_GOAL.get(goal, "accessory"),
+        "block_type": _MICRODOSE_BLOCK_TYPE_BY_GOAL.get(goal, "exercise"),
         # Preserve the selected exercise name for closed-membership checks and
         # identity resolution. The priority label belongs in its purpose.
         "display_name": name,

@@ -30,6 +30,9 @@ _NON_CONTACT_BLOCK_TYPES = frozenset({
     "preparation", "mobility_activation", "plyometric_power", "speed",
     "strength", "strength_speed", "accessory", "conditioning",
     "cooldown_recovery", "nutrition", "mindset", "rehab",
+    # Unknown work keeps the same gate unknown work always had (it was filed as
+    # accessory): contact still comes from the block's own fields and text.
+    "exercise",
 })
 
 

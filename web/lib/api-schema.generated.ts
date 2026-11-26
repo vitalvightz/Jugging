@@ -2661,7 +2661,7 @@ export type Session = {
 /** An executable unit inside a session (Section N). */
 export type SessionBlock = {
   block_id: string | null;
-  block_type: "accessory" | "conditioning" | "cooldown_recovery" | "mindset" | "mobility_activation" | "nutrition" | "plyometric_power" | "preparation" | "rehab" | "skill" | "sparring" | "speed" | "strength" | "strength_speed";
+  block_type: "accessory" | "conditioning" | "cooldown_recovery" | "exercise" | "mindset" | "mobility_activation" | "nutrition" | "plyometric_power" | "preparation" | "rehab" | "skill" | "sparring" | "speed" | "strength" | "strength_speed";
   contact_level: "controlled" | "full" | "none" | "unknown" | null;
   mechanical_load_regions: string[] | null;
   tags: string[] | null;

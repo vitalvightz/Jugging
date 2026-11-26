@@ -755,8 +755,8 @@ def test_normalize_intent_one_reads_as_full_intent_not_one_of_ten():
     ]
 
 
-def test_intent_dosed_accessory_block_is_relabelled_as_power():
-    """The live bug: Lateral Bound-to-Slip, a ballistic drill, was tagged "Accessory"."""
+def test_effort_never_relabels_a_stated_block_type():
+    """A stated type is kept as written: an intent-dosed block is not guessed to be power."""
     blocks = [
         {"display_name": "Lateral Bound-to-Slip", "block_type": "accessory", "effort": {"method": "intent", "value": "max"}},
         {"display_name": "Pallof Press", "block_type": "accessory", "effort": {"method": "RPE", "value": 6}},
@@ -765,7 +765,11 @@ def test_intent_dosed_accessory_block_is_relabelled_as_power():
     ]
     day = _normalize_day({"sessions": [{"blocks": blocks}]})
     types = [block["block_type"] for block in day["sessions"][0]["blocks"]]
-    assert types == ["plyometric_power", "accessory", "accessory", "strength"]
+    assert types == ["accessory", "accessory", "accessory", "strength"]
+    # An unknown or missing type is a plain exercise, not a guess at accessory work.
+    day = _normalize_day({"sessions": [{"blocks": [{"display_name": "Bear crawl"}, {"display_name": "Plank hold", "block_type": "hold"}]}]})
+    assert [block["block_type"] for block in day["sessions"][0]["blocks"]] == ["exercise", "exercise"]
+    assert [block["display_name"] for block in day["sessions"][0]["blocks"]] == ["Bear crawl", "Plank hold"]
 
 
 def test_normalize_recovers_invalid_fallback_card_shape():
@@ -1118,7 +1122,7 @@ def test_normalize_session_and_block_type_aliases():
     session = plan["weeks"][0]["days"][0]["sessions"][0]
     assert session["session_type"] == "strength_power"
     assert session["blocks"][0]["block_type"] == "preparation"
-    assert session["blocks"][1]["block_type"] == "accessory"  # unknown -> accessory
+    assert session["blocks"][1]["block_type"] == "exercise"  # unknown -> exercise
 
 
 def test_normalize_rehab_friendly_raw_session_type_to_rehab():

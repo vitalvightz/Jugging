@@ -42,6 +42,7 @@ import { rememberRoundFormat, ROUND_PRESETS } from "@/lib/session-timer/contact"
 import type { SparringPlannedIntensity } from "@/lib/types";
 import {
   countNoun,
+  workPhaseLabel,
   formatClock,
   formatRange,
   formatShortDuration,
@@ -113,12 +114,13 @@ function unitWord(item: SetsItem): string {
 }
 
 /**
- * What each set or round asks for: its hold, or every target the plan gives
- * (reps / mode, time, distance), e.g. "AMRAP, 60 s". Comma-joined so the
- * parts read as one unit beside the " · " separated rest.
+ * What each set or round asks for: its timed length, or every target the plan
+ * gives (reps / mode, time, distance), e.g. "AMRAP, 60 s". Comma-joined so the
+ * parts read as one unit beside the " · " separated rest. A timed set is not
+ * called a hold: the plan's time says how long, not what kind of exercise it is.
  */
 function perUnitTarget(item: SetsItem): string | null {
-  if (item.holdSec) return `${formatShortDuration(item.holdSec)} hold`;
+  if (item.holdSec) return formatShortDuration(item.holdSec);
   const targets = (item.stats ?? []).filter((stat) => stat.kind === "target").map((stat) => stat.value);
   return targets.length ? targets.join(", ") : null;
 }
@@ -198,9 +200,7 @@ function phaseLabel(state: TimerState, item: TimerItem | null, view: TimerView):
   if (view.paused) return "Paused";
   if (isPrep(state)) return "Get ready";
   if (state.phase === "rest") return view.readyRemainingMs === 0 ? "Ready" : "Rest";
-  if (item?.kind === "interval") return item.sparring ? "Spar" : "Work";
-  if (item?.kind === "sets") return item.holdSec ? "Hold" : countNoun(item) === "round" ? "Work" : "Lift";
-  return "Go";
+  return item ? workPhaseLabel(item) : "Go";
 }
 
 function counterLabel(state: TimerState, item: TimerItem | null): string | null {
@@ -518,7 +518,7 @@ function ReadyPanel({
             <>
               {" "}
               · <span>{formatClock(item.holdSec)}</span>
-              {"\u00a0hold"}
+              {"\u00a0each"}
             </>
           ) : null}
           {item.restSec ? (
@@ -812,7 +812,7 @@ function PrimaryAction({
   if (state.phase === "work" && item.kind === "sets") {
     return (
       <button type="button" className="st-primary" onClick={() => timer.run(completeSetWithResults)}>
-        {item.holdSec ? "End hold" : `${unitWord(item)} ${state.unit} done`}
+        {item.holdSec ? `End ${countNoun(item)}` : `${unitWord(item)} ${state.unit} done`}
       </button>
     );
   }
