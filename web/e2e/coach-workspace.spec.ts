@@ -1332,7 +1332,7 @@ for (const width of [390, 1440]) {
     });
     await page.goto('/coach/plans');
     await page.getByRole('button', { name: 'Create New Plan', exact: true }).click();
-    await page.getByRole("group", { name: "Plan view" }).getByRole("button", { name: "Week", exact: true }).click();
+    await page.getByRole("group", { name: "Plan schedule" }).getByRole("button", { name: "Repeating week", exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'Fighter', exact: true })).toBeDisabled();
     await page.getByLabel('Plan name', { exact: true }).fill('Coach technical week');
     await page.getByRole('button', { name: /^Monday,/ }).click();
@@ -1803,7 +1803,7 @@ test("changing mode in a second tab preserves the builder draft and log selectio
   await fixture(controls, baseURL!);
   await controls.goto("/coach/fighters");
   await page.getByRole("button", { name: "Create New Plan", exact: true }).click();
-  await page.getByRole("group", { name: "Plan view" }).getByRole("button", { name: "Week" }).click();
+  await page.getByRole("group", { name: "Plan schedule" }).getByRole("button", { name: "Repeating week" }).click();
   await page.getByRole("button", { name: /^Monday,/ }).click();
   await page.getByRole("button", { name: "Add session on Monday" }).click();
   const sheet = page.getByRole("dialog", { name: "New session" });
