@@ -775,8 +775,10 @@ function detailText(block: PlanTextBlock, labels: string[]): string[] {
 // whole session's worth of blocks must never acquire them by inheritance.
 const INHERITABLE_SESSION_BLOCK_TYPES = new Set(["skill", "sparring"]);
 
+// Only the plan's own group label (tag) says what kind of work a block is. The
+// exercise name is never read: "Bike" or "Plank lift" says nothing reliable.
 function inferBlockType(block: PlanTextBlock, sessionType: string | null = null): string {
-  const value = `${block.tag || ""} ${block.name}`.toLowerCase();
+  const value = (block.tag || "").toLowerCase();
   if (/rehab|prehab|mobility|activation|warm-?up|cool-?down|reset|recovery/.test(value)) {
     return "rehab";
   }
@@ -789,18 +791,16 @@ function inferBlockType(block: PlanTextBlock, sessionType: string | null = null)
   if (/skill|technical|tactical|shadowbox|footwork|cue card|film|watch/.test(value)) {
     return "skill";
   }
-  // A drill named only for itself ("Pocket Exchange Map", "First-Round Pressure
-  // Script") carries no keyword, so it used to fall through to "training" and a
-  // 10-minute tactical review rendered with the same chip as a lift. The session
-  // it sits in already knows what kind of work it is — inherit that before
-  // giving up.
+  // An untagged block in a skill or sparring session takes the session's type;
+  // anything else is unknown, so it is simply an exercise.
   const inherited = sessionType && INHERITABLE_SESSION_BLOCK_TYPES.has(sessionType) ? sessionType : null;
-  return block.tag?.toLowerCase().replace(/\s+/g, "_") || inherited || "training";
+  return block.tag?.toLowerCase().replace(/\s+/g, "_") || inherited || "exercise";
 }
 
 function inferSessionType(session: PlanTextSession): string {
+  // The session's title and its blocks' group labels, never exercise names.
   const blocks = session.blocks
-    .map((block) => `${block.tag || ""} ${block.name}`)
+    .map((block) => block.tag || "")
     .join(" ");
   const value = `${session.title} ${blocks}`.toLowerCase();
   if (/spar|coach-led|boxing|grappling|wrestling|muay thai|kickbox/.test(value)) {

@@ -119,3 +119,11 @@ test("explicit Tues/Thu and Monday/Wed schedules survive alongside coded exercis
     assert.deepEqual(days.map((day) => day.weekday), expected);
   }
 });
+
+test("untagged blocks are typed as plain exercises: their names never pick a type", () => {
+  const plan = buildStructuredPlanFromText(screenshot);
+  const blocks = plan.weeks![0].days![0].sessions![0].blocks!;
+  // "Clean", jumps and throws used to be read as strength_power or conditioning.
+  for (const block of blocks) assert.equal(block.block_type, "exercise", block.display_name ?? "");
+  assert.equal(blocks[0].display_name, "Clean");
+});

@@ -57,6 +57,7 @@ import {
   shouldShowRest,
   splitMindsetLines,
   weekLabel,
+  isRehabOrMobilityBlock,
 } from "./structured-plan.ts";
 
 test("empty calendar days retain neutral availability labels", () => {
@@ -669,7 +670,7 @@ test("prefers duration over reps when reps looks like a time string", () => {
   assert.deepEqual(selectBlockMetric(null), []);
 });
 
-test("timed holds show their measured seconds instead of a one-rep volume", () => {
+test("a one-rep dose with a duration shows both as written, whatever the exercise is called", () => {
   assert.deepEqual(
     selectBlockMetric({
       display_name: "Punch-Specific Max Isometric Hold",
@@ -678,7 +679,10 @@ test("timed holds show their measured seconds instead of a one-rep volume", () =
       duration: { value: 10, unit: "seconds" },
       rest: { value: 180, unit: "seconds" },
     } as never),
-    [{ label: "Duration", value: "3 × 10 seconds" }],
+    [
+      { label: "Volume", value: "3 × 1" },
+      { label: "Duration", value: "10 seconds" },
+    ],
   );
   assert.deepEqual(
     selectBlockMetric({
@@ -1631,4 +1635,30 @@ test("legacy raw contact label renders without altering converted-contact semant
   assert.equal(declared?.kind, "light_combat");
   assert.equal(declared?.title, "Technical Combat");
   assert.equal(declared?.converted, false);
+});
+
+test("rehab and mobility grouping reads the block's type fields, never its name", () => {
+  for (const display_name of ["Isometric split squat", "Hip opener", "Mobility flow", "Rehab band row"]) {
+    assert.equal(isRehabOrMobilityBlock({ display_name, block_type: "strength" }), false, display_name);
+    assert.equal(isRehabOrMobilityBlock({ display_name }), false, display_name);
+  }
+  assert.equal(isRehabOrMobilityBlock({ display_name: "Split squat", block_type: "rehab" }), true);
+  assert.equal(isRehabOrMobilityBlock({ display_name: "Split squat", block_type: "mobility" }), true);
+  assert.equal(isRehabOrMobilityBlock({ display_name: "Split squat", category: "prehab" }), true);
+});
+
+test("card metrics never depend on the exercise name", () => {
+  const doses = [
+    { sets: 3, reps: 1, duration: { value: 10, unit: "seconds" } },
+    { sets: 3, reps: 5 },
+    { sets: 3, duration: { value: 30, unit: "seconds" } },
+    { rounds: 4, work: { value: 2, unit: "min" } },
+    {},
+  ];
+  for (const dose of doses) {
+    const neutral = selectBlockMetric({ display_name: "Exercise A", ...dose } as never);
+    for (const display_name of ["Plank hold", "Isometric hold", "Deadlift", "Sparring rounds", "Pad work"]) {
+      assert.deepEqual(selectBlockMetric({ display_name, ...dose } as never), neutral, `${display_name} ${JSON.stringify(dose)}`);
+    }
+  }
 });
