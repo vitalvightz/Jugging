@@ -1441,8 +1441,10 @@ html[data-theme="light"] .st-root .st-board-track { background: #dedee2; }
 .st-score-face {
   display: flex;
   align-items: center;
-  gap: 2.4%;
-  width: min(100%, calc(var(--st-clock-max-h) * var(--st-face-ratio, 2.7)));
+  /* A little air between digits and colon, and 12% narrower than the board:
+     edge to edge on a phone the digits ran together and read as stretched. */
+  gap: 3.4%;
+  width: min(88%, calc(var(--st-clock-max-h) * var(--st-face-ratio, 2.7)));
   margin: 0 auto;
 }
 .st-score-digit { position: relative; flex: 1; aspect-ratio: .59; }
