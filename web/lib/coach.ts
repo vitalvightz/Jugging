@@ -349,36 +349,38 @@ export function coachConcerns(f: Fighter, weight: import("./api-schema.generated
     for (const injury of f.injuries ?? []) {
       if (["resolved", "closed", "healed"].includes(injury.status)) continue;
       const tone = coachRecoveryTone("injury", injury.severity);
-      concerns.push({ id: `injury:${injury.id}`, category: "injury", tone: tone === "good" ? "unknown" : injury.status === "monitoring" && tone === "concern" ? "caution" : tone, reason: [`${humanize(injury.body_area)} injury`, injury.severity ? humanize(injury.severity) : null, injury.status === "monitoring" ? "Monitoring" : null].filter(Boolean).join(" · "), section: "recovery" });
+      concerns.push({ id: `injury:${injury.id}`, category: "injury", tone: tone === "good" ? "unknown" : tone, reason: [`${humanize(injury.body_area)} injury`, injury.severity ? humanize(injury.severity) : null, injury.status === "monitoring" ? "Monitoring" : null].filter(Boolean).join(" · "), section: "recovery" });
     }
   }
   if (f.share_recovery) {
     const days = groupCoachCheckIns((f.recovery ?? []).filter(row => row.day <= f.today));
     const recent = days.filter(row => row.day >= week);
     const low = recent.filter(row => lowDay(row.readings));
-    if (low.length >= 3) {
-      // A run of low days says more than any one reading.
-      concerns.push({ id: "recovery:trend", category: "recovery", tone: "concern", reason: `Low recovery · ${low.length} of ${recent.length} check-ins`, section: "recovery" });
-    } else {
-      // Keep a recent alert even when a later check-in is normal.
-      for (const day of recent) {
-        const alerts = checkInAlerts(day.readings);
-        if (alerts.length) concerns.push({ id: `recovery:${day.day}`, category: "recovery", tone: "concern", reason: `${alerts.slice(0, 2).join(", ")} · ${ago(day.day, f.today)}`, section: "recovery" });
-      }
+    // A run of low days says more than any one reading, but never hides one.
+    if (low.length >= 3) concerns.push({ id: "recovery:trend", category: "recovery", tone: "concern", reason: `Low recovery · ${low.length} of ${recent.length} check-ins`, section: "recovery" });
+    // Keep a recent alert even when a later check-in is normal.
+    for (const day of recent) {
+      const alerts = checkInAlerts(day.readings);
+      if (alerts.length) concerns.push({ id: `recovery:${day.day}`, category: "recovery", tone: "concern", reason: `${alerts.slice(0, 2).join(", ")} · ${ago(day.day, f.today)}`, section: "recovery" });
     }
     // Missing check-ins are only worth chasing in the final weeks of a camp.
     if (!recent.length && finalWeeks) concerns.push({ id: "recovery:unknown", category: "recovery", tone: "unknown", reason: "No check-in this week", section: "recovery" });
   }
   // Two or more planned sessions skipped in a week is a pattern; one is not.
-  const skipped = f.sessions.filter(s => s.status === "skipped" && s.source !== "external" && s.day >= week && s.day <= f.today);
+  // Only sessions of the active plan count, and when the plan schedule is
+  // loaded (the profile), only ones scheduled on that day.
+  const skipped = f.sessions.filter(s => s.status === "skipped" && s.source !== "external" && s.day >= week && s.day <= f.today
+    && Boolean(s.session_id) && Boolean(f.plan_id) && s.plan_id === f.plan_id
+    && (!f.schedule.length || f.schedule.some(planned => planned.id === s.session_id && planned.day === s.day)));
   if (skipped.length >= 2) concerns.push({ id: "adherence:week", category: "adherence", tone: "caution", reason: `${skipped.length} planned sessions skipped`, section: "training-history" });
-  // A load spike: this week well above the fighter's usual week. Needs four
-  // weeks of history so a new athlete's first week is never a spike.
+  // A training frequency spike: this week well above the fighter's usual
+  // week. Needs four weeks of history (35 days in all; the roster read returns
+  // 56) so a new athlete's first week is never a spike.
   const thisWeek = loadSessions(f, week, f.today);
   const history = [1, 2, 3, 4].map(n => loadSessions(f, dayOffset(week, -7 * n), dayOffset(week, -7 * n + 6)));
   const usual = history.reduce((a, b) => a + b, 0) / history.length;
   if (history.every(n => n > 0) && usual >= 2 && thisWeek >= usual * 1.5 && thisWeek - usual >= 2) {
-    concerns.push({ id: "load:spike", category: "load", tone: "caution", reason: `Load spike · ${thisWeek} sessions, usually ${Math.round(usual)}`, section: "weekly" });
+    concerns.push({ id: "load:spike", category: "load", tone: "caution", reason: `Training frequency spike · ${thisWeek} sessions, usually ${Math.round(usual)}`, section: "weekly" });
   }
   return concerns.sort(compareCoachConcerns);
 }

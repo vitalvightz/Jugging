@@ -2041,7 +2041,7 @@ for (const width of [320, 390]) {
     await expect(attention).not.toContainText("Okay");
     await expect(attention.getByRole("listitem").nth(0)).toContainText("Cut too aggressive · 6 days to fight");
     await expect(attention.getByRole("listitem").nth(1)).toContainText("Low recovery · 3 of 3 check-ins");
-    await expect(attention.getByRole("listitem").nth(2)).toContainText("Load spike · 6 sessions, usually 3");
+    await expect(attention.getByRole("listitem").nth(2)).toContainText("Training frequency spike · 6 sessions, usually 3");
     await expect(attention.getByRole("listitem").nth(2)).toContainText("+1 more concern");
     // Each concern fits on one line.
     for (const reason of await attention.locator("[data-recovery-tone]").all()) {
