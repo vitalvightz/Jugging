@@ -1139,3 +1139,21 @@ def test_injury_projection_preserves_manual_choices(action):
     blocks = snapshot["session"]["blocks"]
     assert blocks[0] == manual
     assert blocks[1]["_policy_held"]
+
+
+def test_an_added_exercise_of_unknown_kind_is_a_plain_exercise():
+    from api.services.exercise_customisation import _added_block_type
+    unknown = {"entry": {"raw": {}, "source": "mystery.json", "content_class": None}}
+    assert _added_block_type(unknown) == "exercise"
+    technical = {"entry": {"raw": {}, "source": "mystery.json", "content_class": "technical_coordination"}}
+    assert _added_block_type(technical) == "skill"
+
+
+def test_unknown_exercises_keep_the_contact_gate_unknown_work_always_had():
+    from api.contracts.injury_policy import _NON_CONTACT_BLOCK_TYPES
+    from api.contracts.readiness_message import _session_has_contact
+    # "exercise" replaces "accessory" as the unknown fallback, so it shares its gate.
+    assert {"exercise", "accessory"} <= _NON_CONTACT_BLOCK_TYPES
+    # The gate still reads contact from the block itself, whatever its type.
+    assert _session_has_contact({"block_type": "exercise", "display_name": "Hard sparring"})
+    assert not _session_has_contact({"block_type": "exercise", "display_name": "Bear crawl"})

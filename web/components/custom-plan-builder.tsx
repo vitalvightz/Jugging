@@ -90,7 +90,7 @@ function draftBlock(exercise: Exercise, session: Session): StructuredBlock {
   // Mirrors publishing (api/services/custom_plans.py): structured fields only, never the name.
   const blockType = exercise.block_type ?? ({ conditioning: "conditioning", skill: "skill", strength: "strength", power: "plyometric_power", speed: "speed" } as Record<string, string>)[type ?? ""]
     ?? ({ strength_power: "strength", conditioning: "conditioning", skill: "skill", sparring: "sparring", recovery: "cooldown_recovery" } as Record<string, string>)[session.session_type ?? "mixed"]
-    ?? "accessory";
+    ?? "exercise";
   const weight = dose.load_or_intensity?.trim().match(/^(\d+(?:\.\d+)?)\s*(kg|lb|lbs)$/i);
   return {
     block_id: exercise.id, display_name: nameOf(exercise), prescription_source: "athlete",

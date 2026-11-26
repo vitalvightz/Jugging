@@ -128,8 +128,8 @@ def test_session_activities_publish_without_doses_and_take_their_type_from_struc
     assert not draft["incomplete"]
     blocks = store.plans[plan_id]["structured_plan"]["weeks"][0]["days"][0]["sessions"][0]["blocks"]
     # The name never picks the type: only the explicit "sparring" exercise is
-    # sparring; the rest take their mixed session's fallback.
-    assert [b["block_type"] for b in blocks] == ["accessory"] * 6 + ["sparring"]
+    # sparring; the rest are unknown, so they are plain exercises.
+    assert [b["block_type"] for b in blocks] == ["exercise"] * 6 + ["sparring"]
     assert [b["display_name"] for b in blocks] == names
     # Contact safety never relied on the type: the injury guards still read the
     # published sparring blocks as contact, and pads/roadwork as not.

@@ -1644,6 +1644,13 @@ test("rehab and mobility grouping reads the block's type fields, never its name"
   }
   assert.equal(isRehabOrMobilityBlock({ display_name: "Split squat", block_type: "rehab" }), true);
   assert.equal(isRehabOrMobilityBlock({ display_name: "Split squat", block_type: "mobility" }), true);
+  // The structured enum itself, whatever the exercise is called.
+  for (const display_name of ["Hip flow", "Banded walks", "World's greatest stretch"]) {
+    assert.equal(isRehabOrMobilityBlock({ display_name, block_type: "mobility_activation" }), true, display_name);
+  }
+  for (const block_type of ["exercise", "accessory", "strength", "preparation", "conditioning"]) {
+    assert.equal(isRehabOrMobilityBlock({ display_name: "Mobility drill", block_type }), false, block_type);
+  }
   assert.equal(isRehabOrMobilityBlock({ display_name: "Split squat", category: "prehab" }), true);
 });
 

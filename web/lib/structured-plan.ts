@@ -965,9 +965,10 @@ export function isRehabOrMobilityBlock(block: StructuredBlock | null | undefined
     return false;
   }
   // Structured type fields only: an exercise named "isometric" or "opener" is
-  // not rehab or mobility work unless its block says so.
+  // not rehab or mobility work unless its block says so. Underscores read as
+  // word breaks, so the enum "mobility_activation" is mobility work.
   return [block.block_type, block.category]
-    .map((value) => cleanText(value))
+    .map((value) => cleanText(value)?.replace(/_/g, " "))
     .some((value) => Boolean(value && REHAB_BLOCK_RE.test(value)));
 }
 

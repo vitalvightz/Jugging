@@ -208,8 +208,8 @@ test("cluster ready screen shows both movements without combat format setup", ()
 test("a timed set reads as its time, never as a hold, whatever it is called", () => {
   const item = blockToTimerItem({ block_type: "rehab", display_name: "Copenhagen plank hold", sets: 3, reps: 1,
     duration: { value: 20, unit: "seconds" }, rest: { value: 45, unit: "seconds" } }, 0)!;
+  assert.equal(item.title, "Copenhagen plank hold");
   const html = render([item]);
-  assert.match(html, /Copenhagen plank hold/);
   assert.match(html, /<span>0:20<\/span>\u00a0each/);
   assert.doesNotMatch(html, /\u00a0hold|End hold|>Hold<|>Lift</);
 });

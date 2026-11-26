@@ -1160,7 +1160,8 @@ def _normalize_block(value: Any) -> dict[str, Any]:
     # but leave it absent/null instead of fabricating the same collision-prone
     # fallback for every block or rejecting the whole card.
     out["block_id"] = _coerce_str(out.get("block_id")).strip() or None
-    out["block_type"] = _enum(out.get("block_type"), _BLOCK_TYPE_VALUES, "accessory", _BLOCK_TYPE_ALIASES)
+    # A missing or unrecognised type is unknown, not a guess at accessory work.
+    out["block_type"] = _enum(out.get("block_type"), _BLOCK_TYPE_VALUES, "exercise", _BLOCK_TYPE_ALIASES)
     out["display_name"] = _coerce_str(out.get("display_name"))
     if "load" in out:
         out["load"] = _normalize_load(out.get("load"))
@@ -1250,13 +1251,6 @@ def _normalize_block(value: Any) -> dict[str, Any]:
         out["red_flags"] = [_normalize_red_flag(rule) for rule in _as_dict_list(out.get("red_flags"))]
     if "effort" in out:
         out["effort"] = _normalize_effort(out.get("effort"))
-    # Accessory work is never dosed by intent: a block prescribed "at max
-    # speed" is a jump, bound or throw the model filed under the enum's
-    # default bucket, so the card would tag a power drill "Accessory".
-    effort = out.get("effort")
-    if out["block_type"] == "accessory" and isinstance(effort, dict) and effort.get("method") == "intent":
-        out["block_type"] = "plyometric_power"
-
     progression_rule = ""
     embedded_stops: list[str] = []
     progression_candidates = [

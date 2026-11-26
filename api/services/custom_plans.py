@@ -162,7 +162,7 @@ def custom_open_plan_result(draft: dict, profile, *, training_day: str) -> dict:
                               "speed": "speed"}.get(content_type) or {
                                   "strength_power": "strength", "conditioning": "conditioning",
                                   "skill": "skill", "sparring": "sparring", "recovery": "cooldown_recovery",
-                              }.get(session.get("session_type"), "accessory")
+                              }.get(session.get("session_type"), "exercise")
                 # A manual exercise has unknown mechanical demand. Missing
                 # metadata must stay unknown for the shared injury guards.
                 block = {

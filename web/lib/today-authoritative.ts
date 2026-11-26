@@ -208,7 +208,8 @@ type CanonicalBlockType =
   | "cooldown_recovery"
   | "nutrition"
   | "mindset"
-  | "rehab";
+  | "rehab"
+  | "exercise";
 
 const PREVIEW_ACTION_BY_SESSION_TYPE = {
   strength_power: "Review the lifts and loading before it opens.",
@@ -249,6 +250,8 @@ const PREVIEW_ACTION_BY_BLOCK_TYPE = {
   nutrition: "Review the nutrition steps before it opens.",
   mindset: "Review the mindset cues before it opens.",
   rehab: "Review the rehab sequence and pain-free ranges before it opens.",
+  // Unknown type: says nothing about what kind of work it is.
+  exercise: "Review the exercises before it opens.",
 } satisfies Record<CanonicalBlockType, string>;
 
 function normalizedSessionToken(value: unknown): string {

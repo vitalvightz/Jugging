@@ -17,6 +17,7 @@ export const EDITABLE_BLOCK_TYPES = new Set([
   "speed",
   "accessory",
   "conditioning",
+  "exercise",
 ]);
 
 /** Session types an athlete may add an exercise to (mirrors the server). */
