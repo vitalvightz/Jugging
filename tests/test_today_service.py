@@ -2653,6 +2653,30 @@ class TestCommandView:
         assert view.today.next_session["session_relation"] == "next"
         assert view.today.next_session["effective_load"] == "hard"
 
+    def test_daily_watch_unlocks_after_checkin_and_resets_the_next_training_day(self):
+        store = _store_with_plan()
+        brief = _monday_rest_tuesday_training_brief()
+        brief["athlete_model"] = {"sport": "boxing", "tactical_style": "distance striker"}
+        store.plans[PLAN]["planning_brief"] = brief
+        now = datetime(2026, 6, 22, 12, 0, tzinfo=timezone.utc)
+
+        def today(at):
+            return build_today_command_view(store, athlete_id=ATHLETE, athlete_timezone="", now=at).today
+
+        locked = today(now)
+        assert locked.session_scope == "next"
+        assert locked.daily_watch_available
+        assert locked.daily_watch is None
+
+        submit_today_checkin(store, athlete_id=ATHLETE, athlete_timezone="", payload=_checkin_payload(), now=now)
+        unlocked = today(now)
+        assert unlocked.daily_watch and unlocked.daily_watch.insight
+        assert today(now).daily_watch == unlocked.daily_watch
+
+        tomorrow = today(now + timedelta(days=1))
+        assert tomorrow.daily_watch_available
+        assert tomorrow.daily_watch is None
+
     def test_structured_today_session_overrides_next_sparring_preview(self):
         store = _store_with_plan()
         store.plans[PLAN]["planning_brief"] = _monday_rest_tuesday_training_brief()

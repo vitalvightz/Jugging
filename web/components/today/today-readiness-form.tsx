@@ -66,12 +66,14 @@ export function TodayReadinessForm({
   token,
   warnings,
   onRefresh,
+  onSaved,
 }: {
   /** Omitted when the athlete has no active programme. */
   plan?: TodayActivePlan;
   sessionTitle?: string;
   token: string;
   warnings?: string[];
+  onSaved?: (trainingDay: string) => void;
   onRefresh: () => Promise<void>;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
@@ -139,6 +141,7 @@ export function TodayReadinessForm({
       if (responseWarning) {
         showToast(responseWarning, { tone: "info" });
       }
+      onSaved?.(response.training_day);
       await onRefresh();
     } catch (error) {
       showToast(error instanceof Error ? error.message : "Check-in failed.", { tone: "error" });

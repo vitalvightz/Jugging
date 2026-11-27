@@ -3,7 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { isolateFromNetwork } from "./support";
 import type { TrainingHistorySession } from "../lib/training-history";
 
-async function setup(page: Page, baseURL: string, options: { path?: string | null; failSave?: boolean; failMe?: boolean; failToday?: boolean; terms?: boolean; plan?: boolean; consent?: boolean; rejectConsent?: boolean; failConsent?: boolean; manualHistory?: TrainingHistorySession[]; sharedHistory?: TrainingHistorySession[]; activePlan?: boolean; scheduledSession?: "today" | "next"; sports?: string[] } = {}) {
+async function setup(page: Page, baseURL: string, options: { path?: string | null; failSave?: boolean; failMe?: boolean; failToday?: boolean; terms?: boolean; plan?: boolean; consent?: boolean; rejectConsent?: boolean; failConsent?: boolean; manualHistory?: TrainingHistorySession[]; sharedHistory?: TrainingHistorySession[]; activePlan?: boolean; scheduledSession?: "today" | "next"; dailyWatch?: boolean; sports?: string[] } = {}) {
   await isolateFromNetwork(page, baseURL);
   const storageKey = `sb-${new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://stub.supabase.co").hostname.split(".")[0]}-auth-token`;
   await page.addInitScript(([key, value]) => localStorage.setItem(key, value), [storageKey, JSON.stringify({
@@ -49,6 +49,8 @@ async function setup(page: Page, baseURL: string, options: { path?: string | nul
     if (endpoint === "/api/today") return options.failToday ? json({ detail: "Unavailable" }, 503) : json({
       active_plan: options.activePlan ? { id: "plan-9", name: "Autumn camp", phase: "GPP", fight_date: "2026-12-12" } : {},
       today: { training_day: "2026-10-18", warnings: [], next_session: {}, completion_status: "not_started", session_scope: "none",
+        ...(options.dailyWatch ? { daily_watch_available: true,
+          daily_watch: checkin ? { title: "Range Map", insight: "Watch how distance changes after an exchange." } : null } : {}),
         ...(options.scheduledSession ? { next_session: { title: "Hard sparring", session_relation: options.scheduledSession }, session_scope: options.scheduledSession } : {}),
         ...(checkin ? { recommendation_state: checkin.recommendation_state, decision_tier: checkin.decision_tier, recommendation_reason: checkin.recommendation_reason }
           : { recommendation_state: "not_checked_in", decision_tier: "not_checked_in" }) },
@@ -598,3 +600,27 @@ test("a tracking athlete with nothing logged gets a first-session CTA on Home", 
   await page.screenshot({ path: test.info().outputPath("tracking-home-empty.png") });
 });
 
+
+test("a saved check-in unlocks Today's Watch on a recovery day and survives reload", async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await setup(page, baseURL!, { activePlan: true, plan: true, path: "plan_first", dailyWatch: true });
+  await page.goto("/today");
+  const watch = page.getByRole("region", { name: "Today's Watch" });
+  await expect(watch.getByRole("link", { name: "Check in to unlxck" })).toHaveAttribute("href", "#today-checkin");
+  await expect(watch.getByText("Range Map")).toHaveCount(0);
+  const lockedHeight = (await watch.boundingBox())?.height;
+  const submit = page.locator("#today-checkin").getByRole("button", { name: "Submit check-in" });
+  await page.route("**/api/today/checkin", route => route.fulfill({
+    status: 422, json: { detail: "Check-in could not be saved." },
+  }), { times: 1 });
+  await submit.click();
+  await expect(page.getByText("Check-in could not be saved.")).toBeVisible();
+  await expect(watch.getByRole("link", { name: "Check in to unlxck" })).toBeVisible();
+  await submit.click();
+  await expect(watch.getByRole("heading", { name: "Range Map" })).toBeVisible();
+  expect((await watch.boundingBox())?.height).toBe(lockedHeight);
+  await page.reload();
+  await expect(watch.getByRole("heading", { name: "Range Map" })).toBeVisible();
+  await expect(watch.getByRole("link", { name: "Check in to unlxck" })).toHaveCount(0);
+});

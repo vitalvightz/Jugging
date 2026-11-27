@@ -513,6 +513,8 @@ export type CommandViewToday = {
   session_label: string;
   completion_status: "done" | "modified" | "not_started" | "skipped" | "started";
   fight_day: boolean;
+  daily_watch_available: boolean;
+  daily_watch: DailyWatch | null;
 };
 
 export type CommunityContributor = {
@@ -781,6 +783,11 @@ export type DailyCheckIn = {
   morning: MorningCheckIn;
   decision: "modify" | "pull_back" | "train_as_planned" | "unavailable";
   rules_triggered: string[];
+};
+
+export type DailyWatch = {
+  title: string;
+  insight: string;
 };
 
 /** A calendar day in the plan (Section J). */

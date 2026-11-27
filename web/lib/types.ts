@@ -1,3 +1,4 @@
+import type { DailyWatch } from "./api-schema.generated";
 import type { TrainingHabitPreferences } from "./training-habits";
 // Roles for the single UNLXCK app. New members may select athlete or coach;
 // admin and gym_owner remain operator-managed.
@@ -1292,6 +1293,8 @@ export type TodayCommandView = {
   active_plan: TodayActivePlan;
   today: {
     training_day: string;
+    daily_watch_available?: boolean;
+    daily_watch?: DailyWatch | null;
     recommendation_state: TodayRecommendationState;
     recommendation_reason?: string | null;
     // Authoritative decision tier computed by the backend. The banner and the
