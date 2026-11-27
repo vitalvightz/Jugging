@@ -28,7 +28,15 @@ export function DailyWatchPreview({ watch, reveal }: { watch?: DailyWatch | null
               <span />
               <span />
             </div>
-            <a href="#today-checkin" className={styles.unlock}>Check in to unlxck</a>
+            <a href="#today-checkin" className={styles.unlock}>
+              <span className={styles.lock} aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="6" y="10" width="12" height="10" rx="2" />
+                  <path d="M8.5 10V7a3.5 3.5 0 0 1 7 0v3M12 14v2" />
+                </svg>
+              </span>
+              Check in to unlxck
+            </a>
           </>
         )}
       </div>

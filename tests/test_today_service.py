@@ -2677,6 +2677,23 @@ class TestCommandView:
         assert tomorrow.daily_watch_available
         assert tomorrow.daily_watch is None
 
+    def test_daily_watch_stays_unlocked_but_can_change_after_a_same_day_programme_switch(self):
+        store = _store_with_plan()
+        for plan_id, style in ((PLAN, "distance striker"), (OTHER_PLAN, "pressure fighter")):
+            brief = _monday_rest_tuesday_training_brief()
+            brief["athlete_model"] = {"sport": "boxing", "tactical_style": style}
+            store.plans[plan_id] = {**store.plans[PLAN], "id": plan_id, "planning_brief": brief}
+        now = datetime(2026, 6, 22, 12, 0, tzinfo=timezone.utc)
+        submit_today_checkin(store, athlete_id=ATHLETE, athlete_timezone="", payload=_checkin_payload(), now=now)
+        before = build_today_command_view(store, athlete_id=ATHLETE, athlete_timezone="", now=now)
+        assert before.today.daily_watch is not None
+
+        store.set_active_plan_id(ATHLETE, OTHER_PLAN)
+        after = build_today_command_view(store, athlete_id=ATHLETE, athlete_timezone="", now=now)
+        assert after.active_plan["id"] == OTHER_PLAN
+        assert after.today.daily_watch is not None
+        assert after.today.daily_watch != before.today.daily_watch
+
     def test_structured_today_session_overrides_next_sparring_preview(self):
         store = _store_with_plan()
         store.plans[PLAN]["planning_brief"] = _monday_rest_tuesday_training_brief()

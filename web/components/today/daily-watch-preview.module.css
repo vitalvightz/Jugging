@@ -1,31 +1,57 @@
 .watch {
   margin-block: 0 16px;
   padding: 18px 20px;
-  border-inline-start: 3px solid #d71d3e;
-  background: #101012;
-  color: #f8f8fa;
+  border: 1px solid var(--border-default);
+  border-radius: 16px;
+  background: var(--bg-panel);
+  color: var(--text-primary);
 }
 
 .watch h2 { margin: 0 0 12px; font-size: 15px; }
-.study { display: grid; align-items: center; min-block-size: 8rem; isolation: isolate; }
+.study {
+  display: grid;
+  align-items: center;
+  /* Reserve room for wrapped study names and insights on small screens. */
+  min-block-size: 13rem;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--bg-surface-alt);
+  isolation: isolate;
+}
+
+@media (min-width: 600px) {
+  .study { min-block-size: 9rem; }
+}
 .study > * { grid-area: 1 / 1; }
 .study h3 { margin: 0 0 6px; font-size: clamp(20px, 5vw, 28px); line-height: 1.12; }
-.study p { max-width: 52ch; margin: 0; color: #c0c0c8; line-height: 1.45; }
+.study p { max-width: 52ch; margin: 0; color: var(--text-secondary); line-height: 1.45; }
 .preview { display: grid; gap: 12px; filter: blur(4px); opacity: .32; }
-.preview span { width: 80%; height: 8px; background: #a6a6ad; }
+.preview span { width: 80%; height: 8px; background: var(--text-muted); }
 .preview span:first-child { width: 54%; height: 20px; }
 .preview span:last-child { width: 63%; }
 .unlock {
-  justify-self: start;
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding-inline: 14px;
-  background: #f8f8fa;
-  color: #101012;
+  justify-self: center;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  color: var(--text-primary);
   font-weight: 700;
   text-decoration: none;
   z-index: 1;
+}
+
+.unlock:hover { text-decoration: underline; }
+.unlock:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.lock {
+  display: grid;
+  place-items: center;
+  inline-size: 42px;
+  block-size: 42px;
+  border: 1px solid var(--border-default);
+  border-radius: 50%;
+  background: var(--bg-panel);
 }
 
 @media (prefers-reduced-motion: no-preference) {
