@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { SessionTimer } from "./session-timer";
+import { SessionTimer, logAsPlannedLabel, splitAlternative } from "./session-timer";
 import { blockToTimerItem } from "@/lib/session-timer/plan";
 import type { TimerItem } from "@/lib/session-timer/plan";
 
@@ -126,8 +126,8 @@ const SHUTTLE: TimerItem = {
 
 test("the prescription separates distance and effort labels without losing their units", () => {
   const html = render([SHUTTLE, ITEMS[0]]);
-  assert.match(html, /<dl class="st-stats" aria-label="Prescription"><div data-kind="target"><dt>Distance<\/dt><dd>200 m<\/dd><\/div><div data-kind="effort"><dt>RPE<\/dt><dd>8<\/dd><\/div><\/dl>/);
-  assert.match(html, /aria-label="Edit rounds and rest"><span>6<\/span>\u00a0rounds · <span>1:30<\/span>\u00a0rest/);
+  // Up next: how much as equal tiles in plan order, effort on a quieter line.
+  assert.match(html, /aria-label="Edit rounds and rest">.*<strong>6<\/strong><span>Rounds<\/span>.*<strong>200 m<\/strong><span>Distance<\/span>.*<strong>1:30<\/strong><span>Rest<\/span>.*<span class="st-dose-extras">RPE 8<\/span>/);
   // What comes after carries its own dose too.
   const before = render([ITEMS[0], SHUTTLE]);
   assert.match(before, /st-next-plan">6 × 200 m · 90s rest</);
@@ -139,9 +139,8 @@ test("prescription stats preserve rep ranges, percentage loads and RIR", () => {
     { kind: "load", value: "80% 1RM" },
     { kind: "effort", value: "RIR 3" },
   ] }]);
-  assert.match(html, /<dt>Reps<\/dt><dd>5–8<\/dd>/);
-  assert.match(html, /<dt>Load<\/dt><dd>80% 1RM<\/dd>/);
-  assert.match(html, /<dt>RIR<\/dt><dd>3<\/dd>/);
+  assert.match(html, /<strong>5–8<\/strong><span>Reps<\/span>/);
+  assert.match(html, /<span class="st-dose-extras">80% 1RM · RIR 3<\/span>/);
 });
 
 test("a run saved before stats existed still shows its one-line detail", () => {
@@ -210,6 +209,23 @@ test("a timed set reads as its time, never as a hold, whatever it is called", ()
     duration: { value: 20, unit: "seconds" }, rest: { value: 45, unit: "seconds" } }, 0)!;
   assert.equal(item.title, "Copenhagen plank hold");
   const html = render([item]);
-  assert.match(html, /<span>0:20<\/span>\u00a0each/);
+  assert.match(html, /<strong>0:20<\/strong><span>Time<\/span>/);
   assert.doesNotMatch(html, /\u00a0hold|End hold|>Hold<|>Lift</);
+});
+
+test("an alternative exercise sits on its own quieter line, never cut from the name", () => {
+  assert.deepEqual(splitAlternative("Plyo Push-Ups (or Med Ball Chest Pass)"), { name: "Plyo Push-Ups", alternative: "or Med Ball Chest Pass" });
+  assert.deepEqual(splitAlternative("Back Squat (pause)"), { name: "Back Squat (pause)", alternative: null });
+});
+
+test("the plan's coaching cue shows word for word as the coach's cue", () => {
+  const html = render([{ ...ITEMS[1], cues: ["Drive the floor away."] }]);
+  assert.match(html, /Coach’s cue<\/span><p>Drive the floor away\.<\/p>/);
+  assert.doesNotMatch(render([ITEMS[1]]), /st-cue/);
+});
+
+test("logging as planned names exactly what it records", () => {
+  const sets = { ...SHUTTLE, unit: "set" as const, sets: { min: 4, max: 4 } };
+  assert.equal(logAsPlannedLabel(sets), "Log all 4 sets as done");
+  assert.equal(logAsPlannedLabel({ ...sets, sets: { min: 1, max: 1 } }), "Log set as done");
 });

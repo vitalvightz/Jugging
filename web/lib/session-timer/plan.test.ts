@@ -477,28 +477,28 @@ test("every exercise type: the name never changes the timer, and is kept as writ
           if (!item) continue;
           // The original name, untouched; only a missing one gets the placeholder.
           assert.equal(item.title, display_name || "Block", where);
-          assert.ok(["Spar", "Work", "Exercise"].includes(workPhaseLabel(item)), where);
+          assert.ok(["Spar", "Work"].includes(workPhaseLabel(item)), where);
         }
       }
     }
   }
 });
 
-test("every exercise type: specific timer words only from structure, Exercise otherwise", () => {
+test("every exercise type: Spar only for sparring structure, Work otherwise", () => {
   for (const block_type of EVERY_BLOCK_TYPE) {
     const where = String(block_type);
     const lift = blockToTimerItem({ block_type, display_name: "Deadlift", sets: 3, reps: 5 }, 0);
     // Sets of reps are never called a lift, whatever the block type.
-    assert.equal(workPhaseLabel(lift!), "Exercise", where);
+    assert.equal(workPhaseLabel(lift!), "Work", where);
     const hold = blockToTimerItem({ block_type, display_name: "Plank hold", sets: 3, duration: { value: 30, unit: "s" } }, 0);
     if (block_type === "sparring") assert.equal(workPhaseLabel(hold!), "Spar", where);
     else if (["conditioning", "skill"].includes(block_type ?? "")) assert.equal(workPhaseLabel(hold!), "Work", where);
-    else assert.equal(workPhaseLabel(hold!), "Exercise", where);
+    else assert.equal(workPhaseLabel(hold!), "Work", where);
     const rounds = blockToTimerItem({ block_type, display_name: "Pad work", rounds: 4, work: { value: 2, unit: "min" } }, 0);
     assert.equal(workPhaseLabel(rounds!), block_type === "sparring" ? "Spar" : "Work", where);
     const untimed = blockToTimerItem({ block_type, display_name: "Hard sparring" }, 0);
     if (untimed) {
-      assert.equal(workPhaseLabel(untimed), block_type === "sparring" ? "Spar" : "Exercise", where);
+      assert.equal(workPhaseLabel(untimed), block_type === "sparring" ? "Spar" : "Work", where);
     }
   }
 });
@@ -528,7 +528,7 @@ test("a one-rep set with a duration is timed by its fields alone, and never call
     const item = blockToTimerItem({ block_type: "rehab", display_name, sets: 3, reps: 1, duration: { value: 20, unit: "seconds" } }, 0);
     assert.ok(item?.kind === "sets");
     assert.equal(item.holdSec, 20, display_name);
-    assert.equal(workPhaseLabel(item), "Exercise", display_name);
+    assert.equal(workPhaseLabel(item), "Work", display_name);
   }
   // More than one rep: a counted set, with the duration kept as a stat.
   const counted = blockToTimerItem({ display_name: "Plank hold", sets: 3, reps: 8, duration: { value: 20, unit: "seconds" } }, 0);

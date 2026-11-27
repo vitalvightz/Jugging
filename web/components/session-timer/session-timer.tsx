@@ -194,6 +194,148 @@ function DoseStats({ item }: { item: TimerItem }) {
   );
 }
 
+/**
+ * "Plyo Push-Ups (or Med Ball Chest Pass)": the exercise, with the plan's
+ * alternative on a quieter line. Display only; the saved title is unchanged.
+ */
+export function splitAlternative(title: string): { name: string; alternative: string | null } {
+  const match = /^(.+?)\s*\(\s*(or\s+[^()]+?)\s*\)\s*$/i.exec(title);
+  return match ? { name: match[1], alternative: match[2] } : { name: title, alternative: null };
+}
+
+/** The exercise name in full (never cut off), any alternative beneath it. */
+function ExerciseTitle({ title }: { title: string }) {
+  const { name, alternative } = splitAlternative(title);
+  return (
+    <h2 className="st-title">
+      {name}
+      {alternative ? <span className="st-title-alt">{alternative}</span> : null}
+    </h2>
+  );
+}
+
+/**
+ * What one sets item asks for, only what the plan gives: how much (sets, the
+ * per-set target, rest) as equal tiles, and load and effort as a quieter line.
+ */
+export function doseTiles(item: SetsItem): { tiles: { label: string; value: string }[]; extras: string[] } {
+  const noun = countNoun(item);
+  const tiles = [{ label: `${capitalize(noun)}s`, value: item.sets ? formatRange(item.sets) : "As needed" }];
+  const extras: string[] = [];
+  if (item.holdSec) tiles.push({ label: "Time", value: formatClock(item.holdSec) });
+  for (const stat of item.stats ?? []) {
+    if (stat.kind === "load" || stat.kind === "effort") extras.push(stat.value);
+    else tiles.push(doseStatDisplay(stat));
+  }
+  if (item.restSec) tiles.push({ label: "Rest", value: formatRange(item.restSec, formatClock) });
+  return { tiles, extras };
+}
+
+/** The Up next prescription: one row of equal tiles that opens Adjust. */
+function DoseTiles({ item, onAdjust }: { item: SetsItem; onAdjust: () => void }) {
+  const { tiles, extras } = doseTiles(item);
+  return (
+    <>
+      <button
+        type="button"
+        className="st-dose"
+        data-count={tiles.length}
+        onClick={onAdjust}
+        aria-label={`Edit ${countNoun(item)}s and rest`}
+      >
+        {tiles.map((tile, index) => (
+          <span key={`${tile.label}-${index}`} className="st-dose-tile" data-long={tile.value.length > 5 || undefined}>
+            <strong>{tile.value}</strong>
+            <span>{tile.label}</span>
+          </span>
+        ))}
+        {extras.length ? <span className="st-dose-extras">{extras.join(" · ")}</span> : null}
+      </button>
+      {!item.stats && item.detail ? <p className="st-detail">{item.detail}</p> : null}
+    </>
+  );
+}
+
+/** One bar per set: done in ink, the current set in red, the rest grey. */
+function SetTrack({ item, done, current }: { item: TimerItem; done: number; current: number | null }) {
+  if (item.kind !== "sets" || !item.sets) return null;
+  const total = Math.max(item.sets.max, done);
+  if (total < 2 || total > 12) return null;
+  return (
+    <ol className="st-set-track" aria-hidden="true">
+      {Array.from({ length: total }, (_, index) => (
+        <li
+          key={index}
+          data-state={index < done ? "done" : current !== null && index === current - 1 ? "current" : undefined}
+          data-optional={index >= item.sets!.min || undefined}
+        />
+      ))}
+    </ol>
+  );
+}
+
+/** The coach's cue for this exercise, word for word from the plan. */
+function CoachCue({ item }: { item: TimerItem }) {
+  const cues = item.cues?.filter(Boolean).slice(0, 2) ?? [];
+  if (!cues.length) return null;
+  return (
+    <div className="st-cue">
+      <span className="st-cue-label">Coach&rsquo;s cue</span>
+      {cues.map((cue) => <p key={cue}>{cue}</p>)}
+    </div>
+  );
+}
+
+/**
+ * The whole session beside the timer on wide screens: every exercise with its
+ * dose, the current one marked, finished ones ticked. The next exercise moves
+ * on to it, like the Next row it replaces there.
+ */
+function SessionRail({ state, onNext }: { state: TimerState; onNext: (() => void) | null }) {
+  return (
+    <aside className="st-rail" aria-label="This session">
+      <p className="st-rail-head">This session</p>
+      <ol>
+        {state.items.map((entry, index) => {
+          const { name, alternative } = splitAlternative(entry.title);
+          const status = index < state.index ? "done" : index === state.index ? "current" : undefined;
+          const body = (
+            <>
+              <span className="st-rail-n" aria-hidden="true">{status === "done" ? <Icon name="check" /> : index + 1}</span>
+              <span className="st-rail-title">{name}</span>
+              {alternative ? <span className="st-rail-alt">{alternative}</span> : null}
+              <span className="st-rail-plan">{describeItem(entry)}</span>
+              {status === "current" && state.phase !== "ready" && entry.cues?.length ? (
+                <span className="st-rail-cue">{entry.cues[0]}</span>
+              ) : null}
+            </>
+          );
+          return (
+            <li key={entry.id} data-state={status} aria-current={status === "current" ? "step" : undefined}>
+              {index === state.index + 1 && onNext ? (
+                <button type="button" className="st-rail-row" onClick={onNext} aria-label={`Next exercise: ${entry.title}`}>
+                  {body}
+                </button>
+              ) : <div className="st-rail-row">{body}</div>}
+            </li>
+          );
+        })}
+      </ol>
+    </aside>
+  );
+}
+
+/** "Log all 4 sets as done": counts the planned work without timing it. */
+export function logAsPlannedLabel(item: TimerItem): string {
+  const count = plannedTarget(item);
+  if (item.kind === "sets" && count > 0) {
+    const noun = countNoun(item);
+    return count === 1 ? `Log ${noun} as done` : `Log all ${count} ${noun}s as done`;
+  }
+  if (item.kind === "interval" && count > 1) return `Log all ${count} rounds as done`;
+  return "Log as done";
+}
+
 function phaseLabel(state: TimerState, item: TimerItem | null, view: TimerView): string {
   if (state.phase === "done") return metPlan(state) ? "Session complete" : "Session ended";
   if (state.phase === "ready") return "Up next";
@@ -214,7 +356,11 @@ function counterLabel(state: TimerState, item: TimerItem | null): string | null 
   if (item.kind === "sets") {
     const target = item.sets ? ` / ${formatRange(item.sets)}` : "";
     const noun = countNoun(item);
-    return state.phase === "rest" ? `Next: ${noun} ${state.unit}${target}` : `${unitWord(item)} ${state.unit}${target}`;
+    if (state.phase === "rest" && !isPrep(state)) {
+      const finished = state.completed[state.index] ?? 0;
+      return item.sets ? `${finished} of ${formatRange(item.sets)} done` : `${finished} done`;
+    }
+    return `${unitWord(item)} ${state.unit}${target}`;
   }
   return null;
 }
@@ -1164,6 +1310,17 @@ export function SessionTimer({
   // The row keeps its place while paused, so the clock never jumps.
   const showsTools = state.phase === "work" || state.phase === "rest";
   const nextInSession = state.index + 1 < state.items.length;
+  // Sets and plain tasks get the exercise card on Up next; rounds keep their clock preview.
+  // Desktop only (CSS): every exercise of the session beside the timer.
+  const showsRail = state.items.length > 1 && state.phase !== "done";
+  const exerciseCard = state.phase === "ready" && !!item && item.kind !== "interval";
+  // During rest between sets: which set comes next and what it asks for.
+  const upNext = state.phase === "rest" && !isPrep(state) && item?.kind === "sets" && !restLogTarget
+    ? {
+      unit: item.sets ? `${unitWord(item)} ${state.unit} of ${formatRange(item.sets)}` : `${unitWord(item)} ${state.unit}`,
+      target: item.holdSec ? null : perUnitTarget(item),
+    }
+    : null;
 
   return (
     <ToBody>
@@ -1235,6 +1392,8 @@ export function SessionTimer({
       {/* Tapping anywhere off an open sheet closes it. */}
       {sheet !== null ? <div className="st-scrim" aria-hidden="true" onClick={() => setSheet(null)} /> : null}
 
+      <div className="st-body">
+      <div className="st-stage">
       {needsSetReview ? <TimerSetReview timer={timer} /> : (handingOff || finalSetLog) && visible ? (
         <div className="st-main st-done st-handoff">
           <div className="st-done-badge" aria-hidden="true">
@@ -1271,8 +1430,25 @@ export function SessionTimer({
           </div>
         </div>
       ) : (
-        <div className="st-main" data-phase={state.phase}>
-          {item && showsTitle ? <h2 className="st-title">{item.title}</h2> : null}
+        <div className="st-main" data-phase={state.phase} data-card={exerciseCard || undefined}>
+          {exerciseCard && item ? (
+            <>
+              <p className="st-kicker">{state.items.length > 1 ? "Up next" : "Ready"}</p>
+              <ExerciseTitle title={item.title} />
+              {item.kind === "sets" ? (
+                <>
+                  <DoseTiles item={item} onAdjust={() => { dismissAdjustHint(); setSheet("adjust"); }} />
+                  {item.components?.length ? <DoseStats item={item} /> : null}
+                  <SetTrack item={item} done={done} current={null} />
+                </>
+              ) : (
+                <p className="st-plan-line">{describeItem(item)}</p>
+              )}
+              <CoachCue item={item} />
+            </>
+          ) : (
+            <>
+          {item && showsTitle ? <ExerciseTitle title={item.title} /> : null}
           {item ? <DoseStats item={item} /> : null}
           {/* Phase and count share one reading axis above the clock. */}
           <div className="st-board-header">
@@ -1324,6 +1500,8 @@ export function SessionTimer({
                 </span>}
                 {done > 0 && <span key={done} className="st-round-complete" aria-hidden="true" />}
               </button>
+              {/* Count-up work beside a set count: say the clock is elapsed time, not a target. */}
+              {!timed && state.phase === "work" && counter ? <p className="st-clock-mode">Elapsed</p> : null}
               {restNote ? <p className="st-note">{restNote}</p> : null}
               {state.phase === "rest" && state.phaseMs === null && !view.paused ? (
                 <div className="st-presets" role="group" aria-label="Rest length">
@@ -1340,6 +1518,17 @@ export function SessionTimer({
                   ))}
                 </div>
               ) : null}
+            </>
+          )}
+          {item?.kind === "sets" && state.phase !== "ready" ? <SetTrack item={item} done={done} current={state.phase === "work" ? state.unit : null} /> : null}
+          {upNext ? (
+            <div className="st-up-next">
+              <span className="st-up-next-label">Up next</span>
+              <strong>{upNext.unit}</strong>
+              {upNext.target ? <span className="st-up-next-target">{upNext.target}</span> : null}
+            </div>
+          ) : null}
+          {item && state.phase !== "ready" ? <CoachCue item={item} /> : null}
             </>
           )}
           {item?.kind === "interval" ? (
@@ -1443,7 +1632,7 @@ export function SessionTimer({
             <div className="st-links">
               {canMarkPlanned && !restLogTarget ? (
                 <button type="button" className="st-link" onClick={() => timer.run(finishItemAsPlannedWithResults)}>
-                  Done as planned
+                  {logAsPlannedLabel(item!)}
                 </button>
               ) : null}
               <button
@@ -1457,6 +1646,14 @@ export function SessionTimer({
           )}
         </div>
       ) : null}
+      </div>
+      {showsRail ? (
+        <SessionRail
+          state={state}
+          onNext={nextInSession && nextItem ? () => timer.run(finishItemWithResults) : null}
+        />
+      ) : null}
+      </div>
     </div>
     </ToBody>
   );

@@ -37,7 +37,8 @@ const SESSION = {
     { block_id: "spar", block_type: "sparring", display_name: "Hard sparring", rounds: 3,
       duration: { value: 3, unit: "minutes" }, rest: { value: 60, unit: "seconds" } },
     { block_id: "squat", exercise_key: "back-squat", block_type: "strength", display_name: "Back Squat",
-      sets: 4, reps: 5, rest: { value: 90, unit: "seconds" }, load: { display: "100 kg" }, effort: { method: "RPE", value: 7 } },
+      sets: 4, reps: 5, rest: { value: 90, unit: "seconds" }, load: { display: "100 kg" }, effort: { method: "RPE", value: 7 },
+      coaching_cues: ["Brace before you descend. Drive the floor away."] },
     { block_id: "plank", block_type: "rehab", display_name: "Copenhagen plank hold", sets: 2,
       duration: { value: 20, unit: "seconds" }, rest: { value: 30, unit: "seconds" } },
     { block_id: "shuttles", block_type: "conditioning", display_name: "Shuttle sprints", rounds: 6,
@@ -137,6 +138,8 @@ async function capture(page: Page, name: string, running: boolean) {
     await page.setViewportSize(viewport);
     await checkFits(page, running);
     if (shots) {
+      // TIMER_THEME=light saves the light appearance instead.
+      if (process.env.TIMER_THEME) await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, process.env.TIMER_THEME);
       await page.waitForTimeout(400);
       await page.screenshot({ path: `${shots}/${name}-${viewport.width}.png` });
     }
