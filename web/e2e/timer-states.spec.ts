@@ -59,7 +59,9 @@ const next = (state: TimerState, seconds: number) => finishItem(state, at(second
 type Seeded = { name: string; state: TimerState; running: boolean };
 
 function sessionStates(): Seeded[] {
-  const items = buildTimerItems([SESSION] as never);
+  // Back Squat was logged before, so Up next shows that last performance.
+  const items = buildTimerItems([SESSION] as never).map(item =>
+    item.id === "squat" && item.kind === "sets" ? { ...item, lastPerformance: "95 kg · 4 × 5 · RPE 7" } : item);
   const fresh = createTimerState(items);
   const sparring = startItem(fresh, at(40), { prepSec: 0 }).state;
   const squatReady = next(startItem(fresh, at(900), { prepSec: 0 }).state, 600);

@@ -262,9 +262,9 @@ export function useSessionTimer({
     const refreshed = current.items.map(item => {
       if (item.kind !== "sets") return item;
       const incoming = items.find(candidate => candidate.id === item.id);
-      if (incoming?.kind !== "sets" || JSON.stringify([incoming.suggestedLoads, incoming.weightRecommendation]) === JSON.stringify([item.suggestedLoads, item.weightRecommendation])) return item;
+      if (incoming?.kind !== "sets" || JSON.stringify([incoming.suggestedLoads, incoming.weightRecommendation, incoming.lastPerformance]) === JSON.stringify([item.suggestedLoads, item.weightRecommendation, item.lastPerformance])) return item;
       changed = true;
-      return { ...item, suggestedLoads: incoming.suggestedLoads, weightRecommendation: incoming.weightRecommendation };
+      return { ...item, suggestedLoads: incoming.suggestedLoads, weightRecommendation: incoming.weightRecommendation, lastPerformance: incoming.lastPerformance ?? item.lastPerformance };
     });
     if (changed) commit({ ...current, items: refreshed });
   }, [items, commit]);
