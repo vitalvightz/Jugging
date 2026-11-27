@@ -35,9 +35,13 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  height: 100dvh;
+  /* No fixed height: `inset: 0` already fills the screen. A 100dvh height on
+     top of it left the page showing as a white band under the timer whenever
+     Safari's dynamic viewport was shorter than the screen. */
   min-height: 0;
-  padding: max(10px, env(safe-area-inset-top)) 16px max(14px, env(safe-area-inset-bottom));
+  /* The header sits a little below the status bar so iOS's soft top edge
+     never blurs the session title. */
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px max(14px, env(safe-area-inset-bottom));
   background: var(--st-base);
   color: var(--st-ink);
   font-family: var(--font-display, system-ui, sans-serif);
@@ -837,7 +841,7 @@
    opening one never pushes the clock or the controls out of view. */
 .st-sheet {
   position: absolute;
-  top: calc(max(10px, env(safe-area-inset-top)) + 58px);
+  top: calc(env(safe-area-inset-top, 0px) + 68px);
   left: 16px;
   right: 16px;
   z-index: 5;
@@ -854,7 +858,7 @@
   box-shadow: 0 24px 60px var(--st-shadow);
   animation: st-sheet-in 160ms ease-out;
   /* The settings sheet is the tallest: it scrolls on a short phone instead of spilling off. */
-  max-height: calc(100dvh - max(10px, env(safe-area-inset-top)) - 90px);
+  max-height: calc(100% - env(safe-area-inset-top, 0px) - 100px);
   overflow-y: auto;
 }
 
@@ -1107,6 +1111,14 @@ html.has-timer-mini .app-content {
     padding-bottom: calc(108px + var(--mobile-tab-bar-clearance, 0px));
   }
 }
+
+/* While the timer is open, the page behind it wears the stage colour, so any
+   gap the browser leaves around a fixed overlay (toolbars, home indicator,
+   rubber-banding) never shows the white page. */
+html:has(.st-root),
+html:has(.st-root) body { background-color: #0b0b0c; }
+html[data-theme="light"]:has(.st-root),
+html[data-theme="light"]:has(.st-root) body { background-color: #f6f6f8; }
 
 /* Light appearance: a bright stage for a lit gym, the same clock in ink. */
 html[data-theme="light"] .st-root {
