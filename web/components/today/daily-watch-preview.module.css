@@ -1,0 +1,133 @@
+.watch {
+  margin-block: 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.watch h2 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.study {
+  position: relative;
+  display: grid;
+  align-items: center;
+  /* Leave room for the bank's longest copy at phone widths. */
+  min-block-size: 7.75rem;
+  isolation: isolate;
+}
+
+@media (min-width: 600px) {
+  .study { min-block-size: 5.5rem; }
+}
+
+.study > * { grid-area: 1 / 1; }
+.study h3 { margin: 0 0 4px; font-size: clamp(17px, 4.6vw, 23px); line-height: 1.16; }
+.study p { max-width: 60ch; margin: 0; color: var(--text-secondary); font-size: 14px; line-height: 1.4; }
+
+.content { overflow-wrap: anywhere; }
+.study[data-locked] .content {
+  filter: blur(5px);
+  opacity: .58;
+  user-select: none;
+  pointer-events: none;
+}
+
+.cover {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  visibility: hidden;
+  background: color-mix(in srgb, var(--bg-panel) 55%, transparent);
+}
+
+.study[data-locked] .cover { opacity: 1; visibility: visible; }
+
+.unlock {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.unlock:hover { text-decoration: underline; }
+.unlock:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+
+.mark {
+  position: relative;
+  inline-size: 30px;
+  block-size: 30px;
+}
+
+.mark::before, .mark::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  mask: url("/brand/unlxck-one-angle-48.png") center / contain no-repeat;
+}
+
+.mark::after {
+  mask: url("/brand/unlxck-sister.jpg") 55% 50% / auto 132% no-repeat;
+  mask-mode: luminance;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .study[data-locked] .mark { animation: breathe 2.8s ease-in-out 2; }
+
+  .study[data-reveal] {
+    --reveal-duration: 640ms;
+    --reveal-easing: cubic-bezier(.32, 0, .24, 1);
+  }
+
+  .study[data-reveal] .content { animation: clarify var(--reveal-duration) var(--reveal-easing); }
+  .study[data-reveal] .cover {
+    animation: lift-cover var(--reveal-duration) var(--reveal-easing);
+    pointer-events: none;
+  }
+  .study[data-reveal] .mark { animation: open-mark var(--reveal-duration) var(--reveal-easing); }
+  .study[data-reveal] .mark::before { animation: normal-mark var(--reveal-duration) var(--reveal-easing) both; }
+  .study[data-reveal] .mark::after { animation: sister-mark var(--reveal-duration) var(--reveal-easing) both; }
+}
+
+@keyframes breathe { 50% { transform: scale(1.04); } }
+
+@keyframes open-mark {
+  from { transform: translateY(0) scale(1); }
+  to { transform: translateY(-3px) scale(1.05); }
+}
+
+@keyframes normal-mark {
+  from { opacity: 1; }
+  42%, to { opacity: 0; }
+}
+
+@keyframes sister-mark {
+  from { opacity: 0; }
+  42%, to { opacity: 1; }
+}
+
+@keyframes clarify {
+  0%, 20% { filter: blur(5px); opacity: .58; }
+  to { filter: blur(0); opacity: 1; }
+}
+
+@keyframes lift-cover {
+  from { opacity: 1; visibility: visible; }
+  45% { opacity: .82; visibility: visible; }
+  to { opacity: 0; visibility: hidden; }
+}

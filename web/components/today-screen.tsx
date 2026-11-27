@@ -21,6 +21,7 @@ import { formatTrainingDay } from "@/components/today/format";
 import { AutoHeight } from "@/components/today/auto-height";
 import { TodayDecisionPanel } from "@/components/today/today-decision-panel";
 import { TodayInjuryManager } from "@/components/today/today-injury-manager";
+import { DailyWatchPreview } from "@/components/today/daily-watch-preview";
 import { TodayReadinessForm } from "@/components/today/today-readiness-form";
 import { TodayRiskWatch } from "@/components/today/today-risk-watch";
 import { StandaloneRehab } from "@/components/today/standalone-rehab";
@@ -257,6 +258,7 @@ export function TodayScreen() {
   const planTitle = activePlan.name?.trim() || (openOngoing ? "Open training plan" : "Active fight camp");
   const hasPlan = hasActivePlan(activePlan);
   const trainingDate = state?.today.training_day;
+  const [watchRevealDay, setWatchRevealDay] = useState<string>();
   const day = trainingDate && /^\d{4}-\d{2}-\d{2}$/.test(trainingDate) ? new Date(`${trainingDate}T12:00:00`) : null;
   const progress = !openOngoing && day && !Number.isNaN(day.getTime()) ? resolvePlanProgress(structuredPlan, day) : null;
   const weekLabel = progress?.matchType === "calendar" && progress.currentWeekPos !== null
@@ -441,17 +443,25 @@ export function TodayScreen() {
   // Once checked in, the form eases shut instead of dropping out from under
   // the sections below it.
   const readinessForm = (
-    <Collapse show={showCheckin}>
-      {showCheckin ? (
-        <TodayReadinessForm
-          plan={hasPlan ? activePlan : undefined}
-          token={token ?? ""}
-          sessionTitle={hasPlan && resolvedDecision.hasSession ? getSessionTitle(state.today.next_session) : undefined}
-          warnings={state.today.warnings}
-          onRefresh={refresh}
-        />
+    <>
+      <Collapse show={showCheckin}>
+        {showCheckin ? (
+          <TodayReadinessForm
+            plan={hasPlan ? activePlan : undefined}
+            token={token ?? ""}
+            sessionTitle={hasPlan && resolvedDecision.hasSession ? getSessionTitle(state.today.next_session) : undefined}
+            warnings={state.today.warnings}
+            onSaved={state.today.daily_watch && !state.today.daily_watch_unlocked ? setWatchRevealDay : undefined}
+            onRefresh={refresh}
+          />
+        ) : null}
+      </Collapse>
+      {state.today.daily_watch && (showCheckin || state.today.daily_watch_unlocked) ? (
+        <DailyWatchPreview key={state.today.training_day} watch={state.today.daily_watch}
+          locked={!state.today.daily_watch_unlocked}
+          reveal={watchRevealDay === state.today.training_day && state.today.daily_watch_unlocked === true} />
       ) : null}
-    </Collapse>
+    </>
   );
   const sessionPanel = fightDay ? null : hasPlan ? (
     <TodaySessionPanel

@@ -38,7 +38,7 @@ from api.contracts.injury_policy import resolve_injury_policy, reconcile_session
 from api.contracts.clinician_clearance import effective_clinician_clearance
 from api.services.injury_episode_service import apply_episode_observations, episode_observations, delayed_rehab_prompts, exposure_rows_with_observations
 
-from api.contracts.command_view import CommandView, RiskWatchItem, build_command_view, make_risk
+from api.contracts.command_view import CommandView, DailyWatch, RiskWatchItem, build_command_view, make_risk
 from api.contracts.completion import (
     TERMINAL_COMPLETION_STATUSES,
     SessionCompletionRecord,
@@ -2337,6 +2337,47 @@ def _structured_today(plan_row: Mapping[str, Any], training_day: str) -> _Struct
     return _StructuredToday([], dated is None)
 
 
+def _daily_tactical_study(plan_row: Mapping[str, Any], training_day: str, phase: str) -> DailyWatch | None:
+    from api.plan_mappers import _decode_structured_text
+    from fightcamp.tactical_watch_library import extract_tactical_style, ordered_phase_bank, watch_metadata
+
+    brief = _decode_structured_text(plan_row.get("planning_brief")) or {}
+    model = brief.get("athlete_model")
+    if not isinstance(model, dict) or not model.get("sport"):
+        structured = _memoized(
+            ("effective", id(plan_row)), plan_row, lambda: resolve_effective_structured_plan(plan_row)
+        ) or {}
+        context = structured.get("athlete_context") or {}
+        metadata = structured.get("plan_metadata") or {}
+        model = {
+            "tactical_style": context.get("style_profile"),
+            **(model if isinstance(model, dict) else {}),
+            "sport": metadata.get("sport") or context.get("sport_profile"),
+        }
+    if not model.get("sport"):
+        return None
+
+    bank = ordered_phase_bank(extract_tactical_style(model), phase)
+    if not bank:
+        return None
+
+    matched = _structured_day_for_training_day(plan_row, training_day)
+    day = matched[0] if matched else {}
+    scheduled_names = {
+        _clean_text(block.get("display_name")).casefold()
+        for session in _iter_mapping_items(day.get("sessions"))
+        for block in _iter_mapping_items(session.get("blocks"))
+        if block.get("block_type") == "mindset"
+    }
+    # Keep specific studies ahead of generic ones and use the server's day
+    # so refreshing Today or changing the check-in cannot reroll the choice.
+    preferred = tuple(study for study in bank if study.style == bank[0].style)
+    daily_index = date.fromisoformat(training_day).toordinal() % len(preferred)
+    study = next((study for study in bank if study.name.casefold() in scheduled_names), preferred[daily_index])
+    content = watch_metadata(study)["tactical_watch"]
+    return DailyWatch(title=content["name"], insight=content["why"])
+
+
 def _structured_today_session_entry(plan_row: Mapping[str, Any], training_day: str) -> dict[str, Any] | None:
     return _structured_today(plan_row, training_day).entry
 
@@ -3870,6 +3911,9 @@ def _build_today_command_view(
         ),
         open_injuries=open_injuries,
     )
+    watch = _daily_tactical_study(plan_row, training_day, str(resolved_plan.get("phase") or ""))
+    view.today.daily_watch = watch
+    view.today.daily_watch_unlocked = watch is not None and bool(today_checkin)
     # Only a missing check-in needs to know whether one can be given (consent).
     can_check_in = view.today.decision_tier != "not_checked_in" or check_in_possible(store, athlete_id)
     if live:

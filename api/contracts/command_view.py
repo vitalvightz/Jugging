@@ -282,6 +282,11 @@ def resolve_decision_tier(
     return tier
 
 
+class DailyWatch(BaseModel):
+    title: str
+    insight: str
+
+
 class CommandViewToday(BaseModel):
     training_day: str
     recommendation_state: RecommendationState = "not_checked_in"
@@ -331,6 +336,9 @@ class CommandViewToday(BaseModel):
     # D-0 of a dated camp. Fight day is a state, not a session: no session is
     # offered, logged or held, and the UI renders its own fight-day layout.
     fight_day: bool = False
+    # The written preview is public coaching copy. Check-in controls its visual reveal.
+    daily_watch_unlocked: bool = False
+    daily_watch: DailyWatch | None = None
 
 
 class CommandView(BaseModel):

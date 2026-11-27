@@ -3,7 +3,12 @@ import AxeBuilder from "@axe-core/playwright";
 import { isolateFromNetwork } from "./support";
 import type { TrainingHistorySession } from "../lib/training-history";
 
-async function setup(page: Page, baseURL: string, options: { path?: string | null; failSave?: boolean; failMe?: boolean; failToday?: boolean; terms?: boolean; plan?: boolean; consent?: boolean; rejectConsent?: boolean; failConsent?: boolean; manualHistory?: TrainingHistorySession[]; sharedHistory?: TrainingHistorySession[]; activePlan?: boolean; scheduledSession?: "today" | "next"; sports?: string[] } = {}) {
+const longWatch = {
+  title: "Pressure Without Counter Exposure (Kickboxing)",
+  insight: "Use the first exchanges to gather specific information instead of trying to solve the entire matchup immediately.",
+};
+
+async function setup(page: Page, baseURL: string, options: { path?: string | null; failSave?: boolean; failMe?: boolean; failToday?: boolean; terms?: boolean; plan?: boolean; consent?: boolean; rejectConsent?: boolean; failConsent?: boolean; manualHistory?: TrainingHistorySession[]; sharedHistory?: TrainingHistorySession[]; activePlan?: boolean; scheduledSession?: "today" | "next"; dailyWatch?: boolean; appearance?: "light" | "dark"; sports?: string[] } = {}) {
   await isolateFromNetwork(page, baseURL);
   const storageKey = `sb-${new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://stub.supabase.co").hostname.split(".")[0]}-auth-token`;
   await page.addInitScript(([key, value]) => localStorage.setItem(key, value), [storageKey, JSON.stringify({
@@ -41,7 +46,7 @@ async function setup(page: Page, baseURL: string, options: { path?: string | nul
       }
       return json({ profile: { starting_path: path, athlete_id: "athlete-1", email: "fighter@example.com", full_name: "Alex", role: "athlete", access_status: "approved",
         technical_style: sports, tactical_style: [], stance: "orthodox", professional_status: "amateur", record: "",
-        athlete_timezone: "Europe/London", athlete_locale: "en", appearance_mode: "dark", nutrition_profile: {},
+        athlete_timezone: "Europe/London", athlete_locale: "en", appearance_mode: options.appearance ?? "dark", nutrition_profile: {},
         date_of_birth: "1995-01-01", meets_minimum_age: true, is_minor: false, terms_accepted: options.terms !== false, health_consent_granted: healthConsent,
         training_habits: options.manualHistory ? { enabled: true, decisions: [] } : undefined,
       }, plan_count: options.plan ? 1 : 0, latest_plan: options.plan ? { plan_id: "plan-9", status: "ready" } : null, latest_intake: null, username_rate_limit: {} });
@@ -49,6 +54,7 @@ async function setup(page: Page, baseURL: string, options: { path?: string | nul
     if (endpoint === "/api/today") return options.failToday ? json({ detail: "Unavailable" }, 503) : json({
       active_plan: options.activePlan ? { id: "plan-9", name: "Autumn camp", phase: "GPP", fight_date: "2026-12-12" } : {},
       today: { training_day: "2026-10-18", warnings: [], next_session: {}, completion_status: "not_started", session_scope: "none",
+        ...(options.dailyWatch ? { daily_watch_unlocked: Boolean(checkin), daily_watch: longWatch } : {}),
         ...(options.scheduledSession ? { next_session: { title: "Hard sparring", session_relation: options.scheduledSession }, session_scope: options.scheduledSession } : {}),
         ...(checkin ? { recommendation_state: checkin.recommendation_state, decision_tier: checkin.decision_tier, recommendation_reason: checkin.recommendation_reason }
           : { recommendation_state: "not_checked_in", decision_tier: "not_checked_in" }) },
@@ -598,3 +604,39 @@ test("a tracking athlete with nothing logged gets a first-session CTA on Home", 
   await page.screenshot({ path: test.info().outputPath("tracking-home-empty.png") });
 });
 
+
+for (const [width, appearance] of [[320, "dark"], [320, "light"], [1280, "light"]] as const) {
+  test(`Daily Watch fits a long insight after check-in at ${width}px in ${appearance} mode`, async ({ page, baseURL }) => {
+    await page.setViewportSize({ width, height: 740 });
+    await page.emulateMedia({ reducedMotion: appearance === "light" ? "no-preference" : "reduce" });
+    await setup(page, baseURL!, { activePlan: true, plan: true, path: "plan_first", dailyWatch: true, appearance });
+    await page.goto("/today");
+    const watch = page.getByRole("region", { name: "Today's Watch" });
+    await expect(watch.getByRole("link", { name: "Check in to unlxck" })).toHaveAttribute("href", "#today-checkin");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", appearance);
+    await expect(watch).toHaveCSS("background-color", appearance === "light" ? "rgb(255, 255, 255)" : "rgb(17, 19, 23)");
+    const lock = watch.getByRole("link", { name: "Check in to unlxck" }).locator("[data-watch-mark]");
+    await expect(lock).toBeVisible();
+    expect(await lock.evaluate(el => getComputedStyle(el, "::after").opacity)).toBe("0");
+    await expect(watch.getByText(longWatch.title)).toHaveCSS("visibility", "visible");
+    await expect(watch.getByRole("heading", { name: longWatch.title })).toHaveCount(0);
+    const lockedHeight = (await watch.boundingBox())?.height;
+    const submit = page.locator("#today-checkin").getByRole("button", { name: "Submit check-in" });
+    await page.route("**/api/today/checkin", route => route.fulfill({
+      status: 422, json: { detail: "Check-in could not be saved." },
+    }), { times: 1 });
+    await submit.click();
+    await expect(page.getByText("Check-in could not be saved.")).toBeVisible();
+    await expect(watch.getByRole("link", { name: "Check in to unlxck" })).toBeVisible();
+    await submit.click();
+    await expect(watch.getByRole("heading", { name: longWatch.title })).toBeVisible();
+    await expect(lock).toHaveCount(0);
+    await expect(watch.getByRole("heading", { name: longWatch.title }).locator("..")).toHaveCSS("filter", /^(none|blur\(0px\))$/);
+    await expect(watch.getByText(longWatch.insight, { exact: true })).toBeVisible();
+    expect((await watch.boundingBox())?.height).toBe(lockedHeight);
+    expect(await watch.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await page.reload();
+    await expect(watch.getByRole("heading", { name: longWatch.title })).toBeVisible();
+    await expect(watch.getByRole("link", { name: "Check in to unlxck" })).toHaveCount(0);
+  });
+}
