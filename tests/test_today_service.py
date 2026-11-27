@@ -2666,6 +2666,8 @@ class TestCommandView:
         locked = today(now)
         assert locked.session_scope == "next"
         assert locked.daily_watch is not None
+        assert locked.daily_watch.objective
+        assert locked.daily_watch.instructions
         assert not locked.daily_watch_unlocked
 
         submit_today_checkin(store, athlete_id=ATHLETE, athlete_timezone="", payload=_checkin_payload(), now=now)

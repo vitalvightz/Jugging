@@ -4,11 +4,17 @@ import { isolateFromNetwork } from "./support";
 import type { TrainingHistorySession } from "../lib/training-history";
 
 const longWatch = {
+  objective: "Advance behind a shape that protects against the known return.",
+  instructions: [
+    "Identify the expected opponent's highest-value counter against forward movement.",
+    "Locate the earliest body cue and the range where that counter becomes live.",
+    "Build the pressure action that closes space while covering or removing its line.",
+  ],
   title: "Pressure Without Counter Exposure (Kickboxing)",
   insight: "Use the first exchanges to gather specific information instead of trying to solve the entire matchup immediately.",
 };
 
-async function setup(page: Page, baseURL: string, options: { path?: string | null; failSave?: boolean; failMe?: boolean; failToday?: boolean; terms?: boolean; plan?: boolean; consent?: boolean; rejectConsent?: boolean; failConsent?: boolean; manualHistory?: TrainingHistorySession[]; sharedHistory?: TrainingHistorySession[]; activePlan?: boolean; scheduledSession?: "today" | "next"; dailyWatch?: boolean; appearance?: "light" | "dark"; sports?: string[] } = {}) {
+async function setup(page: Page, baseURL: string, options: { path?: string | null; failSave?: boolean; failMe?: boolean; failToday?: boolean; terms?: boolean; plan?: boolean; consent?: boolean; rejectConsent?: boolean; failConsent?: boolean; manualHistory?: TrainingHistorySession[]; sharedHistory?: TrainingHistorySession[]; activePlan?: boolean; scheduledSession?: "today" | "next"; dailyWatch?: boolean; recoveryDay?: boolean; legacyWatch?: boolean; appearance?: "light" | "dark"; sports?: string[] } = {}) {
   await isolateFromNetwork(page, baseURL);
   const storageKey = `sb-${new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://stub.supabase.co").hostname.split(".")[0]}-auth-token`;
   await page.addInitScript(([key, value]) => localStorage.setItem(key, value), [storageKey, JSON.stringify({
@@ -54,7 +60,7 @@ async function setup(page: Page, baseURL: string, options: { path?: string | nul
     if (endpoint === "/api/today") return options.failToday ? json({ detail: "Unavailable" }, 503) : json({
       active_plan: options.activePlan ? { id: "plan-9", name: "Autumn camp", phase: "GPP", fight_date: "2026-12-12" } : {},
       today: { training_day: "2026-10-18", warnings: [], next_session: {}, completion_status: "not_started", session_scope: "none",
-        ...(options.dailyWatch ? { daily_watch_unlocked: Boolean(checkin), daily_watch: longWatch } : {}),
+        ...(options.dailyWatch ? { daily_watch_unlocked: Boolean(checkin), daily_watch: options.legacyWatch ? { title: longWatch.title, insight: longWatch.insight } : { ...longWatch, is_recovery_day: options.recoveryDay } } : {}),
         ...(options.scheduledSession ? { next_session: { title: "Hard sparring", session_relation: options.scheduledSession }, session_scope: options.scheduledSession } : {}),
         ...(checkin ? { recommendation_state: checkin.recommendation_state, decision_tier: checkin.decision_tier, recommendation_reason: checkin.recommendation_reason }
           : { recommendation_state: "not_checked_in", decision_tier: "not_checked_in" }) },
@@ -605,11 +611,14 @@ test("a tracking athlete with nothing logged gets a first-session CTA on Home", 
 });
 
 
-for (const [width, appearance] of [[320, "dark"], [320, "light"], [1280, "light"]] as const) {
+for (const [width, appearance] of [[320, "dark"], [320, "light"], [390, "dark"], [390, "light"], [1280, "dark"], [1280, "light"]] as const) {
   test(`Daily Watch fits a long insight after check-in at ${width}px in ${appearance} mode`, async ({ page, baseURL }) => {
     await page.setViewportSize({ width, height: 740 });
     await page.emulateMedia({ reducedMotion: appearance === "light" ? "no-preference" : "reduce" });
-    await setup(page, baseURL!, { activePlan: true, plan: true, path: "plan_first", dailyWatch: true, appearance });
+    const training = appearance === "dark";
+    const legacyWatch = !training && width === 320;
+    await setup(page, baseURL!, { activePlan: true, plan: true, path: "plan_first", dailyWatch: true, appearance, legacyWatch,
+      scheduledSession: training || width === 390 ? "today" : "next", recoveryDay: !training });
     await page.goto("/today");
     const watch = page.getByRole("region", { name: "Today's Watch" });
     await expect(watch.getByRole("link", { name: "Check in to unlxck" })).toHaveAttribute("href", "#today-checkin");
@@ -620,6 +629,7 @@ for (const [width, appearance] of [[320, "dark"], [320, "light"], [1280, "light"
     expect(await lock.evaluate(el => getComputedStyle(el, "::after").opacity)).toBe("0");
     await expect(watch.getByText(longWatch.title)).toHaveCSS("visibility", "visible");
     await expect(watch.getByRole("heading", { name: longWatch.title })).toHaveCount(0);
+    await expect(watch.getByRole("button", { name: "Open today's Watch" })).toHaveCount(0);
     const lockedHeight = (await watch.boundingBox())?.height;
     const submit = page.locator("#today-checkin").getByRole("button", { name: "Submit check-in" });
     await page.route("**/api/today/checkin", route => route.fulfill({
@@ -638,5 +648,25 @@ for (const [width, appearance] of [[320, "dark"], [320, "light"], [1280, "light"
     await page.reload();
     await expect(watch.getByRole("heading", { name: longWatch.title })).toBeVisible();
     await expect(watch.getByRole("link", { name: "Check in to unlxck" })).toHaveCount(0);
+    const open = watch.getByRole("button", { name: "Open today's Watch" });
+    await open.click({ position: { x: 5, y: 5 } });
+    const briefing = page.getByRole("dialog", { name: "Today's Watch" });
+    await expect(briefing.getByRole("heading", { name: longWatch.title })).toBeVisible();
+    await expect(briefing.getByRole("heading", { name: "Your mission" })).toHaveCount(legacyWatch ? 0 : 1);
+    await expect(briefing.getByRole("listitem")).toHaveText(legacyWatch ? [] : longWatch.instructions);
+    expect(await briefing.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await page.screenshot({ path: test.info().outputPath("watch-briefing.png"), animations: "disabled" });
+    await page.keyboard.press("Escape");
+    await expect(briefing).toHaveCount(0);
+    await open.click();
+    await briefing.getByRole("button", { name: training ? "Preview today’s session" : "Back to Today" }).last().click();
+    await expect(briefing).toHaveCount(0);
+    if (training) {
+      const session = page.getByRole("dialog");
+      await expect(session).toContainText("Hard sparring");
+      await session.getByRole("button", { name: "Back to Today" }).click();
+    }
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(open).toBeVisible();
   });
 }

@@ -131,3 +131,46 @@
   45% { opacity: .82; visibility: visible; }
   to { opacity: 0; visibility: hidden; }
 }
+
+.watch { position: relative; }
+.open {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.open span { position: absolute; inset: 9px 16px auto auto; }
+.open:hover { color: var(--text-primary); }
+.open:focus-visible { outline: 2px solid currentColor; outline-offset: -3px; }
+
+.screen { display: flex; flex-direction: column; }
+.briefing:global(.today-preview-screen) {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  gap: clamp(24px, 4vh, 36px);
+  width: 100%;
+  box-sizing: border-box;
+  padding-block: clamp(28px, 6vh, 56px) max(24px, env(safe-area-inset-bottom));
+  overflow-wrap: anywhere;
+}
+.briefing h1 {
+  max-width: 21ch;
+  margin: 10px 0 16px;
+  font: 750 clamp(32px, 7vw, 56px)/1.04 var(--font-display);
+  letter-spacing: -.05em;
+  text-wrap: balance;
+}
+.insight { max-width: 54ch; margin: 0; color: var(--text-secondary); font-size: clamp(17px, 2vw, 21px); line-height: 1.45; }
+.briefing section { border-top: 1px solid var(--border-default); padding-top: 18px; }
+.briefing h2 { margin: 0 0 10px; font: 600 var(--type-label-sm) var(--font-mono); letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--text-secondary); }
+.mission { max-width: 52ch; margin: 0; font-size: 20px; font-weight: 600; line-height: 1.4; }
+.briefing ol { display: grid; gap: 12px; margin: 0; padding-left: 25px; }
+.briefing li { padding-left: 6px; line-height: 1.5; }
+.briefing li::marker { color: var(--text-secondary); font: 600 var(--type-meta) var(--font-mono); }
+.briefing > button { margin-top: auto; min-height: 48px; }
