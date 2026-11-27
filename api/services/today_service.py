@@ -2375,7 +2375,11 @@ def _daily_tactical_study(plan_row: Mapping[str, Any], training_day: str, phase:
     daily_index = date.fromisoformat(training_day).toordinal() % len(preferred)
     study = next((study for study in bank if study.name.casefold() in scheduled_names), preferred[daily_index])
     content = watch_metadata(study)["tactical_watch"]
-    return DailyWatch(title=content["name"], insight=content["why"])
+    return DailyWatch(
+        is_recovery_day=day.get("day_type") in {"rest", "recovery"},
+        title=content["name"], insight=content["why"],
+        objective=content["mindset"]["intent"] or None, instructions=content["instructions"],
+    )
 
 
 def _structured_today_session_entry(plan_row: Mapping[str, Any], training_day: str) -> dict[str, Any] | None:

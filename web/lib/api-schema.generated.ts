@@ -786,8 +786,11 @@ export type DailyCheckIn = {
 };
 
 export type DailyWatch = {
+  is_recovery_day: boolean;
   title: string;
   insight: string;
+  objective: string | null;
+  instructions: string[];
 };
 
 /** A calendar day in the plan (Section J). */

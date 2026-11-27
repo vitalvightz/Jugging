@@ -283,8 +283,11 @@ def resolve_decision_tier(
 
 
 class DailyWatch(BaseModel):
+    is_recovery_day: bool = False
     title: str
     insight: str
+    objective: str | None = None
+    instructions: list[str] = Field(default_factory=list)
 
 
 class CommandViewToday(BaseModel):

@@ -557,6 +557,8 @@ export function TodaySessionBlocks({
  * the decision banner framing it, and the start/complete lifecycle actions.
  */
 export function TodaySessionPanel({
+  watchPreviewOpen = false,
+  onCloseWatchPreview,
   state,
   structuredPlan,
   planSchedule,
@@ -573,6 +575,8 @@ export function TodaySessionPanel({
   athleteSports,
 }: {
   state: TodayCommandView;
+  watchPreviewOpen?: boolean;
+  onCloseWatchPreview?: () => void;
   /** The athlete's own sports (profile technical_style): a focus from another sport stays hidden. */
   athleteSports?: readonly string[] | null;
   /** Applies an athlete's exercise change to the shown plan (see useTodayCommand). */
@@ -1500,6 +1504,51 @@ export function TodaySessionPanel({
     ? relevantFocusItem(visibleFocus, focusTarget, (item) => item.origin === "inferred" && (item.scope === "sport_technique" || item.scope === "mental_skill"))
     : null;
 
+  const sessionDetails = showStructuredBlocks ? (
+    <TodaySessionBlocks
+      planId={state.active_plan?.id}
+      current={current}
+      headline={shownTitle}
+      openWeekIntent={openWeekIntent}
+      rehabLabelPolicy={rehabLabelPolicy}
+      exerciseMedia={exerciseMedia}
+      exerciseLogging={exerciseLogging}
+      accessToken={token}
+      exerciseCustomisation={exerciseCustomisation}
+      exerciseCues={shownExerciseCues}
+    />
+  ) : presentationPending ? (
+    isSessionPreview ? null : <Skeleton variant="block" height={140} />
+  ) : (
+    <div className="today-session-summary">
+      <div>
+        <p className="today-detail-label">Day</p>
+        <p>{formatSessionDate(session)}</p>
+      </div>
+      <div>
+        <p className="today-detail-label">Focus</p>
+        <p>{getSessionFocus(session)}</p>
+      </div>
+      {session.coach_led_contact ? (
+        <div>
+          <p className="today-detail-label">Coach contact</p>
+          <p>{athleteFacingSessionTitle(session.coach_led_contact)}</p>
+        </div>
+      ) : null}
+      {duration ? (
+        <div>
+          <p className="today-detail-label">Duration</p>
+          <p>{duration}</p>
+        </div>
+      ) : null}
+      {!isSessionPreview ? (
+        <div>
+          <p className="today-detail-label">Status</p>
+          <p>{rehabOnlyPrescription && status === "skipped" ? "Not done" : getCompletionLabel(status)}</p>
+        </div>
+      ) : null}
+    </div>
+  );
   return (
     <section
       id="today-session"
@@ -1610,91 +1659,32 @@ export function TodaySessionPanel({
           && ((canCompleteSession && status === "not_started") || isSessionPreview)
           ? <TrainingTimeReminder token={token} /> : null}
         {safeSession ? <SafeSessionCard view={safeSession} /> : null}
-        {showStructuredBlocks ? (
-          // A previewed day is read on its own screen; today's work stays here.
-          isSessionPreview ? (
-            previewOpen ? (
-              <InjuryDetailSheet
-                title={shownTitle}
-                variant="screen"
-                closeLabel="Back to Today"
-                onClose={() => fadeThrough(() => setPreviewOpen(false))}
-              >
-                <div className="today-preview-screen">
-                  <p className="today-preview-meta">
-                    <span>{relationCopy.kicker}</span>
-                    {sessionDateLabel ? <span>{sessionDateLabel}</span> : null}
-                  </p>
-                  {summaryChips.length > 0 ? (
-                    <SummaryChipList chips={summaryChips} />
-                  ) : null}
-                  <TodaySessionBlocks
-                    planId={state.active_plan?.id}
-                    current={current}
-                    headline={shownTitle}
-                    openWeekIntent={openWeekIntent}
-                    rehabLabelPolicy={rehabLabelPolicy}
-                    exerciseMedia={exerciseMedia}
-                    exerciseLogging={exerciseLogging}
-                    accessToken={token}
-                    exerciseCustomisation={exerciseCustomisation}
-                    exerciseCues={shownExerciseCues}
-                  />
-                  <p className="today-pending-line">
-                    <span className="today-pending-pill">Pending</span>
-                    {unlockCopy}
-                  </p>
-                </div>
-              </InjuryDetailSheet>
-            ) : null
-          ) : (
-            <TodaySessionBlocks
-              planId={state.active_plan?.id}
-              current={current}
-              headline={shownTitle}
-              openWeekIntent={openWeekIntent}
-              rehabLabelPolicy={rehabLabelPolicy}
-              exerciseMedia={exerciseMedia}
-              exerciseLogging={exerciseLogging}
-              accessToken={token}
-              exerciseCustomisation={exerciseCustomisation}
-              exerciseCues={shownExerciseCues}
-            />
-          )
-        ) : presentationPending ? (
-          // The plan read decides between the blocks and this summary; showing
-          // the summary first made the card change twice.
-          isSessionPreview ? null : <Skeleton variant="block" height={140} />
-        ) : (
-          <div className="today-session-summary">
-            <div>
-              <p className="today-detail-label">Day</p>
-              <p>{formatSessionDate(session)}</p>
+        {(watchPreviewOpen || (isSessionPreview && previewOpen && showStructuredBlocks)) ? (
+          <InjuryDetailSheet
+            title={shownTitle}
+            variant="screen"
+            closeLabel="Back to Today"
+            onClose={() => fadeThrough(() => {
+              setPreviewOpen(false);
+              onCloseWatchPreview?.();
+            })}
+          >
+            <div className="today-preview-screen">
+              <p className="today-preview-meta">
+                <span>{relationCopy.kicker}</span>
+                {sessionDateLabel ? <span>{sessionDateLabel}</span> : null}
+              </p>
+              {summaryChips.length > 0 && !safeSession ? <SummaryChipList chips={summaryChips} /> : null}
+              {safeSession ? <SafeSessionCard view={safeSession} /> : sessionDetails}
+              {isSessionPreview ? (
+                <p className="today-pending-line">
+                  <span className="today-pending-pill">Pending</span>
+                  {unlockCopy}
+                </p>
+              ) : null}
             </div>
-            <div>
-              <p className="today-detail-label">Focus</p>
-              <p>{getSessionFocus(session)}</p>
-            </div>
-            {session.coach_led_contact ? (
-              <div>
-                <p className="today-detail-label">Coach contact</p>
-                <p>{athleteFacingSessionTitle(session.coach_led_contact)}</p>
-              </div>
-            ) : null}
-            {duration ? (
-              <div>
-                <p className="today-detail-label">Duration</p>
-                <p>{duration}</p>
-              </div>
-            ) : null}
-            {!isSessionPreview ? (
-              <div>
-                <p className="today-detail-label">Status</p>
-                <p>{rehabOnlyPrescription && status === "skipped" ? "Not done" : getCompletionLabel(status)}</p>
-              </div>
-            ) : null}
-          </div>
-        )}
+          </InjuryDetailSheet>
+        ) : !isSessionPreview || !showStructuredBlocks ? sessionDetails : null}
         {isSessionPreview && !safeSession ? (
           <div className="today-next-planned-note">
             <p className="today-pending-line">

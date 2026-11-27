@@ -258,6 +258,7 @@ export function TodayScreen() {
   const planTitle = activePlan.name?.trim() || (openOngoing ? "Open training plan" : "Active fight camp");
   const hasPlan = hasActivePlan(activePlan);
   const trainingDate = state?.today.training_day;
+  const [watchSessionDay, setWatchSessionDay] = useState<string>();
   const [watchRevealDay, setWatchRevealDay] = useState<string>();
   const day = trainingDate && /^\d{4}-\d{2}-\d{2}$/.test(trainingDate) ? new Date(`${trainingDate}T12:00:00`) : null;
   const progress = !openOngoing && day && !Number.isNaN(day.getTime()) ? resolvePlanProgress(structuredPlan, day) : null;
@@ -458,6 +459,8 @@ export function TodayScreen() {
       </Collapse>
       {state.today.daily_watch && (showCheckin || state.today.daily_watch_unlocked) ? (
         <DailyWatchPreview key={state.today.training_day} watch={state.today.daily_watch}
+          onPreviewSession={hasPlan && !fightDay && !state.today.daily_watch.is_recovery_day && resolvedDecision.hasSession && resolvedDecision.sessionIsToday
+            ? () => setWatchSessionDay(state.today.training_day) : undefined}
           locked={!state.today.daily_watch_unlocked}
           reveal={watchRevealDay === state.today.training_day && state.today.daily_watch_unlocked === true} />
       ) : null}
@@ -465,6 +468,8 @@ export function TodayScreen() {
   );
   const sessionPanel = fightDay ? null : hasPlan ? (
     <TodaySessionPanel
+      watchPreviewOpen={watchSessionDay === state.today.training_day && state.today.daily_watch_unlocked === true && resolvedDecision.sessionIsToday}
+      onCloseWatchPreview={() => setWatchSessionDay(undefined)}
       state={state}
       structuredPlan={structuredPlan}
       rehabLabelPolicy={rehabLabelPolicy}
