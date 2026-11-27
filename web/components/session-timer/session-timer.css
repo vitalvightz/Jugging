@@ -1567,8 +1567,30 @@ html[data-theme="light"] .st-root[data-tone="rest"] .st-main[data-phase="rest"] 
   text-transform: uppercase;
   color: var(--st-ink-soft);
 }
-/* Content sits just above the controls: air under the header, no dead gap above Start. */
-.st-root[data-tone] .st-main[data-card] { justify-content: flex-end; gap: 6px; padding-bottom: 32px; }
+.st-main[data-card] { gap: 6px; }
+/* The exercise name holds one place in every state (ready, work, rest); what
+   follows it is centred in the space between the name and the controls. */
+.st-root[data-tone] .st-main:has(> .st-title-block) { justify-content: flex-start; }
+.st-title-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: auto;
+  padding-top: clamp(4px, 3dvh, 28px);
+}
+/* An empty spacer that takes no room of its own (it cancels the main's gap). */
+.st-main:has(> .st-title-block)::after { content: ""; margin-top: auto; margin-bottom: -8px; }
+.st-last { margin: 6px 0 0; font-size: 15px; font-weight: 500; color: var(--st-ink); font-variant-numeric: tabular-nums; }
+.st-last span {
+  margin-right: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--st-ink-soft);
+}
+/* Starting the next set early is a real action, not a quiet option. */
+.st-primary[data-variant="go"] { background: var(--st-ink); color: var(--st-on-ink); }
 .st-dose {
   --cols: 1;
   display: grid;
@@ -1601,9 +1623,9 @@ html[data-theme="light"] .st-root[data-tone="rest"] .st-main[data-phase="rest"] 
 .st-dose[data-count="5"] { --cols: 5; }
 .st-dose-extras {
   grid-column: 1 / -1;
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--st-ink-soft);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--st-ink);
   font-variant-numeric: tabular-nums;
 }
 .st-dose-tile strong {
@@ -1662,7 +1684,6 @@ html[data-theme="light"] .st-root .st-set-track li:not([data-state]) { backgroun
   color: var(--st-ink-soft);
 }
 .st-up-next strong { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
-.st-up-next-target { font-size: 15px; color: var(--st-ink-soft); }
 .st-cue {
   width: min(100%, 24rem);
   margin: 14px 0 0;
@@ -1698,8 +1719,7 @@ html[data-theme="light"] .st-root .st-set-track li:not([data-state]) { backgroun
     max-width: 1180px;
     margin: 0 auto;
   }
-  .st-stage { flex: 0 1 640px; align-self: stretch; justify-content: center; }
-  .st-root[data-tone] .st-main[data-card] { flex: 0 0 auto; }
+  .st-stage { flex: 0 1 640px; align-self: stretch; }
   .st-steps { max-width: 1180px; }
   .st-root:has(.st-rail) .st-next { display: none; }
   .st-rail {
@@ -1765,4 +1785,8 @@ html[data-theme="light"] .st-root .st-set-track li:not([data-state]) { backgroun
     color: var(--st-ink);
   }
   .st-root:has(.st-rail) .st-main:not([data-card]) .st-cue { display: none; }
+}
+@media (max-height: 700px), (min-width: 1000px) and (max-height: 860px) {
+  .st-title-block { padding-top: 0; }
+  .st-title-block .st-kicker { margin-bottom: 2px; font-size: 11px; }
 }

@@ -199,7 +199,7 @@ test("cluster ready screen shows both movements without combat format setup", ()
   assert.match(html, /Movements each round/);
   assert.match(html, /2 reps · 85% 1RM/);
   assert.match(html, /<strong>Broad Jump<\/strong>/);
-  assert.match(html, /class="st-primary">Start</);
+  assert.match(html, /class="st-primary">Start round 1</);
   assert.match(html, /4:00/);
   assert.doesNotMatch(html, /Pick a format|Boxing 3\/1|3:00/);
 });
@@ -228,4 +228,12 @@ test("logging as planned names exactly what it records", () => {
   const sets = { ...SHUTTLE, unit: "set" as const, sets: { min: 4, max: 4 } };
   assert.equal(logAsPlannedLabel(sets), "Log all 4 sets as done");
   assert.equal(logAsPlannedLabel({ ...sets, sets: { min: 1, max: 1 } }), "Log set as done");
+});
+
+test("Up next names the first set and shows the last logged performance only when there is one", () => {
+  const sets: TimerItem = { ...SHUTTLE, unit: "set", lastPerformance: "95 kg · 4 × 5 · RPE 7" };
+  const html = render([sets]);
+  assert.match(html, /class="st-primary">Start set 1</);
+  assert.match(html, /<p class="st-last"><span>Last session<\/span>95 kg · 4 × 5 · RPE 7<\/p>/);
+  assert.doesNotMatch(render([{ ...sets, lastPerformance: null }]), /st-last/);
 });

@@ -88,6 +88,8 @@ export type SetsItem = TimerItemBase & {
   /** Numeric targets for optional per-set strength logging; no display parsing. */
   setFields?: LogField[];
   weightRecommendation?: import("../weight-recommendation").WeightRecommendation;
+  /** The athlete's most recent logged performance of this exercise, as one line. */
+  lastPerformance?: string | null;
   suggestedLoads?: (string | null)[];
   /**
    * "round" for rounds the athlete ends by tapping (e.g. 6 × 200 m with no

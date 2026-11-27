@@ -944,7 +944,7 @@ function PrimaryAction({
     };
     return (
       <button type="button" className="st-primary" onClick={unlockThen(start)}>
-        {item.kind === "interval" && item.rounds > 1 ? "Start round 1" : "Start"}
+        {item.kind === "interval" && item.rounds > 1 ? "Start round 1" : item.kind === "sets" ? `Start ${countNoun(item)} 1` : "Start"}
       </button>
     );
   }
@@ -979,7 +979,7 @@ function PrimaryAction({
   }
   if (state.phase === "rest") {
     return (
-      <button type="button" className="st-primary" data-variant="ghost" onClick={() => timer.run(skipRest)}>
+      <button type="button" className="st-primary" data-variant="go" onClick={() => timer.run(skipRest)}>
         {isPrep(state)
           ? "Start now"
           : item.kind === "sets"
@@ -1318,7 +1318,7 @@ export function SessionTimer({
   const upNext = state.phase === "rest" && !isPrep(state) && item?.kind === "sets" && !restLogTarget
     ? {
       unit: item.sets ? `${unitWord(item)} ${state.unit} of ${formatRange(item.sets)}` : `${unitWord(item)} ${state.unit}`,
-      target: item.holdSec ? null : perUnitTarget(item),
+      target: perUnitTarget(item),
     }
     : null;
 
@@ -1433,11 +1433,16 @@ export function SessionTimer({
         <div className="st-main" data-phase={state.phase} data-card={exerciseCard || undefined}>
           {exerciseCard && item ? (
             <>
-              <p className="st-kicker">{state.items.length > 1 ? "Up next" : "Ready"}</p>
-              <ExerciseTitle title={item.title} />
+              <div className="st-title-block">
+                <p className="st-kicker">{state.items.length > 1 ? "Up next" : "Ready"}</p>
+                <ExerciseTitle title={item.title} />
+              </div>
               {item.kind === "sets" ? (
                 <>
                   <DoseTiles item={item} onAdjust={() => { dismissAdjustHint(); setSheet("adjust"); }} />
+                  {item.lastPerformance ? (
+                    <p className="st-last"><span>Last session</span>{item.lastPerformance}</p>
+                  ) : null}
                   {item.components?.length ? <DoseStats item={item} /> : null}
                   <SetTrack item={item} done={done} current={null} />
                 </>
@@ -1448,7 +1453,13 @@ export function SessionTimer({
             </>
           ) : (
             <>
-          {item && showsTitle ? <ExerciseTitle title={item.title} /> : null}
+          {item && showsTitle ? (
+            <div className="st-title-block">
+              {/* Keeps the name where Up next put it, so it never moves between states. */}
+              <p className="st-kicker" aria-hidden="true">{"\u00a0"}</p>
+              <ExerciseTitle title={item.title} />
+            </div>
+          ) : null}
           {item ? <DoseStats item={item} /> : null}
           {/* Phase and count share one reading axis above the clock. */}
           <div className="st-board-header">
@@ -1524,8 +1535,7 @@ export function SessionTimer({
           {upNext ? (
             <div className="st-up-next">
               <span className="st-up-next-label">Up next</span>
-              <strong>{upNext.unit}</strong>
-              {upNext.target ? <span className="st-up-next-target">{upNext.target}</span> : null}
+              <strong>{upNext.target ? `${upNext.unit} · ${upNext.target}` : upNext.unit}</strong>
             </div>
           ) : null}
           {item && state.phase !== "ready" ? <CoachCue item={item} /> : null}
