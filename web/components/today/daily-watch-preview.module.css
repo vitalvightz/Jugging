@@ -1,60 +1,105 @@
 .watch {
+  --watch-accent: #f75b70;
   margin-block: 0 16px;
-  padding: 18px 20px;
+  padding: 12px 16px;
   border: 1px solid var(--border-default);
-  border-radius: 16px;
+  border-inline-start: 3px solid var(--brand-red);
+  border-radius: 12px;
   background: var(--bg-panel);
   color: var(--text-primary);
+  overflow: hidden;
 }
 
-.watch h2 { margin: 0 0 12px; font-size: 15px; }
+:global([data-theme="light"]) .watch { --watch-accent: var(--brand-red); }
+
+.watch h2 {
+  margin: 0 0 4px;
+  color: var(--watch-accent);
+  font-size: 13px;
+  font-weight: 750;
+}
+
 .study {
+  position: relative;
   display: grid;
   align-items: center;
-  /* Reserve room for wrapped study names and insights on small screens. */
-  min-block-size: 13rem;
-  padding: 14px;
-  border-radius: 12px;
-  background: var(--bg-surface-alt);
+  /* Leave room for the bank's longest copy at phone widths. */
+  min-block-size: 7.75rem;
   isolation: isolate;
 }
 
 @media (min-width: 600px) {
-  .study { min-block-size: 9rem; }
+  .study { min-block-size: 5.5rem; }
 }
+
 .study > * { grid-area: 1 / 1; }
-.study h3 { margin: 0 0 6px; font-size: clamp(20px, 5vw, 28px); line-height: 1.12; }
-.study p { max-width: 52ch; margin: 0; color: var(--text-secondary); line-height: 1.45; }
-.preview { display: grid; gap: 12px; filter: blur(4px); opacity: .32; }
-.preview span { width: 80%; height: 8px; background: var(--text-muted); }
-.preview span:first-child { width: 54%; height: 20px; }
-.preview span:last-child { width: 63%; }
-.unlock {
-  justify-self: center;
+.study h3 { margin: 0 0 4px; font-size: clamp(17px, 4.6vw, 23px); line-height: 1.16; }
+.study p { max-width: 60ch; margin: 0; color: var(--text-secondary); font-size: 14px; line-height: 1.4; }
+
+.preview {
+  position: absolute;
+  inset-inline: 48% 0;
+  inset-block-start: 50%;
   display: grid;
-  justify-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border-radius: 8px;
+  gap: 7px;
+  opacity: .24;
+  filter: blur(2px);
+  transform: translateY(-50%) skewX(-15deg);
+  pointer-events: none;
+}
+
+.preview span { width: 100%; height: 6px; background: var(--text-muted); }
+.preview span:first-child { width: 66%; height: 10px; background: var(--watch-accent); }
+.preview span:last-child { width: 76%; }
+
+.unlock {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-block-size: 44px;
+  padding-inline: 3px 10px;
+  border-radius: 7px;
   color: var(--text-primary);
-  font-weight: 700;
+  background: var(--bg-panel);
+  font-size: 15px;
+  font-weight: 750;
   text-decoration: none;
   z-index: 1;
 }
 
-.unlock:hover { text-decoration: underline; }
-.unlock:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.unlock:hover { color: var(--watch-accent); }
+.unlock:focus-visible { outline: 2px solid var(--watch-accent); outline-offset: 3px; }
 .lock {
   display: grid;
   place-items: center;
-  inline-size: 42px;
-  block-size: 42px;
-  border: 1px solid var(--border-default);
-  border-radius: 50%;
-  background: var(--bg-panel);
+  inline-size: 32px;
+  block-size: 32px;
+  border-radius: 7px;
+  background: var(--brand-red);
+  color: #fff;
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .study[data-reveal] > div { animation: reveal 220ms ease-out both; }
+  .preview span:first-child { animation: signal 1.8s ease-out 2; transform-origin: left; }
+  .study[data-reveal] > div { animation: reveal 360ms ease-out both; }
+  .study[data-reveal]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: var(--brand-red-soft);
+    animation: sweep 420ms ease-out both;
+  }
 }
-@keyframes reveal { from { opacity: 0; filter: blur(4px); } }
+
+@keyframes signal {
+  0%, 100% { transform: scaleX(1); opacity: 1; }
+  55% { transform: scaleX(.7); opacity: .45; }
+}
+
+@keyframes reveal { from { opacity: .4; transform: translateX(-5px); } }
+@keyframes sweep {
+  from { clip-path: inset(0 100% 0 0); opacity: 1; }
+  to { clip-path: inset(0 0 0 100%); opacity: 0; }
+}
