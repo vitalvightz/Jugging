@@ -46,6 +46,8 @@ type TimerItemBase = {
   /** Ordered movements completed together before the between-round rest. */
   components?: BlockComponentLine[];
   blockType: string | null;
+  /** The plan's coaching cues for this exercise, word for word. Absent on older runs. */
+  cues?: string[];
 };
 
 /**
@@ -105,15 +107,12 @@ export function countNoun(item: SetsItem): "set" | "round" {
 }
 
 /**
- * The word shown while an item is being worked. A specific word appears only
- * when the plan's structure states it: "Spar" for a sparring block, "Work" for
- * timed or counted rounds. Nothing structured says an exercise is a lift or a
- * hold, so every other item, including any of unknown type, is "Exercise".
+ * The word shown while an item is being worked: "Spar" for a sparring block,
+ * "Work" for everything else. Not every exercise is a lift or a hold, and the
+ * plan's structure never says which, so nothing more specific is claimed.
  */
-export function workPhaseLabel(item: TimerItem): "Spar" | "Work" | "Exercise" {
-  if (item.kind === "interval") return item.sparring ? "Spar" : "Work";
-  if (item.kind === "sets" && countNoun(item) === "round") return "Work";
-  return "Exercise";
+export function workPhaseLabel(item: TimerItem): "Spar" | "Work" {
+  return item.kind === "interval" && item.sparring ? "Spar" : "Work";
 }
 
 /** Blocks the timer never runs: they are guidance, not executable work. */
@@ -470,7 +469,10 @@ export function buildTimerItems(
       // sessions; the timer needs a unique key per item.
       const id = seen.has(item.id) ? `${item.id}-${sessionPos}-${blockPos}` : item.id;
       seen.add(id);
-      items.push({ ...item, id });
+      const cues = (block.coaching_cues ?? [])
+        .map((cue) => (typeof cue === "string" ? cue.trim() : ""))
+        .filter(Boolean);
+      items.push(cues.length ? { ...item, id, cues } : { ...item, id });
     });
   });
   return items;
