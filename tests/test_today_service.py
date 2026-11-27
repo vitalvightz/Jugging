@@ -2665,17 +2665,18 @@ class TestCommandView:
 
         locked = today(now)
         assert locked.session_scope == "next"
-        assert locked.daily_watch_available
-        assert locked.daily_watch is None
+        assert locked.daily_watch is not None
+        assert not locked.daily_watch_unlocked
 
         submit_today_checkin(store, athlete_id=ATHLETE, athlete_timezone="", payload=_checkin_payload(), now=now)
         unlocked = today(now)
-        assert unlocked.daily_watch and unlocked.daily_watch.insight
+        assert unlocked.daily_watch == locked.daily_watch
+        assert unlocked.daily_watch_unlocked
         assert today(now).daily_watch == unlocked.daily_watch
 
         tomorrow = today(now + timedelta(days=1))
-        assert tomorrow.daily_watch_available
-        assert tomorrow.daily_watch is None
+        assert tomorrow.daily_watch is not None
+        assert not tomorrow.daily_watch_unlocked
 
     def test_daily_watch_stays_unlocked_but_can_change_after_a_same_day_programme_switch(self):
         store = _store_with_plan()
@@ -2686,12 +2687,12 @@ class TestCommandView:
         now = datetime(2026, 6, 22, 12, 0, tzinfo=timezone.utc)
         submit_today_checkin(store, athlete_id=ATHLETE, athlete_timezone="", payload=_checkin_payload(), now=now)
         before = build_today_command_view(store, athlete_id=ATHLETE, athlete_timezone="", now=now)
-        assert before.today.daily_watch is not None
+        assert before.today.daily_watch_unlocked
 
         store.set_active_plan_id(ATHLETE, OTHER_PLAN)
         after = build_today_command_view(store, athlete_id=ATHLETE, athlete_timezone="", now=now)
         assert after.active_plan["id"] == OTHER_PLAN
-        assert after.today.daily_watch is not None
+        assert after.today.daily_watch_unlocked
         assert after.today.daily_watch != before.today.daily_watch
 
     def test_structured_today_session_overrides_next_sparring_preview(self):

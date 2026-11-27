@@ -54,8 +54,7 @@ async function setup(page: Page, baseURL: string, options: { path?: string | nul
     if (endpoint === "/api/today") return options.failToday ? json({ detail: "Unavailable" }, 503) : json({
       active_plan: options.activePlan ? { id: "plan-9", name: "Autumn camp", phase: "GPP", fight_date: "2026-12-12" } : {},
       today: { training_day: "2026-10-18", warnings: [], next_session: {}, completion_status: "not_started", session_scope: "none",
-        ...(options.dailyWatch ? { daily_watch_available: true,
-          daily_watch: checkin ? longWatch : null } : {}),
+        ...(options.dailyWatch ? { daily_watch_unlocked: Boolean(checkin), daily_watch: longWatch } : {}),
         ...(options.scheduledSession ? { next_session: { title: "Hard sparring", session_relation: options.scheduledSession }, session_scope: options.scheduledSession } : {}),
         ...(checkin ? { recommendation_state: checkin.recommendation_state, decision_tier: checkin.decision_tier, recommendation_reason: checkin.recommendation_reason }
           : { recommendation_state: "not_checked_in", decision_tier: "not_checked_in" }) },
@@ -609,16 +608,18 @@ test("a tracking athlete with nothing logged gets a first-session CTA on Home", 
 for (const [width, appearance] of [[320, "dark"], [320, "light"], [1280, "light"]] as const) {
   test(`Daily Watch fits a long insight after check-in at ${width}px in ${appearance} mode`, async ({ page, baseURL }) => {
     await page.setViewportSize({ width, height: 740 });
-    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.emulateMedia({ reducedMotion: appearance === "light" ? "no-preference" : "reduce" });
     await setup(page, baseURL!, { activePlan: true, plan: true, path: "plan_first", dailyWatch: true, appearance });
     await page.goto("/today");
     const watch = page.getByRole("region", { name: "Today's Watch" });
     await expect(watch.getByRole("link", { name: "Check in to unlxck" })).toHaveAttribute("href", "#today-checkin");
     await expect(page.locator("html")).toHaveAttribute("data-theme", appearance);
     await expect(watch).toHaveCSS("background-color", appearance === "light" ? "rgb(255, 255, 255)" : "rgb(17, 19, 23)");
-    const lock = watch.getByRole("link", { name: "Check in to unlxck" }).locator("svg");
+    const lock = watch.getByRole("link", { name: "Check in to unlxck" }).locator("[data-watch-mark]");
     await expect(lock).toBeVisible();
-    await expect(watch.getByText(longWatch.title)).toHaveCount(0);
+    expect(await lock.evaluate(el => getComputedStyle(el, "::after").opacity)).toBe("0");
+    await expect(watch.getByText(longWatch.title)).toHaveCSS("visibility", "visible");
+    await expect(watch.getByRole("heading", { name: longWatch.title })).toHaveCount(0);
     const lockedHeight = (await watch.boundingBox())?.height;
     const submit = page.locator("#today-checkin").getByRole("button", { name: "Submit check-in" });
     await page.route("**/api/today/checkin", route => route.fulfill({
@@ -630,6 +631,7 @@ for (const [width, appearance] of [[320, "dark"], [320, "light"], [1280, "light"
     await submit.click();
     await expect(watch.getByRole("heading", { name: longWatch.title })).toBeVisible();
     await expect(lock).toHaveCount(0);
+    await expect(watch.getByRole("heading", { name: longWatch.title }).locator("..")).toHaveCSS("filter", /^(none|blur\(0px\))$/);
     await expect(watch.getByText(longWatch.insight, { exact: true })).toBeVisible();
     expect((await watch.boundingBox())?.height).toBe(lockedHeight);
     expect(await watch.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);

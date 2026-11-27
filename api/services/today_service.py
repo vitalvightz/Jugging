@@ -3912,9 +3912,8 @@ def _build_today_command_view(
         open_injuries=open_injuries,
     )
     watch = _daily_tactical_study(plan_row, training_day, str(resolved_plan.get("phase") or ""))
-    view.today.daily_watch_available = watch is not None
-    if watch is not None and today_checkin:
-        view.today.daily_watch = watch
+    view.today.daily_watch = watch
+    view.today.daily_watch_unlocked = watch is not None and bool(today_checkin)
     # Only a missing check-in needs to know whether one can be given (consent).
     can_check_in = view.today.decision_tier != "not_checked_in" or check_in_possible(store, athlete_id)
     if live:

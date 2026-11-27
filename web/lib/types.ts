@@ -1293,7 +1293,7 @@ export type TodayCommandView = {
   active_plan: TodayActivePlan;
   today: {
     training_day: string;
-    daily_watch_available?: boolean;
+    daily_watch_unlocked?: boolean;
     daily_watch?: DailyWatch | null;
     recommendation_state: TodayRecommendationState;
     recommendation_reason?: string | null;

@@ -336,8 +336,8 @@ class CommandViewToday(BaseModel):
     # D-0 of a dated camp. Fight day is a state, not a session: no session is
     # offered, logged or held, and the UI renders its own fight-day layout.
     fight_day: bool = False
-    # Full content is only included after a saved daily check-in.
-    daily_watch_available: bool = False
+    # The written preview is public coaching copy. Check-in controls its visual reveal.
+    daily_watch_unlocked: bool = False
     daily_watch: DailyWatch | None = None
 
 

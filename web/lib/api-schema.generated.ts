@@ -513,7 +513,7 @@ export type CommandViewToday = {
   session_label: string;
   completion_status: "done" | "modified" | "not_started" | "skipped" | "started";
   fight_day: boolean;
-  daily_watch_available: boolean;
+  daily_watch_unlocked: boolean;
   daily_watch: DailyWatch | null;
 };
 

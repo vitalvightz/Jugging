@@ -451,14 +451,15 @@ export function TodayScreen() {
             token={token ?? ""}
             sessionTitle={hasPlan && resolvedDecision.hasSession ? getSessionTitle(state.today.next_session) : undefined}
             warnings={state.today.warnings}
-            onSaved={state.today.daily_watch_available && !state.today.daily_watch ? setWatchRevealDay : undefined}
+            onSaved={state.today.daily_watch && !state.today.daily_watch_unlocked ? setWatchRevealDay : undefined}
             onRefresh={refresh}
           />
         ) : null}
       </Collapse>
-      {state.today.daily_watch_available && (showCheckin || state.today.daily_watch) ? (
+      {state.today.daily_watch && (showCheckin || state.today.daily_watch_unlocked) ? (
         <DailyWatchPreview key={state.today.training_day} watch={state.today.daily_watch}
-          reveal={watchRevealDay === state.today.training_day && Boolean(state.today.daily_watch)} />
+          locked={!state.today.daily_watch_unlocked}
+          reveal={watchRevealDay === state.today.training_day && state.today.daily_watch_unlocked === true} />
       ) : null}
     </>
   );

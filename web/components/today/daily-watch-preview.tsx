@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import type { DailyWatch } from "@/lib/api-schema.generated";
 import styles from "./daily-watch-preview.module.css";
 
-export function DailyWatchPreview({ watch, reveal }: { watch?: DailyWatch | null; reveal: boolean }) {
+export function DailyWatchPreview({ watch, locked, reveal }: { watch: DailyWatch; locked: boolean; reveal: boolean }) {
   const vibrated = useRef(false);
   useEffect(() => {
     if (!reveal || vibrated.current) return;
@@ -15,30 +15,17 @@ export function DailyWatchPreview({ watch, reveal }: { watch?: DailyWatch | null
   return (
     <section className={styles.watch} aria-labelledby="daily-watch-heading">
       <h2 id="daily-watch-heading">Today&apos;s Watch</h2>
-      <div className={styles.study} data-reveal={reveal || undefined}>
-        {watch ? (
-          <div aria-live="polite">
-            <h3>{watch.title}</h3>
-            <p>{watch.insight}</p>
-          </div>
-        ) : (
-          <>
-            <div className={styles.preview} aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </div>
-            <a href="#today-checkin" className={styles.unlock}>
-              <span className={styles.lock} aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="6" y="10" width="12" height="10" rx="2" />
-                  <path d="M8.5 10V7a3.5 3.5 0 0 1 7 0v3M12 14v2" />
-                </svg>
-              </span>
-              Check in to unlxck
-            </a>
-          </>
-        )}
+      <div className={styles.study} data-locked={locked || undefined} data-reveal={reveal || undefined}>
+        <div className={styles.content} aria-hidden={locked || undefined}>
+          <h3>{watch.title}</h3>
+          <p>{watch.insight}</p>
+        </div>
+        <div className={styles.cover} aria-hidden={!locked || undefined}>
+          <a href={locked ? "#today-checkin" : undefined} className={styles.unlock}>
+            <span className={styles.mark} data-watch-mark aria-hidden="true" />
+            Check in to unlxck
+          </a>
+        </div>
       </div>
     </section>
   );
