@@ -259,6 +259,7 @@ export function TodayScreen() {
   const hasPlan = hasActivePlan(activePlan);
   const trainingDate = state?.today.training_day;
   const [watchSessionDay, setWatchSessionDay] = useState<string>();
+  const [savingWatch, setSavingWatch] = useState(false);
   const [watchRevealDay, setWatchRevealDay] = useState<string>();
   const day = trainingDate && /^\d{4}-\d{2}-\d{2}$/.test(trainingDate) ? new Date(`${trainingDate}T12:00:00`) : null;
   const progress = !openOngoing && day && !Number.isNaN(day.getTime()) ? resolvePlanProgress(structuredPlan, day) : null;
@@ -268,7 +269,8 @@ export function TodayScreen() {
   // offered with consent; the planned check-in keeps its existing behaviour
   // (the server enforces consent for both).
   const canCheckIn = hasPlan || hasHealthDataConsent(me);
-  const showCheckin = state && canCheckIn ? shouldShowTodayCheckin(state) : false;
+  const watchJustSaved = Boolean(trainingDate && watchRevealDay === trainingDate);
+  const showCheckin = state && canCheckIn && !watchJustSaved ? shouldShowTodayCheckin(state) : false;
   // Weight-to-target in a dated camp's final weeks. Weigh-ins are health data
   // and under-18s have no weight-cut feature, so both gate it.
   const showWeighIn = Boolean(token && hasPlan && !openOngoing && activePlan.fight_date && trainingDate
@@ -441,28 +443,28 @@ export function TodayScreen() {
   const decisionBanner = hasPlan
     ? resolvedDecision.currentGuidanceBanner ?? resolvedDecision.banner
     : getPlanFreeGuidanceBanner(state, resolvedDecision);
-  // Once checked in, the form eases shut instead of dropping out from under
-  // the sections below it.
+  // Settle the form before centering an earned Watch so the lock stays in view.
   const readinessForm = (
     <>
-      <Collapse show={showCheckin}>
+      {!watchJustSaved && <Collapse show={showCheckin}>
         {showCheckin ? (
           <TodayReadinessForm
             plan={hasPlan ? activePlan : undefined}
             token={token ?? ""}
             sessionTitle={hasPlan && resolvedDecision.hasSession ? getSessionTitle(state.today.next_session) : undefined}
             warnings={state.today.warnings}
+            onSavingChange={state.today.daily_watch && !state.today.daily_watch_unlocked ? setSavingWatch : undefined}
             onSaved={state.today.daily_watch && !state.today.daily_watch_unlocked ? setWatchRevealDay : undefined}
             onRefresh={refresh}
           />
         ) : null}
-      </Collapse>
-      {state.today.daily_watch && (showCheckin || state.today.daily_watch_unlocked) ? (
+      </Collapse>}
+      {state.today.daily_watch && (showCheckin || watchJustSaved || state.today.daily_watch_unlocked) ? (
         <DailyWatchPreview key={state.today.training_day} watch={state.today.daily_watch}
-          onPreviewSession={hasPlan && !fightDay && !state.today.daily_watch.is_recovery_day && resolvedDecision.hasSession && resolvedDecision.sessionIsToday
+          onPreviewSession={state.today.daily_watch_unlocked && hasPlan && !fightDay && !state.today.daily_watch.is_recovery_day && resolvedDecision.hasSession && resolvedDecision.sessionIsToday
             ? () => setWatchSessionDay(state.today.training_day) : undefined}
-          locked={!state.today.daily_watch_unlocked}
-          reveal={watchRevealDay === state.today.training_day && state.today.daily_watch_unlocked === true} />
+          locked={!watchJustSaved && !state.today.daily_watch_unlocked}
+          saving={savingWatch && !watchJustSaved} reveal={watchJustSaved} />
       ) : null}
     </>
   );

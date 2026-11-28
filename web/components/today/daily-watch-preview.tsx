@@ -1,16 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DailyWatch } from "@/lib/api-schema.generated";
 import { useFadeThrough } from "@/components/fade-through";
 import { InjuryDetailSheet } from "./injury-detail-sheet";
 import styles from "./daily-watch-preview.module.css";
 
-export function DailyWatchPreview({ watch, locked, reveal, onPreviewSession }: {
-  watch: DailyWatch; locked: boolean; reveal: boolean; onPreviewSession?: () => void;
+export function DailyWatchPreview({ watch, locked, saving, reveal, onPreviewSession }: {
+  watch: DailyWatch; locked: boolean; saving: boolean; reveal: boolean; onPreviewSession?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const fadeThrough = useFadeThrough();
+  const cover = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (saving || reveal) cover.current?.scrollIntoView({ block: "center", behavior: "instant" });
+  }, [saving, reveal]);
   const vibrated = useRef(false);
   useEffect(() => {
     if (!reveal || vibrated.current) return;
@@ -32,10 +36,10 @@ export function DailyWatchPreview({ watch, locked, reveal, onPreviewSession }: {
           <h3>{watch.title}</h3>
           <p>{watch.insight}</p>
         </div>
-        <div className={styles.cover} aria-hidden={!locked || undefined}>
+        <div ref={cover} className={styles.cover} aria-hidden={!locked || undefined}>
           <a href={locked ? "#today-checkin" : undefined} className={styles.unlock}>
             <span className={styles.mark} data-watch-mark aria-hidden="true" />
-            Check in to unlxck
+            {saving ? "Saving check-in…" : reveal ? "Unlxcked" : "Check in to unlxck"}
           </a>
         </div>
       </div>
