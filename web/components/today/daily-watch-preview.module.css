@@ -68,8 +68,8 @@
 
 .mark {
   position: relative;
-  inline-size: 30px;
-  block-size: 30px;
+  inline-size: 38px;
+  block-size: 38px;
 }
 
 .mark::before, .mark::after {
@@ -90,7 +90,7 @@
   .study[data-locked] .mark { animation: breathe 2.8s ease-in-out 2; }
 
   .study[data-reveal] {
-    --reveal-duration: 640ms;
+    --reveal-duration: 1100ms;
     --reveal-easing: cubic-bezier(.32, 0, .24, 1);
   }
 
@@ -128,7 +128,7 @@
 
 @keyframes lift-cover {
   from { opacity: 1; visibility: visible; }
-  45% { opacity: .82; visibility: visible; }
+  60% { opacity: 1; visibility: visible; }
   to { opacity: 0; visibility: hidden; }
 }
 

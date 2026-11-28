@@ -67,12 +67,14 @@ export function TodayReadinessForm({
   warnings,
   onRefresh,
   onSaved,
+  onSavingChange,
 }: {
   /** Omitted when the athlete has no active programme. */
   plan?: TodayActivePlan;
   sessionTitle?: string;
   token: string;
   warnings?: string[];
+  onSavingChange?: (saving: boolean) => void;
   onSaved?: (trainingDay: string) => void;
   onRefresh: () => Promise<void>;
 }) {
@@ -117,6 +119,7 @@ export function TodayReadinessForm({
     }
     markStarted();
     setIsSubmitting(true);
+    onSavingChange?.(true);
     try {
       const response = await submitTodayCheckin(
         token,
@@ -146,6 +149,7 @@ export function TodayReadinessForm({
     } catch (error) {
       showToast(error instanceof Error ? error.message : "Check-in failed.", { tone: "error" });
     } finally {
+      onSavingChange?.(false);
       setIsSubmitting(false);
     }
   }

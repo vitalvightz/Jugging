@@ -638,8 +638,32 @@ for (const [width, appearance] of [[320, "dark"], [320, "light"], [390, "dark"],
     await submit.click();
     await expect(page.getByText("Check-in could not be saved.")).toBeVisible();
     await expect(watch.getByRole("link", { name: "Check in to unlxck" })).toBeVisible();
+    let releaseSave!: () => void;
+    const pendingSave = new Promise<void>(resolve => { releaseSave = resolve; });
+    let releaseRefresh!: () => void;
+    const pendingRefresh = new Promise<void>(resolve => { releaseRefresh = resolve; });
+    await page.route("**/api/today/checkin", async route => {
+      await pendingSave;
+      await route.fallback();
+    }, { times: 1 });
+    await page.route("**/api/today", async route => {
+      await pendingRefresh;
+      await route.fallback();
+    }, { times: 1 });
     await submit.click();
-    await expect(watch.getByRole("heading", { name: longWatch.title })).toBeVisible();
+    try {
+      await expect(watch.getByText("Saving check-in…")).toBeInViewport();
+      await expect(watch.locator("[data-watch-mark]")).toBeInViewport({ ratio: 1 });
+      await expect(watch.getByRole("button", { name: "Open today's Watch" })).toHaveCount(0);
+      if (width === 390) await watch.screenshot({ path: test.info().outputPath("watch-saving.png") });
+      releaseSave();
+      await expect(watch.getByRole("heading", { name: longWatch.title })).toBeVisible();
+      await expect(watch).toBeInViewport({ ratio: 1 });
+      await expect(submit).toHaveCount(0);
+    } finally {
+      releaseSave();
+      releaseRefresh();
+    }
     await expect(lock).toHaveCount(0);
     await expect(watch.getByRole("heading", { name: longWatch.title }).locator("..")).toHaveCSS("filter", /^(none|blur\(0px\))$/);
     await expect(watch.getByText(longWatch.insight, { exact: true })).toBeVisible();
