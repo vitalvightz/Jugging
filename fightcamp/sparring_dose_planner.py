@@ -585,6 +585,19 @@ def sandwiched_training_days(
     return result
 
 
+def _consecutive_deload(entry: dict[str, Any]) -> dict[str, Any]:
+    codes = list(entry.get("reason_codes") or [])
+    if "consecutive_hard_days" not in codes:
+        codes.append("consecutive_hard_days")
+    return {
+        **entry,
+        "status": "deload_suggested",
+        "effective_load": "reduced",
+        "reason_codes": codes,
+        "reason": entry.get("reason") or "consecutive_hard_days",
+    }
+
+
 def _apply_consecutive_deloads(
     plan: list[dict[str, Any]],
     *,
@@ -600,18 +613,28 @@ def _apply_consecutive_deloads(
         ):
             continue
         target = later if later != protected_day else earlier
-        entry = plan_by_day[target]
-        codes = list(entry.get("reason_codes") or [])
-        if "consecutive_hard_days" not in codes:
-            codes.append("consecutive_hard_days")
-        plan_by_day[target] = {
-            **entry,
-            "status": "deload_suggested",
-            "effective_load": "reduced",
-            "reason_codes": codes,
-            "reason": entry.get("reason") or "consecutive_hard_days",
-        }
+        plan_by_day[target] = _consecutive_deload(plan_by_day[target])
     return [plan_by_day[d] for d in hard_days]
+
+
+def apply_dated_consecutive_deloads(
+    entries: list[dict[str, Any]], effective_hard_d_days: set[int],
+) -> None:
+    """Resolve dated adjacency, including repeated weekdays and week boundaries.
+
+    Earlier resolved contact stays authoritative; a later conflicting appointment
+    remains on its declared date at reduced contact.
+    """
+    for entry in sorted(
+        (entry for entry in entries if isinstance(entry.get("d_day"), int)),
+        key=lambda entry: -entry["d_day"],
+    ):
+        if entry.get("effective_load") != "hard":
+            continue
+        if entry["d_day"] + 1 in effective_hard_d_days:
+            entry.update(_consecutive_deload(entry), hard_day_class="managed_hard")
+        else:
+            effective_hard_d_days.add(entry["d_day"])
 
 
 def _apply_hard_day_cap(

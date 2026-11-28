@@ -32,6 +32,7 @@ from .declared_combat_ownership import (
 )
 from .sparring_dose_planner import (
     MAX_REPEATED_WEEKDAY_SPAN,
+    apply_dated_consecutive_deloads,
     compute_hard_sparring_plan,
     repeated_weekday_hard_sparring_entries,
     effective_hard_day_count,
@@ -3758,6 +3759,7 @@ def _build_weekly_role_map(
     fight_week_override: dict[str, Any] | None = None,
 ) -> dict:
     weeks: list[dict] = []
+    effective_hard_d_days: set[int] = set()
     limiter_key = limiter_profile.get("key", "general_fight_readiness")
     progression_weeks = list(week_by_week_progression.get("weeks", []))
     projected_days_until_fight_start: list[int] = [0] * len(progression_weeks)
@@ -3954,6 +3956,9 @@ def _build_weekly_role_map(
         repeated_hard_sparring = repeated_weekday_hard_sparring_entries(
             week=sparring_week,
             athlete_snapshot=athlete_model,
+        )
+        apply_dated_consecutive_deloads(
+            hard_sparring_plan + repeated_hard_sparring, effective_hard_d_days,
         )
         effective_days = effective_hard_days(hard_sparring_plan)
         week_entry["hard_sparring_plan"] = hard_sparring_plan
