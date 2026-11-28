@@ -241,6 +241,35 @@ def test_normal_camp_4_week_emits_calendar_metadata_and_bans_d15():
     assert all(entry["effective_load"] != "hard" for entry in week_3_plan)
 
 
+def test_open_camp_sunday_monday_contact_is_deloaded_across_week_boundaries():
+    from fightcamp.calendar_integrity import apply_final_calendar_integrity
+    from fightcamp.stage2_role_map import _build_weekly_role_map
+
+    athlete = {
+        **_athlete(84, hard_days=["Monday", "Sunday"]),
+        "plan_creation_weekday": "sunday",
+        "open_block_horizon_days": 63,
+        "training_days": ["monday", "sunday"],
+    }
+    progression = {"weeks": [
+        {"week_index": index, "phase": "GPP", "stage_key": "general_capacity",
+         "span_days": 7, "session_counts": {}}
+        for index in range(1, 4)
+    ]}
+    role_map = _build_weekly_role_map(athlete, progression, {})
+    contacts = [entry for week in role_map["weeks"] for entry in week["hard_sparring_plan"]]
+    hard_dates = {entry["d_day"] for entry in contacts if entry["effective_load"] == "hard"}
+
+    assert len(contacts) == 6
+    assert len(hard_dates) == 4
+    assert all(d_day + 1 not in hard_dates for d_day in hard_dates)
+    assert all(
+        entry["effective_load"] == "reduced" and "consecutive_hard_days" in entry["reason_codes"]
+        for entry in contacts if entry["d_day"] not in hard_dates
+    )
+    apply_final_calendar_integrity(role_map)
+
+
 def test_normal_camp_12_week_attaches_calendar_to_every_week():
     from fightcamp.stage2_role_map import _build_weekly_role_map
 
